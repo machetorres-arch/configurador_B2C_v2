@@ -1,4 +1,8 @@
-import { useRef, useState, useEffect } from 'react';
+const fs = require('fs');
+const file = 'src/components/Board.tsx';
+let code = fs.readFileSync(file, 'utf8');
+
+const correctCode = `import { useRef, useState, useEffect } from 'react';
 import { useStore } from '../store';
 import { DoubleSide } from 'three';
 import { Edges, useTexture } from '@react-three/drei';
@@ -87,3 +91,6 @@ export function Board({ position, args, color, textureUrl, materialType, transpa
     </mesh>
   );
 }
+`;
+
+fs.writeFileSync(file, correctCode);

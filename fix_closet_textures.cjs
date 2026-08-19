@@ -2,32 +2,46 @@ const fs = require('fs');
 const file = 'src/components/Closet.tsx';
 let code = fs.readFileSync(file, 'utf8');
 
-// Insert a helper function near the top of the component
+// Replace doorProps with drawerFrontProps for drawers
 code = code.replace(
-  `  const baseOffset = showSocle ? 10 : showLegs ? 10 : 0;`,
-  `  const baseOffset = showSocle ? 10 : showLegs ? 10 : 0;
-
-  const getTextureProps = (c: string, mat: 'melamina' | 'hpl') => {
-    if (c.startsWith('#')) return { color: c };
-    return { color: '#ffffff', textureUrl: \`/textures/\${c}\`, materialType: mat };
-  };
-  
-  const structureProps = getTextureProps(color, state.structureMaterial);
-  const doorProps = getTextureProps(doorColor, state.doorMaterial);
-  const drawerFrontProps = getTextureProps(state.drawerFrontColor, state.drawerFrontMaterial);
-  const drawerInnerProps = getTextureProps(state.drawerInnerColor, state.drawerInnerMaterial);
-  const shelfProps = getTextureProps(state.shelfColor, state.shelfMaterial);
-  const backProps = getTextureProps(backColor, state.structureMaterial); // Back wall uses structure material usually
-`
+  "{...doorProps} /* drawer-front */",
+  "{...drawerFrontProps}"
 );
 
-// We need to replace all `<Board ... color={color} />` with `<Board ... {...structureProps} />`
-// Wait, regex might be tricky. Let's do it with replaceAll but carefully.
-code = code.replace(/color=\{color\}/g, `{...structureProps}`);
-code = code.replace(/color=\{doorColor\}/g, `{...doorProps}`);
-code = code.replace(/color=\{backColor\}/g, `{...backProps}`);
-code = code.replace(/color=\{state\.shelfColor\}/g, `{...shelfProps}`);
-code = code.replace(/color=\{state\.drawerFrontColor\}/g, `{...drawerFrontProps}`);
-code = code.replace(/color=\{state\.drawerInnerColor\}/g, `{...drawerInnerProps}`);
+// Replace structureProps with shelfProps for maletero
+code = code.replace(
+  /parts\.push\(<Board key={\`shelf-top-\${mod\.id}\`} position={\[modCenterX, maleteroY, shelfZ\]} args={\[innerW, thickness, shelfDepth\]} \{\.\.\.structureProps\} \/>\);/g,
+  "parts.push(<Board key={`shelf-top-${mod.id}`} position={[modCenterX, maleteroY, shelfZ]} args={[innerW, thickness, shelfDepth]} {...shelfProps} />);"
+);
+
+// Replace structureProps with shelfProps for bottom shelf
+code = code.replace(
+  /parts\.push\(<Board key={\`shelf-bottom-\${mod\.id}\`} position={\[modCenterX, bottomShelfY, shelfZ\]} args={\[innerW, thickness, shelfDepth\]} \{\.\.\.structureProps\} \/>\);/g,
+  "parts.push(<Board key={`shelf-bottom-${mod.id}`} position={[modCenterX, bottomShelfY, shelfZ]} args={[innerW, thickness, shelfDepth]} {...shelfProps} />);"
+);
+
+// Replace structureProps with shelfProps for intermediate shelves
+code = code.replace(
+  /<Board key={\`shelf-\${mod\.id}-\${i}\`} position={\[innerCenterX, shelfY, shelfZ\]} args={\[innerW, thickness, shelfDepth\]} \{\.\.\.structureProps\} \/>/g,
+  "<Board key={`shelf-${mod.id}-${i}`} position={[innerCenterX, shelfY, shelfZ]} args={[innerW, thickness, shelfDepth]} {...shelfProps} />"
+);
+
+// Replace inner drawer materials
+code = code.replace(
+  /<Board key={\`drawer-L-\${mod\.id}-\${d}\`}.*?\{\.\.\.structureProps\} \/>/g,
+  (match) => match.replace("{...structureProps}", "{...drawerInnerProps}")
+);
+code = code.replace(
+  /<Board key={\`drawer-R-\${mod\.id}-\${d}\`}.*?\{\.\.\.structureProps\} \/>/g,
+  (match) => match.replace("{...structureProps}", "{...drawerInnerProps}")
+);
+code = code.replace(
+  /<Board key={\`drawer-B-\${mod\.id}-\${d}\`}.*?\{\.\.\.structureProps\} \/>/g,
+  (match) => match.replace("{...structureProps}", "{...drawerInnerProps}")
+);
+code = code.replace(
+  /<Board key={\`drawer-F-\${mod\.id}-\${d}\`}.*?\{\.\.\.structureProps\} \/>/g,
+  (match) => match.replace("{...structureProps}", "{...drawerInnerProps}")
+);
 
 fs.writeFileSync(file, code);

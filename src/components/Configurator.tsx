@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useStore } from '../store';
 import { exportToExcel, exportToPDF } from '../utils/manufacturing';
 import { Download, FileText, Plus, Trash2 } from 'lucide-react';
+import { TexturesSection } from './TexturesSection';
 
 const sectionTitle = "text-[11px] uppercase tracking-widest text-orange-500 font-bold mb-3 mt-6 first:mt-0";
 const labelClass = "text-[10px] uppercase tracking-widest text-slate-400";
@@ -141,10 +142,12 @@ export function Configurator() {
       </div>
 
       <h2 className={sectionTitle}>Zócalo y Patas</h2>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-2 gap-2 mb-6">
         <ToggleBtn active={state.showSocle} onClick={state.toggleSocle} label="Zócalo" />
         <ToggleBtn active={state.showLegs} onClick={state.toggleLegs} label="Patas" />
       </div>
+
+      <TexturesSection />
 
       <h2 className={sectionTitle}>Apariencia (Melamina)</h2>
       <div className="flex flex-col gap-3">

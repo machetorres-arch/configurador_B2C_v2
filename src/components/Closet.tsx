@@ -392,7 +392,7 @@ export function Closet() {
 
   const getTextureProps = (c: string, mat: 'melamina' | 'hpl') => {
     if (c.startsWith('#')) return { color: c };
-    return { color: '#ffffff', textureUrl: `/textures/${c}`, materialType: mat };
+    return { color: '#ffffff', textureUrl: (c.startsWith('http') || c.startsWith('data:')) ? c : `/textures/${c}`, materialType: mat };
   };
   
   const structureProps = getTextureProps(color, state.structureMaterial);
@@ -496,7 +496,7 @@ export function Closet() {
       if (mod.shelves > 0) {
         // Top shelf (maletero) typically 35cm from the top
         const maleteroY = baseOffset + height - (showTopWall ? thickness : 0) - 35;
-        parts.push(<Board key={`shelf-top-${mod.id}`} position={[modCenterX, maleteroY, shelfZ]} args={[innerW, thickness, shelfDepth]} {...structureProps} />);
+        parts.push(<Board key={`shelf-top-${mod.id}`} position={[modCenterX, maleteroY, shelfZ]} args={[innerW, thickness, shelfDepth]} {...shelfProps} />);
         
         // Assembly hardware for maletero
         parts.push(<AssemblyJoint key={`aj-maleteroL-${mod.id}`} position={[innerCenterX - innerW / 2, maleteroY, shelfZ]} length={shelfDepth} axis="z" pointing="right" thickness={thickness} count={3} />);
@@ -511,7 +511,7 @@ export function Closet() {
         if (mod.shelves > 1) {
           // Bottom shelf inside usable space
           const bottomShelfY = usableYStart + 25;
-          parts.push(<Board key={`shelf-bottom-${mod.id}`} position={[modCenterX, bottomShelfY, shelfZ]} args={[innerW, thickness, shelfDepth]} {...structureProps} />);
+          parts.push(<Board key={`shelf-bottom-${mod.id}`} position={[modCenterX, bottomShelfY, shelfZ]} args={[innerW, thickness, shelfDepth]} {...shelfProps} />);
           
           // Assembly hardware for bottom fixed shelf
           parts.push(<AssemblyJoint key={`aj-bshelfL-${mod.id}`} position={[innerCenterX - innerW / 2, bottomShelfY, shelfZ]} length={shelfDepth} axis="z" pointing="right" thickness={thickness} count={3} />);
@@ -589,7 +589,7 @@ export function Closet() {
         for (let i = 1; i <= mod.shelves; i++) {
           const shelfY = usableYStart + spacing * i;
           parts.push(
-            <Board key={`shelf-${mod.id}-${i}`} position={[innerCenterX, shelfY, shelfZ]} args={[innerW, thickness, shelfDepth]} {...structureProps} />
+            <Board key={`shelf-${mod.id}-${i}`} position={[innerCenterX, shelfY, shelfZ]} args={[innerW, thickness, shelfDepth]} {...shelfProps} />
           );
           allShelfYs.push(shelfY - thickness / 2);
 
@@ -694,7 +694,7 @@ export function Closet() {
             key={`drawer-front-${mod.id}-${d}`} 
             position={[modCenterX, yPosFront, frontZPos]} 
             args={[frontWidth, frontHeight, thickness]} 
-            {...doorProps} 
+            {...drawerFrontProps} 
           />
         );
 
@@ -711,16 +711,16 @@ export function Closet() {
 
         // --- Representación 3D del Cajón Interior (Caja) ---
         drawerElements.push(
-          <Board key={`drawer-L-${mod.id}-${d}`} position={[innerCenterX - boxOuterWidth/2 + thickness/2, yBoxCenter, boxZCenter]} args={[thickness, sideHeight, drawerBoxLength]} {...structureProps} />
+          <Board key={`drawer-L-${mod.id}-${d}`} position={[innerCenterX - boxOuterWidth/2 + thickness/2, yBoxCenter, boxZCenter]} args={[thickness, sideHeight, drawerBoxLength]} {...drawerInnerProps} />
         );
         drawerElements.push(
-          <Board key={`drawer-R-${mod.id}-${d}`} position={[innerCenterX + boxOuterWidth/2 - thickness/2, yBoxCenter, boxZCenter]} args={[thickness, sideHeight, drawerBoxLength]} {...structureProps} />
+          <Board key={`drawer-R-${mod.id}-${d}`} position={[innerCenterX + boxOuterWidth/2 - thickness/2, yBoxCenter, boxZCenter]} args={[thickness, sideHeight, drawerBoxLength]} {...drawerInnerProps} />
         );
         drawerElements.push(
-          <Board key={`drawer-B-${mod.id}-${d}`} position={[innerCenterX, yBoxCenter, boxZCenter - drawerBoxLength/2 + thickness/2]} args={[boxOuterWidth - thickness*2, sideHeight, thickness]} {...structureProps} />
+          <Board key={`drawer-B-${mod.id}-${d}`} position={[innerCenterX, yBoxCenter, boxZCenter - drawerBoxLength/2 + thickness/2]} args={[boxOuterWidth - thickness*2, sideHeight, thickness]} {...drawerInnerProps} />
         );
         drawerElements.push(
-          <Board key={`drawer-F-${mod.id}-${d}`} position={[innerCenterX, yBoxCenter, boxZCenter + drawerBoxLength/2 - thickness/2]} args={[boxOuterWidth - thickness*2, sideHeight, thickness]} {...structureProps} />
+          <Board key={`drawer-F-${mod.id}-${d}`} position={[innerCenterX, yBoxCenter, boxZCenter + drawerBoxLength/2 - thickness/2]} args={[boxOuterWidth - thickness*2, sideHeight, thickness]} {...drawerInnerProps} />
         );
         drawerElements.push(
           <Board key={`drawer-Bot-${mod.id}-${d}`} position={[innerCenterX, yBoxBase + 0.3, boxZCenter]} args={[boxOuterWidth - thickness*2, 0.3, drawerBoxLength - thickness*2]} color="#dddddd" />

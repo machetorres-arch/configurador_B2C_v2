@@ -1,6 +1,13 @@
 import { create } from 'zustand';
 
 export type MaterialType = 'melamina' | 'hpl';
+export type PartType = 'structure' | 'doors' | 'drawerFronts' | 'drawerInner' | 'shelves' | 'back';
+
+export interface TextureItem {
+  id: string;
+  name: string;
+  url: string;
+}
 
 export interface ClosetModule {
   id: string;
@@ -53,6 +60,13 @@ export interface ClosetState {
   activeModuleId: string | null;
   savedDesigns: string[];
   isPrinting: boolean;
+
+  targetPart: PartType;
+  setTargetPart: (part: PartType) => void;
+  applyTextureToTarget: (textureUrl: string) => void;
+  
+  customTextures: TextureItem[];
+  setCustomTextures: (textures: TextureItem[]) => void;
   
   setHeight: (h: number) => void;
   setDepth: (d: number) => void;
@@ -158,6 +172,23 @@ export const useStore = create<ClosetState>((set, get) => ({
   activeModuleId: defaultModule.id,
   savedDesigns: getSavedDesigns(),
   isPrinting: false,
+
+  targetPart: 'structure',
+  setTargetPart: (part) => set({ targetPart: part }),
+  applyTextureToTarget: (textureUrl) => set((state) => {
+    switch(state.targetPart) {
+      case 'structure': return { structureColor: textureUrl };
+      case 'doors': return { doorColor: textureUrl };
+      case 'drawerFronts': return { drawerFrontColor: textureUrl };
+      case 'drawerInner': return { drawerInnerColor: textureUrl };
+      case 'shelves': return { shelfColor: textureUrl };
+      case 'back': return { backColor: textureUrl };
+      default: return state;
+    }
+  }),
+  
+  customTextures: [],
+  setCustomTextures: (textures) => set({ customTextures: textures }),
   
   setHeight: (height) => set({ height }),
   setDepth: (depth) => set({ depth }),
