@@ -4,7 +4,7 @@ import { useFrame } from '@react-three/fiber';
 import { useStore } from '../store';
 import { Board } from './Board';
 import { getNominalSlideLength } from '../utils/manufacturing';
-import { Text, Line, Cylinder, useCursor } from '@react-three/drei';
+import { Text, Line, Cylinder, useCursor, Edges } from '@react-three/drei';
 
 function AssemblyJoint({
   position, 
@@ -274,24 +274,32 @@ function ShelfHardware({ shelfYs, xLeft, xRight, zFront, zBack, bounds }: { shel
   return <group>{elements}</group>;
 }
 
-function AnimatedDrawer({ children, openZOffset }: { children: React.ReactNode, openZOffset: number }) {
+function AnimatedDrawer({ children, openZOffset, forceOpen, onClickAction }: { children: React.ReactNode, openZOffset: number, forceOpen?: boolean, onClickAction?: () => void }) {
   const [isOpen, setIsOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
   const groupRef = useRef<THREE.Group>(null);
   
   useCursor(hovered);
+
+  React.useEffect(() => {
+    if (forceOpen !== undefined) setIsOpen(forceOpen);
+  }, [forceOpen]);
   
   useFrame((state, delta) => {
     if (groupRef.current) {
       const targetZ = isOpen ? openZOffset : 0;
-      groupRef.current.position.z = THREE.MathUtils.lerp(groupRef.current.position.z, targetZ, delta * 8);
+      groupRef.current.position.z = THREE.MathUtils.lerp(groupRef.current.position.z, targetZ, delta * 3);
     }
   });
 
   return (
     <group 
       ref={groupRef}
-      onClick={(e) => { e.stopPropagation(); setIsOpen(!isOpen); }}
+      onClick={(e) => { 
+        e.stopPropagation(); 
+        setIsOpen(!isOpen); 
+        if(onClickAction) onClickAction(); 
+      }}
       onPointerOver={(e) => { e.stopPropagation(); setHovered(true); }}
       onPointerOut={(e) => { e.stopPropagation(); setHovered(false); }}
     >
@@ -306,7 +314,8 @@ function AnimatedDoor({
   doorHeight, 
   thickness, 
   
-  color, textureUrl, materialType, isRightHinge 
+  color, textureUrl, materialType, isRightHinge,
+  grainDirection, hplBalancerOverride, forceOpen, onClickAction
 }: {
   position: [number, number, number],
   doorW: number,
@@ -315,18 +324,26 @@ function AnimatedDoor({
   color: string,
   textureUrl?: string,
   materialType?: 'melamina' | 'hpl',
-  isRightHinge: boolean
+  isRightHinge: boolean,
+  grainDirection?: 'vertical' | 'horizontal',
+  hplBalancerOverride?: boolean,
+  forceOpen?: boolean,
+  onClickAction?: () => void
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
   const groupRef = useRef<THREE.Group>(null);
   
   useCursor(hovered);
+
+  React.useEffect(() => {
+    if (forceOpen !== undefined) setIsOpen(forceOpen);
+  }, [forceOpen]);
   
   useFrame((state, delta) => {
     if (groupRef.current) {
       const targetRotation = isOpen ? (isRightHinge ? Math.PI / 2 : -Math.PI / 2) : 0;
-      groupRef.current.rotation.y = THREE.MathUtils.lerp(groupRef.current.rotation.y, targetRotation, delta * 8);
+      groupRef.current.rotation.y = THREE.MathUtils.lerp(groupRef.current.rotation.y, targetRotation, delta * 3);
     }
   });
 
@@ -348,11 +365,15 @@ function AnimatedDoor({
     <group 
       position={[position[0] + hingeXOffset, position[1], position[2]]}
       ref={groupRef}
-      onClick={(e) => { e.stopPropagation(); setIsOpen(!isOpen); }}
+      onClick={(e) => { 
+        e.stopPropagation(); 
+        setIsOpen(!isOpen); 
+        if(onClickAction) onClickAction(); 
+      }}
       onPointerOver={(e) => { e.stopPropagation(); setHovered(true); }}
       onPointerOut={(e) => { e.stopPropagation(); setHovered(false); }}
     >
-      <Board position={[-hingeXOffset, 0, 0]} args={[doorW, doorHeight, thickness]} color={color} textureUrl={textureUrl} materialType={materialType} />
+      <Board position={[-hingeXOffset, 0, 0]} args={[doorW, doorHeight, thickness]} color={color} textureUrl={textureUrl} materialType={materialType} isFrontPanel={true} grainDirection={grainDirection} hplBalancerOverride={hplBalancerOverride} />
       
       {/* Bisagras */}
       {hingeYs.map((y, index) => (
@@ -385,7 +406,7 @@ export function Closet() {
     height, depth, thickness, modules,
     showTopWall, showBottomWall, showLeftWall, showRightWall, showBackWall,
     showSocle, showLegs, showDimensions, dimensionLevel,
-    structureColor, backColor, doorColor
+    structureColor, backColor, doorColor, socleColor
   } = state;
 
   const baseOffset = showSocle ? 10 : showLegs ? 10 : 0;
@@ -400,7 +421,8 @@ export function Closet() {
   const drawerFrontProps = getTextureProps(state.drawerFrontColor, state.drawerFrontMaterial);
   const drawerInnerProps = getTextureProps(state.drawerInnerColor, state.drawerInnerMaterial);
   const shelfProps = getTextureProps(state.shelfColor, state.shelfMaterial);
-  const backProps = getTextureProps(backColor, state.structureMaterial); // Back wall uses structure material usually
+  const backProps = getTextureProps(backColor, state.structureMaterial);
+  const socleProps = getTextureProps(socleColor, state.socleMaterial as 'melamina' | 'hpl'); // Back wall uses structure material usually
 
   
   // En un esquema de módulos independientes, el ancho total es la suma de los anchos de cada módulo.
@@ -414,6 +436,13 @@ export function Closet() {
   let currentX = -totalWidth / 2;
 
   const moduleElements = modules.map((mod, index) => {
+    const modStructureProps = getTextureProps(mod.overrides?.structureColor || color, mod.overrides?.structureMaterial || state.structureMaterial);
+    const modShelfProps = getTextureProps(mod.overrides?.structureColor || state.shelfColor, mod.overrides?.structureMaterial || state.shelfMaterial);
+    const modDoorProps = getTextureProps(mod.overrides?.doorColor || doorColor, mod.overrides?.doorMaterial || state.doorMaterial);
+    const modDrawerFrontProps = getTextureProps(mod.overrides?.drawerFrontColor || state.drawerFrontColor, mod.overrides?.drawerFrontMaterial || state.drawerFrontMaterial);
+    const modGrainDirection = mod.overrides?.grainDirection || 'vertical';
+    const modHplBalancer = mod.overrides?.hplBalancer !== undefined ? mod.overrides.hplBalancer : state.hplBalancer;
+
     const modCenterX = currentX + mod.width / 2;
     const innerW = mod.width - (showLeftWall ? thickness : 0) - (showRightWall ? thickness : 0);
     const innerCenterX = modCenterX + (showLeftWall ? thickness/2 : 0) - (showRightWall ? thickness/2 : 0);
@@ -422,7 +451,7 @@ export function Closet() {
 
     // Estructura Externa (Independiente por cada módulo)
     if (showLeftWall) {
-      parts.push(<Board key={`L-${mod.id}`} position={[modCenterX - mod.width / 2 + thickness / 2, (height + baseOffset) / 2, 0]} args={[thickness, height + baseOffset, depth]} {...structureProps} />);
+      parts.push(<Board key={`L-${mod.id}`} position={[modCenterX - mod.width / 2 + thickness / 2, (height + baseOffset) / 2, 0]} args={[thickness, height + baseOffset, depth]} {...modStructureProps} />);
       if (showTopWall) parts.push(<AssemblyJoint key={`aj-TL-${mod.id}`} position={[modCenterX - mod.width / 2 + (showLeftWall ? thickness : 0), baseOffset + height - thickness / 2, 0]} length={depth} axis="z" pointing="right" thickness={thickness} count={3} />);
       if (showBottomWall) parts.push(<AssemblyJoint key={`aj-BL-${mod.id}`} position={[modCenterX - mod.width / 2 + (showLeftWall ? thickness : 0), baseOffset + thickness / 2, 0]} length={depth} axis="z" pointing="right" thickness={thickness} count={3} />);
     } else if (index !== 0) {
@@ -432,24 +461,24 @@ export function Closet() {
     }
     
     if (showRightWall) {
-      parts.push(<Board key={`R-${mod.id}`} position={[modCenterX + mod.width / 2 - thickness / 2, (height + baseOffset) / 2, 0]} args={[thickness, height + baseOffset, depth]} {...structureProps} />);
+      parts.push(<Board key={`R-${mod.id}`} position={[modCenterX + mod.width / 2 - thickness / 2, (height + baseOffset) / 2, 0]} args={[thickness, height + baseOffset, depth]} {...modStructureProps} />);
       if (showTopWall) parts.push(<AssemblyJoint key={`aj-TR-${mod.id}`} position={[modCenterX + mod.width / 2 - thickness, baseOffset + height - thickness / 2, 0]} length={depth} axis="z" pointing="left" thickness={thickness} count={3} />);
       if (showBottomWall) parts.push(<AssemblyJoint key={`aj-BR-${mod.id}`} position={[modCenterX + mod.width / 2 - thickness, baseOffset + thickness / 2, 0]} length={depth} axis="z" pointing="left" thickness={thickness} count={3} />);
     }
     if (showBottomWall) {
-      parts.push(<Board key={`B-${mod.id}`} position={[innerCenterX, baseOffset + thickness / 2, 0]} args={[innerW, thickness, depth]} {...structureProps} />);
+      parts.push(<Board key={`B-${mod.id}`} position={[innerCenterX, baseOffset + thickness / 2, 0]} args={[innerW, thickness, depth]} {...modStructureProps} />);
     }
     if (showTopWall) {
-      parts.push(<Board key={`T-${mod.id}`} position={[innerCenterX, baseOffset + height - thickness / 2, 0]} args={[innerW, thickness, depth]} {...structureProps} />);
+      parts.push(<Board key={`T-${mod.id}`} position={[innerCenterX, baseOffset + height - thickness / 2, 0]} args={[innerW, thickness, depth]} {...modStructureProps} />);
     }
     if (showBackWall) {
       parts.push(<Board key={`Back-${mod.id}`} position={[innerCenterX, baseOffset + height / 2, -depth / 2 + thickness / 2]} args={[innerW, innerHeight, thickness]} {...backProps} />);
     }
     if (showSocle) {
       // Zócalo frontal (retranqueado 2cm o al ras de la puerta)
-      parts.push(<Board key={`socle-front-${mod.id}`} position={[innerCenterX, baseOffset / 2, depth / 2 - thickness / 2 - 2]} args={[innerW, baseOffset, thickness]} {...doorProps} />);
+      parts.push(<Board key={`socle-front-${mod.id}`} position={[innerCenterX, baseOffset / 2, depth / 2 - thickness / 2 - 2]} args={[innerW, baseOffset, thickness]} {...socleProps} />);
       // Zócalo trasero
-      parts.push(<Board key={`socle-back-${mod.id}`} position={[innerCenterX, baseOffset / 2, -depth / 2 + thickness / 2 + (showBackWall ? thickness : 0) + 2]} args={[innerW, baseOffset, thickness]} {...doorProps} />);
+      parts.push(<Board key={`socle-back-${mod.id}`} position={[innerCenterX, baseOffset / 2, -depth / 2 + thickness / 2 + (showBackWall ? thickness : 0) + 2]} args={[innerW, baseOffset, thickness]} {...socleProps} />);
     }
 
     // --- COTAS DE MÓDULO (Nivel >= 2) ---
@@ -475,7 +504,7 @@ export function Closet() {
 
     if (hasDrawers) {
       // Tapa estructural de cajoneras obligatoria, llega hasta el borde frontal (innerDepth completo)
-      parts.push(<Board key={`shelf-cover-${mod.id}`} position={[modCenterX, coverShelfY, innerZBase]} args={[innerW, thickness, innerDepth]} {...structureProps} />);
+      parts.push(<Board key={`shelf-cover-${mod.id}`} position={[modCenterX, coverShelfY, innerZBase]} args={[innerW, thickness, innerDepth]} {...modStructureProps} />);
       
       // Assembly hardware for cover shelf
       parts.push(<AssemblyJoint key={`aj-coverL-${mod.id}`} position={[innerCenterX - innerW / 2, coverShelfY, innerZBase]} length={innerDepth} axis="z" pointing="right" thickness={thickness} count={3} />);
@@ -496,7 +525,7 @@ export function Closet() {
       if (mod.shelves > 0) {
         // Top shelf (maletero) typically 35cm from the top
         const maleteroY = baseOffset + height - (showTopWall ? thickness : 0) - 35;
-        parts.push(<Board key={`shelf-top-${mod.id}`} position={[modCenterX, maleteroY, shelfZ]} args={[innerW, thickness, shelfDepth]} {...shelfProps} />);
+        parts.push(<Board key={`shelf-top-${mod.id}`} position={[modCenterX, maleteroY, shelfZ]} args={[innerW, thickness, shelfDepth]} {...modShelfProps} />);
         
         // Assembly hardware for maletero
         parts.push(<AssemblyJoint key={`aj-maleteroL-${mod.id}`} position={[innerCenterX - innerW / 2, maleteroY, shelfZ]} length={shelfDepth} axis="z" pointing="right" thickness={thickness} count={3} />);
@@ -511,7 +540,7 @@ export function Closet() {
         if (mod.shelves > 1) {
           // Bottom shelf inside usable space
           const bottomShelfY = usableYStart + 25;
-          parts.push(<Board key={`shelf-bottom-${mod.id}`} position={[modCenterX, bottomShelfY, shelfZ]} args={[innerW, thickness, shelfDepth]} {...shelfProps} />);
+          parts.push(<Board key={`shelf-bottom-${mod.id}`} position={[modCenterX, bottomShelfY, shelfZ]} args={[innerW, thickness, shelfDepth]} {...modShelfProps} />);
           
           // Assembly hardware for bottom fixed shelf
           parts.push(<AssemblyJoint key={`aj-bshelfL-${mod.id}`} position={[innerCenterX - innerW / 2, bottomShelfY, shelfZ]} length={shelfDepth} axis="z" pointing="right" thickness={thickness} count={3} />);
@@ -589,7 +618,7 @@ export function Closet() {
         for (let i = 1; i <= mod.shelves; i++) {
           const shelfY = usableYStart + spacing * i;
           parts.push(
-            <Board key={`shelf-${mod.id}-${i}`} position={[innerCenterX, shelfY, shelfZ]} args={[innerW, thickness, shelfDepth]} {...shelfProps} />
+            <Board key={`shelf-${mod.id}-${i}`} position={[innerCenterX, shelfY, shelfZ]} args={[innerW, thickness, shelfDepth]} {...modShelfProps} />
           );
           allShelfYs.push(shelfY - thickness / 2);
 
@@ -665,14 +694,14 @@ export function Closet() {
         const blockYCenter = baseOffset + (showBottomWall ? thickness : 0) + drawersTotalHeight / 2;
         
         // Lateral Interior Izquierdo
-        parts.push(<Board key={`inner-lat-L-${mod.id}`} position={[innerCenterX - innerW/2 + spacerGap + thickness/2, blockYCenter, boxZCenter]} args={[thickness, drawersTotalHeight, drawerBoxLength]} {...structureProps} />);
+        parts.push(<Board key={`inner-lat-L-${mod.id}`} position={[innerCenterX - innerW/2 + spacerGap + thickness/2, blockYCenter, boxZCenter]} args={[thickness, drawersTotalHeight, drawerBoxLength]} {...modStructureProps} />);
         // Pilastra/Regleta Frontal Izquierda
-        parts.push(<Board key={`front-strip-L-${mod.id}`} position={[innerCenterX - innerW/2 + spacerGap/2, blockYCenter, frontStripZ]} args={[spacerGap, drawersTotalHeight, thickness]} {...structureProps} />);
+        parts.push(<Board key={`front-strip-L-${mod.id}`} position={[innerCenterX - innerW/2 + spacerGap/2, blockYCenter, frontStripZ]} args={[spacerGap, drawersTotalHeight, thickness]} {...modStructureProps} />);
 
         // Lateral Interior Derecho
-        parts.push(<Board key={`inner-lat-R-${mod.id}`} position={[innerCenterX + innerW/2 - spacerGap - thickness/2, blockYCenter, boxZCenter]} args={[thickness, drawersTotalHeight, drawerBoxLength]} {...structureProps} />);
+        parts.push(<Board key={`inner-lat-R-${mod.id}`} position={[innerCenterX + innerW/2 - spacerGap - thickness/2, blockYCenter, boxZCenter]} args={[thickness, drawersTotalHeight, drawerBoxLength]} {...modStructureProps} />);
         // Pilastra/Regleta Frontal Derecha
-        parts.push(<Board key={`front-strip-R-${mod.id}`} position={[innerCenterX + innerW/2 - spacerGap/2, blockYCenter, frontStripZ]} args={[spacerGap, drawersTotalHeight, thickness]} {...structureProps} />);
+        parts.push(<Board key={`front-strip-R-${mod.id}`} position={[innerCenterX + innerW/2 - spacerGap/2, blockYCenter, frontStripZ]} args={[spacerGap, drawersTotalHeight, thickness]} {...modStructureProps} />);
       }
 
       const drawerAssemblyType = state.drawerAssemblyType || 'spax';
@@ -693,8 +722,9 @@ export function Closet() {
           <Board 
             key={`drawer-front-${mod.id}-${d}`} 
             position={[modCenterX, yPosFront, frontZPos]} 
-            args={[frontWidth, frontHeight, thickness]} 
-            {...drawerFrontProps} 
+            args={[frontWidth, frontHeight, thickness]}
+             isFrontPanel={true}
+             {...modDrawerFrontProps} grainDirection={mod.overrides?.grainElements?.['drawer-'+d] || modGrainDirection} hplBalancerOverride={modHplBalancer} 
           />
         );
 
@@ -718,9 +748,6 @@ export function Closet() {
         );
         drawerElements.push(
           <Board key={`drawer-B-${mod.id}-${d}`} position={[innerCenterX, yBoxCenter, boxZCenter - drawerBoxLength/2 + thickness/2]} args={[boxOuterWidth - thickness*2, sideHeight, thickness]} {...drawerInnerProps} />
-        );
-        drawerElements.push(
-          <Board key={`drawer-F-${mod.id}-${d}`} position={[innerCenterX, yBoxCenter, boxZCenter + drawerBoxLength/2 - thickness/2]} args={[boxOuterWidth - thickness*2, sideHeight, thickness]} {...drawerInnerProps} />
         );
         drawerElements.push(
           <Board key={`drawer-Bot-${mod.id}-${d}`} position={[innerCenterX, yBoxBase + 0.3, boxZCenter]} args={[boxOuterWidth - thickness*2, 0.3, drawerBoxLength - thickness*2]} color="#dddddd" />
@@ -758,7 +785,21 @@ export function Closet() {
         );
 
         parts.push(
-          <AnimatedDrawer key={`anim-drawer-${mod.id}-${d}`} openZOffset={drawerBoxLength - 3}>
+          <AnimatedDrawer key={`anim-drawer-${mod.id}-${d}`} openZOffset={drawerBoxLength - 3} forceOpen={mod.overrides?.openElements?.[`drawer-${d}`] ?? mod.overrides?.isOpen} onClickAction={() => {
+              state.setActiveModule(mod.id);
+              const overrides = mod.overrides || {};
+              const openElements = { ...(overrides.openElements || {}) };
+              const current = openElements[`drawer-${d}`] ?? overrides.isOpen ?? false;
+              openElements[`drawer-${d}`] = !current;
+              
+              if (!current && mod.innerDrawers && mod.doors) {
+                const doorsCount = mod.width > 60 ? 2 : 1;
+                for (let di = 0; di < doorsCount; di++) {
+                   openElements[`door-${di}`] = true;
+                }
+              }
+              state.updateModuleOverrides(mod.id, { openElements });
+            }}>
             {drawerElements}
           </AnimatedDrawer>
         );
@@ -786,7 +827,7 @@ export function Closet() {
       const isInnerDrawer = mod.innerDrawers;
       const totalDrawersHeight = (mod.drawers > 0 && !isInnerDrawer) ? mod.drawers * 27 : 0;
       // Las puertas deben cubrir la base del mueble si parten desde abajo (para alinear con cajones exteriores)
-      const doorSpaceHeight = height - totalDrawersHeight - (showTopWall ? thickness : 0);
+      const doorSpaceHeight = height - totalDrawersHeight;
       const doorHeight = doorSpaceHeight - 0.3; // 3mm gap vertical
       // Si cubre cajones interiores o no hay cajones, parte desde la misma base del módulo (tapando el piso interior)
       const doorY = baseOffset + totalDrawersHeight + doorSpaceHeight / 2;
@@ -809,8 +850,24 @@ export function Closet() {
             doorW={doorW}
             doorHeight={doorHeight}
             thickness={thickness}
-            {...doorProps}
+            {...modDoorProps}
             isRightHinge={isRightHinge}
+            grainDirection={mod.overrides?.grainElements?.['door-'+i] || modGrainDirection} hplBalancerOverride={modHplBalancer}
+            forceOpen={mod.overrides?.openElements?.[`door-${i}`] ?? mod.overrides?.isOpen}
+            onClickAction={() => {
+              state.setActiveModule(mod.id);
+              const overrides = mod.overrides || {};
+              const openElements = { ...(overrides.openElements || {}) };
+              const current = openElements[`door-${i}`] ?? overrides.isOpen ?? false;
+              openElements[`door-${i}`] = !current;
+              
+              if (current && mod.innerDrawers && mod.drawers > 0) {
+                for (let dj = 0; dj < mod.drawers; dj++) {
+                  openElements[`drawer-${dj}`] = false;
+                }
+              }
+              state.updateModuleOverrides(mod.id, { openElements });
+            }}
           />
         );
 
@@ -840,10 +897,43 @@ export function Closet() {
       }
     }
 
+
+    
+
+    
+    if (showDimensions) {
+      // Big text indicating the cabinet number
+      parts.push(
+        <Text 
+          key={`gabinete-label-${mod.id}`} 
+          position={[modCenterX, 0.1, depth/2 + 30]} 
+          rotation={[-Math.PI / 2, 0, 0]}
+          fontSize={8} 
+          color="#f97316" 
+          anchorX="center" 
+          anchorY="bottom"
+          outlineWidth={0.5}
+          outlineColor="#000000"
+        >
+          {'Gabinete ' + (index + 1)}
+        </Text>
+      );
+    }
+
     currentX += mod.width;
 
     return (
-      <group key={`mod-${mod.id}`}>
+      <group 
+        key={`mod-${mod.id}`}
+        onClick={(e) => { e.stopPropagation(); state.setActiveModule(mod.id); }}
+      >
+        {state.activeModuleId === mod.id && (
+          <mesh position={[modCenterX, height / 2 + baseOffset, 0]}>
+            <boxGeometry args={[mod.width + 1, height + 1, depth + 1]} />
+            <Edges scale={1.0} threshold={15} color="#f97316" />
+            <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+          </mesh>
+        )}
         {parts}
       </group>
     );

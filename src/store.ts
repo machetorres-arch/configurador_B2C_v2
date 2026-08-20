@@ -1,12 +1,26 @@
 import { create } from 'zustand';
 
 export type MaterialType = 'melamina' | 'hpl';
-export type PartType = 'structure' | 'doors' | 'drawerFronts' | 'drawerInner' | 'shelves' | 'back';
+export type PartType = 'structure' | 'doors' | 'drawerFronts' | 'drawerInner' | 'shelves' | 'back' | 'socle';
 
 export interface TextureItem {
   id: string;
   name: string;
   url: string;
+}
+
+export interface ClosetModuleOverrides {
+  structureMaterial?: MaterialType;
+  structureColor?: string;
+  doorMaterial?: MaterialType;
+  doorColor?: string;
+  drawerFrontMaterial?: MaterialType;
+  drawerFrontColor?: string;
+  grainDirection?: 'vertical' | 'horizontal';
+  isOpen?: boolean;
+  openElements?: Record<string, boolean>;
+  grainElements?: Record<string, 'vertical' | 'horizontal'>;
+  hplBalancer?: boolean;
 }
 
 export interface ClosetModule {
@@ -17,6 +31,7 @@ export interface ClosetModule {
   doors: boolean;
   hasHanger?: boolean;
   innerDrawers?: boolean;
+  overrides?: ClosetModuleOverrides;
 }
 
 export interface ClosetState {
@@ -35,13 +50,18 @@ export interface ClosetState {
   drawerInnerColor: string;
   shelfMaterial: MaterialType;
   shelfColor: string;
+  socleMaterial: MaterialType;
+  socleColor: string;
   backColor: string;
   hplInnerFace: 'blanco' | 'color'; // only applies if a part is HPL
 
-  edgeBandingThickness: 0.45 | 1.0 | 1.5 | 2.0;
+  edgeBandingThicknessCabinets: 0.5 | 1.0 | 1.5 | 2.0;
+  edgeBandingThicknessFronts: 0.5 | 1.0 | 1.5 | 2.0;
 
   showTopWall: boolean;
   showBottomWall: boolean;
+  hplBalancer: boolean;
+  setHplBalancer: (val: boolean) => void;
   showLeftWall: boolean;
   showRightWall: boolean;
   showBackWall: boolean;
@@ -82,9 +102,12 @@ export interface ClosetState {
   setDrawerInnerColor: (c: string) => void;
   setShelfMaterial: (m: MaterialType) => void;
   setShelfColor: (c: string) => void;
+  setSocleMaterial: (m: MaterialType) => void;
+  setSocleColor: (c: string) => void;
   setBackColor: (c: string) => void;
   setHplInnerFace: (f: 'blanco' | 'color') => void;
-  setEdgeBandingThickness: (t: 0.45 | 1.0 | 1.5 | 2.0) => void;
+  setEdgeBandingThicknessCabinets: (t: 0.5 | 1.0 | 1.5 | 2.0) => void;
+  setEdgeBandingThicknessFronts: (t: 0.5 | 1.0 | 1.5 | 2.0) => void;
 
   toggleTopWall: () => void;
   toggleBottomWall: () => void;
@@ -104,6 +127,7 @@ export interface ClosetState {
   
   addModule: () => void;
   updateModule: (id: string, updates: Partial<ClosetModule>) => void;
+  updateModuleOverrides: (id: string, overrides: Partial<ClosetModuleOverrides> | null) => void;
   removeModule: (id: string) => void;
   setActiveModule: (id: string | null) => void;
   
@@ -148,12 +172,16 @@ export const useStore = create<ClosetState>((set, get) => ({
   drawerInnerColor: '#ffffff',
   shelfMaterial: 'melamina',
   shelfColor: '#ffffff',
+  socleMaterial: 'melamina',
+  socleColor: '#ffffff',
   backColor: '#f3f4f6',
   hplInnerFace: 'blanco',
-  edgeBandingThickness: 0.45,
+  edgeBandingThicknessCabinets: 1.0,
+  edgeBandingThicknessFronts: 1.0,
 
   showTopWall: true,
   showBottomWall: true,
+  hplBalancer: true,
   showLeftWall: true,
   showRightWall: true,
   showBackWall: true,
@@ -183,6 +211,7 @@ export const useStore = create<ClosetState>((set, get) => ({
       case 'drawerInner': return { drawerInnerColor: textureUrl };
       case 'shelves': return { shelfColor: textureUrl };
       case 'back': return { backColor: textureUrl };
+      case 'socle': return { socleColor: textureUrl };
       default: return state;
     }
   }),
@@ -204,12 +233,16 @@ export const useStore = create<ClosetState>((set, get) => ({
   setDrawerInnerColor: (c) => set({ drawerInnerColor: c }),
   setShelfMaterial: (m) => set({ shelfMaterial: m }),
   setShelfColor: (c) => set({ shelfColor: c }),
+  setSocleMaterial: (m) => set({ socleMaterial: m }),
+  setSocleColor: (c) => set({ socleColor: c }),
   setBackColor: (c) => set({ backColor: c }),
   setHplInnerFace: (f) => set({ hplInnerFace: f }),
-  setEdgeBandingThickness: (t) => set({ edgeBandingThickness: t }),
+  setEdgeBandingThicknessCabinets: (t) => set({ edgeBandingThicknessCabinets: t }),
+  setEdgeBandingThicknessFronts: (t) => set({ edgeBandingThicknessFronts: t }),
 
   toggleTopWall: () => set((state) => ({ showTopWall: !state.showTopWall })),
   toggleBottomWall: () => set((state) => ({ showBottomWall: !state.showBottomWall })),
+  setHplBalancer: (val) => set({ hplBalancer: val }),
   toggleLeftWall: () => set((state) => ({ showLeftWall: !state.showLeftWall })),
   toggleRightWall: () => set((state) => ({ showRightWall: !state.showRightWall })),
   toggleBackWall: () => set((state) => ({ showBackWall: !state.showBackWall })),
@@ -234,6 +267,13 @@ export const useStore = create<ClosetState>((set, get) => ({
   
   updateModule: (id, updates) => set((state) => ({
     modules: state.modules.map(m => m.id === id ? { ...m, ...updates } : m)
+  })),
+  
+  updateModuleOverrides: (id, overrides) => set((state) => ({
+    modules: state.modules.map(m => m.id === id ? { 
+      ...m, 
+      overrides: overrides === null ? undefined : { ...(m.overrides || {}), ...overrides } 
+    } : m)
   })),
   
   removeModule: (id) => set((state) => {
@@ -261,11 +301,15 @@ export const useStore = create<ClosetState>((set, get) => ({
       drawerInnerColor: state.drawerInnerColor,
       shelfMaterial: state.shelfMaterial,
       shelfColor: state.shelfColor,
+      socleMaterial: state.socleMaterial,
+      socleColor: state.socleColor,
       backColor: state.backColor,
       hplInnerFace: state.hplInnerFace,
-      edgeBandingThickness: state.edgeBandingThickness,
+      edgeBandingThicknessCabinets: state.edgeBandingThicknessCabinets,
+      edgeBandingThicknessFronts: state.edgeBandingThicknessFronts,
       showTopWall: state.showTopWall,
       showBottomWall: state.showBottomWall,
+      hplBalancer: state.hplBalancer,
       showLeftWall: state.showLeftWall,
       showRightWall: state.showRightWall,
       showBackWall: state.showBackWall,

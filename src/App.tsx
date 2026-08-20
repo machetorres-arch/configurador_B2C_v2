@@ -7,6 +7,7 @@ import { useState, useEffect } from 'react';
 import { Configurator } from './components/Configurator';
 import { Scene } from './components/Scene';
 import { Blueprint } from './components/Blueprint';
+import { ModuleContextMenu } from './components/ModuleContextMenu';
 import { useStore } from './store';
 import { QRCodeSVG } from 'qrcode.react';
 import { ARView } from './components/ARView';
@@ -131,6 +132,7 @@ export default function App() {
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,#1a1a1a_0%,#000000_100%)] pointer-events-none"></div>
         <div className="relative flex-1 flex flex-col">
           <Scene />
+          <ModuleContextMenu />
         </div>
         <Configurator />
       </main>

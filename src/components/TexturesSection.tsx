@@ -3,7 +3,12 @@ import { useStore } from '../store';
 import { get, set } from 'idb-keyval';
 import { Upload, Trash2 } from 'lucide-react';
 
-export const TexturesSection = () => {
+const DEFAULT_TEXTURES = [
+  { id: 'def_mas_blanco', name: 'Masisa Blanco', url: '#FFFFFF' },
+  { id: 'def_mas_negro', name: 'Masisa Negro', url: '#171717' }
+];
+
+export const TexturesSection = ({ onSelectTexture }: { onSelectTexture?: (url: string, mat: 'hpl' | 'melamina') => void }) => {
   const state = useStore();
   const [uploading, setUploading] = useState(false);
   const [localTextures, setLocalTextures] = useState<any[]>([]);
@@ -64,25 +69,76 @@ export const TexturesSection = () => {
     await set('custom_textures', updatedTextures);
   };
 
+  const applyTexture = (url: string, name: string) => {
+    const nameLower = name.toLowerCase();
+    
+    // Auto-detectar material por el nombre del archivo/textura
+    const isHPL = nameLower.includes('abet') || nameLower.includes('hpl') || nameLower.includes('laminati');
+    const mat = isHPL ? 'hpl' : 'melamina';
+    
+    if (onSelectTexture) {
+      onSelectTexture(url, mat);
+      return;
+    }
+
+    state.applyTextureToTarget(url);
+    switch(state.targetPart) {
+      case 'structure': state.setStructureMaterial(mat); break;
+      case 'doors': state.setDoorMaterial(mat); break;
+      case 'drawerFronts': state.setDrawerFrontMaterial(mat); break;
+      case 'drawerInner': state.setDrawerInnerMaterial(mat); break;
+      case 'shelves': state.setShelfMaterial(mat); break;
+      case 'socle': state.setSocleMaterial(mat); break;
+    }
+  };
+
+  // Clasificación dinámica de texturas
+  const allTextures = [...DEFAULT_TEXTURES, ...localTextures];
+  
+  const masisaTextures = allTextures.filter(t => t.name.toLowerCase().includes('masisa'));
+  const abetTextures = allTextures.filter(t => {
+    const n = t.name.toLowerCase();
+    return n.includes('abet') || n.includes('laminati') || n.includes('hpl');
+  });
+  const otherTextures = allTextures.filter(t => {
+    const n = t.name.toLowerCase();
+    return !n.includes('masisa') && !n.includes('abet') && !n.includes('laminati') && !n.includes('hpl');
+  });
+
+  const renderTextureButton = (tex: any, showDelete: boolean) => (
+    <div key={tex.id} className="relative group">
+      <button 
+        onClick={() => applyTexture(tex.url, tex.name)}
+        className="flex flex-col items-center gap-1 p-1 bg-white/5 border border-white/10 rounded hover:border-orange-500/50 transition-colors w-full"
+        title={tex.name}
+      >
+        <div 
+          className="w-full aspect-square rounded border border-white/20 group-hover:shadow-[0_0_10px_rgba(249,115,22,0.3)] bg-cover bg-center"
+          style={tex.url.startsWith('#') ? { backgroundColor: tex.url } : { backgroundImage: `url('${tex.url}')` }}
+        />
+        <span className="text-[8px] uppercase tracking-wider text-slate-400 truncate w-full text-center">
+          {tex.name.length > 15 ? tex.name.substring(0, 15) + '...' : tex.name}
+        </span>
+      </button>
+      {showDelete && !tex.id.startsWith('def_') && (
+        <button 
+          onClick={(e) => handleDelete(tex.id, e)}
+          className="absolute -top-1 -right-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+        >
+          <Trash2 size={10} />
+        </button>
+      )}
+    </div>
+  );
+
   return (
     <div className="mb-8 p-3 border border-orange-500/30 rounded-lg bg-orange-500/5">
       <div className="flex justify-between items-center mb-3">
-        <h2 className="text-[11px] uppercase tracking-widest text-orange-500 font-bold">Catálogo de Texturas (Local)</h2>
+        <h2 className="text-[11px] uppercase tracking-widest text-orange-500 font-bold">Catálogo de Materiales</h2>
       </div>
       
-      <div className="mb-4">
-        <label className="flex items-center justify-center gap-2 w-full p-3 border border-orange-500/50 border-dashed rounded-lg text-orange-500 hover:bg-orange-500/10 cursor-pointer transition-colors">
-          <Upload size={16} />
-          <span className="text-[10px] uppercase font-bold tracking-widest">
-            {uploading ? 'Procesando...' : 'Subir Nueva Textura (Sin Firebase)'}
-          </span>
-          <input type="file" accept="image/*" className="hidden" onChange={handleUpload} disabled={uploading} />
-        </label>
-        <p className="text-[8px] text-slate-500 uppercase tracking-widest mt-1 text-center">Las texturas se guardan en tu navegador</p>
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <label className="text-[10px] uppercase tracking-widest text-slate-400">Selecciona la zona a modificar:</label>
+      <div className="flex flex-col gap-2 mb-4">
+        <label className="text-[10px] uppercase tracking-widest text-slate-400">1. Selecciona la zona a modificar:</label>
         <div className="grid grid-cols-2 gap-2 mb-2">
           {[
             { id: 'structure', label: 'Paredes' },
@@ -90,7 +146,8 @@ export const TexturesSection = () => {
             { id: 'drawerFronts', label: 'Frentes Cajón' },
             { id: 'drawerInner', label: 'Cajas Cajón' },
             { id: 'shelves', label: 'Repisas' },
-            { id: 'back', label: 'Fondo' }
+            { id: 'back', label: 'Fondo' },
+            { id: 'socle', label: 'Zócalo' }
           ].map(part => (
             <button 
               key={part.id}
@@ -101,37 +158,41 @@ export const TexturesSection = () => {
             </button>
           ))}
         </div>
+      </div>
 
-        <div className="grid grid-cols-3 gap-2 mt-2">
-          {localTextures.map((tex) => (
-            <div key={tex.id} className="relative group">
-              <button 
-                onClick={() => state.applyTextureToTarget(tex.url)}
-                className="flex flex-col items-center gap-1 p-1 bg-white/5 border border-white/10 rounded hover:border-orange-500/50 transition-colors w-full"
-                title={tex.name}
-              >
-                <div 
-                  className="w-full aspect-square rounded bg-cover bg-center border border-white/20 group-hover:shadow-[0_0_10px_rgba(249,115,22,0.3)]"
-                  style={{ backgroundImage: `url('${tex.url}')` }}
-                />
-                <span className="text-[8px] uppercase tracking-wider text-slate-400 truncate w-full text-center">
-                  {tex.name.substring(0, 10)}
-                </span>
-              </button>
-              <button 
-                onClick={(e) => handleDelete(tex.id, e)}
-                className="absolute -top-1 -right-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-              >
-                <Trash2 size={10} />
-              </button>
-            </div>
-          ))}
-          {localTextures.length === 0 && (
-            <div className="col-span-3 text-center p-4 text-[10px] text-slate-500 uppercase tracking-widest">
-              No hay texturas locales aún.
-            </div>
-          )}
+      {masisaTextures.length > 0 && (
+        <div className="mb-4">
+          <label className="text-[10px] uppercase tracking-widest text-slate-400 block mb-2">2. Masisa (Melaminas)</label>
+          <div className="grid grid-cols-3 gap-2">
+            {masisaTextures.map(t => renderTextureButton(t, true))}
+          </div>
         </div>
+      )}
+
+      {abetTextures.length > 0 && (
+        <div className="mb-6">
+          <label className="text-[10px] uppercase tracking-widest text-slate-400 block mb-2">3. Abet Laminati (HPL)</label>
+          <div className="grid grid-cols-3 gap-2">
+            {abetTextures.map(t => renderTextureButton(t, true))}
+          </div>
+        </div>
+      )}
+
+      <div className="pt-4 border-t border-orange-500/20">
+        <label className="text-[10px] uppercase tracking-widest text-slate-400 block mb-2">4. Otras Texturas / Subir Archivos</label>
+        <label className="flex items-center justify-center gap-2 w-full p-3 border border-orange-500/50 border-dashed rounded-lg text-orange-500 hover:bg-orange-500/10 cursor-pointer transition-colors mb-2">
+          <Upload size={16} />
+          <span className="text-[10px] uppercase font-bold tracking-widest">
+            {uploading ? 'Procesando...' : 'Subir Imagen'}
+          </span>
+          <input type="file" accept="image/*" className="hidden" onChange={handleUpload} disabled={uploading} />
+        </label>
+
+        {otherTextures.length > 0 && (
+          <div className="grid grid-cols-3 gap-2 mt-3">
+            {otherTextures.map(t => renderTextureButton(t, true))}
+          </div>
+        )}
       </div>
     </div>
   );

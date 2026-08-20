@@ -31,6 +31,7 @@
     "three": "^0.185.1",
     "vite": "^6.2.3",
     "xlsx": "^0.18.5",
+    "xlsx-js-style": "^1.2.0",
     "zustand": "^5.0.15"
   },
   "devDependencies": {

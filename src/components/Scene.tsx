@@ -23,22 +23,32 @@ function SceneContents() {
           <meshStandardMaterial color="#333333" roughness={0.8} />
         </mesh>
         
-        {/* Room Back Wall */}
-        <mesh position={[0, 400, -depth / 2]} receiveShadow>
-          <planeGeometry args={[1000, 1000]} />
+
+              {/* Room Back Wall */}
+        <mesh position={[0, 400, -depth / 2 - 1]} receiveShadow>
+          <planeGeometry args={[2000, 1000]} />
           <meshStandardMaterial color="#404040" roughness={0.9} />
         </mesh>
       </group>
-
-      <OrbitControls makeDefault minPolarAngle={0} maxPolarAngle={Math.PI / 2} />
+      <OrbitControls 
+        makeDefault 
+        minPolarAngle={0} 
+        maxPolarAngle={Math.PI / 2 - 0.05} 
+        minAzimuthAngle={-Math.PI / 2 + 0.1}
+        maxAzimuthAngle={Math.PI / 2 - 0.1}
+      />
     </>
   );
 }
 
 export function Scene() {
+  const setActiveModuleId = useStore((state) => state.setActiveModule);
   return (
     <div className="w-full h-full bg-[#1a1a1a]">
-      <Canvas camera={{ position: [200, 150, 300], fov: 45 }}>
+      <Canvas 
+        camera={{ position: [200, 150, 300], fov: 45 }}
+        onPointerMissed={() => setActiveModuleId(null)}
+      >
         <SceneContents />
       </Canvas>
     </div>

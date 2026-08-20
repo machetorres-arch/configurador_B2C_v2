@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { useStore, ClosetModule } from '../store';
 import { generatePartsList, Part } from '../utils/manufacturing';
+import { optimizeNesting, NestingPart, BoardResult } from '../utils/nesting';
 
 export function Blueprint() {
   const state = useStore();
@@ -50,7 +51,92 @@ export function Blueprint() {
     }
   });
 
-  const totalPages = printPages.length;
+      const mapPartToColor = (part: Part) => {
+    if (part.material === 'Melamina Frente') return state.doorColor;
+    if (part.material === 'Melamina Frente Cajón') return state.drawerFrontColor;
+    if (part.material === 'Melamina Zócalo') return state.socleColor;
+    if (part.material === 'Melamina Fondo') return state.backColor;
+    return state.structureColor; 
+  };
+
+  
+  const getColorName = (colorVal: string) => {
+    if (colorVal.startsWith('#')) return colorVal;
+    const found = state.customTextures?.find((t: any) => t.url === colorVal);
+    if (found) return found.name;
+    if (colorVal.startsWith('data:')) return 'TEXTURA PERSONALIZADA';
+    const parts = colorVal.split('/');
+    return parts[parts.length - 1].replace('.jpg', '').replace('.png', '');
+  };
+
+    type BoardGroup = { parts: NestingPart[], w: number, h: number, label: string, colorCode: string };
+  const partsByBoard: Record<string, BoardGroup> = {};
+
+  const addPartToBoard = (boardKey: string, label: string, colorCode: string, bw: number, bh: number, part: NestingPart) => {
+    if (!partsByBoard[boardKey]) {
+      partsByBoard[boardKey] = { parts: [], w: bw, h: bh, label, colorCode };
+    }
+    partsByBoard[boardKey].parts.push(part);
+  };
+
+  const hplOversize = 20;
+
+  allParts.forEach((p, index) => {
+    const color = mapPartToColor(p);
+    let materialType = state.structureMaterial;
+    if (p.material === 'Melamina Frente') materialType = state.doorMaterial;
+    else if (p.material === 'Melamina Frente Cajón') materialType = state.drawerFrontMaterial;
+    else if (p.material === 'Melamina Zócalo') materialType = state.socleMaterial;
+    else if (p.material === 'Melamina Fondo') materialType = 'melamina';
+
+    let finalW = p.width;
+    let finalL = p.length;
+    let allowRotation = true;
+    
+    // For colored/textured pieces, we default to no rotation to preserve grain.
+    // If it's explicitly horizontal, we swap length and width.
+    if (p.grainDirection === 'horizontal') {
+      finalW = p.length;
+      finalL = p.width;
+      allowRotation = false;
+    } else if (p.grainDirection === 'vertical' || materialType === 'hpl' || color.startsWith('/textures') || color.startsWith('http') || color.startsWith('data:')) {
+      allowRotation = false; // keep vertical or preserve pattern
+    }
+
+    if (materialType === 'hpl') {
+      addPartToBoard(`HPL_CARA_${color}`, `PLANCHA HPL - COLOR: ${getColorName(color)}`, color, 3050, 1300, {
+        id: "part-hpl-cara-" + index, name: p.name + " (Cara)", width: finalW + hplOversize, length: finalL + hplOversize, qty: p.qty, color: color, edgeL1: p.edgeL1, edgeL2: p.edgeL2, edgeW1: p.edgeW1, edgeW2: p.edgeW2, allowRotation
+      });
+      addPartToBoard(`MDF_SUSTRATO`, `PLANCHA MDF DESNUDO 15MM (SUSTRATO HPL)`, "#e5e5e5", 2500, 1830, {
+        id: "part-mdf-" + index, name: p.name + " (Sustrato)", width: finalW, length: finalL, qty: p.qty, color: "#e5e5e5", edgeL1: p.edgeL1, edgeL2: p.edgeL2, edgeW1: p.edgeW1, edgeW2: p.edgeW2, allowRotation: true // MDF substrate can be rotated freely
+      });
+      if (state.hplBalancer) {
+        addPartToBoard(`HPL_BALANCER`, `PLANCHA HPL BLANCO (TRASCARA BALANCEADOR)`, "#ffffff", 3050, 1300, {
+          id: "part-hpl-bal-" + index, name: p.name + " (Trascara)", width: finalW + hplOversize, length: finalL + hplOversize, qty: p.qty, color: "#ffffff", edgeL1: p.edgeL1, edgeL2: p.edgeL2, edgeW1: p.edgeW1, edgeW2: p.edgeW2, allowRotation
+        });
+      }
+    } else {
+      addPartToBoard(`MEL_${color}`, `PLANCHA ${p.material === 'Melamina Fondo' ? 'MDF 3mm' : 'MELAMINA'} - COLOR: ${getColorName(color)}`, color, 2500, 1830, {
+        id: "part-" + index, name: p.name, width: finalW, length: finalL, qty: p.qty, color: color, edgeL1: p.edgeL1, edgeL2: p.edgeL2, edgeW1: p.edgeW1, edgeW2: p.edgeW2, allowRotation
+      });
+    }
+  });
+
+  const allBoards: (BoardResult & { label?: string })[] = [];
+  Object.keys(partsByBoard).forEach(key => {
+    const group = partsByBoard[key];
+    const b = optimizeNesting(group.parts, group.w, group.h, 3.2, 15);
+    b.forEach(board => {
+      allBoards.push({ ...board, label: group.label });
+    });
+  });
+
+  const boardPages: BoardResult[][] = [];
+  for(let i=0; i<allBoards.length; i+=1) {
+    boardPages.push(allBoards.slice(i, i+1));
+  }
+
+  const totalPages = printPages.length + boardPages.length;
 
   const TitleBlock = ({ pageNum, title }: { pageNum: number, title: string }) => (
     <div className="absolute bottom-4 left-4 right-4 h-24 border-2 border-black flex text-[10px] bg-white z-10">
@@ -59,11 +145,11 @@ export function Blueprint() {
         <div>CLIENTE: PROYECTO WEB</div>
         <div>FECHA: {new Date().toLocaleDateString()}</div>
       </div>
-      <div className="w-2/4 border-r border-black p-2 flex flex-col justify-center text-xs space-y-1">
-        <div><span className="font-bold">Estructura:</span> {state.thickness}mm Laminado {state.structureColor}</div>
-        <div><span className="font-bold">Trasera:</span> 3mm {state.backColor}</div>
+      <div className="w-2/4 border-r border-black p-2 flex flex-col justify-center text-[10px] space-y-0.5">
+        <div><span className="font-bold">Estructura:</span> {state.thickness}mm Laminado {getColorName(state.structureColor)}</div>
+        <div><span className="font-bold">Trasera:</span> 3mm {getColorName(state.backColor)}</div>
         <div><span className="font-bold">Tapacantos:</span> PVC 2mm en frentes, 0.45mm resto.</div>
-        <div><span className="font-bold">Herrajes:</span> {state.assemblyType === 'minifix' ? 'Minifix + Tarugo' : 'Soberbio / Spax'}, Bisagras Cierre Suave, Correderas {state.drawerHardware}.</div>
+        <div><span className="font-bold">Herrajes:</span> {state.assemblyType === 'minifix' ? 'Minifix + Tarugo' : 'Soberbio / Spax'}, Correderas {state.drawerHardware}.</div>
       </div>
       <div className="w-1/4 p-2 flex flex-col items-end justify-between">
         <div className="text-right">
@@ -347,6 +433,76 @@ export function Blueprint() {
             </div>
         );
       })}
+      {boardPages.map((boards, bpIdx) => {
+        const pageNum = printPages.length + bpIdx + 1;
+        return (
+          <div key={"nesting-page-" + bpIdx} className="blueprint-page border border-black/10 flex flex-col relative">
+            <div className="flex-1 p-8 pb-32 flex flex-col w-full h-full overflow-hidden">
+              <div className="flex justify-between items-end mb-4 border-b-2 border-black pb-2 flex-shrink-0">
+                <h2 className="text-xl font-bold text-slate-800">OPTIMIZACIÓN DE CORTE Y NESTING</h2>
+                <div className="text-[10px] text-slate-600 font-bold bg-slate-100 px-3 py-1 rounded border border-slate-200">
+                  <span className="text-red-500 font-extrabold mr-1">---</span> Indica borde con tapacantos
+                </div>
+              </div>
+              <div className="flex flex-col gap-6 flex-1 items-center justify-center min-h-0 w-full">
+                {boards.map((board, bIdx) => {
+                  const label = (board as any).label || `PLANCHA ${board.id} - COLOR: ${getColorName(board.color)}`;
+                  return (
+                    <div key={"board-" + board.id} className="flex flex-col items-center w-full max-w-[1100px]" style={{ flexShrink: 1, minHeight: 0 }}>
+                      <div className="w-full flex justify-between text-[11px] font-bold mb-1">
+                        <span className="uppercase text-orange-600">{label} ({board.w}x{board.h}mm)</span>
+                        <span>Aprovechamiento: {(100 - board.wastePercentage).toFixed(1)}% | Desperdicio: {board.wastePercentage.toFixed(1)}%</span>
+                      </div>
+                                            <div 
+                        className="relative border-2 border-zinc-800 shadow-md bg-stone-100/50"
+                        style={{ width: `${(board.w / 3050) * 100}%`, aspectRatio: `${board.w} / ${board.h}` }}
+                      >
+                        {board.placedParts.map((p, pIdx) => {
+                          const px = (p.x / board.w) * 100 + "%";
+                          const py = (p.y / board.h) * 100 + "%";
+                          const pw = (p.w / board.w) * 100 + "%";
+                          const ph = (p.h / board.h) * 100 + "%";
+                          
+                          return (
+                            <div 
+                              key={"placed-" + p.id + "-" + pIdx}
+                              className="absolute border border-black flex flex-col items-center justify-center text-center overflow-hidden"
+                              style={{
+                                left: px,
+                                top: py,
+                                width: pw,
+                                height: ph,
+                                backgroundColor: board.color.startsWith('#') ? board.color : '#e2e8f0',
+                                backgroundImage: (board.color.startsWith('http') || board.color.startsWith('/')) ? "url('" + board.color + "')" : 'none',
+                                backgroundSize: 'cover'
+                              }}
+                            >
+                                                            <div className="bg-white/90 px-1 py-0.5 rounded text-[8px] font-bold leading-tight flex flex-col items-center z-10 whitespace-nowrap overflow-hidden text-ellipsis max-w-[95%]">
+                                <div>{p.name.replace('Melamina ', '')}</div>
+                                <div>{p.w.toFixed(0)}x{p.h.toFixed(0)}</div>
+                              </div>
+                              {p.edgeTop && <div className="absolute top-0.5 left-0.5 right-0.5 border-t-[1.5px] border-red-500 border-dashed" />}
+                              {p.edgeBottom && <div className="absolute bottom-0.5 left-0.5 right-0.5 border-b-[1.5px] border-red-500 border-dashed" />}
+                              {p.edgeLeft && <div className="absolute left-0.5 top-0.5 bottom-0.5 border-l-[1.5px] border-red-500 border-dashed" />}
+                              {p.edgeRight && <div className="absolute right-0.5 top-0.5 bottom-0.5 border-r-[1.5px] border-red-500 border-dashed" />}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            
+            <TitleBlock 
+              pageNum={pageNum} 
+              title="PLANOS DE CORTE Y OPTIMIZACIÓN" 
+            />
+          </div>
+        );
+      })}
+
     </div>
   );
 }

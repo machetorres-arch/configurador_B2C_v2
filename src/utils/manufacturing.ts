@@ -55,6 +55,7 @@ export interface Part {
   edgeW1: boolean;
   edgeW2: boolean;
   notes?: string;
+  grainDirection?: 'vertical' | 'horizontal';
 }
 
 export function getNominalSlideLength(innerDepthMm: number): number {
@@ -202,9 +203,10 @@ export function generatePartsList(data: ManufacturingData): Part[] {
         length: drawerFrontWidthMm,
         width: drawerFrontHeightMm,
         thickness: thickness * 10,
-        material: 'Melamina Frente',
+        material: 'Melamina Frente Cajón',
         edgeL1: true, edgeL2: true, edgeW1: true, edgeW2: true,
-        notes: isInnerDrawer ? 'Tapacanto perimetral (Cajón Int.)' : 'Tapacanto perimetral'
+        notes: isInnerDrawer ? 'Tapacanto perimetral (Cajón Int.)' : 'Tapacanto perimetral',
+        grainDirection: mod.overrides?.grainDirection || 'vertical'
       });
 
       // 5.2 Cajón Interior (Cálculo según herraje seleccionado)
@@ -314,7 +316,8 @@ export function generatePartsList(data: ManufacturingData): Part[] {
         thickness: thickness * 10,
         material: 'Melamina Frente',
         edgeL1: true, edgeL2: true, edgeW1: true, edgeW2: true,
-        notes: 'Tapacanto perimetral'
+        notes: 'Tapacanto perimetral',
+        grainDirection: mod.overrides?.grainDirection || 'vertical'
       });
     }
 
@@ -329,7 +332,7 @@ export function generatePartsList(data: ManufacturingData): Part[] {
         length: innerW * 10,
         width: 10 * 10, // 10cm baseOffset
         thickness: thickness * 10,
-        material: 'Melamina Frente', // Usa el material de la puerta según requerimiento
+        material: 'Melamina Zócalo',
         edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
         notes: 'Va a piso, tapacanto superior'
       });
@@ -353,10 +356,10 @@ export function generateEdgeBandingList(parts: Part[]) {
     
     const totalEdgeForPart = partEdgeLength * part.qty;
 
-    if (part.material === 'Melamina Frente') {
+    if (part.material === 'Melamina Frente' || part.material === 'Melamina Frente Cajón') {
       // Puertas y Frentes de Cajón usan tapacanto de 2mm
       edge2mm += totalEdgeForPart;
-    } else if (part.material === 'Melamina Cuerpo') {
+    } else if (part.material === 'Melamina Cuerpo' || part.material === 'Melamina Fondo' || part.material === 'Melamina Zócalo') {
       // Gabinetes y Repisas usan tapacanto de 0.45mm
       edge045mm += totalEdgeForPart;
     }

@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { useStore } from '../store';
-import { exportToExcel, exportToPDF } from '../utils/manufacturing';
+import { exportToPDF } from '../utils/manufacturing';
 import { Download, FileText, Plus, Trash2 } from 'lucide-react';
 import { TexturesSection } from './TexturesSection';
+import { exportToExcel } from '../utils/excelGenerator';
+import { FileSpreadsheet } from 'lucide-react';
 
 const sectionTitle = "text-[11px] uppercase tracking-widest text-orange-500 font-bold mb-3 mt-6 first:mt-0";
 const labelClass = "text-[10px] uppercase tracking-widest text-slate-400";
@@ -34,32 +36,6 @@ const SliderControl = ({ label, value, min, max, step = 1, unit = "", onChange }
 );
 
 
-const ColorPicker = ({ label, value, onChange }: { label: string, value: string, onChange: (val: string) => void }) => {
-  const isHex = value.startsWith('#');
-  return (
-    <div className="flex flex-col gap-1 mb-2">
-      <label className={labelClass}>{label} (Hex o Nombre de textura)</label>
-      <div className="flex items-center gap-2">
-        {isHex ? (
-          <div className="relative w-8 h-8 rounded-md overflow-hidden border border-white/20 shrink-0">
-            <input type="color" value={value} onChange={(e) => onChange(e.target.value)} className="absolute inset-[-10px] w-20 h-20 cursor-pointer" />
-          </div>
-        ) : (
-          <div className="w-8 h-8 rounded-md bg-white/10 flex items-center justify-center border border-white/20 shrink-0 text-xs" title="Textura">
-            🖼️
-          </div>
-        )}
-        <input 
-          type="text" 
-          value={value} 
-          onChange={(e) => onChange(e.target.value)}
-          className="flex-1 bg-black/30 border border-white/10 rounded-md px-2 py-1 text-sm text-white focus:outline-none focus:border-orange-500"
-          placeholder="#ffffff o archivo.jpg"
-        />
-      </div>
-    </div>
-  );
-};
 
 
 export function Configurator() {
@@ -149,15 +125,46 @@ export function Configurator() {
 
       <TexturesSection />
 
-      <h2 className={sectionTitle}>Apariencia (Melamina)</h2>
-      <div className="flex flex-col gap-3">
-        <ColorPicker label="Paredes (Cuerpo)" value={state.structureColor} onChange={state.setStructureColor} />
-        <ColorPicker label="Fondo / Trasera" value={state.backColor} onChange={state.setBackColor} />
-        <ColorPicker label="Puertas" value={state.doorColor} onChange={state.setDoorColor} />
-      </div>
+      {[state.structureMaterial, state.doorMaterial, state.drawerFrontMaterial, state.drawerInnerMaterial, state.shelfMaterial].includes('hpl') && (
+        <div className="mb-6 p-3 border border-orange-500/30 rounded-lg bg-orange-500/10">
+          <ToggleBtn active={state.hplBalancer} onClick={() => state.setHplBalancer(!state.hplBalancer)} label="Trascara: Balancer Blanco (0.9mm)" />
+          <p className="text-[9px] text-slate-400 mt-2 leading-tight">Si se activa, la cara interior (trascara) de las piezas enchapadas llevará HPL Blanco de 0.9mm. Si se apaga, se enchapará por ambas caras con el diseño elegido.</p>
+        </div>
+      )}
+
+      
 
       <div className="mt-8 pt-6 border-t border-white/10 mb-8">
         <h2 className={sectionTitle}>Ingeniería y Producción</h2>
+
+        <div className="flex flex-col gap-2 mb-6">
+          <label className={labelClass}>Espesor Tapacanto - Gabinetes (mm)</label>
+          <div className="flex gap-2">
+            {[0.5, 1.0, 1.5, 2.0].map((t) => (
+              <button 
+                key={t}
+                onClick={() => state.setEdgeBandingThicknessCabinets(t as any)}
+                className={`flex-1 py-1.5 rounded text-[10px] uppercase tracking-widest font-bold transition-colors ${state.edgeBandingThicknessCabinets === t ? 'bg-orange-500 text-black shadow-[0_0_10px_rgba(249,115,22,0.2)]' : 'bg-white/5 text-slate-400 border border-white/10 hover:border-orange-500/50'}`}
+              >
+                {t.toFixed(1)}
+              </button>
+            ))}
+          </div>
+          
+          <label className={labelClass + " mt-3"}>Espesor Tapacanto - Frentes (mm)</label>
+          <div className="flex gap-2">
+            {[0.5, 1.0, 1.5, 2.0].map((t) => (
+              <button 
+                key={t}
+                onClick={() => state.setEdgeBandingThicknessFronts(t as any)}
+                className={`flex-1 py-1.5 rounded text-[10px] uppercase tracking-widest font-bold transition-colors ${state.edgeBandingThicknessFronts === t ? 'bg-orange-500 text-black shadow-[0_0_10px_rgba(249,115,22,0.2)]' : 'bg-white/5 text-slate-400 border border-white/10 hover:border-orange-500/50'}`}
+              >
+                {t.toFixed(1)}
+              </button>
+            ))}
+          </div>
+        </div>
+
 
         <div className="flex flex-col gap-2 mb-4">
           <label className={labelClass}>Tipo de Ensamblaje</label>
@@ -262,11 +269,11 @@ export function Configurator() {
 
         <div className="flex flex-col gap-2 mt-8 pt-6 border-t border-white/10">
           <button 
-            onClick={() => exportToExcel(state)} 
-            className="flex items-center justify-center gap-2 w-full p-2.5 bg-emerald-600/20 border border-emerald-500/50 rounded-lg hover:bg-emerald-600/40 transition-colors text-[10px] uppercase tracking-wide text-emerald-400 font-bold"
+            onClick={exportToExcel} 
+            className="flex items-center justify-center gap-2 w-full p-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-colors text-[11px] uppercase tracking-widest font-bold shadow-lg"
           >
-            <Download size={14} />
-            Descargar Despiece (Excel)
+            <FileSpreadsheet size={16} />
+            Exportar Excel CAD/CAM
           </button>
           
           <button 
