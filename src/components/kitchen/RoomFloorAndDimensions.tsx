@@ -71,7 +71,7 @@ export function RoomFloorAndDimensions() {
       <mesh
         geometry={floorGeometry}
         rotation={[-Math.PI / 2, 0, 0]}
-        position={[0, 0.05, 0]}
+        position={[0, 0, 0]}
         receiveShadow
       >
         <meshStandardMaterial
@@ -79,6 +79,10 @@ export function RoomFloorAndDimensions() {
           color={floorTexture ? '#ffffff' : currentFloorOption.primaryColor}
           roughness={currentFloorOption.roughness}
           metalness={currentFloorOption.metalness}
+          polygonOffset={true}
+          polygonOffsetFactor={-1}
+          polygonOffsetUnits={-1}
+          depthWrite={true}
         />
       </mesh>
 

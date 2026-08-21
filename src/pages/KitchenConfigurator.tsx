@@ -157,17 +157,23 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                      <ToolButton active={toolMode === 'place_tall_2_doors'} onClick={() => { setToolMode('place_tall_2_doors'); setViewMode('3d'); }} icon={<LayoutGrid size={14}/>} label="Despensa 2 Puertas" />
                   </div>
 
-                  <h3 className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-2">Murales & Islas</h3>
+                  <h3 className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-2">Murales & Aéreos (6 Diseños)</h3>
                   <div className="flex flex-col gap-1 mb-4">
-                     <ToolButton active={toolMode === 'place_wall'} onClick={() => { setToolMode('place_wall'); setViewMode('3d'); }} icon={<Square size={14}/>} label="Aéreo (Mural)" />
+                     <ToolButton active={toolMode === 'place_wall_1_door'} onClick={() => { setToolMode('place_wall_1_door'); setViewMode('3d'); }} icon={<Square size={14}/>} label="1. Aéreo 1 Puerta" />
+                     <ToolButton active={toolMode === 'place_wall_2_doors'} onClick={() => { setToolMode('place_wall_2_doors'); setViewMode('3d'); }} icon={<Square size={14}/>} label="2. Aéreo 2 Puertas" />
+                     <ToolButton active={toolMode === 'place_wall_lift_up'} onClick={() => { setToolMode('place_wall_lift_up'); setViewMode('3d'); }} icon={<Square size={14}/>} label="3. Pta Elevable Aventos" />
+                     <ToolButton active={toolMode === 'place_wall_lift_up_double'} onClick={() => { setToolMode('place_wall_lift_up_double'); setViewMode('3d'); }} icon={<Square size={14}/>} label="4. Doble Pta Elevable" />
+                     <ToolButton active={toolMode === 'place_wall_microwave_niche'} onClick={() => { setToolMode('place_wall_microwave_niche'); setViewMode('3d'); }} icon={<Square size={14}/>} label="5. Nicho Micro + Pta Sup" />
+                     <ToolButton active={toolMode === 'place_wall_open'} onClick={() => { setToolMode('place_wall_open'); setViewMode('3d'); }} icon={<Square size={14}/>} label="6. Repisas a la Vista" />
                      <ToolButton active={toolMode === 'place_island'} onClick={() => { setToolMode('place_island'); setViewMode('3d'); }} icon={<Box size={14}/>} label="Isla Libre" />
                   </div>
 
-                  <h3 className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-2">Decoración</h3>
+                  <h3 className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-2">Decoración & Equipamiento</h3>
                   <div className="flex flex-col gap-1 mb-4">
                      <ToolButton active={toolMode === 'place_deco_stove'} onClick={() => { setToolMode('place_deco_stove'); setViewMode('3d'); }} icon={<Flame size={14}/>} label="1. Cocina FDV 90" />
                      <ToolButton active={toolMode === 'place_deco_fridge'} onClick={() => { setToolMode('place_deco_fridge'); setViewMode('3d'); }} icon={<Refrigerator size={14}/>} label="2. Refrigerador SBS" />
-                     <ToolButton active={toolMode === 'place_deco_plant'} onClick={() => { setToolMode('place_deco_plant'); setViewMode('3d'); }} icon={<Flower2 size={14}/>} label="3. Planta" />
+                     <ToolButton active={toolMode === 'place_deco_hood'} onClick={() => { setToolMode('place_deco_hood'); setViewMode('3d'); }} icon={<Sparkles size={14}/>} label="3. Campana FDV Conic 90" />
+                     <ToolButton active={toolMode === 'place_deco_plant'} onClick={() => { setToolMode('place_deco_plant'); setViewMode('3d'); }} icon={<Flower2 size={14}/>} label="4. Planta Interior" />
                   </div>
                </div>
             </div>
@@ -198,7 +204,9 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
         <div className="p-4 bg-white/5 border border-white/10 rounded-lg mb-6 shadow-inner">
            <div className="flex justify-between items-center mb-4 border-b border-white/10 pb-2">
               <h3 className="text-[10px] uppercase tracking-widest text-orange-400 font-bold truncate pr-2">
-                 {activeCabinet.variant === 'deco_stove' 
+                 {activeCabinet.variant === 'deco_hood' 
+                    ? 'Campana FDV New Conic 90'
+                    : activeCabinet.variant === 'deco_stove' 
                     ? 'Cocina FDV FS UNIQUE 90'
                     : activeCabinet.variant === 'deco_fridge'
                     ? 'Refrigerador FDV SBS 513L'
@@ -212,6 +220,12 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                     : activeCabinet.variant === 'tall_microwave_niche' ? 'Torre Nicho Micro Portátil'
                     : activeCabinet.variant === 'tall_open' ? 'Despensa Abierta (Repisas)'
                     : activeCabinet.variant === 'tall_2_doors' ? 'Despensa 2 Puertas Batientes'
+                    : activeCabinet.variant === 'wall_1_door' ? 'Mueble Aéreo 1 Puerta'
+                    : activeCabinet.variant === 'wall_2_doors' ? 'Mueble Aéreo 2 Puertas'
+                    : activeCabinet.variant === 'wall_lift_up' ? 'Aéreo Puerta Elevable Aventos'
+                    : activeCabinet.variant === 'wall_lift_up_double' ? 'Aéreo Doble Puerta Elevable'
+                    : activeCabinet.variant === 'wall_microwave_niche' ? 'Aéreo Nicho Microondas + Puerta'
+                    : activeCabinet.variant === 'wall_open' ? 'Aéreo Repisas a la Vista'
                     : (activeCabinet.variant || activeCabinet.type)}
               </h3>
               <div className="flex items-center gap-2 shrink-0">
@@ -244,6 +258,7 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                        <span>Especificación del Fabricante</span>
                     </div>
                     <p className="text-[10px] text-slate-300 leading-relaxed">
+                       {activeCabinet.variant === 'deco_hood' && 'Campana FDV New Conic 90 (SAP 16309). Acero Inoxidable, aspiración 780 m3/h, 3 velocidades, filtros metálicos antigrasa lavables y 2 luces LED.'}
                        {activeCabinet.variant === 'deco_stove' && 'Cocina FDV FS UNIQUE 90 (SAP 13297). 5 Quemadores a gas (Wok triple corona), Horno eléctrico 107L con calienta platos inferior. Acero inoxidable.'}
                        {activeCabinet.variant === 'deco_fridge' && 'Refrigerador FDV SBS SIGNATURE 2.0 513 LTS (SAP 16692). Side by side No Frost, dispensador de agua/hielo automático y display digital Dark Inox.'}
                        {activeCabinet.variant === 'deco_plant' && 'Ambientación vegetal botánica en 3D con macetero cerámico cilíndrico y soporte trípode de madera.'}
@@ -265,10 +280,43 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                     </div>
                  </div>
 
-                 <div className="text-[9px] text-slate-400 bg-white/5 p-2 rounded border border-white/5 flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 animate-pulse"></span>
-                    <span>Medidas fijas proporcionales. Apoyado al piso (Y=0).</span>
-                 </div>
+                 {activeCabinet.variant === 'deco_hood' ? (
+                    <div className="flex flex-col gap-2 pt-2 border-t border-white/10">
+                       <SliderControl 
+                          label="Elevación Base Campana (desde Piso)" 
+                          value={Math.round(activeCabinet.position[1] - activeCabinet.height / 2)} 
+                          min={120} 
+                          max={170} 
+                          step={2} 
+                          unit="cm" 
+                          onChange={(newBottom) => {
+                             updateCabinet(activeCabinet.id, {
+                                position: [activeCabinet.position[0], newBottom + activeCabinet.height / 2, activeCabinet.position[2]]
+                             });
+                          }} 
+                       />
+                       <SliderControl 
+                          label="Extensión Ducto Telescópico (Alto)" 
+                          value={activeCabinet.height} 
+                          min={45} 
+                          max={110} 
+                          step={5} 
+                          unit="cm" 
+                          onChange={(newHeight) => {
+                             const currentBottom = activeCabinet.position[1] - activeCabinet.height / 2;
+                             updateCabinet(activeCabinet.id, {
+                                height: newHeight,
+                                position: [activeCabinet.position[0], currentBottom + newHeight / 2, activeCabinet.position[2]]
+                             });
+                          }} 
+                       />
+                    </div>
+                 ) : (
+                    <div className="text-[9px] text-slate-400 bg-white/5 p-2 rounded border border-white/5 flex items-center gap-1.5">
+                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 animate-pulse"></span>
+                       <span>Medidas fijas proporcionales. Apoyado al piso (Y=0).</span>
+                    </div>
+                 )}
               </div>
            ) : (
               <>
@@ -296,6 +344,30 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                     </div>
                  )}
 
+                 {activeCabinet.type === 'wall' && (
+                    <div className="flex flex-col gap-1.5 mb-4 p-2.5 bg-black/40 border border-white/10 rounded-lg">
+                       <label className={labelClass}>Variante de Mueble Aéreo</label>
+                       <div className="grid grid-cols-2 gap-1.5 mt-1">
+                          {[
+                             { id: 'wall_1_door', label: '1 Puerta' },
+                             { id: 'wall_2_doors', label: '2 Puertas' },
+                             { id: 'wall_lift_up', label: 'Pta Elevable' },
+                             { id: 'wall_lift_up_double', label: 'Doble Elevable' },
+                             { id: 'wall_microwave_niche', label: 'Nicho Micro' },
+                             { id: 'wall_open', label: 'Repisas Vistas' },
+                          ].map(t => (
+                             <button
+                                key={t.id}
+                                onClick={() => updateCabinet(activeCabinet.id, { variant: t.id })}
+                                className={`py-1.5 px-2 rounded text-[9px] font-bold uppercase tracking-wider transition-all ${(activeCabinet.variant === t.id || (!activeCabinet.variant && t.id === 'wall_1_door')) ? 'bg-orange-500 text-black shadow-[0_0_10px_rgba(249,115,22,0.2)]' : 'bg-white/5 text-slate-400 border border-white/10 hover:border-orange-500/50'}`}
+                             >
+                                {t.label}
+                             </button>
+                          ))}
+                       </div>
+                    </div>
+                 )}
+
                  {(activeCabinet.variant?.startsWith('corner_blind') || activeCabinet.variant === 'corner_blind') && (
                     <div className="flex flex-col gap-1.5 mb-4 p-2.5 bg-black/40 border border-white/10 rounded-lg">
                        <label className={labelClass}>Mano / Orientación Esquinero</label>
@@ -315,10 +387,28 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                        </div>
                     </div>
                  )}
+
+                 {activeCabinet.type === 'wall' && (
+                    <div className="mb-3 p-2.5 bg-black/40 border border-white/10 rounded-lg">
+                       <SliderControl 
+                          label="Elevación en Muro (Cota Inferior)" 
+                          value={Math.round(activeCabinet.position[1] - activeCabinet.height / 2)} 
+                          min={110} 
+                          max={180} 
+                          step={2} 
+                          unit="cm" 
+                          onChange={(newBottom) => {
+                             updateCabinet(activeCabinet.id, {
+                                position: [activeCabinet.position[0], newBottom + activeCabinet.height / 2, activeCabinet.position[2]]
+                             });
+                          }} 
+                       />
+                    </div>
+                 )}
                  
                  <SliderControl label="Ancho del Módulo" value={activeCabinet.width} min={activeCabinet.variant === "spice_rack" ? 15 : (activeCabinet.variant?.startsWith('corner_blind') ? 80 : 30)} max={activeCabinet.variant?.startsWith('corner_blind') ? 130 : 120} step={5} unit="cm" onChange={(v) => updateCabinet(activeCabinet.id, { width: v })} />
-                 <SliderControl label="Alto Total" value={activeCabinet.height} min={activeCabinet.type === 'tall' ? 140 : (activeCabinet.type === 'base' ? 70 : 40)} max={activeCabinet.type === 'tall' ? 240 : (activeCabinet.type === 'wall' ? 120 : 100)} step={5} unit="cm" onChange={(v) => updateCabinet(activeCabinet.id, { height: v })} />
-                 <SliderControl label="Profundidad" value={activeCabinet.depth} min={30} max={80} step={5} unit="cm" onChange={(v) => updateCabinet(activeCabinet.id, { depth: v })} />
+                 <SliderControl label="Alto Total" value={activeCabinet.height} min={activeCabinet.type === 'tall' ? 140 : (activeCabinet.type === 'base' ? 70 : 30)} max={activeCabinet.type === 'tall' ? 240 : (activeCabinet.type === 'wall' ? 120 : 100)} step={5} unit="cm" onChange={(v) => updateCabinet(activeCabinet.id, { height: v })} />
+                 <SliderControl label="Profundidad" value={activeCabinet.depth} min={25} max={80} step={5} unit="cm" onChange={(v) => updateCabinet(activeCabinet.id, { depth: v })} />
               </>
            )}
         </div>
@@ -429,7 +519,6 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
             )}
           </div>
           <div className="flex flex-col gap-2">
-            <ToggleBtn active={globalState.showDecorations} onClick={globalState.toggleDecorations} label="Ropa y Deco" />
             <ToggleBtn active={globalState.isTransparent} onClick={globalState.toggleTransparent} label="Modo Transparente" />
             <ToggleBtn active={showSocle} onClick={() => setShowSocle(!showSocle)} label="Zócalo" />
           </div>

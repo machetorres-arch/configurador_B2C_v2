@@ -1,4 +1,5 @@
-import { CabinetType } from '../store/kitchenStore';
+import { CabinetType, WallType } from '../store/kitchenStore';
+import { getClosestPointOnSegment } from './kitchenCollision';
 
 export interface SocleWorldPiece {
   id: string;
@@ -36,37 +37,61 @@ export interface ProcessedSocleSystem {
   socleColor: string;
 }
 
-export function calculateSocleSystem(cabinets: CabinetType[]): ProcessedSocleSystem {
-  const baseCabinets = cabinets.filter(
+/**
+ * Calculates continuous kitchen socle system optimized for standard 3000mm (3m) commercial profiles.
+ * - Base, tall, and island modules on the floor are unified into collinear runs.
+ * - Intermediate joints between adjacent modules are strictly omitted.
+ * - Straight 180° H-joints are only placed when a single continuous run exceeds 3000mm.
+ * - Lateral returns and 90° corners are only generated on exposed flanks (not against walls or adjacent cabinets).
+ */
+export function calculateSocleSystem(
+  cabinets: CabinetType[],
+  walls: WallType[] = [],
+  _roomVertices: any[] = []
+): ProcessedSocleSystem {
+  // Filter all floor-standing cabinets that have legs/socle
+  const floorCabinets = cabinets.filter(
     (c) => c.type === 'base' || c.type === 'island' || c.type === 'tall'
   );
 
-  if (baseCabinets.length === 0) {
+  if (floorCabinets.length === 0) {
     return { pieces: [], straightJoints: [], laterals: [], corners: [], socleColor: '#d1d5db' };
   }
 
-  const socleColor = baseCabinets[0]?.socleColor || '#d1d5db';
+  const socleColor = floorCabinets[0]?.socleColor || '#d1d5db';
   const legsHeight = 10;
   const socleY = legsHeight / 2;
 
-  const getFlanks = (cab: CabinetType) => {
+  // Helper to get unit vectors and front/flank coordinates for a cabinet
+  const getCabGeo = (cab: CabinetType) => {
     const rot = cab.rotation || 0;
     const cos = Math.cos(rot);
     const sin = Math.sin(rot);
-    // Unit vector along width (left -> right)
+    // uX: vector along width from left to right
     const uX: [number, number] = [cos, sin];
-    // Unit vector forward (depth axis towards front)
+    // uZ: vector along depth from back to front
     const uZ: [number, number] = [-sin, cos];
 
-    const left: [number, number] = [
-      cab.position[0] - (cab.width / 2) * uX[0],
-      cab.position[2] - (cab.width / 2) * uX[1],
-    ];
-    const right: [number, number] = [
-      cab.position[0] + (cab.width / 2) * uX[0],
-      cab.position[2] + (cab.width / 2) * uX[1],
-    ];
-    return { left, right, uX, uZ, rot };
+    const cx = cab.position[0];
+    const cz = cab.position[2];
+
+    const left: [number, number] = [cx - (cab.width / 2) * uX[0], cz - (cab.width / 2) * uX[1]];
+    const right: [number, number] = [cx + (cab.width / 2) * uX[0], cz + (cab.width / 2) * uX[1]];
+    const frontCenter: [number, number] = [cx + (cab.depth / 2 - 2) * uZ[0], cz + (cab.depth / 2 - 2) * uZ[1]];
+
+    return { cx, cz, uX, uZ, rot, left, right, frontCenter, width: cab.width, depth: cab.depth };
+  };
+
+  // Helper to check if a world point (x, z) is against or very close to any wall
+  const isPointNearWall = (px: number, pz: number, threshold = 15): boolean => {
+    if (!walls || walls.length === 0) return false;
+    for (const w of walls) {
+      const proj = getClosestPointOnSegment(px, pz, w.start[0], w.start[1], w.end[0], w.end[1]);
+      if (proj.dist < threshold + (w.thickness || 20) / 2) {
+        return true;
+      }
+    }
+    return false;
   };
 
   const dist = (p1: [number, number], p2: [number, number]) =>
@@ -78,10 +103,10 @@ export function calculateSocleSystem(cabinets: CabinetType[]): ProcessedSocleSys
   const laterals: SocleLateralReturn[] = [];
   const corners: SocleCorner[] = [];
 
-  for (const cab of baseCabinets) {
+  for (const cab of floorCabinets) {
     if (visited.has(cab.id)) continue;
 
-    // Collect collinear, touching cluster
+    // Collect all collinear touching/overlapping cabinets into a single run
     const component: CabinetType[] = [];
     const queue: CabinetType[] = [cab];
     visited.add(cab.id);
@@ -90,21 +115,28 @@ export function calculateSocleSystem(cabinets: CabinetType[]): ProcessedSocleSys
       const current = queue.shift()!;
       component.push(current);
 
-      const curFlanks = getFlanks(current);
+      const curGeo = getCabGeo(current);
 
-      for (const other of baseCabinets) {
+      for (const other of floorCabinets) {
         if (visited.has(other.id)) continue;
-        if (Math.abs(other.position[1] - current.position[1]) > 30) continue;
 
+        // Check parallel orientation (modulo PI)
         const rotDiff = Math.abs((other.rotation || 0) - (current.rotation || 0)) % Math.PI;
-        if (rotDiff > 0.1 && Math.abs(rotDiff - Math.PI) > 0.1) continue;
+        const isParallel = rotDiff < 0.12 || Math.abs(rotDiff - Math.PI) < 0.12;
+        if (!isParallel) continue;
 
-        const otherFlanks = getFlanks(other);
+        const otherGeo = getCabGeo(other);
+
+        // Check that their front planes or centerlines are aligned along depth axis
+        const depthOffset = (otherGeo.cx - curGeo.cx) * curGeo.uZ[0] + (otherGeo.cz - curGeo.cz) * curGeo.uZ[1];
+        if (Math.abs(depthOffset) > 15) continue; // Not on the same run line
+
+        // Check if their width spans touch or overlap along the uX axis
         const isTouching =
-          dist(curFlanks.right, otherFlanks.left) < 6 ||
-          dist(curFlanks.left, otherFlanks.right) < 6 ||
-          dist(curFlanks.right, otherFlanks.right) < 6 ||
-          dist(curFlanks.left, otherFlanks.left) < 6;
+          dist(curGeo.right, otherGeo.left) < 12 ||
+          dist(curGeo.left, otherGeo.right) < 12 ||
+          dist(curGeo.right, otherGeo.right) < 12 ||
+          dist(curGeo.left, otherGeo.left) < 12;
 
         if (isTouching) {
           visited.add(other.id);
@@ -113,14 +145,14 @@ export function calculateSocleSystem(cabinets: CabinetType[]): ProcessedSocleSys
       }
     }
 
-    // Reference orientation from first cabinet
+    // Orientation reference from the component
     const baseRot = component[0].rotation || 0;
     const cos = Math.cos(baseRot);
     const sin = Math.sin(baseRot);
     const uX: [number, number] = [cos, sin];
     const uZ: [number, number] = [-sin, cos];
 
-    // Sort along run direction vector (leftmost to rightmost)
+    // Sort all cabinets in the run along the uX axis (from leftmost to rightmost)
     component.sort((a, b) => {
       const projA = a.position[0] * uX[0] + a.position[2] * uX[1];
       const projB = b.position[0] * uX[0] + b.position[2] * uX[1];
@@ -130,7 +162,8 @@ export function calculateSocleSystem(cabinets: CabinetType[]): ProcessedSocleSys
     const maxDepth = Math.max(...component.map((c) => c.depth));
     const frontOffsetZ = maxDepth / 2 - 2;
 
-    // Build Continuous Strips (Max commercial length = 300 cm / 3000 mm)
+    // Build Continuous Strips (Commercial length = 300 cm / 3000 mm)
+    // Seamless continuous strip across all cabinets in the run without intermediate cuts
     const strips: CabinetType[][] = [];
     let currentStrip: CabinetType[] = [];
     let currentStripWidth = 0;
@@ -150,7 +183,7 @@ export function calculateSocleSystem(cabinets: CabinetType[]): ProcessedSocleSys
       strips.push(currentStrip);
     }
 
-    // Generate 3D piece for each continuous strip
+    // Generate 3D pieces for each continuous commercial strip (up to 3000mm each)
     for (let s = 0; s < strips.length; s++) {
       const stripCabs = strips[s];
       const stripTotalWidth = stripCabs.reduce((acc, c) => acc + c.width, 0);
@@ -158,19 +191,16 @@ export function calculateSocleSystem(cabinets: CabinetType[]): ProcessedSocleSys
       const firstInStrip = stripCabs[0];
       const lastInStrip = stripCabs[stripCabs.length - 1];
 
-      // Physical start point (left edge of first cabinet in strip)
+      // Physical start (left) and end (right) of this continuous strip
       const pStart: [number, number] = [
         firstInStrip.position[0] - (firstInStrip.width / 2) * uX[0],
         firstInStrip.position[2] - (firstInStrip.width / 2) * uX[1],
       ];
-
-      // Physical end point (right edge of last cabinet in strip)
       const pEnd: [number, number] = [
         lastInStrip.position[0] + (lastInStrip.width / 2) * uX[0],
         lastInStrip.position[2] + (lastInStrip.width / 2) * uX[1],
       ];
 
-      // Center of this continuous strip
       const stripCenterX = (pStart[0] + pEnd[0]) / 2 + frontOffsetZ * uZ[0];
       const stripCenterZ = (pStart[1] + pEnd[1]) / 2 + frontOffsetZ * uZ[1];
 
@@ -181,7 +211,7 @@ export function calculateSocleSystem(cabinets: CabinetType[]): ProcessedSocleSys
         rotation: baseRot,
       });
 
-      // If not the last strip, add 1 Straight 180° H-Joint profile right at the junction
+      // If the run exceeds 3000mm, insert a 180° Straight H-Joint profile between strips
       if (s < strips.length - 1) {
         const jointX = pEnd[0] + frontOffsetZ * uZ[0];
         const jointZ = pEnd[1] + frontOffsetZ * uZ[1];
@@ -193,58 +223,76 @@ export function calculateSocleSystem(cabinets: CabinetType[]): ProcessedSocleSys
       }
     }
 
-    // Left lateral return & 90° corner on the leftmost cabinet
+    // Evaluate exposed flanks on the left and right ends of the run
     const leftmostCab = component[0];
     const leftX = leftmostCab.position[0] - (leftmostCab.width / 2) * uX[0];
     const leftZ = leftmostCab.position[2] - (leftmostCab.width / 2) * uX[1];
 
-    // Left lateral center (-1.0 in local cabinet depth, i.e. middle of side)
-    const latLeftX = leftX + 0.6 * uX[0] - 1.0 * uZ[0];
-    const latLeftZ = leftZ + 0.6 * uX[1] - 1.0 * uZ[1];
-    laterals.push({
-      id: `socle-lat-left-${leftmostCab.id}`,
-      position: [latLeftX, socleY, latLeftZ],
-      rotation: baseRot,
-      depth: maxDepth - 4,
-      isRight: false,
+    // Check if the leftmost flank is near a wall or another cabinet
+    const isLeftNearWall = isPointNearWall(leftX, leftZ, 12);
+    const hasPerpLeftNeighbor = floorCabinets.some((other) => {
+      if (component.some((c) => c.id === other.id)) return false;
+      const oGeo = getCabGeo(other);
+      return dist([leftX, leftZ], [oGeo.cx, oGeo.cz]) < (other.depth + 10);
     });
 
-    // 90° Corner Connector at Front-Left
-    const cornLeftX = leftX + 0.6 * uX[0] + frontOffsetZ * uZ[0];
-    const cornLeftZ = leftZ + 0.6 * uX[1] + frontOffsetZ * uZ[1];
-    corners.push({
-      id: `socle-corn-left-${leftmostCab.id}`,
-      position: [cornLeftX, socleY, cornLeftZ],
-      rotation: baseRot,
-      isRight: false,
-    });
+    if (!isLeftNearWall && !hasPerpLeftNeighbor) {
+      // Left lateral return & 90° corner
+      const latLeftX = leftX + 0.6 * uX[0] - 1.0 * uZ[0];
+      const latLeftZ = leftZ + 0.6 * uX[1] - 1.0 * uZ[1];
+      laterals.push({
+        id: `socle-lat-left-${leftmostCab.id}`,
+        position: [latLeftX, socleY, latLeftZ],
+        rotation: baseRot,
+        depth: leftmostCab.depth - 4,
+        isRight: false,
+      });
 
-    // Right lateral return & 90° corner on the rightmost cabinet
+      const cornLeftX = leftX + 0.6 * uX[0] + frontOffsetZ * uZ[0];
+      const cornLeftZ = leftZ + 0.6 * uX[1] + frontOffsetZ * uZ[1];
+      corners.push({
+        id: `socle-corn-left-${leftmostCab.id}`,
+        position: [cornLeftX, socleY, cornLeftZ],
+        rotation: baseRot,
+        isRight: false,
+      });
+    }
+
     const rightmostCab = component[component.length - 1];
     const rightX = rightmostCab.position[0] + (rightmostCab.width / 2) * uX[0];
     const rightZ = rightmostCab.position[2] + (rightmostCab.width / 2) * uX[1];
 
-    // Right lateral center
-    const latRightX = rightX - 0.6 * uX[0] - 1.0 * uZ[0];
-    const latRightZ = rightZ - 0.6 * uX[1] - 1.0 * uZ[1];
-    laterals.push({
-      id: `socle-lat-right-${rightmostCab.id}`,
-      position: [latRightX, socleY, latRightZ],
-      rotation: baseRot,
-      depth: maxDepth - 4,
-      isRight: true,
+    // Check if the rightmost flank is near a wall or another cabinet
+    const isRightNearWall = isPointNearWall(rightX, rightZ, 12);
+    const hasPerpRightNeighbor = floorCabinets.some((other) => {
+      if (component.some((c) => c.id === other.id)) return false;
+      const oGeo = getCabGeo(other);
+      return dist([rightX, rightZ], [oGeo.cx, oGeo.cz]) < (other.depth + 10);
     });
 
-    // 90° Corner Connector at Front-Right
-    const cornRightX = rightX - 0.6 * uX[0] + frontOffsetZ * uZ[0];
-    const cornRightZ = rightZ - 0.6 * uX[1] + frontOffsetZ * uZ[1];
-    corners.push({
-      id: `socle-corn-right-${rightmostCab.id}`,
-      position: [cornRightX, socleY, cornRightZ],
-      rotation: baseRot,
-      isRight: true,
-    });
+    if (!isRightNearWall && !hasPerpRightNeighbor) {
+      // Right lateral return & 90° corner
+      const latRightX = rightX - 0.6 * uX[0] - 1.0 * uZ[0];
+      const latRightZ = rightZ - 0.6 * uX[1] - 1.0 * uZ[1];
+      laterals.push({
+        id: `socle-lat-right-${rightmostCab.id}`,
+        position: [latRightX, socleY, latRightZ],
+        rotation: baseRot,
+        depth: rightmostCab.depth - 4,
+        isRight: true,
+      });
+
+      const cornRightX = rightX - 0.6 * uX[0] + frontOffsetZ * uZ[0];
+      const cornRightZ = rightZ - 0.6 * uX[1] + frontOffsetZ * uZ[1];
+      corners.push({
+        id: `socle-corn-right-${rightmostCab.id}`,
+        position: [cornRightX, socleY, cornRightZ],
+        rotation: baseRot,
+        isRight: true,
+      });
+    }
   }
 
   return { pieces, straightJoints, laterals, corners, socleColor };
 }
+

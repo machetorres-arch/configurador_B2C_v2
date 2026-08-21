@@ -158,63 +158,21 @@ export function checkOBBCollision(
 
     if (overlap < minOverlap) {
       minOverlap = overlap;
-      smallestAxis = axis;
-    }
-  }
-
-  // Ensure MTV points from B to A
-  if (smallestAxis) {
-    const dir = [boxA.center[0] - boxB.center[0], boxA.center[1] - boxB.center[1]];
-    if (dir[0] * smallestAxis[0] + dir[1] * smallestAxis[1] < 0) {
-      smallestAxis = [-smallestAxis[0], -smallestAxis[1]];
+      // Ensure axis points from boxB toward boxA
+      const centerAProj = boxA.center[0] * axis[0] + boxA.center[1] * axis[1];
+      const centerBProj = boxB.center[0] * axis[0] + boxB.center[1] * axis[1];
+      if (centerAProj < centerBProj) {
+        smallestAxis = [-axis[0], -axis[1]];
+      } else {
+        smallestAxis = [axis[0], axis[1]];
+      }
     }
   }
 
   return { colliding: true, overlap: minOverlap, mtvAxis: smallestAxis };
 }
 
-export function isCandidateValid(
-  candidate: {
-    position: [number, number, number];
-    width: number;
-    depth: number;
-    height: number;
-    rotation?: number;
-    type?: string;
-  },
-  existingCabinets: CabinetType[],
-  walls: any[] = [],
-  ignoreId?: string | null
-): boolean {
-  const candBox = getCabinetBox2D(candidate);
-  for (const cab of existingCabinets) {
-    if (ignoreId && cab.id === ignoreId) continue;
-    const otherBox = getCabinetBox2D(cab);
-    const result = checkOBBCollision(candBox, otherBox, 0.8);
-    if (result.colliding) {
-      return false;
-    }
-  }
-
-  for (const wall of walls) {
-    const wallBox = getWallBox2D(wall);
-    const result = checkOBBCollision(candBox, wallBox, 0.8);
-    if (result.colliding) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-export interface SnapAndCollisionResult {
-  position: [number, number, number];
-  rotation: number;
-  isSnapped: boolean;
-  isColliding: boolean;
-}
-
-// Algoritmo Ray-Casting para comprobar si un punto (x, z) está estrictamente dentro del polígono de la habitación
+// Algoritmo Ray-Casting para comprobar si un punto (x, z) está dentro del polígono de la habitación
 export function isPointInPolygon(x: number, z: number, poly: [number, number][]): boolean {
   if (!poly || poly.length < 3) return true;
   let inside = false;
@@ -256,6 +214,189 @@ export function getClosestPointOnSegment(
   return { point: [cx, cz], t, dist: Math.hypot(px - cx, pz - cz) };
 }
 
+// Comprueba si una caja 2D de mueble está completamente dentro del polígono de la habitación
+export function isBoxInsidePolygon(
+  box: Box2D,
+  poly: [number, number][],
+  tolerance = 1.0
+): boolean {
+  if (!poly || poly.length < 3) return true;
+  if (!isPointInPolygon(box.center[0], box.center[1], poly)) return false;
+
+  for (const [cx, cz] of box.corners) {
+    if (!isPointInPolygon(cx, cz, poly)) {
+      let minDist = Infinity;
+      for (let i = 0; i < poly.length; i++) {
+        const p1 = poly[i];
+        const p2 = poly[(i + 1) % poly.length];
+        const proj = getClosestPointOnSegment(cx, cz, p1[0], p1[1], p2[0], p2[1]);
+        if (proj.dist < minDist) minDist = proj.dist;
+      }
+      if (minDist > tolerance) return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Constrains a candidate cabinet position strictly inside the room boundary and away from wall cores.
+ */
+export function constrainInsideRoomAndWalls(
+  pos: [number, number, number],
+  rot: number,
+  cabWidth: number,
+  cabDepth: number,
+  cabHeight: number,
+  walls: any[] = [],
+  roomPoly: [number, number][] = []
+): [number, number, number] {
+  let [cx, cy, cz] = pos;
+
+  if (roomPoly.length < 3 && (!walls || walls.length === 0)) {
+    return [cx, cy, cz];
+  }
+
+  // Iterate relaxation steps to ensure no corner penetrates walls or exits the room boundary
+  for (let iter = 0; iter < 4; iter++) {
+    const box = getCabinetBox2D({
+      position: [cx, cy, cz],
+      width: cabWidth,
+      depth: cabDepth,
+      height: cabHeight,
+      rotation: rot,
+    });
+
+    // 1. Constrain against each wall line
+    for (const w of walls) {
+      const x1 = w.start[0];
+      const z1 = w.start[1];
+      const x2 = w.end[0];
+      const z2 = w.end[1];
+      const wallLen = Math.hypot(x2 - x1, z2 - z1);
+      if (wallLen < 1) continue;
+
+      const uX = (x2 - x1) / wallLen;
+      const uZ = (z2 - z1) / wallLen;
+      const thickness = w.thickness || 20;
+
+      // Inward normal pointing into the room
+      let nX = -uZ;
+      let nZ = uX;
+      const midX = (x1 + x2) / 2;
+      const midZ = (z1 + z2) / 2;
+      if (roomPoly.length >= 3 && !isPointInPolygon(midX + nX * 5, midZ + nZ * 5, roomPoly)) {
+        nX = -nX;
+        nZ = -nZ;
+      }
+
+      // Check all 4 corners of the cabinet box
+      for (const [px, pz] of box.corners) {
+        // Distance along inward normal from wall centerline: (p - start) · normal
+        const distFromWallLine = (px - x1) * nX + (pz - z1) * nZ;
+        const requiredDist = thickness / 2 + 0.1; // Must stay at or in front of inner face
+        if (distFromWallLine < requiredDist) {
+          const push = requiredDist - distFromWallLine;
+          cx += push * nX;
+          cz += push * nZ;
+        }
+      }
+    }
+
+    // 2. Clamp corners inside room polygon
+    if (roomPoly.length >= 3) {
+      const currentBox = getCabinetBox2D({
+        position: [cx, cy, cz],
+        width: cabWidth,
+        depth: cabDepth,
+        height: cabHeight,
+        rotation: rot,
+      });
+
+      let polyCx = 0, polyCz = 0;
+      roomPoly.forEach(([vx, vz]) => { polyCx += vx; polyCz += vz; });
+      polyCx /= roomPoly.length;
+      polyCz /= roomPoly.length;
+
+      for (const [cpx, cpz] of currentBox.corners) {
+        if (!isPointInPolygon(cpx, cpz, roomPoly)) {
+          let closestDist = Infinity;
+          let closestPt: [number, number] = [polyCx, polyCz];
+          for (let i = 0; i < roomPoly.length; i++) {
+            const p1 = roomPoly[i];
+            const p2 = roomPoly[(i + 1) % roomPoly.length];
+            const cp = getClosestPointOnSegment(cpx, cpz, p1[0], p1[1], p2[0], p2[1]);
+            if (cp.dist < closestDist) {
+              closestDist = cp.dist;
+              closestPt = cp.point;
+            }
+          }
+          const toCentroidX = polyCx - closestPt[0];
+          const toCentroidZ = polyCz - closestPt[1];
+          const lenC = Math.hypot(toCentroidX, toCentroidZ) || 1;
+          const pushInward = closestDist + 2;
+          cx += (toCentroidX / lenC) * pushInward;
+          cz += (toCentroidZ / lenC) * pushInward;
+          break;
+        }
+      }
+    }
+  }
+
+  return [cx, cy, cz];
+}
+
+export function isCandidateValid(
+  candidate: {
+    position: [number, number, number];
+    width: number;
+    depth: number;
+    height: number;
+    rotation?: number;
+    type?: string;
+  },
+  existingCabinets: CabinetType[],
+  walls: any[] = [],
+  ignoreId?: string | null,
+  roomPoly: [number, number][] = []
+): boolean {
+  const candBox = getCabinetBox2D(candidate);
+
+  // 1. Validar colisión contra otros muebles
+  for (const cab of existingCabinets) {
+    if (ignoreId && cab.id === ignoreId) continue;
+    const otherBox = getCabinetBox2D(cab);
+    const result = checkOBBCollision(candBox, otherBox, 0.8);
+    if (result.colliding) {
+      return false;
+    }
+  }
+
+  // 2. Validar colisión contra tabiques/muros
+  for (const wall of walls) {
+    const wallBox = getWallBox2D(wall);
+    const result = checkOBBCollision(candBox, wallBox, 0.8);
+    if (result.colliding) {
+      return false;
+    }
+  }
+
+  // 3. Validar que el mueble quede dentro del polígono interior de la cocina
+  if (roomPoly.length >= 3) {
+    if (!isBoxInsidePolygon(candBox, roomPoly, 1.5)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+export interface SnapAndCollisionResult {
+  position: [number, number, number];
+  rotation: number;
+  isSnapped: boolean;
+  isColliding: boolean;
+}
+
 export function resolvePlacement({
   mouseX,
   mouseZ,
@@ -263,6 +404,8 @@ export function resolvePlacement({
   cabHeight,
   cabDepth,
   cabType,
+  variant,
+  customY,
   preferredRot = 0,
   cabinets,
   ignoreId = null,
@@ -275,18 +418,22 @@ export function resolvePlacement({
   cabHeight: number;
   cabDepth: number;
   cabType: string;
+  variant?: string;
+  customY?: number;
   preferredRot?: number;
   cabinets: CabinetType[];
   ignoreId?: string | null;
   walls?: any[];
   roomVertices?: { x: number; y: number }[];
 }): SnapAndCollisionResult {
-  // Altura estándar según tipología
+  // Altura estándar según tipología o altura personalizada
   const defaultY =
-    cabType === 'wall'
-      ? 145
-      : cabType === 'tall'
-      ? cabHeight / 2
+    customY !== undefined
+      ? customY
+      : cabType === 'wall'
+      ? 140 + cabHeight / 2
+      : variant === 'deco_hood'
+      ? 145 + cabHeight / 2
       : cabHeight / 2;
 
   const otherCabinets = cabinets.filter((c) => !ignoreId || c.id !== ignoreId);
@@ -313,11 +460,8 @@ export function resolvePlacement({
     roomCenterZ = sumZ / roomPoly.length;
   }
 
-  // Comprobar si el cursor está dentro de la habitación
-  const isMouseInsideRoom = roomPoly.length >= 3 ? isPointInPolygon(mouseX, mouseZ, roomPoly) : true;
-
-  // 1. Detección y atracción magnética a otros muebles adyacentes (Snapping Flanco a Flanco)
-  const snapThreshold = 45;
+  // 1. Detección y atracción magnética a otros muebles adyacentes (Snapping Flanco a Flanco suave)
+  const snapThreshold = 30;
   let bestSnap: { pos: [number, number, number]; rot: number; dist: number } | null = null;
 
   for (const cab of otherCabinets) {
@@ -346,42 +490,36 @@ export function resolvePlacement({
 
     const distR = Math.hypot(mouseX - candidateRight[0], mouseZ - candidateRight[2]);
     if (distR < snapThreshold) {
-      const isValid = isCandidateValid(
-        {
-          position: candidateRight,
-          width: cabWidth,
-          height: cabHeight,
-          depth: cabDepth,
-          rotation: rot,
-          type: cabType,
-        },
-        otherCabinets,
-        walls
-      );
-      // Validar además que quede dentro del polígono
-      const inPoly = roomPoly.length >= 3 ? isPointInPolygon(candidateRight[0], candidateRight[2], roomPoly) : true;
-      if (isValid && inPoly && (!bestSnap || distR < bestSnap.dist)) {
-        bestSnap = { pos: candidateRight, rot, dist: distR };
+      // Validate that candidate does not breach walls
+      const constrained = constrainInsideRoomAndWalls(candidateRight, rot, cabWidth, cabDepth, cabHeight, walls, roomPoly);
+      const isCandValid = isCandidateValid({
+        position: constrained,
+        width: cabWidth,
+        depth: cabDepth,
+        height: cabHeight,
+        rotation: rot,
+        type: cabType,
+      }, otherCabinets, walls, ignoreId, roomPoly);
+
+      if (isCandValid && (!bestSnap || distR < bestSnap.dist)) {
+        bestSnap = { pos: constrained, rot, dist: distR };
       }
     }
 
     const distL = Math.hypot(mouseX - candidateLeft[0], mouseZ - candidateLeft[2]);
     if (distL < snapThreshold) {
-      const isValid = isCandidateValid(
-        {
-          position: candidateLeft,
-          width: cabWidth,
-          height: cabHeight,
-          depth: cabDepth,
-          rotation: rot,
-          type: cabType,
-        },
-        otherCabinets,
-        walls
-      );
-      const inPoly = roomPoly.length >= 3 ? isPointInPolygon(candidateLeft[0], candidateLeft[2], roomPoly) : true;
-      if (isValid && inPoly && (!bestSnap || distL < bestSnap.dist)) {
-        bestSnap = { pos: candidateLeft, rot, dist: distL };
+      const constrained = constrainInsideRoomAndWalls(candidateLeft, rot, cabWidth, cabDepth, cabHeight, walls, roomPoly);
+      const isCandValid = isCandidateValid({
+        position: constrained,
+        width: cabWidth,
+        depth: cabDepth,
+        height: cabHeight,
+        rotation: rot,
+        type: cabType,
+      }, otherCabinets, walls, ignoreId, roomPoly);
+
+      if (isCandValid && (!bestSnap || distL < bestSnap.dist)) {
+        bestSnap = { pos: constrained, rot, dist: distL };
       }
     }
 
@@ -396,23 +534,11 @@ export function resolvePlacement({
       const dockWorldZ = cab.position[2] + (localBlindOffsetX * sin - dockLocalZ * cos);
       const distDock = Math.hypot(mouseX - dockWorldX, mouseZ - dockWorldZ);
 
-      if (distDock < snapThreshold * 1.5) {
+      if (distDock < snapThreshold * 1.2) {
         const dockPos: [number, number, number] = [dockWorldX, defaultY, dockWorldZ];
-        const isValid = isCandidateValid(
-          {
-            position: dockPos,
-            width: cabWidth,
-            height: cabHeight,
-            depth: cabDepth,
-            rotation: orthoRot,
-            type: cabType,
-          },
-          otherCabinets,
-          walls
-        );
-        const inPoly = roomPoly.length >= 3 ? isPointInPolygon(dockPos[0], dockPos[2], roomPoly) : true;
-        if (isValid && inPoly && (!bestSnap || distDock < bestSnap.dist)) {
-          bestSnap = { pos: dockPos, rot: orthoRot, dist: distDock };
+        const constrained = constrainInsideRoomAndWalls(dockPos, orthoRot, cabWidth, cabDepth, cabHeight, walls, roomPoly);
+        if (!bestSnap || distDock < bestSnap.dist) {
+          bestSnap = { pos: constrained, rot: orthoRot, dist: distDock };
         }
       }
     }
@@ -427,13 +553,32 @@ export function resolvePlacement({
     };
   }
 
-  // 2. Detección y atracción magnética directa al muro para muebles base, despensas y aéreos
-  // Si el ratón está fuera de la estancia, aumentamos el umbral para que siempre imante al interior de la pared más cercana
-  const wallSnapThreshold = isMouseInsideRoom ? 85 : 500;
-  let bestWallSnap: { pos: [number, number, number]; rot: number; dist: number } | null = null;
+  // 2. Detección y atracción magnética directa al muro para muebles
+  // Los muebles base, despensa (tall) y murales (wall) se anclan SIEMPRE a muro por su cara posterior
+  const isWallBound = cabType === 'base' || cabType === 'tall' || cabType === 'wall' || variant === 'deco_hood';
+  const wallSnapThreshold = isWallBound ? Infinity : 35;
+  let bestWallSnap: { pos: [number, number, number]; rot: number; dist: number; isColliding: boolean } | null = null;
 
-  if (walls && walls.length > 0) {
-    for (const w of walls) {
+  // Construir lista efectiva de muros si vienen desde vertices de habitación
+  let effectiveWalls = walls && walls.length > 0 ? walls : [];
+  if (effectiveWalls.length === 0 && roomVertices && roomVertices.length >= 3) {
+    effectiveWalls = [];
+    const n = roomVertices.length;
+    for (let i = 0; i < n; i++) {
+      const vCur = roomVertices[i];
+      const vNext = roomVertices[(i + 1) % n];
+      effectiveWalls.push({
+        id: `wall_v_${i}`,
+        start: [vCur.x, vCur.y],
+        end: [vNext.x, vNext.y],
+        thickness: 20,
+        height: 240,
+      });
+    }
+  }
+
+  if (effectiveWalls.length > 0) {
+    for (const w of effectiveWalls) {
       const x1 = w.start[0];
       const z1 = w.start[1];
       const x2 = w.end[0];
@@ -470,37 +615,136 @@ export function resolvePlacement({
 
       // Proyectar ratón sobre el muro
       const s = (mouseX - x1) * uX + (mouseZ - z1) * uZ;
-      const sClamped = Math.max(cabWidth / 2 + 1, Math.min(wallLen - cabWidth / 2 - 1, s));
+      const sClamped = Math.max(cabWidth / 2 + 0.5, Math.min(wallLen - cabWidth / 2 - 0.5, s));
       const wallThickness = w.thickness || 20;
       const flushDist = wallThickness / 2 + cabDepth / 2;
 
       // La posición de enganche siempre queda exactamente en la cara interior del tabique
-      const snapPosX = x1 + sClamped * uX + flushDist * nX;
-      const snapPosZ = z1 + sClamped * uZ + flushDist * nZ;
+      let snapPosX = x1 + sClamped * uX + flushDist * nX;
+      let snapPosZ = z1 + sClamped * uZ + flushDist * nZ;
       
       // La rotación asegura que la trasera (-Z) esté contra la pared y el frente (+Z) hacia la habitación
       const wallRot = Math.atan2(nX, nZ);
 
-      const snapCandidatePos: [number, number, number] = [snapPosX, defaultY, snapPosZ];
-      const distToSnap = Math.hypot(mouseX - snapPosX, mouseZ - snapPosZ);
+      // --- COMPROBACIÓN Y RESOLUCIÓN DE COLISIÓN RIGUROSA A LO LARGO DEL MURO ---
+      // 1. Recolectar todos los muebles que comparten este tramo de muro o nivel de altura
+      const onWallObstacles: { sMin: number; sMax: number; sCenter: number; width: number }[] = [];
+      for (const otherCab of otherCabinets) {
+        // Verificar si se solapan verticalmente (Y)
+        const otherYMin = otherCab.position[1] - otherCab.height / 2;
+        const otherYMax = otherCab.position[1] + otherCab.height / 2;
+        const candYMin = defaultY - cabHeight / 2;
+        const candYMax = defaultY + cabHeight / 2;
+        if (Math.min(otherYMax, candYMax) - Math.max(otherYMin, candYMin) <= 2) {
+          continue; // No chocan en altura (ej. aéreo vs base)
+        }
+
+        // Comprobar si el otro mueble está cerca de la línea del muro
+        const sOther = (otherCab.position[0] - x1) * uX + (otherCab.position[2] - z1) * uZ;
+        const distOtherNormal = Math.abs((otherCab.position[0] - x1) * nX + (otherCab.position[2] - z1) * nZ);
+
+        if (distOtherNormal < flushDist + 35) {
+          const halfOtherW = otherCab.width / 2;
+          onWallObstacles.push({
+            sMin: sOther - halfOtherW,
+            sMax: sOther + halfOtherW,
+            sCenter: sOther,
+            width: otherCab.width,
+          });
+        }
+      }
+
+      // Ordenar obstáculos a lo largo del muro (de s=0 a s=wallLen)
+      onWallObstacles.sort((a, b) => a.sCenter - b.sCenter);
+
+      // Deslizar sClamped para evitar cualquier solapamiento
+      let resolvedS = sClamped;
+      const halfW = cabWidth / 2;
+
+      for (let iter = 0; iter < 3; iter++) {
+        for (const obs of onWallObstacles) {
+          const myMin = resolvedS - halfW;
+          const myMax = resolvedS + halfW;
+          // Hay solapamiento 1D si se cruzan los intervalos
+          if (myMin < obs.sMax - 0.2 && myMax > obs.sMin + 0.2) {
+            if (s >= obs.sCenter) {
+              // Cursor a la derecha del obstáculo: empujar hacia la derecha
+              resolvedS = obs.sMax + halfW + 0.05;
+            } else {
+              // Cursor a la izquierda del obstáculo: empujar hacia la izquierda
+              resolvedS = obs.sMin - halfW - 0.05;
+            }
+          }
+        }
+      }
+
+      // Limitar a los extremos del muro
+      resolvedS = Math.max(cabWidth / 2 + 0.5, Math.min(wallLen - cabWidth / 2 - 0.5, resolvedS));
+
+      snapPosX = x1 + resolvedS * uX + flushDist * nX;
+      snapPosZ = z1 + resolvedS * uZ + flushDist * nZ;
+
+      let snapCandidatePos: [number, number, number] = [snapPosX, defaultY, snapPosZ];
+      snapCandidatePos = constrainInsideRoomAndWalls(snapCandidatePos, wallRot, cabWidth, cabDepth, cabHeight, effectiveWalls, roomPoly);
+
+      // Paso de resolución fina con SAT MTV (Separating Axis Theorem) si queda algún milímetro de intersección
+      for (let iter = 0; iter < 4; iter++) {
+        let hasCol = false;
+        const curBox = getCabinetBox2D({
+          position: snapCandidatePos,
+          width: cabWidth,
+          depth: cabDepth,
+          height: cabHeight,
+          rotation: wallRot,
+          type: cabType,
+        });
+
+        for (const otherCab of otherCabinets) {
+          const otherBox = getCabinetBox2D(otherCab);
+          const col = checkOBBCollision(curBox, otherBox, 0.2);
+          if (col.colliding && col.mtvAxis && col.overlap > 0.1) {
+            hasCol = true;
+            // Proyectar el empuje sobre la dirección del muro (uX, uZ)
+            const dotU = col.mtvAxis[0] * uX + col.mtvAxis[1] * uZ;
+            const pushS = Math.sign(dotU || 1) * col.overlap;
+            snapCandidatePos[0] += pushS * uX;
+            snapCandidatePos[2] += pushS * uZ;
+            snapCandidatePos = constrainInsideRoomAndWalls(snapCandidatePos, wallRot, cabWidth, cabDepth, cabHeight, effectiveWalls, roomPoly);
+            break;
+          }
+        }
+        if (!hasCol) break;
+      }
+
+      // Comprobar si tras todas las resoluciones aún colisiona
+      const finalCandBox = getCabinetBox2D({
+        position: snapCandidatePos,
+        width: cabWidth,
+        depth: cabDepth,
+        height: cabHeight,
+        rotation: wallRot,
+        type: cabType,
+      });
+
+      let isStillColliding = false;
+      for (const otherCab of otherCabinets) {
+        const otherBox = getCabinetBox2D(otherCab);
+        if (checkOBBCollision(finalCandBox, otherBox, 0.4).colliding) {
+          isStillColliding = true;
+          break;
+        }
+      }
+
+      const distToSnap = Math.hypot(mouseX - snapCandidatePos[0], mouseZ - snapCandidatePos[2]);
 
       if (distToSnap < wallSnapThreshold) {
-        // Verificar que no se solape con otro mueble
-        const isValid = isCandidateValid(
-          {
-            position: snapCandidatePos,
-            width: cabWidth,
-            height: cabHeight,
-            depth: cabDepth,
-            rotation: wallRot,
-            type: cabType,
-          },
-          otherCabinets,
-          [] // Ya está situado en la cara interior del muro
-        );
-
-        if (isValid && (!bestWallSnap || distToSnap < bestWallSnap.dist)) {
-          bestWallSnap = { pos: snapCandidatePos, rot: wallRot, dist: distToSnap };
+        if (!bestWallSnap || (!isStillColliding && bestWallSnap.isColliding) || distToSnap < bestWallSnap.dist) {
+          bestWallSnap = {
+            pos: snapCandidatePos,
+            rot: wallRot,
+            dist: distToSnap,
+            isColliding: isStillColliding,
+          };
         }
       }
     }
@@ -511,112 +755,19 @@ export function resolvePlacement({
       position: bestWallSnap.pos,
       rotation: bestWallSnap.rot,
       isSnapped: true,
-      isColliding: false,
+      isColliding: bestWallSnap.isColliding,
     };
   }
 
-  // 3. Resolución de Posición Libre dentro del Área de Cocina
-  // Si el ratón está fuera de la cocina y no hubo snap, proyectamos la posición al interior del polígono
-  let candidatePosX = mouseX;
-  let candidatePosZ = mouseZ;
-
-  if (roomPoly.length >= 3 && !isPointInPolygon(candidatePosX, candidatePosZ, roomPoly)) {
-    // Buscar el punto interior más cercano
-    let closestEdgeDist = Infinity;
-    let fallbackX = roomCenterX;
-    let fallbackZ = roomCenterZ;
-
-    for (const w of walls) {
-      const proj = getClosestPointOnSegment(mouseX, mouseZ, w.start[0], w.start[1], w.end[0], w.end[1]);
-      if (proj.dist < closestEdgeDist) {
-        closestEdgeDist = proj.dist;
-        // Vector normal interior
-        const wallLen = Math.hypot(w.end[0] - w.start[0], w.end[1] - w.start[1]);
-        if (wallLen > 0.1) {
-          let nX = -(w.end[1] - w.start[1]) / wallLen;
-          let nZ = (w.end[0] - w.start[0]) / wallLen;
-          const midX = (w.start[0] + w.end[0]) / 2;
-          const midZ = (w.start[1] + w.end[1]) / 2;
-          if (!isPointInPolygon(midX + nX * 5, midZ + nZ * 5, roomPoly)) {
-            nX = -nX;
-            nZ = -nZ;
-          }
-          const margin = (w.thickness || 20) / 2 + cabDepth / 2;
-          fallbackX = proj.point[0] + nX * margin;
-          fallbackZ = proj.point[1] + nZ * margin;
-        }
-      }
-    }
-    candidatePosX = fallbackX;
-    candidatePosZ = fallbackZ;
-  }
-
-  let candidatePos: [number, number, number] = [candidatePosX, defaultY, candidatePosZ];
-  let candidateTest = {
-    position: candidatePos,
-    width: cabWidth,
-    height: cabHeight,
-    depth: cabDepth,
-    rotation: preferredRot,
-    type: cabType,
-  };
-
-  let isColliding = false;
-
-  // Resolver colisión contra muros: siempre empujar hacia el interior de la habitación
-  if (walls && walls.length > 0) {
-    for (const w of walls) {
-      const wallBox = getWallBox2D(w);
-      const candBox = getCabinetBox2D(candidateTest);
-      const res = checkOBBCollision(candBox, wallBox, 0.5);
-      if (res.colliding && res.mtvAxis) {
-        isColliding = true;
-        let pushAxis = res.mtvAxis;
-        // Comprobar que el eje de empuje apunte hacia el interior de la habitación
-        const toRoomX = roomCenterX - candidatePos[0];
-        const toRoomZ = roomCenterZ - candidatePos[2];
-        if (pushAxis[0] * toRoomX + pushAxis[1] * toRoomZ < 0) {
-          pushAxis = [-pushAxis[0], -pushAxis[1]];
-        }
-        const pushDist = res.overlap + 0.8;
-        candidatePos = [
-          candidatePos[0] + pushAxis[0] * pushDist,
-          candidatePos[1],
-          candidatePos[2] + pushAxis[1] * pushDist,
-        ];
-        candidateTest.position = candidatePos;
-      }
-    }
-  }
-
-  // Resolver colisión contra otros muebles
-  for (let iter = 0; iter < 4; iter++) {
-    let hadCollision = false;
-    const candBox = getCabinetBox2D(candidateTest);
-
-    for (const cab of otherCabinets) {
-      const otherBox = getCabinetBox2D(cab);
-      const res = checkOBBCollision(candBox, otherBox, 0.5);
-      if (res.colliding && res.mtvAxis) {
-        hadCollision = true;
-        isColliding = true;
-        const pushDist = res.overlap + 0.5;
-        candidatePos = [
-          candidatePos[0] + res.mtvAxis[0] * pushDist,
-          candidatePos[1],
-          candidatePos[2] + res.mtvAxis[1] * pushDist,
-        ];
-        candidateTest.position = candidatePos;
-        break;
-      }
-    }
-    if (!hadCollision) break;
-  }
+  // 3. Posición libre: restringida estrictamente al interior de la habitación para no sobrepasar muros
+  let candidatePos: [number, number, number] = [mouseX, defaultY, mouseZ];
+  candidatePos = constrainInsideRoomAndWalls(candidatePos, preferredRot, cabWidth, cabDepth, cabHeight, walls, roomPoly);
 
   return {
     position: candidatePos,
     rotation: preferredRot,
     isSnapped: false,
-    isColliding,
+    isColliding: false,
   };
 }
+

@@ -13,6 +13,12 @@ export type ToolMode =
   | 'place_base_spice_rack' 
   | 'place_base_corner_blind' 
   | 'place_wall' 
+  | 'place_wall_1_door'
+  | 'place_wall_2_doors'
+  | 'place_wall_lift_up'
+  | 'place_wall_lift_up_double'
+  | 'place_wall_microwave_niche'
+  | 'place_wall_open'
   | 'place_tall' 
   | 'place_tall_1_door'
   | 'place_tall_split_2_doors'
@@ -23,6 +29,7 @@ export type ToolMode =
   | 'place_island' 
   | 'place_deco_stove'
   | 'place_deco_fridge'
+  | 'place_deco_hood'
   | 'place_deco_plant'
   | 'move_active';
 
@@ -102,7 +109,7 @@ function resolveCabinetsWithResize(
     const newHeight = updates.height;
     if (updatedTarget.type === 'base' || updatedTarget.type === 'tall' || updatedTarget.type === 'island') {
       updatedTarget.position = [updatedTarget.position[0], newHeight / 2, updatedTarget.position[2]];
-    } else if (updatedTarget.type === 'wall') {
+    } else if (updatedTarget.type === 'wall' || updatedTarget.variant === 'deco_hood') {
       const currentBottom = target.position[1] - target.height / 2;
       updatedTarget.position = [updatedTarget.position[0], currentBottom + newHeight / 2, updatedTarget.position[2]];
     }

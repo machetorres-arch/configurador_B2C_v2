@@ -11,6 +11,90 @@ import { StoveFDVUnique90 } from './decoration/StoveFDVUnique90';
 import { FridgeFDVSignatureSBS } from './decoration/FridgeFDVSignatureSBS';
 import { PlantDecoration } from './decoration/PlantDecoration';
 
+export function AssemblyJoint({
+  position, 
+  length, 
+  axis, 
+  pointing, 
+  thickness,
+  count = 2,
+  overrideAssemblyType = undefined,
+  edgeOffset = 5
+}: {
+  position: [number, number, number],
+  length: number,
+  axis: 'x' | 'y' | 'z',
+  pointing: 'right' | 'left' | 'up' | 'down',
+  thickness: number,
+  count?: number,
+  overrideAssemblyType?: 'spax' | 'minifix',
+  edgeOffset?: number
+}) {
+  const isTransparent = useStore((state) => state.isTransparent);
+  const globalAssemblyType = useStore((state) => state.assemblyType);
+  const assemblyType = overrideAssemblyType || globalAssemblyType;
+  if (!isTransparent) return null;
+
+  const points = [];
+  const start = -length / 2 + edgeOffset; 
+  const end = length / 2 - edgeOffset;
+  const step = count > 1 ? (end - start) / (count - 1) : 0;
+  for (let i = 0; i < count; i++) {
+    points.push(count === 1 ? 0 : start + i * step);
+  }
+
+  let rot: [number, number, number] = [0, 0, 0];
+  if (pointing === 'left') rot = [0, Math.PI, 0];
+  if (pointing === 'up') rot = [0, 0, Math.PI/2];
+  if (pointing === 'down') rot = [0, 0, -Math.PI/2];
+
+  return (
+    <group position={position}>
+      {points.map((p, i) => {
+        const pPos: [number, number, number] = 
+          axis === 'x' ? [p, 0, 0] : 
+          axis === 'y' ? [0, p, 0] : 
+          [0, 0, p];
+          
+        return (
+          <group key={i} position={pPos} rotation={rot}>
+            {assemblyType === 'spax' ? (
+              <group>
+                <mesh position={[-thickness, 0, 0]} rotation={[0, 0, -Math.PI/2]}>
+                  <cylinderGeometry args={[0.4, 0.4, 0.1, 12]} />
+                  <meshStandardMaterial color="#333333" metalness={0.8} roughness={0.5} />
+                </mesh>
+                <mesh position={[-thickness/2 + 1.25, 0, 0]} rotation={[0, 0, -Math.PI/2]}>
+                  <cylinderGeometry args={[0.15, 0.05, thickness + 2.5, 8]} />
+                  <meshStandardMaterial color="#555555" metalness={0.8} roughness={0.5} />
+                </mesh>
+              </group>
+            ) : (
+              <group>
+                {/* Perno Minifix Acero Zincado */}
+                <mesh position={[-thickness/2 + 0.75, 0, 0]} rotation={[0, 0, -Math.PI/2]}>
+                  <cylinderGeometry args={[0.25, 0.25, thickness + 1.5, 8]} />
+                  <meshStandardMaterial color="#888888" metalness={0.9} roughness={0.5} />
+                </mesh>
+                {/* Caja Excéntrica 15mm Zamak */}
+                <mesh position={[1.7, -thickness/2 + 0.25, 0]}>
+                  <cylinderGeometry args={[0.75, 0.75, 0.5, 16]} />
+                  <meshStandardMaterial color="#aaaaaa" metalness={0.5} roughness={0.5} />
+                </mesh>
+                {/* Tarugo de Madera Estriada 8x30 */}
+                <mesh position={[0.5, 0, 2.5]} rotation={[0, 0, -Math.PI/2]}>
+                   <cylinderGeometry args={[0.4, 0.4, 3, 8]} />
+                   <meshStandardMaterial color="#d4a373" roughness={0.9} />
+                </mesh>
+              </group>
+            )}
+          </group>
+        );
+      })}
+    </group>
+  );
+}
+
 export function AnimatedDrawer({ children, openZOffset, forceOpen, onClickAction }: { children: React.ReactNode, openZOffset: number, forceOpen?: boolean, onClickAction?: () => void }) {
   const [isOpen, setIsOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
@@ -25,7 +109,7 @@ export function AnimatedDrawer({ children, openZOffset, forceOpen, onClickAction
   useFrame((state, delta) => {
     if (groupRef.current) {
       const targetZ = isOpen ? openZOffset : 0;
-      groupRef.current.position.z = THREE.MathUtils.lerp(groupRef.current.position.z, targetZ, delta * 3);
+      groupRef.current.position.z = THREE.MathUtils.lerp(groupRef.current.position.z, targetZ, delta * 4);
     }
   });
 
@@ -40,7 +124,6 @@ export function AnimatedDrawer({ children, openZOffset, forceOpen, onClickAction
       ref={groupRef}
       onPointerOver={(e) => { e.stopPropagation(); setHovered(true); }}
       onPointerOut={() => setHovered(false)}
-      onPointerDown={toggle}
       onClick={toggle}
     >
       {children}
@@ -82,7 +165,7 @@ export function AnimatedDoor({
   useFrame((state, delta) => {
     if (groupRef.current) {
       const targetRotation = isOpen ? (isRightHinge ? Math.PI * 0.55 : -Math.PI * 0.55) : 0;
-      groupRef.current.rotation.y = THREE.MathUtils.lerp(groupRef.current.rotation.y, targetRotation, delta * 3.5);
+      groupRef.current.rotation.y = THREE.MathUtils.lerp(groupRef.current.rotation.y, targetRotation, delta * 4);
     }
   });
 
@@ -107,7 +190,6 @@ export function AnimatedDoor({
       ref={groupRef}
       onPointerOver={(e) => { e.stopPropagation(); setHovered(true); }}
       onPointerOut={() => setHovered(false)}
-      onPointerDown={toggle}
       onClick={toggle}
     >
       {/* Front Door Board */}
@@ -139,6 +221,201 @@ export function AnimatedDoor({
           </mesh>
         </group>
       ))}
+    </group>
+  );
+}
+
+export function AnimatedLiftUpDoor({
+  doorW,
+  doorH,
+  thickness,
+  position,
+  colorProps,
+  forceOpen,
+  onClickAction,
+  globalPosition,
+  innerDepth = 30,
+}: {
+  doorW: number;
+  doorH: number;
+  thickness: number;
+  position: [number, number, number];
+  colorProps: any;
+  forceOpen?: boolean;
+  onClickAction?: () => void;
+  globalPosition?: [number, number, number];
+  innerDepth?: number;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const groupRef = useRef<THREE.Group>(null);
+
+  useCursor(hovered);
+
+  React.useEffect(() => {
+    if (forceOpen !== undefined) setIsOpen(forceOpen);
+  }, [forceOpen]);
+
+  useFrame((state, delta) => {
+    if (groupRef.current) {
+      const targetRotation = isOpen ? -Math.PI * 0.45 : 0;
+      groupRef.current.rotation.x = THREE.MathUtils.lerp(groupRef.current.rotation.x, targetRotation, delta * 4);
+    }
+  });
+
+  const toggle = (e: any) => {
+    e.stopPropagation();
+    if (onClickAction) onClickAction();
+    else setIsOpen(prev => !prev);
+  };
+
+  const topHingeY = doorH / 2;
+
+  return (
+    <group
+      position={[position[0], position[1] + topHingeY, position[2] - thickness / 2]}
+      ref={groupRef}
+      onPointerOver={(e) => { e.stopPropagation(); setHovered(true); }}
+      onPointerOut={() => setHovered(false)}
+      onClick={toggle}
+    >
+      {/* Front Door Board */}
+      <Board
+        position={[0, -topHingeY, thickness / 2]}
+        args={[doorW, doorH, thickness]}
+        {...colorProps}
+        isFrontPanel={true}
+        globalPosition={globalPosition}
+      />
+
+      {/* Bisagras Superiores / Herrajes Elevadores Aventos / Pistones a Gas */}
+      {[-doorW / 2 + 5, doorW / 2 - 5].map((x, idx) => (
+        <group key={`top-hinge-${idx}`} position={[x, 0, 0]}>
+          {/* Base de fijación superior */}
+          <mesh position={[0, -0.6, -1.2]}>
+            <boxGeometry args={[1.8, 1.2, 1.6]} />
+            <meshStandardMaterial color="#64748b" metalness={0.8} roughness={0.3} />
+          </mesh>
+          {/* Brazo elevador cilíndrico / pistón */}
+          <mesh position={[0, -doorH * 0.35, -0.6]} rotation={[0.4, 0, 0]}>
+            <cylinderGeometry args={[0.35, 0.35, doorH * 0.55, 12]} />
+            <meshStandardMaterial color="#cbd5e1" metalness={0.9} roughness={0.2} />
+          </mesh>
+          <mesh position={[0, -doorH * 0.2, -0.4]} rotation={[0.4, 0, 0]}>
+            <cylinderGeometry args={[0.22, 0.22, doorH * 0.35, 12]} />
+            <meshStandardMaterial color="#1e293b" metalness={0.5} roughness={0.5} />
+          </mesh>
+        </group>
+      ))}
+    </group>
+  );
+}
+
+export function HoodFDVConic90({ width = 89.8, height = 70, depth = 50 }: { width?: number; height?: number; depth?: number }) {
+  // Dimensiones según Ficha Técnica FDV New Conic 90 780M3H (SAP 16309):
+  // Ancho 898mm (89.8cm), Fondo 500mm (50.0cm), Alto Cuerpo 275mm (27.5cm)
+  // Labio inferior 40mm (4.0cm), Chimenea 219mm x 182mm (21.9 x 18.2 cm)
+  const bodyW = width;
+  const bodyD = depth;
+  const bodyH = 27.5;
+  const lipH = 4.0;
+  const chimneyW = 21.9;
+  const chimneyD = 18.2;
+  const chimneyH = Math.max(15, height - bodyH);
+
+  return (
+    <group position={[0, -height / 2, 0]}>
+      {/* 1. Labio inferior perimetral (Frente vertical de acero inox de 4cm) */}
+      <mesh position={[0, lipH / 2, 0]} castShadow receiveShadow>
+        <boxGeometry args={[bodyW, lipH, bodyD]} />
+        <meshStandardMaterial color="#d1d5db" metalness={0.88} roughness={0.22} />
+      </mesh>
+
+      {/* 2. Cuerpo Cónico / Piramidal de Acero Inoxidable */}
+      <mesh position={[0, lipH + (bodyH - lipH) / 2, 0]} castShadow receiveShadow>
+        <boxGeometry args={[bodyW - 3, bodyH - lipH, bodyD - 3]} />
+        <meshStandardMaterial color="#9ca3af" metalness={0.85} roughness={0.25} />
+      </mesh>
+
+      {/* Placas exteriores biseladas de campana piramidal */}
+      <mesh position={[0, lipH + (bodyH - lipH) / 2, bodyD / 4 - 1.5]} rotation={[-0.48, 0, 0]}>
+        <boxGeometry args={[bodyW, (bodyH - lipH) * 1.22, 0.4]} />
+        <meshStandardMaterial color="#d4d4d8" metalness={0.9} roughness={0.2} />
+      </mesh>
+      <mesh position={[-bodyW / 4 + 1.5, lipH + (bodyH - lipH) / 2, 0]} rotation={[0, 0, 0.48]}>
+        <boxGeometry args={[0.4, (bodyH - lipH) * 1.22, bodyD]} />
+        <meshStandardMaterial color="#c4c4c8" metalness={0.9} roughness={0.2} />
+      </mesh>
+      <mesh position={[bodyW / 4 - 1.5, lipH + (bodyH - lipH) / 2, 0]} rotation={[0, 0, -0.48]}>
+        <boxGeometry args={[0.4, (bodyH - lipH) * 1.22, bodyD]} />
+        <meshStandardMaterial color="#c4c4c8" metalness={0.9} roughness={0.2} />
+      </mesh>
+
+      {/* 3. Panel de Control Táctil Frontal (Display negro con botones LED) */}
+      <mesh position={[0, lipH / 2, bodyD / 2 + 0.1]}>
+        <planeGeometry args={[bodyW * 0.4, lipH * 0.65]} />
+        <meshStandardMaterial color="#0f172a" roughness={0.15} metalness={0.8} />
+      </mesh>
+      {/* Botones táctiles retroiluminados (Luz, V1, V2, V3, Power) */}
+      {[-7, -3.5, 0, 3.5, 7].map((x, i) => (
+        <mesh key={`btn-${i}`} position={[x, lipH / 2, bodyD / 2 + 0.15]}>
+          <circleGeometry args={[0.35, 16]} />
+          <meshStandardMaterial color={i === 2 ? '#38bdf8' : '#ffffff'} emissive={i === 2 ? '#0284c7' : '#334155'} emissiveIntensity={0.8} />
+        </mesh>
+      ))}
+
+      {/* 4. Base Inferior: 3 Filtros de Aluminio Modulares Removibles */}
+      {[-bodyW / 3 + 3, 0, bodyW / 3 - 3].map((x, idx) => (
+        <group key={`filter-${idx}`} position={[x, 0.1, 0]}>
+          {/* Marco del filtro */}
+          <mesh position={[0, 0, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+            <planeGeometry args={[bodyW / 3.4, bodyD - 5]} />
+            <meshStandardMaterial color="#94a3b8" metalness={0.8} roughness={0.3} />
+          </mesh>
+          {/* Malla perforada de aluminio */}
+          <mesh position={[0, -0.05, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+            <planeGeometry args={[bodyW / 3.6, bodyD - 7]} />
+            <meshStandardMaterial color="#cbd5e1" metalness={0.9} roughness={0.4} />
+          </mesh>
+          {/* Pestillo de extracción */}
+          <mesh position={[0, -0.1, -bodyD / 2 + 6]}>
+            <boxGeometry args={[3.2, 0.4, 1.6]} />
+            <meshStandardMaterial color="#475569" metalness={0.7} roughness={0.3} />
+          </mesh>
+        </group>
+      ))}
+
+      {/* 5. Iluminación LED Inferior (2 x LED 2W Spots) */}
+      {[-bodyW / 3 + 2, bodyW / 3 - 2].map((x, idx) => (
+        <group key={`led-${idx}`} position={[x, -0.1, -bodyD / 2 + 4]}>
+          <mesh rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[1.4, 1.4, 0.3, 16]} />
+            <meshStandardMaterial color="#f8fafc" metalness={0.85} roughness={0.2} />
+          </mesh>
+          <mesh position={[0, -0.08, 0]} rotation={[Math.PI / 2, 0, 0]}>
+            <circleGeometry args={[1.1, 16]} />
+            <meshStandardMaterial color="#fef08a" emissive="#fef08a" emissiveIntensity={0.9} />
+          </mesh>
+        </group>
+      ))}
+
+      {/* 6. Chimenea Telescópica de Acero Inoxidable (21.9 x 18.2 cm) */}
+      <group position={[0, bodyH + chimneyH / 2, -bodyD / 2 + chimneyD / 2]}>
+        <mesh castShadow receiveShadow>
+          <boxGeometry args={[chimneyW, chimneyH, chimneyD]} />
+          <meshStandardMaterial color="#d4d4d8" metalness={0.88} roughness={0.2} />
+        </mesh>
+        {/* Rejilla de ventilación superior */}
+        <mesh position={[0, chimneyH / 2 - 3.5, chimneyD / 2 + 0.05]}>
+          <planeGeometry args={[chimneyW * 0.7, 3.0]} />
+          <meshStandardMaterial color="#334155" roughness={0.6} />
+        </mesh>
+        {/* Junta de tramo telescópico */}
+        <mesh position={[0, 0, 0]}>
+          <boxGeometry args={[chimneyW + 0.3, 0.8, chimneyD + 0.3]} />
+          <meshStandardMaterial color="#94a3b8" metalness={0.9} roughness={0.2} />
+        </mesh>
+      </group>
     </group>
   );
 }
@@ -429,12 +706,15 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
 
    const renderParametricBody = () => {
       // 1. Renderizado de Elementos de Decoración & Electrodomésticos Especializados
-      if (type === 'decoration' || variant === 'deco_stove' || variant === 'deco_fridge' || variant === 'deco_plant') {
+      if (type === 'decoration' || variant === 'deco_stove' || variant === 'deco_fridge' || variant === 'deco_hood' || variant === 'deco_plant') {
          if (variant === 'deco_stove') {
             return <StoveFDVUnique90 width={width} height={height} depth={depth} />;
          }
          if (variant === 'deco_fridge') {
             return <FridgeFDVSignatureSBS width={width} height={height} depth={depth} />;
+         }
+         if (variant === 'deco_hood') {
+            return <HoodFDVConic90 width={width} height={height} depth={depth} />;
          }
          if (variant === 'deco_plant') {
             return <PlantDecoration width={width} height={height} depth={depth} />;
@@ -486,6 +766,10 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                      <Board position={[0, yBoxCenter + 0.6, drawerBoxZCenter - drawerBoxLength/2 + thickness/2]} args={[skw - thickness*2, sideHeight - 1.2, thickness]} {...parseColor(cInner)} />
                      <Board position={[0, yBottomPanel + 0.15, drawerBoxZCenter]} args={[skw - thickness*2, 0.3, drawerBoxLength - thickness*2]} color="#dddddd" />
                      
+                     {/* Uniones del Cajón a la Trasera */}
+                     <AssemblyJoint position={[-skw/2 + thickness, yBoxCenter, drawerBoxZCenter - drawerBoxLength/2 + thickness]} length={sideHeight} axis="y" pointing="right" thickness={thickness} count={1} overrideAssemblyType={useStore.getState().drawerAssemblyType} />
+                     <AssemblyJoint position={[skw/2 - thickness, yBoxCenter, drawerBoxZCenter - drawerBoxLength/2 + thickness]} length={sideHeight} axis="y" pointing="left" thickness={thickness} count={1} overrideAssemblyType={useStore.getState().drawerAssemblyType} />
+
                      {/* Movable Undermount Slides */}
                      <mesh position={[-skw/2 + thickness + 1.0, yBoxBottom + 0.6, drawerBoxZCenter]}>
                         <boxGeometry args={[2.0, 1.2, drawerBoxLength]} />
@@ -499,6 +783,14 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                </group>
             );
          };
+         
+         const renderShelfWithJoints = (yPos: number, keySuffix: string | number) => (
+            <group key={`shelf-${keySuffix}`}>
+               <Board position={[0, yPos, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(shelfColor || cStructure)} />
+               <AssemblyJoint position={[-innerW/2, yPos, 0]} length={depth - 2} axis="z" pointing="right" thickness={thickness} count={2} />
+               <AssemblyJoint position={[innerW/2, yPos, 0]} length={depth - 2} axis="z" pointing="left" thickness={thickness} count={2} />
+            </group>
+         );
          
          if (effectiveVariant === '1_door' || effectiveVariant === 'tall_1_door') {
             const doorW = width - gap*2;
@@ -517,13 +809,13 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                   {/* Repisas Interiores */}
                   {type === 'tall' ? (
                      <>
-                        <Board position={[0, legsHeight + cabH * 0.20, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(shelfColor || cStructure)} />
-                        <Board position={[0, legsHeight + cabH * 0.40, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(shelfColor || cStructure)} />
-                        <Board position={[0, legsHeight + cabH * 0.60, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(shelfColor || cStructure)} />
-                        <Board position={[0, legsHeight + cabH * 0.80, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(shelfColor || cStructure)} />
+                        {renderShelfWithJoints(legsHeight + cabH * 0.20, 't1')}
+                        {renderShelfWithJoints(legsHeight + cabH * 0.40, 't2')}
+                        {renderShelfWithJoints(legsHeight + cabH * 0.60, 't3')}
+                        {renderShelfWithJoints(legsHeight + cabH * 0.80, 't4')}
                      </>
                   ) : (
-                     <Board position={[0, legsHeight + cabH/2, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(shelfColor || cStructure)} />
+                     renderShelfWithJoints(legsHeight + cabH/2, 'b1')
                   )}
                </>
             );
@@ -546,8 +838,8 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                      colorProps={parseColor(cDoors)}
                      globalPosition={[position[0], position[1] + lowerY, position[2] + frontZ]}
                   />
-                  <Board position={[0, legsHeight + baseH, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(shelfColor || cStructure)} />
-                  <Board position={[0, legsHeight + baseH / 2, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(shelfColor || cStructure)} />
+                  {renderShelfWithJoints(legsHeight + baseH, 'div')}
+                  {renderShelfWithJoints(legsHeight + baseH / 2, 'low')}
                   <AnimatedDoor
                      position={[0, upperY, frontZ]}
                      doorW={width - gap*2}
@@ -557,9 +849,9 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                      colorProps={parseColor(cDoors)}
                      globalPosition={[position[0], position[1] + upperY, position[2] + frontZ]}
                   />
-                  <Board position={[0, legsHeight + baseH + (cabH - baseH) * 0.25, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(shelfColor || cStructure)} />
-                  <Board position={[0, legsHeight + baseH + (cabH - baseH) * 0.50, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(shelfColor || cStructure)} />
-                  <Board position={[0, legsHeight + baseH + (cabH - baseH) * 0.75, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(shelfColor || cStructure)} />
+                  {renderShelfWithJoints(legsHeight + baseH + (cabH - baseH) * 0.25, 'u1')}
+                  {renderShelfWithJoints(legsHeight + baseH + (cabH - baseH) * 0.50, 'u2')}
+                  {renderShelfWithJoints(legsHeight + baseH + (cabH - baseH) * 0.75, 'u3')}
                </>
             );
          }
@@ -727,13 +1019,13 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                   {/* Repisas Interiores */}
                   {type === 'tall' ? (
                      <>
-                        <Board position={[0, legsHeight + cabH * 0.20, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(shelfColor || cStructure)} />
-                        <Board position={[0, legsHeight + cabH * 0.40, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(shelfColor || cStructure)} />
-                        <Board position={[0, legsHeight + cabH * 0.60, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(shelfColor || cStructure)} />
-                        <Board position={[0, legsHeight + cabH * 0.80, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(shelfColor || cStructure)} />
+                        {renderShelfWithJoints(legsHeight + cabH * 0.20, '2dt1')}
+                        {renderShelfWithJoints(legsHeight + cabH * 0.40, '2dt2')}
+                        {renderShelfWithJoints(legsHeight + cabH * 0.60, '2dt3')}
+                        {renderShelfWithJoints(legsHeight + cabH * 0.80, '2dt4')}
                      </>
                   ) : (
-                     <Board position={[0, legsHeight + cabH/2, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(shelfColor || cStructure)} />
+                     renderShelfWithJoints(legsHeight + cabH/2, '2db1')
                   )}
                </>
             );
@@ -837,6 +1129,96 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                </>
             );
          }
+
+         if (effectiveVariant === 'wall_lift_up') {
+            const doorW = width - gap * 2;
+            const doorH = cabH - gap * 2;
+            return (
+               <>
+                  <AnimatedLiftUpDoor
+                     position={[0, legsHeight + cabH / 2, frontZ]}
+                     doorW={doorW}
+                     doorH={doorH}
+                     thickness={thickness}
+                     colorProps={parseColor(cDoors)}
+                     globalPosition={[position[0], position[1] + legsHeight + cabH / 2, position[2] + frontZ]}
+                     innerDepth={depth - 2}
+                  />
+                  {cabH > 50 && renderShelfWithJoints(legsHeight + cabH / 2, 'wlu1')}
+               </>
+            );
+         }
+
+         if (effectiveVariant === 'wall_lift_up_double') {
+            const sectionH = (cabH - gap * 3) / 2;
+            const lowerDoorH = sectionH;
+            const upperDoorH = sectionH;
+            const lowerY = legsHeight + gap + lowerDoorH / 2;
+            const upperY = legsHeight + gap + lowerDoorH + gap + upperDoorH / 2;
+            return (
+               <>
+                  <AnimatedLiftUpDoor
+                     key="lift-lower"
+                     position={[0, lowerY, frontZ]}
+                     doorW={width - gap * 2}
+                     doorH={lowerDoorH}
+                     thickness={thickness}
+                     colorProps={parseColor(cDoors)}
+                     globalPosition={[position[0], position[1] + lowerY, position[2] + frontZ]}
+                     innerDepth={depth - 2}
+                  />
+                  {/* Divisor horizontal fijo */}
+                  {renderShelfWithJoints(legsHeight + lowerDoorH + gap * 1.5, 'wlud_div')}
+                  <AnimatedLiftUpDoor
+                     key="lift-upper"
+                     position={[0, upperY, frontZ]}
+                     doorW={width - gap * 2}
+                     doorH={upperDoorH}
+                     thickness={thickness}
+                     colorProps={parseColor(cDoors)}
+                     globalPosition={[position[0], position[1] + upperY, position[2] + frontZ]}
+                     innerDepth={depth - 2}
+                  />
+               </>
+            );
+         }
+
+         if (effectiveVariant === 'wall_microwave_niche') {
+            const nicheH = 38;
+            const topH = Math.max(20, cabH - nicheH - gap * 2);
+            const topDoorH = topH - gap * 2;
+            const topY = legsHeight + nicheH + gap + topDoorH / 2;
+            return (
+               <>
+                  {/* Divisor repisa sobre el nicho */}
+                  {renderShelfWithJoints(legsHeight + nicheH, 'wmn_div')}
+                  {/* Microondas portátil de sobremesa en el nicho inferior */}
+                  <group position={[0, legsHeight + 2, 0]}>
+                     <PortableMicrowave width={width - 4} height={nicheH - 4} depth={depth - 3} />
+                  </group>
+                  {/* Puerta superior elevable */}
+                  <AnimatedLiftUpDoor
+                     position={[0, topY, frontZ]}
+                     doorW={width - gap * 2}
+                     doorH={topDoorH}
+                     thickness={thickness}
+                     colorProps={parseColor(cDoors)}
+                     globalPosition={[position[0], position[1] + topY, position[2] + frontZ]}
+                     innerDepth={depth - 2}
+                  />
+                  {topH > 45 && renderShelfWithJoints(legsHeight + nicheH + topH / 2, 'wmn_top_shelf')}
+               </>
+            );
+         }
+
+         if (effectiveVariant === 'wall_open' || (type === 'wall' && (effectiveVariant === 'open' || !effectiveVariant))) {
+            return (
+               <>
+                  {renderShelfWithJoints(legsHeight + cabH * 0.33, 'wo1')}
+                  {renderShelfWithJoints(legsHeight + cabH * 0.66, 'wo2')}
+               </>
+            );
+         }
          return null;
       };
 
@@ -875,13 +1257,27 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
             <Board position={[0, legsHeight + thickness/2, 0]} args={[innerW, thickness, depth]} {...parseColor(cStructure)} />
             <Board position={[0, legsHeight + cabH/2, -depth/2 + thickness/2]} args={[innerW, cabH - thickness*2, thickness]} {...parseColor(cBack)} />
             
+            {/* Uniones estructurales de Base a Laterales */}
+            <AssemblyJoint position={[-innerW/2, legsHeight + thickness/2, 0]} length={depth} axis="z" pointing="right" thickness={thickness} count={2} />
+            <AssemblyJoint position={[innerW/2, legsHeight + thickness/2, 0]} length={depth} axis="z" pointing="left" thickness={thickness} count={2} />
+
             {type === 'base' || type === 'island' ? (
                <>
                   <Board position={[0, height - thickness/2, depth/2 - 5]} args={[innerW, thickness, 10]} {...parseColor(cStructure)} />
                   <Board position={[0, height - 5, -depth/2 + thickness * 1.5]} args={[innerW, 10, thickness]} {...parseColor(cStructure)} />
+                  {/* Amarres frontales y traseros a laterales */}
+                  <AssemblyJoint position={[-innerW/2, height - thickness/2, depth/2 - 5]} length={10} axis="z" pointing="right" thickness={thickness} count={1} />
+                  <AssemblyJoint position={[innerW/2, height - thickness/2, depth/2 - 5]} length={10} axis="z" pointing="left" thickness={thickness} count={1} />
+                  <AssemblyJoint position={[-innerW/2, height - 5, -depth/2 + thickness * 1.5]} length={10} axis="y" pointing="right" thickness={thickness} count={1} />
+                  <AssemblyJoint position={[innerW/2, height - 5, -depth/2 + thickness * 1.5]} length={10} axis="y" pointing="left" thickness={thickness} count={1} />
                </>
             ) : (
-               <Board position={[0, height - thickness/2, 0]} args={[innerW, thickness, depth]} {...parseColor(cStructure)} />
+               <>
+                  <Board position={[0, height - thickness/2, 0]} args={[innerW, thickness, depth]} {...parseColor(cStructure)} />
+                  {/* Techo a laterales */}
+                  <AssemblyJoint position={[-innerW/2, height - thickness/2, 0]} length={depth} axis="z" pointing="right" thickness={thickness} count={2} />
+                  <AssemblyJoint position={[innerW/2, height - thickness/2, 0]} length={depth} axis="z" pointing="left" thickness={thickness} count={2} />
+               </>
             )}
             {renderFronts()}
          </group>

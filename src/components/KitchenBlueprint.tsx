@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { useStore } from '../store';
 import { useKitchenStore } from '../store/kitchenStore';
 import { Part } from '../utils/manufacturing';
-import { generateKitchenPartsList, generateKitchenHardwareList } from '../utils/kitchenManufacturing';
+import { generateKitchenPartsList, generateKitchenHardwareList, HARDWARE_SPECS } from '../utils/kitchenManufacturing';
 import { optimizeNesting, NestingPart, BoardResult } from '../utils/nesting';
 
 export function KitchenBlueprint() {
@@ -20,16 +20,21 @@ export function KitchenBlueprint() {
 
   if (!state.isPrinting) return null;
 
-
-  let allParts = [];
+  let allParts: Part[] = [];
   try {
     allParts = generateKitchenPartsList(kState.cabinets);
-  } catch(e: any) { alert("BP ERR: " + e.message); }
+  } catch (e: any) {
+    console.error('Kitchen Blueprint error:', e);
+  }
   
+  const hwSpec = HARDWARE_SPECS[state.drawerHardware || 'Provelcar'] || HARDWARE_SPECS.Provelcar;
+  const hardwareList = generateKitchenHardwareList(kState.cabinets);
+
   // Agrupar piezas por gabinete y PAGINAR
-  const printPages: { cab: any, index: number, parts: Part[], isContinuation: boolean, pageSubIndex: number, totalModPages: number }[] = [];
+  const printPages: { cab: any; index: number; parts: Part[]; isContinuation: boolean; pageSubIndex: number; totalModPages: number }[] = [];
   
   kState.cabinets.forEach((cab, index) => {
+    if (cab.type === 'decoration' || cab.variant?.startsWith('deco_')) return;
     const cabParts = allParts.filter(p => p.moduleId === cab.id);
     
     // Agrupar piezas únicas
@@ -44,7 +49,7 @@ export function KitchenBlueprint() {
     });
 
     const partsPerPage = 8;
-    const totalPages = Math.ceil(uniqueParts.length / partsPerPage);
+    const totalPages = Math.max(1, Math.ceil(uniqueParts.length / partsPerPage));
     
     for (let i = 0; i < totalPages; i++) {
       printPages.push({
@@ -83,38 +88,47 @@ export function KitchenBlueprint() {
           Planos de Fabricación
         </h1>
         <h2 className="text-3xl font-light text-orange-500 mb-12 uppercase tracking-widest">
-          Proyecto Cocina Modular
+          Proyecto Cocina Modular CAD / CAM
         </h2>
-        <div className="flex flex-col gap-4 text-center mb-16">
-          <p className="text-xl text-slate-600 font-medium">Cliente: Proyecto MuebleStudio</p>
-          <p className="text-lg text-slate-500">Fecha: {new Date().toLocaleDateString()}</p>
+        <div className="flex flex-col gap-2 text-center mb-12">
+          <p className="text-xl text-slate-700 font-medium">Cliente: Proyecto Cocina MuebleStudio</p>
+          <p className="text-base text-slate-500">Fecha de Emisión: {new Date().toLocaleDateString()}</p>
         </div>
-        <div className="grid grid-cols-2 gap-12 w-full max-w-4xl mt-12">
+        <div className="grid grid-cols-2 gap-8 w-full max-w-4xl mt-4">
           <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
             <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4">Especificaciones Globales</h3>
-            <ul className="space-y-3 text-slate-700">
+            <ul className="space-y-3 text-slate-700 text-sm">
               <li className="flex justify-between border-b border-slate-100 pb-2">
-                <span>Espesor Melamina:</span> <span className="font-mono">{state.thickness} cm</span>
+                <span>Espesor Melamina:</span> <span className="font-mono font-bold">{state.thickness} cm ({state.thickness * 10} mm)</span>
               </li>
               <li className="flex justify-between border-b border-slate-100 pb-2">
-                <span>Total Módulos:</span> <span className="font-mono">{kState.cabinets.length}</span>
+                <span>Total Módulos de Cocina:</span> <span className="font-mono font-bold">{kState.cabinets.filter(c => c.type !== 'decoration' && !c.variant?.startsWith('deco_')).length}</span>
               </li>
               <li className="flex justify-between border-b border-slate-100 pb-2">
-                <span>Total Piezas:</span> <span className="font-mono">{allParts.reduce((acc, p) => acc + p.qty, 0)}</span>
+                <span>Total Piezas Despiece:</span> <span className="font-mono font-bold">{allParts.reduce((acc, p) => acc + p.qty, 0)}</span>
+              </li>
+              <li className="flex justify-between border-b border-slate-100 pb-2">
+                <span>Placas Estimadas (2440x1830):</span> <span className="font-mono font-bold">{boardResults.length} planchas</span>
               </li>
             </ul>
           </div>
           <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-            <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4">Ingeniería & Herrajes</h3>
-            <ul className="space-y-3 text-slate-700">
+            <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4">Ingeniería & Quincallería</h3>
+            <ul className="space-y-3 text-slate-700 text-sm">
               <li className="flex justify-between border-b border-slate-100 pb-2">
-                <span>Tapacanto Gabinetes:</span> <span className="font-mono">{state.edgeBandingThicknessCabinets.toFixed(1)} mm</span>
+                <span>Tapacanto Gabinetes:</span> <span className="font-mono font-bold">{state.edgeBandingThicknessCabinets.toFixed(1)} mm</span>
               </li>
               <li className="flex justify-between border-b border-slate-100 pb-2">
-                <span>Tapacanto Frentes:</span> <span className="font-mono">{state.edgeBandingThicknessFronts.toFixed(1)} mm</span>
+                <span>Tapacanto Frentes:</span> <span className="font-mono font-bold">{state.edgeBandingThicknessFronts.toFixed(1)} mm</span>
               </li>
               <li className="flex justify-between border-b border-slate-100 pb-2">
-                <span>Ensamblaje:</span> <span className="font-mono uppercase">{state.assemblyType}</span>
+                <span>Ensamblaje Estructura:</span> <span className="font-mono font-bold uppercase text-orange-600">{state.assemblyType === 'minifix' ? 'Minifix + Tarugo 8x30' : 'Soberbio / Spax 4x50'}</span>
+              </li>
+              <li className="flex justify-between border-b border-slate-100 pb-2">
+                <span>Armado Cajones:</span> <span className="font-mono font-bold uppercase">{state.drawerAssemblyType === 'minifix' ? 'Minifix + Tarugo' : 'Soberbio / Spax 4x40'}</span>
+              </li>
+              <li className="flex justify-between border-b border-slate-100 pb-2">
+                <span>Quincallería Correderas:</span> <span className="font-mono font-bold text-slate-900">{state.drawerHardware} ({hwSpec.slideName})</span>
               </li>
             </ul>
           </div>
@@ -126,7 +140,7 @@ export function KitchenBlueprint() {
         <div key={'page-'+i} className="w-[297mm] h-[210mm] mx-auto p-12 bg-white print:break-after-page relative">
           <div className="flex justify-between items-end border-b-2 border-slate-900 pb-4 mb-8">
             <div>
-              <h2 className="text-3xl font-bold uppercase tracking-tighter text-slate-900">Gabinete {page.index + 1} <span className="text-orange-500">({page.cab.type})</span></h2>
+              <h2 className="text-3xl font-bold uppercase tracking-tighter text-slate-900">Gabinete {page.index + 1} <span className="text-orange-500">({page.cab.type} - {page.cab.variant || 'estándar'})</span></h2>
               {page.totalModPages > 1 && (
                 <p className="text-sm text-slate-500 mt-1 uppercase tracking-widest">Hoja {page.pageSubIndex} de {page.totalModPages}</p>
               )}
@@ -139,12 +153,13 @@ export function KitchenBlueprint() {
 
           <table className="w-full text-left text-sm border-collapse">
             <thead>
-              <tr className="bg-slate-100 text-slate-600 uppercase tracking-wider">
+              <tr className="bg-slate-100 text-slate-600 uppercase tracking-wider text-xs">
                 <th className="p-3 border-b-2 border-slate-300">Pieza</th>
                 <th className="p-3 border-b-2 border-slate-300 text-center">Cant.</th>
                 <th className="p-3 border-b-2 border-slate-300">Dimensiones (mm)</th>
                 <th className="p-3 border-b-2 border-slate-300 text-center">Espesor</th>
                 <th className="p-3 border-b-2 border-slate-300">Tapacantos (L1, L2, W1, W2)</th>
+                <th className="p-3 border-b-2 border-slate-300">Notas Técnicas</th>
               </tr>
             </thead>
             <tbody>
@@ -166,12 +181,13 @@ export function KitchenBlueprint() {
                       <span className={part.edgeW2 ? "text-orange-600 font-bold" : "text-slate-300"}>W2</span>
                     </div>
                   </td>
+                  <td className="p-3 text-xs text-slate-600 font-sans">{part.notes || ''}</td>
                 </tr>
               ))}
             </tbody>
           </table>
           <div className="absolute bottom-12 left-12 right-12 flex justify-between text-xs text-slate-400 uppercase tracking-widest border-t border-slate-200 pt-4">
-            <span>MuebleStudio Kitchen Builder</span>
+            <span>MuebleStudio Kitchen Builder • Herrajes: {state.assemblyType === 'minifix' ? 'Minifix + Tarugo' : 'Soberbio / Spax'}, Correderas {state.drawerHardware}</span>
             <span>Página {i + 2}</span>
           </div>
         </div>
@@ -191,7 +207,7 @@ export function KitchenBlueprint() {
             </div>
           </div>
           
-          <div className="flex-1 bg-slate-100 border-2 border-slate-300 rounded-lg relative overflow-hidden shrink-0" style={{ height: '500px' }}>
+          <div className="flex-1 bg-slate-100 border-2 border-slate-300 rounded-lg relative overflow-hidden shrink-0" style={{ height: '480px' }}>
             {board.placedParts.map((bp, pi) => {
               const scaleX = 100 / board.w;
               const scaleY = 100 / board.h;
@@ -228,25 +244,30 @@ export function KitchenBlueprint() {
       
       {/* 4. HERRAJES E INSUMOS */}
       <div className="w-[297mm] h-[210mm] mx-auto p-12 bg-white relative">
-        <div className="flex justify-between items-end border-b-2 border-slate-900 pb-4 mb-8">
+        <div className="flex justify-between items-end border-b-2 border-slate-900 pb-4 mb-6">
           <div>
-            <h2 className="text-3xl font-bold uppercase tracking-tighter text-slate-900">Listado de <span className="text-orange-500">Herrajes e Insumos</span></h2>
+            <h2 className="text-3xl font-bold uppercase tracking-tighter text-slate-900">Listado de <span className="text-orange-500">Herrajes e Insumos (BoM)</span></h2>
+            <p className="text-sm text-slate-500 mt-1 uppercase tracking-widest">Sistema: {state.assemblyType === 'minifix' ? 'Minifix + Tarugo 8x30' : 'Soberbio / Spax 4x50'} • Correderas: {state.drawerHardware}</p>
           </div>
         </div>
-        <table className="w-full text-left text-sm border-collapse max-w-2xl">
+        <table className="w-full text-left text-xs border-collapse">
           <thead>
             <tr className="bg-slate-100 text-slate-600 uppercase tracking-wider">
-              <th className="p-3 border-b-2 border-slate-300">Ítem / Componente</th>
-              <th className="p-3 border-b-2 border-slate-300 text-center">Cantidad</th>
-              <th className="p-3 border-b-2 border-slate-300 text-center">Unidad</th>
+              <th className="p-2.5 border-b-2 border-slate-300">Categoría</th>
+              <th className="p-2.5 border-b-2 border-slate-300">Ítem / Componente</th>
+              <th className="p-2.5 border-b-2 border-slate-300 text-center">Cantidad</th>
+              <th className="p-2.5 border-b-2 border-slate-300 text-center">Unidad</th>
+              <th className="p-2.5 border-b-2 border-slate-300">Detalles de Aplicación</th>
             </tr>
           </thead>
           <tbody>
-            {generateKitchenHardwareList(kState.cabinets).map((hw, idx) => (
+            {hardwareList.map((hw, idx) => (
               <tr key={idx} className="border-b border-slate-200 even:bg-slate-50/50">
-                <td className="p-3 font-medium text-slate-800">{hw.Item}</td>
-                <td className="p-3 text-center font-mono font-bold">{hw.Cantidad}</td>
-                <td className="p-3 text-center text-slate-500">{hw.Unidad}</td>
+                <td className="p-2.5 font-bold text-orange-600">{hw.Categoria || 'Herrajes'}</td>
+                <td className="p-2.5 font-medium text-slate-800">{hw.Item}</td>
+                <td className="p-2.5 text-center font-mono font-bold">{hw.Cantidad}</td>
+                <td className="p-2.5 text-center text-slate-500">{hw.Unidad}</td>
+                <td className="p-2.5 text-slate-600">{hw.Detalles || ''}</td>
               </tr>
             ))}
           </tbody>

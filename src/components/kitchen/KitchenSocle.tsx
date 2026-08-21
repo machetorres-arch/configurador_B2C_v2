@@ -7,6 +7,8 @@ export function KitchenSocle() {
   const showSocle = useKitchenStore((state) => state.showSocle);
   const toolMode = useKitchenStore((state) => state.toolMode);
   const activeCabinetId = useKitchenStore((state) => state.activeCabinetId);
+  const walls = useKitchenStore((state) => state.walls);
+  const roomConfig = useKitchenStore((state) => state.roomConfig);
 
   if (!showSocle) return null;
 
@@ -15,7 +17,11 @@ export function KitchenSocle() {
     (c) => !(toolMode === 'move_active' && c.id === activeCabinetId)
   );
 
-  const { pieces, straightJoints, laterals, corners, socleColor } = calculateSocleSystem(validCabinets);
+  const { pieces, straightJoints, laterals, corners, socleColor } = calculateSocleSystem(
+    validCabinets,
+    walls,
+    roomConfig?.vertices
+  );
 
   const legsHeight = 10;
   const socleThickness = 1.2;

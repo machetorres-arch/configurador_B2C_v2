@@ -17,103 +17,136 @@ function SceneContent() {
   const { camera, raycaster, pointer, scene } = useThree();
 
   const is2D = viewMode === '2d';
+  const groundPlaneMath = React.useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), []);
+  const intersectPoint = React.useMemo(() => new THREE.Vector3(), []);
 
   useFrame(() => {
+    raycaster.setFromCamera(pointer, camera);
+    const hit = raycaster.ray.intersectPlane(groundPlaneMath, intersectPoint);
+    if (!hit) return;
+
     if (toolMode === 'draw_wall' && drawingStart) {
-      raycaster.setFromCamera(pointer, camera);
-      const ground = scene.getObjectByName('groundPlane');
-      if (ground) {
-        const intersects = raycaster.intersectObject(ground);
-        if (intersects.length > 0) {
-          const x = Math.round(intersects[0].point.x / 10) * 10;
-          const z = Math.round(intersects[0].point.z / 10) * 10;
-          setCurrentMousePos([x, z]);
-        }
-      }
+      const x = Math.round(intersectPoint.x / 10) * 10;
+      const z = Math.round(intersectPoint.z / 10) * 10;
+      setCurrentMousePos([x, z]);
     } else if (toolMode.startsWith('place_') || toolMode === 'move_active') {
-      raycaster.setFromCamera(pointer, camera);
-      const ground = scene.getObjectByName('groundPlane');
-      if (ground) {
-        const intersects = raycaster.intersectObject(ground);
-        if (intersects.length > 0) {
-          const rawX = Math.round(intersects[0].point.x / 5) * 5;
-          const rawZ = Math.round(intersects[0].point.z / 5) * 5;
-          
-          let cabWidth = 60;
-          let cabDepth = 60;
-          let cabHeight = 80;
-          let cabType = 'base';
-          let cabRot = 0;
-          const activeCabId = useKitchenStore.getState().activeCabinetId;
-          
-          if (toolMode === 'move_active') {
-             const activeCab = cabinets.find(c => c.id === activeCabId) || null;
-             if (activeCab) {
-                cabWidth = activeCab.width;
-                cabDepth = activeCab.depth;
-                cabHeight = activeCab.height;
-                cabType = activeCab.type;
-                cabRot = activeCab.rotation || 0;
-             }
-          } else {
-             const isBase = toolMode.startsWith('place_base_');
-             const isTall = toolMode.startsWith('place_tall_') || toolMode === 'place_tall';
-             if (isBase) {
-                cabType = 'base';
-                const cabVariant = toolMode.replace('place_base_', '');
-                if (cabVariant === 'spice_rack') cabWidth = 15;
-                if (cabVariant === '2_doors' || cabVariant === '2_pot_drawers') cabWidth = 80;
-                if (cabVariant === 'corner_blind') cabWidth = 100;
-             } else if (isTall) {
-                cabType = 'tall';
-                cabHeight = 215;
-                if (toolMode === 'place_tall_2_doors') cabWidth = 80;
-                else cabWidth = 60;
-             } else if (toolMode === 'place_wall') {
-                cabType = 'wall';
-                cabHeight = 60;
-                cabWidth = 80;
-                cabDepth = 35;
-             } else if (toolMode === 'place_island') {
-                cabType = 'island';
-                cabHeight = 80;
-                cabWidth = 90;
-                cabDepth = 80;
-             } else if (toolMode === 'place_deco_stove') {
-                cabType = 'decoration';
-                cabWidth = 90;
-                cabHeight = 90;
-                cabDepth = 60;
-             } else if (toolMode === 'place_deco_fridge') {
-                cabType = 'decoration';
-                cabWidth = 91;
-                cabHeight = 177;
-                cabDepth = 67;
-             } else if (toolMode === 'place_deco_plant') {
-                cabType = 'decoration';
-                cabWidth = 40;
-                cabHeight = 95;
-                cabDepth = 40;
-             }
-          }
-
-          const result = resolvePlacement({
-            mouseX: rawX,
-            mouseZ: rawZ,
-            cabWidth,
-            cabHeight,
-            cabDepth,
-            cabType,
-            preferredRot: cabRot,
-            cabinets,
-            ignoreId: toolMode === 'move_active' ? activeCabId : null,
-            walls,
-            roomVertices: roomConfig?.vertices,
-          });
-
-          setGhostCabinet({ pos: result.position, rot: result.rotation, isColliding: result.isColliding });
-        }
+      const rawX = Math.round(intersectPoint.x * 2) / 2;
+      const rawZ = Math.round(intersectPoint.z * 2) / 2;
+      
+      let cabWidth = 60;
+      let cabDepth = 60;
+      let cabHeight = 80;
+      let cabType = 'base';
+      let cabVariant = '1_door';
+      let cabRot = 0;
+      let customY: number | undefined = undefined;
+      const activeCabId = useKitchenStore.getState().activeCabinetId;
+      
+      if (toolMode === 'move_active') {
+         const activeCab = cabinets.find(c => c.id === activeCabId) || null;
+         if (activeCab) {
+            cabWidth = activeCab.width;
+            cabDepth = activeCab.depth;
+            cabHeight = activeCab.height;
+            cabType = activeCab.type;
+            cabVariant = activeCab.variant || '1_door';
+            cabRot = activeCab.rotation || 0;
+            customY = activeCab.position[1];
+         }
+      } else {
+         const isBase = toolMode.startsWith('place_base_');
+         const isTall = toolMode.startsWith('place_tall_') || toolMode === 'place_tall';
+         const isWall = toolMode.startsWith('place_wall_') || toolMode === 'place_wall';
+         if (isBase) {
+            cabType = 'base';
+            const v = toolMode.replace('place_base_', '');
+            cabVariant = v;
+            if (v === 'spice_rack') cabWidth = 15;
+            if (v === '2_doors' || v === '2_pot_drawers') cabWidth = 80;
+            if (v === 'corner_blind') cabWidth = 100;
+         } else if (isTall) {
+            cabType = 'tall';
+            cabHeight = 215;
+            if (toolMode === 'place_tall_2_doors') cabWidth = 80;
+            else cabWidth = 60;
+         } else if (isWall) {
+            cabType = 'wall';
+            cabDepth = 35;
+            if (toolMode === 'place_wall_1_door') {
+               cabVariant = '1_door';
+               cabWidth = 60;
+               cabHeight = 70;
+            } else if (toolMode === 'place_wall_2_doors' || toolMode === 'place_wall') {
+               cabVariant = '2_doors';
+               cabWidth = 80;
+               cabHeight = 70;
+            } else if (toolMode === 'place_wall_lift_up') {
+               cabVariant = 'wall_lift_up';
+               cabWidth = 80;
+               cabHeight = 40;
+            } else if (toolMode === 'place_wall_lift_up_double') {
+               cabVariant = 'wall_lift_up_double';
+               cabWidth = 80;
+               cabHeight = 70;
+            } else if (toolMode === 'place_wall_microwave_niche') {
+               cabVariant = 'wall_microwave_niche';
+               cabWidth = 60;
+               cabHeight = 80;
+               cabDepth = 38;
+            } else if (toolMode === 'place_wall_open') {
+               cabVariant = 'wall_open';
+               cabWidth = 60;
+               cabHeight = 70;
+            }
+         } else if (toolMode === 'place_island') {
+            cabType = 'island';
+            cabHeight = 80;
+            cabWidth = 90;
+            cabDepth = 80;
+         } else if (toolMode === 'place_deco_stove') {
+            cabType = 'decoration';
+            cabVariant = 'deco_stove';
+            cabWidth = 90;
+            cabHeight = 90;
+            cabDepth = 60;
+         } else if (toolMode === 'place_deco_fridge') {
+            cabType = 'decoration';
+            cabVariant = 'deco_fridge';
+            cabWidth = 91;
+            cabHeight = 177;
+            cabDepth = 67;
+         } else if (toolMode === 'place_deco_hood') {
+            cabType = 'decoration';
+            cabVariant = 'deco_hood';
+            cabWidth = 89.8;
+            cabHeight = 70;
+            cabDepth = 50;
+         } else if (toolMode === 'place_deco_plant') {
+            cabType = 'decoration';
+            cabVariant = 'deco_plant';
+            cabWidth = 40;
+            cabHeight = 95;
+            cabDepth = 40;
+         }
       }
+
+      const result = resolvePlacement({
+        mouseX: rawX,
+        mouseZ: rawZ,
+        cabWidth,
+        cabHeight,
+        cabDepth,
+        cabType,
+        variant: cabVariant,
+        customY,
+        preferredRot: cabRot,
+        cabinets,
+        ignoreId: toolMode === 'move_active' ? activeCabId : null,
+        walls,
+        roomVertices: roomConfig?.vertices,
+      });
+
+      setGhostCabinet({ pos: result.position, rot: result.rotation, isColliding: result.isColliding });
     }
   });
 
@@ -150,7 +183,7 @@ function SceneContent() {
     } else if (toolMode.startsWith('place_') && ghostCabinet) {
       const isBase = toolMode.startsWith('place_base_');
       const isTall = toolMode.startsWith('place_tall_') || toolMode === 'place_tall';
-      const isWall = toolMode === 'place_wall';
+      const isWall = toolMode.startsWith('place_wall_') || toolMode === 'place_wall';
       const isIsland = toolMode === 'place_island';
       
       let cabType: 'base' | 'wall' | 'tall' | 'island' | 'decoration' = 'base';
@@ -193,10 +226,33 @@ function SceneContent() {
          }
       } else if (isWall) {
          cabType = 'wall';
-         cabVariant = '2_doors';
-         cabHeight = 60;
-         cabWidth = 80;
          cabDepth = 35;
+         if (toolMode === 'place_wall_1_door') {
+            cabVariant = '1_door';
+            cabWidth = 60;
+            cabHeight = 70;
+         } else if (toolMode === 'place_wall_2_doors' || toolMode === 'place_wall') {
+            cabVariant = '2_doors';
+            cabWidth = 80;
+            cabHeight = 70;
+         } else if (toolMode === 'place_wall_lift_up') {
+            cabVariant = 'wall_lift_up';
+            cabWidth = 80;
+            cabHeight = 40;
+         } else if (toolMode === 'place_wall_lift_up_double') {
+            cabVariant = 'wall_lift_up_double';
+            cabWidth = 80;
+            cabHeight = 70;
+         } else if (toolMode === 'place_wall_microwave_niche') {
+            cabVariant = 'wall_microwave_niche';
+            cabWidth = 60;
+            cabHeight = 80;
+            cabDepth = 38;
+         } else if (toolMode === 'place_wall_open') {
+            cabVariant = 'wall_open';
+            cabWidth = 60;
+            cabHeight = 70;
+         }
       } else if (isIsland) {
          cabType = 'island';
          cabVariant = '2_pot_drawers';
@@ -215,6 +271,12 @@ function SceneContent() {
          cabWidth = 91;
          cabHeight = 177;
          cabDepth = 67;
+      } else if (toolMode === 'place_deco_hood') {
+         cabType = 'decoration';
+         cabVariant = 'deco_hood';
+         cabWidth = 89.8;
+         cabHeight = 70;
+         cabDepth = 50;
       } else if (toolMode === 'place_deco_plant') {
          cabType = 'decoration';
          cabVariant = 'deco_plant';
@@ -254,14 +316,27 @@ function SceneContent() {
   return (
     <>
       <color attach="background" args={['#1a1a1a']} />
-      <ambientLight intensity={0.6} />
-      <directionalLight position={[100, 200, 150]} castShadow intensity={1.2} shadow-mapSize={[2048, 2048]} />
+      <ambientLight intensity={0.7} />
+      <directionalLight
+        position={[200, 350, 250]}
+        castShadow
+        intensity={1.1}
+        shadow-mapSize={[2048, 2048]}
+        shadow-bias={-0.0001}
+        shadow-normalBias={0.04}
+        shadow-camera-near={10}
+        shadow-camera-far={1500}
+        shadow-camera-left={-500}
+        shadow-camera-right={500}
+        shadow-camera-top={500}
+        shadow-camera-bottom={-500}
+      />
       <Environment preset="city" />
 
       {is2D ? (
-        <OrthographicCamera makeDefault position={[0, 1000, 0]} rotation={[-Math.PI/2, 0, 0]} zoom={2.5} near={0.1} far={2000} />
+        <OrthographicCamera makeDefault position={[0, 1000, 0]} rotation={[-Math.PI/2, 0, 0]} zoom={2.5} near={1} far={3000} />
       ) : (
-        <PerspectiveCamera makeDefault position={[300, 300, 400]} fov={45} />
+        <PerspectiveCamera makeDefault position={[300, 300, 400]} fov={45} near={1} far={3000} />
       )}
       
       <OrbitControls 
@@ -272,10 +347,10 @@ function SceneContent() {
       />
 
       <group name="kitchenGroup">
-        {/* Ground Plane */}
-        <mesh name="groundPlane" rotation={[-Math.PI/2, 0, 0]} position={[0, -0.1, 0]} receiveShadow onPointerDown={handlePointerDown}>
-          <planeGeometry args={[2000, 2000]} />
-          <meshStandardMaterial color="#222" roughness={0.8} />
+        {/* Ground Plane (fondo exterior separado verticalmente para evitar z-fighting) */}
+        <mesh name="groundPlane" rotation={[-Math.PI/2, 0, 0]} position={[0, -1, 0]} receiveShadow onPointerDown={handlePointerDown}>
+          <planeGeometry args={[3000, 3000]} />
+          <meshStandardMaterial color="#1e2022" roughness={0.9} />
         </mesh>
         
         {is2D && (
@@ -352,7 +427,13 @@ function SceneContent() {
 
 export function KitchenScene() {
   return (
-    <Canvas shadows>
+    <Canvas 
+      shadows={{ type: THREE.PCFSoftShadowMap }}
+      gl={{ 
+        antialias: true, 
+        powerPreference: 'high-performance',
+      }}
+    >
       <SceneContent />
     </Canvas>
   )

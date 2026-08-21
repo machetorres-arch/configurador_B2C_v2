@@ -1,26 +1,45 @@
 import { CabinetType } from '../store/kitchenStore';
 import { useStore } from '../store';
 import { useKitchenStore } from '../store/kitchenStore';
-import { Part, generateEdgeBandingList, generateHardwareList } from './manufacturing';
+import { Part, generateEdgeBandingList } from './manufacturing';
 import { calculateSocleSystem } from './kitchenSocle';
 
-export function getNominalSlideLength(nominalDepth: number): number {
-    const validLengths = [25, 30, 35, 40, 45, 50, 55, 60, 65, 70];
-    let maxValid = 25;
-    for (const l of validLengths) {
-        if (l <= nominalDepth) {
-            maxValid = l;
-        } else {
-            break;
-        }
+// Parámetros técnicos de herrajes según marca (igualados con el configurador de closets)
+export const HARDWARE_SPECS = {
+  Provelcar: {
+    // Según plano técnico Provelcar "undermount full extension":
+    // SKW (Drawer Width) = LW (Inside Cabinet Width) - 49
+    slideClearanceTotal: 49, 
+    slideName: 'Corredera Oculta Provelcar Ext. Total (Cierre Suave)',
+    // Según plano: SKL (Drawer Length) = NL - 10
+    drawerLengthDeduction: 10,
+    maxSideThickness: 18 // Espesor máximo admitido para el lateral del cajón
+  },
+  Hafele: {
+    // Referencia estándar Häfele Matrix / Moovit
+    slideClearanceTotal: 42, 
+    slideName: 'Corredera Oculta Häfele (Cierre Suave)',
+    drawerLengthDeduction: 0,
+    maxSideThickness: 16
+  }
+};
+
+export function getNominalSlideLength(innerDepthMm: number): number {
+  const availableNLs = [250, 300, 350, 400, 450, 500, 550];
+  // Requerimiento mínimo (LT min = NL + 3). Holgura de seguridad de +10mm
+  for (let i = availableNLs.length - 1; i >= 0; i--) {
+    if (availableNLs[i] + 10 <= innerDepthMm) {
+      return availableNLs[i];
     }
-    return maxValid;
+  }
+  return 250; // Fallback mínimo
 }
 
 export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
   const parts: Part[] = [];
   const state = useStore.getState();
   const thickness = state.thickness; // thickness in cm
+  const hwSpec = HARDWARE_SPECS[state.drawerHardware || 'Provelcar'] || HARDWARE_SPECS.Provelcar;
   
   cabinets.forEach((cab, index) => {
     if (cab.type === 'decoration' || cab.variant?.startsWith('deco_')) return;
@@ -106,17 +125,17 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
     }
 
     // 4. Fondo (Back panel)
-    // using 1.5 cm for calculation, though in code we used thickness
     parts.push({
-        name: `Fondo Traseara ${cabName}`,
+        name: `Fondo Trasera ${cabName}`,
         moduleId: cab.id,
         moduleIndex: index,
         qty: 1,
         length: innerW * 10,
         width: innerH * 10,
-        thickness: thickness * 10,
+        thickness: 3, // Placa MDF 3mm trasera
         material: cab.backColor || state.structureColor,
-        edgeL1: false, edgeL2: false, edgeW1: false, edgeW2: false
+        edgeL1: false, edgeL2: false, edgeW1: false, edgeW2: false,
+        notes: 'Placa de fondo 3mm'
     });
 
     // 5. Repisas (Shelves) y Divisores si corresponde
@@ -428,9 +447,128 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
                 edgeL1: true, edgeL2: true, edgeW1: true, edgeW2: true
             });
         }
+    } else if (cab.variant === 'wall_lift_up') {
+        parts.push({
+            name: `Puerta Elevable Aventos ${cabName}`,
+            moduleId: cab.id,
+            moduleIndex: index,
+            qty: 1,
+            length: (cabH - gap * 2) * 10,
+            width: (w - gap * 2) * 10,
+            thickness: thickness * 10,
+            material: frontMat,
+            edgeL1: true, edgeL2: true, edgeW1: true, edgeW2: true,
+            notes: 'Puerta basculante hacia arriba con pistones a gas'
+        });
+        if (cabH > 50) {
+            parts.push({
+                name: `Repisa Interior ${cabName}`,
+                moduleId: cab.id,
+                moduleIndex: index,
+                qty: 1,
+                length: (innerW - 0.2) * 10,
+                width: (d - 2) * 10,
+                thickness: thickness * 10,
+                material: cab.shelfColor || state.structureColor,
+                edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false
+            });
+        }
+    } else if (cab.variant === 'wall_lift_up_double') {
+        const sectionH = (cabH - gap * 3) / 2;
+        parts.push({
+            name: `Puerta Elevable Inferior ${cabName}`,
+            moduleId: cab.id,
+            moduleIndex: index,
+            qty: 1,
+            length: sectionH * 10,
+            width: (w - gap * 2) * 10,
+            thickness: thickness * 10,
+            material: frontMat,
+            edgeL1: true, edgeL2: true, edgeW1: true, edgeW2: true,
+            notes: 'Módulo inferior basculante'
+        });
+        parts.push({
+            name: `Puerta Elevable Superior ${cabName}`,
+            moduleId: cab.id,
+            moduleIndex: index,
+            qty: 1,
+            length: sectionH * 10,
+            width: (w - gap * 2) * 10,
+            thickness: thickness * 10,
+            material: frontMat,
+            edgeL1: true, edgeL2: true, edgeW1: true, edgeW2: true,
+            notes: 'Módulo superior basculante'
+        });
+        parts.push({
+            name: `Divisor Horizontal Fijo ${cabName}`,
+            moduleId: cab.id,
+            moduleIndex: index,
+            qty: 1,
+            length: (innerW - 0.2) * 10,
+            width: (d - 2) * 10,
+            thickness: thickness * 10,
+            material: cab.shelfColor || state.structureColor,
+            edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
+            notes: 'Repisa divisoria entre tramos basculantes'
+        });
+    } else if (cab.variant === 'wall_microwave_niche') {
+        const nicheH = 38;
+        const topH = Math.max(20, cabH - nicheH - gap * 2);
+        const topDoorH = topH - gap * 2;
+        parts.push({
+            name: `Divisor Base Nicho Microondas ${cabName}`,
+            moduleId: cab.id,
+            moduleIndex: index,
+            qty: 1,
+            length: (innerW - 0.2) * 10,
+            width: (d - 2) * 10,
+            thickness: thickness * 10,
+            material: cab.shelfColor || state.structureColor,
+            edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
+            notes: 'Repisa reforzada sobre nicho microondas'
+        });
+        parts.push({
+            name: `Puerta Superior Elevable ${cabName}`,
+            moduleId: cab.id,
+            moduleIndex: index,
+            qty: 1,
+            length: topDoorH * 10,
+            width: (w - gap * 2) * 10,
+            thickness: thickness * 10,
+            material: frontMat,
+            edgeL1: true, edgeL2: true, edgeW1: true, edgeW2: true,
+            notes: 'Puerta abatible superior de mueble microondas'
+        });
+        if (topH > 45) {
+            parts.push({
+                name: `Repisa Interior Superior ${cabName}`,
+                moduleId: cab.id,
+                moduleIndex: index,
+                qty: 1,
+                length: (innerW - 0.2) * 10,
+                width: (d - 2) * 10,
+                thickness: thickness * 10,
+                material: cab.shelfColor || state.structureColor,
+                edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false
+            });
+        }
+    } else if (cab.variant === 'wall_open') {
+        parts.push({
+            name: `Repisas a la Vista ${cabName}`,
+            moduleId: cab.id,
+            moduleIndex: index,
+            qty: 2,
+            length: (innerW - 0.2) * 10,
+            width: (d - 2) * 10,
+            thickness: thickness * 10,
+            material: cab.shelfColor || state.structureColor,
+            edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
+            notes: '2 repisas vistas interiores'
+        });
     } else if (cab.variant === '4_drawers' || cab.variant === '2_pot_drawers' || cab.variant === '1_door_1_drawer') {
         let drawCount = 0;
         let drawerHeights: number[] = [];
+        let isPotDrawer = cab.variant === '2_pot_drawers';
         
         if (cab.variant === '4_drawers') { drawCount = 4; drawerHeights = [(cabH - gap*5)/4, (cabH - gap*5)/4, (cabH - gap*5)/4, (cabH - gap*5)/4]; }
         if (cab.variant === '2_pot_drawers') { drawCount = 2; drawerHeights = [(cabH - gap*3)/2, (cabH - gap*3)/2]; }
@@ -442,11 +580,12 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
                 moduleId: cab.id,
                 moduleIndex: index,
                 qty: 1,
-                length: dh * 10,
-                width: (w - gap*2) * 10,
+                length: (w - gap*2) * 10,
+                width: dh * 10,
                 thickness: thickness * 10,
                 material: cab.drawerFrontColor || frontMat,
-                edgeL1: true, edgeL2: true, edgeW1: true, edgeW2: true
+                edgeL1: true, edgeL2: true, edgeW1: true, edgeW2: true,
+                notes: 'Tapacanto perimetral'
             });
         });
 
@@ -457,41 +596,47 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
                 moduleId: cab.id,
                 moduleIndex: index,
                 qty: 1,
-                length: doorH * 10,
-                width: (w - gap*2) * 10,
+                length: (w - gap*2) * 10,
+                width: doorH * 10,
                 thickness: thickness * 10,
                 material: frontMat,
                 edgeL1: true, edgeL2: true, edgeW1: true, edgeW2: true
             });
         }
         
-        // Cajas de cajones
-        const sideH = 12; // cm
-        const slideLen = getNominalSlideLength(d - 5);
-        const skw = innerW - 4.9; // mm clear inside width for drawer box calculation
+        // Cajas de cajones calculadas con HARDWARE_SPECS exactos
+        const innerDepthMm = (d - 5) * 10;
+        const nominalLength = getNominalSlideLength(innerDepthMm);
+        const drawerBoxLength = nominalLength - hwSpec.drawerLengthDeduction;
+        const drawerBoxOuterWidth = innerW * 10 - hwSpec.slideClearanceTotal;
+        const drawerFrontBackLength = drawerBoxOuterWidth - (2 * thickness * 10);
+        const sideH = isPotDrawer ? 180 : 120; // 180mm para olleros, 120mm estándar
         const cInnerMat = cab.drawerInnerColor || state.structureColor;
 
         for (let i=0; i<drawCount; i++) {
             // Laterales cajon
             parts.push({
-                name: `Cajón Lateral ${cabName} (${i+1})`,
+                name: `Lateral Cajón ${cabName} (${i+1})`,
                 moduleId: cab.id, moduleIndex: index, qty: 2,
-                length: slideLen * 10, width: sideH * 10, thickness: thickness * 10, material: cInnerMat,
-                edgeL1: true, edgeL2: false, edgeW1: true, edgeW2: true
+                length: drawerBoxLength, width: sideH, thickness: thickness * 10, material: cInnerMat,
+                edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
+                notes: `P/ ${hwSpec.slideName} (NL=${nominalLength}mm)`
             });
             // Frente y trasera caja
             parts.push({
-                name: `Cajón F/T ${cabName} (${i+1})`,
+                name: `Tr/Fr Cajón ${cabName} (${i+1})`,
                 moduleId: cab.id, moduleIndex: index, qty: 2,
-                length: skw * 10, width: (sideH - 1.2) * 10, thickness: thickness * 10, material: cInnerMat,
-                edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false
+                length: drawerFrontBackLength, width: sideH, thickness: thickness * 10, material: cInnerMat,
+                edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
+                notes: `P/ ${hwSpec.slideName}`
             });
             // Fondo de cajón (3mm)
             parts.push({
-                name: `Cajón Piso ${cabName} (${i+1})`,
+                name: `Fondo Cajón ${cabName} (${i+1})`,
                 moduleId: cab.id, moduleIndex: index, qty: 1,
-                length: slideLen * 10, width: skw * 10, thickness: 3, material: '#dddddd',
-                edgeL1: false, edgeL2: false, edgeW1: false, edgeW2: false
+                length: drawerBoxLength, width: drawerBoxOuterWidth, thickness: 3, material: cab.backColor || '#dddddd',
+                edgeL1: false, edgeL2: false, edgeW1: false, edgeW2: false,
+                notes: 'Fondo ranurado/clavado 3mm'
             });
         }
     }
@@ -505,15 +650,29 @@ export function generateKitchenHardwareList(cabinets: CabinetType[]) {
 
     const state = useStore.getState();
     const kState = useKitchenStore.getState();
+    const hwSpec = HARDWARE_SPECS[state.drawerHardware || 'Provelcar'] || HARDWARE_SPECS.Provelcar;
+
     let totalHinges = 0;
-    let totalDrawerSlides = 0;
-    let totalScrews = 0;
+    let totalDrawers = 0;
+    const slidesByNL: Record<number, number> = {};
+    
+    let totalStructureScrews = 0;
+    let totalStructureMinifix = 0;
+    let totalStructureDowels = 0;
+    
+    let totalDrawerScrews = 0;
+    let totalDrawerMinifix = 0;
+    let totalDrawerDowels = 0;
+    
     let builtInOvensCount = 0;
     let builtInMicrowavesCount = 0;
     let portableMicrowavesCount = 0;
     let stoveFd90Count = 0;
     let fridgeSBSCount = 0;
+    let hoodConic90Count = 0;
     let plantDecoCount = 0;
+    let wallCabinetsCount = 0;
+    let liftUpPistonsCount = 0;
     
     const baseCabinets = cabinets.filter(c => c.type === 'base' || c.type === 'island' || c.type === 'tall');
     
@@ -521,14 +680,37 @@ export function generateKitchenHardwareList(cabinets: CabinetType[]) {
         if (cab.type === 'decoration' || cab.variant?.startsWith('deco_')) {
             if (cab.variant === 'deco_stove') stoveFd90Count += 1;
             else if (cab.variant === 'deco_fridge') fridgeSBSCount += 1;
+            else if (cab.variant === 'deco_hood') hoodConic90Count += 1;
             else if (cab.variant === 'deco_plant') plantDecoCount += 1;
             return;
         }
-        totalScrews += cab.type === 'tall' ? 36 : 20; // Structural assembly
+
+        if (cab.type === 'wall') {
+            wallCabinetsCount += 1;
+        }
+
+        // Fijaciones estructurales por módulo
+        const fixPoints = cab.type === 'tall' ? 36 : (cab.type === 'wall' ? 16 : 20);
+        if (state.assemblyType === 'minifix') {
+            totalStructureMinifix += fixPoints;
+            totalStructureDowels += fixPoints * 2; // 2 tarugos por cada perno minifix de apoyo
+        } else {
+            totalStructureScrews += fixPoints;
+            totalStructureDowels += 8; // Guías de tarugo para alineación
+        }
+
+        // Bisagras y Sistemas Elevadores
         if (cab.variant === '1_door' || cab.variant === 'spice_rack' || cab.variant === '1_door_1_drawer' || cab.variant?.startsWith('corner_blind') || cab.variant === 'corner_blind') {
             totalHinges += 2;
         } else if (cab.variant === '2_doors') {
             totalHinges += 4;
+        } else if (cab.variant === 'wall_lift_up') {
+            liftUpPistonsCount += 2;
+        } else if (cab.variant === 'wall_lift_up_double') {
+            liftUpPistonsCount += 4;
+        } else if (cab.variant === 'wall_microwave_niche') {
+            liftUpPistonsCount += 2;
+            portableMicrowavesCount += 1;
         } else if (cab.variant === 'tall_1_door') {
             totalHinges += 4;
         } else if (cab.variant === 'tall_2_doors') {
@@ -544,162 +726,258 @@ export function generateKitchenHardwareList(cabinets: CabinetType[]) {
             portableMicrowavesCount += 1;
         }
         
-        if (cab.variant === '4_drawers') totalDrawerSlides += 4;
-        if (cab.variant === '2_pot_drawers') totalDrawerSlides += 2;
-        if (cab.variant === '1_door_1_drawer') totalDrawerSlides += 1;
+        // Cajones
+        let cabDrawers = 0;
+        if (cab.variant === '4_drawers') cabDrawers = 4;
+        if (cab.variant === '2_pot_drawers') cabDrawers = 2;
+        if (cab.variant === '1_door_1_drawer') cabDrawers = 1;
+
+        if (cabDrawers > 0) {
+            totalDrawers += cabDrawers;
+            const innerDepthMm = (cab.depth - 5) * 10;
+            const nl = getNominalSlideLength(innerDepthMm);
+            slidesByNL[nl] = (slidesByNL[nl] || 0) + cabDrawers;
+
+            // Armado de cajones
+            if (state.drawerAssemblyType === 'minifix') {
+                totalDrawerMinifix += cabDrawers * 8;
+                totalDrawerDowels += cabDrawers * 8;
+            } else {
+                totalDrawerScrews += cabDrawers * 8; // Tornillos 4x40mm o 4x50mm
+            }
+        }
     });
-    
-    hardware.push({ Item: 'Tornillos Spax 4x50', Cantidad: totalScrews, 'Unidad': 'un' });
-    if (totalHinges > 0) hardware.push({ Item: 'Bisagras Rectas Cierre Suave (Cazoleta 35mm)', Cantidad: totalHinges, 'Unidad': 'un' });
-    if (totalDrawerSlides > 0) hardware.push({ Item: `Correderas Ocultas ${state.drawerHardware}`, Cantidad: totalDrawerSlides, 'Unidad': 'par' });
-    if (builtInOvensCount > 0) hardware.push({ Item: 'Horno Eléctrico Empotrable 60cm', Cantidad: builtInOvensCount, 'Unidad': 'un' });
-    if (builtInMicrowavesCount > 0) hardware.push({ Item: 'Microondas Empotrado con Marco de Acero', Cantidad: builtInMicrowavesCount, 'Unidad': 'un' });
-    if (portableMicrowavesCount > 0) hardware.push({ Item: 'Microondas Portátil / Sobremesa 25L', Cantidad: portableMicrowavesCount, 'Unidad': 'un' });
-    if (stoveFd90Count > 0) hardware.push({ Item: 'Cocina FDV FS UNIQUE 90 (Acero Inox - 5 Quemadores + Horno 107L)', Cantidad: stoveFd90Count, 'Unidad': 'un' });
-    if (fridgeSBSCount > 0) hardware.push({ Item: 'Refrigerador FDV SBS SIGNATURE 2.0 513L (Dark Inox)', Cantidad: fridgeSBSCount, 'Unidad': 'un' });
-    if (plantDecoCount > 0) hardware.push({ Item: 'Planta Decorativa Interior con Macetero y Soporte de Madera', Cantidad: plantDecoCount, 'Unidad': 'un' });
-    if (baseCabinets.length > 0) {
-        hardware.push({ Item: 'Patas Regulables 10cm', Cantidad: baseCabinets.length * 4, 'Unidad': 'un' });
+
+    // 1. HERRAJES DE ARMADO (Minifix, Tarugos, Tornillos)
+    if (state.assemblyType === 'minifix' || totalDrawerMinifix > 0) {
+        const totalMinifix = totalStructureMinifix + totalDrawerMinifix;
+        hardware.push({
+            Categoria: 'Quincallería',
+            Item: 'Pernos Minifix + Cajas Excéntricas 15mm',
+            Cantidad: totalMinifix,
+            Unidad: 'Juegos',
+            Detalles: `Estructura (${totalStructureMinifix}) + Cajones (${totalDrawerMinifix})`
+        });
+        hardware.push({
+            Categoria: 'Insumos',
+            Item: 'Tarugos de Madera 8x30mm',
+            Cantidad: totalStructureDowels + totalDrawerDowels,
+            Unidad: 'Unidades',
+            Detalles: 'Encastre y alineación estructural mecanizada'
+        });
+        hardware.push({
+            Categoria: 'Insumos',
+            Item: 'Tapas Adhesivas Embellecedoras para Minifix (Ø15mm)',
+            Cantidad: totalMinifix,
+            Unidad: 'Unidades',
+            Detalles: 'Ocultamiento estético de cajas excéntricas'
+        });
     }
 
-    if (kState.showSocle && baseCabinets.length > 0) {
-        let totalLinearLengthMm = 0;
-        let exposedFlanksCount = 0;
-        let cornerJoints90Count = 0;
-
-        // Identificar corridas lineales continuas (módulos contiguos en la misma línea/rotación)
-        const visited = new Set<string>();
-        const linearRuns: { lengthMm: number; count: number }[] = [];
-
-        baseCabinets.forEach(cab => {
-            const cCos = Math.cos(cab.rotation || 0);
-            const cSin = Math.sin(cab.rotation || 0);
-            const leftFlank: [number, number] = [
-                cab.position[0] - (cab.width / 2) * cCos,
-                cab.position[2] - (cab.width / 2) * cSin,
-            ];
-            const rightFlank: [number, number] = [
-                cab.position[0] + (cab.width / 2) * cCos,
-                cab.position[2] + (cab.width / 2) * cSin,
-            ];
-
-            const leftNeighbor = baseCabinets.find(other => {
-                if (other.id === cab.id) return false;
-                if (Math.abs(other.position[1] - cab.position[1]) > 30) return false;
-                const oCos = Math.cos(other.rotation || 0);
-                const oSin = Math.sin(other.rotation || 0);
-                const otherRight: [number, number] = [
-                    other.position[0] + (other.width / 2) * oCos,
-                    other.position[2] + (other.width / 2) * oSin,
-                ];
-                const otherLeft: [number, number] = [
-                    other.position[0] - (other.width / 2) * oCos,
-                    other.position[2] - (other.width / 2) * oSin,
-                ];
-                return Math.hypot(leftFlank[0] - otherRight[0], leftFlank[1] - otherRight[1]) < 4 || Math.hypot(leftFlank[0] - otherLeft[0], leftFlank[1] - otherLeft[1]) < 4;
+    if (state.assemblyType === 'spax' || totalDrawerScrews > 0) {
+        if (totalStructureScrews > 0) {
+            hardware.push({
+                Categoria: 'Insumos',
+                Item: 'Tornillos Soberbio / Spax 4x50mm',
+                Cantidad: totalStructureScrews,
+                Unidad: 'Unidades',
+                Detalles: 'Armado general de gabinetes y módulos'
             });
-
-            const rightNeighbor = baseCabinets.find(other => {
-                if (other.id === cab.id) return false;
-                if (Math.abs(other.position[1] - cab.position[1]) > 30) return false;
-                const oCos = Math.cos(other.rotation || 0);
-                const oSin = Math.sin(other.rotation || 0);
-                const otherLeft: [number, number] = [
-                    other.position[0] - (other.width / 2) * oCos,
-                    other.position[2] - (other.width / 2) * oSin,
-                ];
-                const otherRight: [number, number] = [
-                    other.position[0] + (other.width / 2) * oCos,
-                    other.position[2] + (other.width / 2) * oSin,
-                ];
-                return Math.hypot(rightFlank[0] - otherLeft[0], rightFlank[1] - otherLeft[1]) < 4 || Math.hypot(rightFlank[0] - otherRight[0], rightFlank[1] - otherRight[1]) < 4;
+            hardware.push({
+                Categoria: 'Insumos',
+                Item: 'Tapas Adhesivas p/Tornillos',
+                Cantidad: totalStructureScrews,
+                Unidad: 'Unidades',
+                Detalles: 'Tapa-tornillos al tono de la melamina'
             });
+        }
+        if (totalDrawerScrews > 0) {
+            hardware.push({
+                Categoria: 'Insumos',
+                Item: 'Tornillos Spax 4x40mm (Cajas de Cajón)',
+                Cantidad: totalDrawerScrews,
+                Unidad: 'Unidades',
+                Detalles: 'Fijación de laterales y frentes/traseras de cajón'
+            });
+        }
+        if (totalStructureDowels > 0 && state.assemblyType === 'spax') {
+            hardware.push({
+                Categoria: 'Insumos',
+                Item: 'Tarugos de Madera 8x30mm (Guías)',
+                Cantidad: totalStructureDowels,
+                Unidad: 'Unidades',
+                Detalles: 'Guías de centrado previo a atornillado'
+            });
+        }
+    }
 
-            // Si el lateral izquierdo está libre (extremo de corrida)
-            if (!leftNeighbor) {
-                totalLinearLengthMm += (cab.depth - 4) * 10;
-                exposedFlanksCount += 1;
-                cornerJoints90Count += 1; // Encuentro frontal-lateral a 90°
-            }
-
-            // Si el lateral derecho está libre (extremo de corrida)
-            if (!rightNeighbor) {
-                totalLinearLengthMm += (cab.depth - 4) * 10;
-                exposedFlanksCount += 1;
-                cornerJoints90Count += 1; // Encuentro frontal-lateral a 90°
-            } else {
-                // Verificar si hay encuentro en L a 90° entre corridas
-                const rotDiff = Math.abs((rightNeighbor.rotation || 0) - (cab.rotation || 0));
-                if (Math.abs(rotDiff - Math.PI / 2) < 0.2 || Math.abs(rotDiff - Math.PI * 1.5) < 0.2) {
-                    cornerJoints90Count += 1;
-                }
-            }
-
-            // Agrupar en corridas lineales para cálculo de tiras continuas de 3000 mm
-            if (!visited.has(cab.id)) {
-                let runMm = 0;
-                let count = 0;
-                const queue = [cab];
-                visited.add(cab.id);
-
-                while (queue.length > 0) {
-                    const current = queue.shift()!;
-                    runMm += current.width * 10;
-                    count += 1;
-                    totalLinearLengthMm += current.width * 10;
-
-                    // Buscar vecinos directos en la misma línea
-                    baseCabinets.forEach(other => {
-                        if (!visited.has(other.id) && Math.abs((other.rotation || 0) - (current.rotation || 0)) < 0.1 && Math.abs(other.position[1] - current.position[1]) < 30) {
-                            const curCos = Math.cos(current.rotation || 0);
-                            const curSin = Math.sin(current.rotation || 0);
-                            const cL: [number, number] = [current.position[0] - (current.width / 2) * curCos, current.position[2] - (current.width / 2) * curSin];
-                            const cR: [number, number] = [current.position[0] + (current.width / 2) * curCos, current.position[2] + (current.width / 2) * curSin];
-                            
-                            const oCos = Math.cos(other.rotation || 0);
-                            const oSin = Math.sin(other.rotation || 0);
-                            const oL: [number, number] = [other.position[0] - (other.width / 2) * oCos, other.position[2] - (other.width / 2) * oSin];
-                            const oR: [number, number] = [other.position[0] + (other.width / 2) * oCos, other.position[2] + (other.width / 2) * oSin];
-
-                            const isTouching = Math.hypot(cL[0] - oR[0], cL[1] - oR[1]) < 4 || Math.hypot(cR[0] - oL[0], cR[1] - oL[1]) < 4;
-                            if (isTouching) {
-                                visited.add(other.id);
-                                queue.push(other);
-                            }
-                        }
-                    });
-                }
-                linearRuns.push({ lengthMm: runMm, count });
-            }
+    // Tornillos de fijación frente de cajón
+    if (totalDrawers > 0) {
+        hardware.push({
+            Categoria: 'Insumos',
+            Item: 'Tornillos Fijación Frente de Cajón 4x30mm',
+            Cantidad: totalDrawers * 4,
+            Unidad: 'Unidades',
+            Detalles: '4 tornillos por frente exterior'
         });
+        hardware.push({
+            Categoria: 'Insumos',
+            Item: 'Tornillos Fijación Correderas a Lateral 3.5x16mm',
+            Cantidad: totalDrawers * 12,
+            Unidad: 'Unidades',
+            Detalles: 'Fijación técnica de guías telescópicas'
+        });
+    }
 
-        // Uniones rectas optimizadas: calculadas por cada punto de corte modular que supere los 3000 mm
-        const socleSystem = calculateSocleSystem(baseCabinets);
+    // 2. CORREDERAS DE CAJÓN (Quincallería con especificación y NL)
+    Object.keys(slidesByNL).forEach(nlStr => {
+        const nl = Number(nlStr);
+        const qty = slidesByNL[nl];
+        hardware.push({
+            Categoria: 'Quincallería',
+            Item: `${hwSpec.slideName} ${nl}mm (NL)`,
+            Cantidad: qty,
+            Unidad: 'Pares',
+            Detalles: `Montaje bajo fondo para profundidad ${nl + 50}mm`
+        });
+    });
+
+    // 3. BISAGRAS Y SISTEMAS ELEVADORES (Quincallería)
+    if (totalHinges > 0) {
+        hardware.push({
+            Categoria: 'Quincallería',
+            Item: 'Bisagras Cazoleta 35mm Rectas (Cierre Suave)',
+            Cantidad: totalHinges,
+            Unidad: 'Unidades',
+            Detalles: 'Puertas exteriores de gabinetes y despensas'
+        });
+        hardware.push({
+            Categoria: 'Insumos',
+            Item: 'Tornillos Fijación Bisagras 3.5x16mm',
+            Cantidad: totalHinges * 4,
+            Unidad: 'Unidades',
+            Detalles: 'Para cazoleta y base de montaje'
+        });
+    }
+
+    if (liftUpPistonsCount > 0) {
+        hardware.push({
+            Categoria: 'Quincallería',
+            Item: 'Pistones a Gas / Sistema Elevador Aventos (100N / Cierre Suave)',
+            Cantidad: liftUpPistonsCount,
+            Unidad: 'Unidades',
+            Detalles: `${liftUpPistonsCount / 2} juego(s) p/ puertas abatibles superiores de muebles aéreos`
+        });
+        hardware.push({
+            Categoria: 'Insumos',
+            Item: 'Tornillos Fijación Sistema Elevador 3.5x16mm',
+            Cantidad: liftUpPistonsCount * 4,
+            Unidad: 'Unidades',
+            Detalles: 'Anclaje a lateral y cara interior de puerta'
+        });
+    }
+
+    // 4. COLGADORES PARA MUEBLES AÉREOS (Murales)
+    if (wallCabinetsCount > 0) {
+        hardware.push({
+            Categoria: 'Quincallería',
+            Item: 'Colgadores Regulables Ocultos p/ Mueble Aéreo (Juego Izq/Der)',
+            Cantidad: wallCabinetsCount,
+            Unidad: 'Juegos',
+            Detalles: 'Capacidad 130kg por par con regulación 3D'
+        });
+        hardware.push({
+            Categoria: 'Quincallería',
+            Item: 'Riel de Suspensión Metálico p/ Muro (Tira de Anclaje)',
+            Cantidad: wallCabinetsCount,
+            Unidad: 'Unidades',
+            Detalles: 'Fijación a muro estructural'
+        });
+    }
+
+    // 5. PATAS REGULABLES PARA MUEBLES BASE E ISLAS
+    if (baseCabinets.length > 0) {
+        hardware.push({
+            Categoria: 'Quincallería',
+            Item: 'Patas Regulables 10-15cm para Mueble Base',
+            Cantidad: baseCabinets.length * 4,
+            Unidad: 'Unidades',
+            Detalles: 'Soporte nivelable de gabinetes inferiores'
+        });
+        hardware.push({
+            Categoria: 'Insumos',
+            Item: 'Tornillos Fijación Patas Regulables 3.5x16mm',
+            Cantidad: baseCabinets.length * 16,
+            Unidad: 'Unidades',
+            Detalles: '4 tornillos por base de pata'
+        });
+    }
+
+    // 6. ELECTRODOMÉSTICOS Y DECORACIÓN
+    if (builtInOvensCount > 0) hardware.push({ Categoria: 'Equipamiento', Item: 'Horno Eléctrico Empotrable 60cm', Cantidad: builtInOvensCount, Unidad: 'Unidades', Detalles: 'Nicho torre 60cm' });
+    if (builtInMicrowavesCount > 0) hardware.push({ Categoria: 'Equipamiento', Item: 'Microondas Empotrado con Marco de Acero', Cantidad: builtInMicrowavesCount, Unidad: 'Unidades', Detalles: 'Nicho torre 38cm' });
+    if (portableMicrowavesCount > 0) hardware.push({ Categoria: 'Equipamiento', Item: 'Microondas Portátil / Sobremesa 25L', Cantidad: portableMicrowavesCount, Unidad: 'Unidades', Detalles: 'Nicho abierto' });
+    if (stoveFd90Count > 0) hardware.push({ Categoria: 'Equipamiento', Item: 'Cocina FDV FS UNIQUE 90 (Acero Inox - 5 Quemadores + Horno 107L)', Cantidad: stoveFd90Count, Unidad: 'Unidades', Detalles: 'SAP 13297' });
+    if (fridgeSBSCount > 0) hardware.push({ Categoria: 'Equipamiento', Item: 'Refrigerador FDV SBS SIGNATURE 2.0 513L (Dark Inox)', Cantidad: fridgeSBSCount, Unidad: 'Unidades', Detalles: 'SAP 16692' });
+    if (hoodConic90Count > 0) hardware.push({ Categoria: 'Equipamiento', Item: 'Campana FDV New Conic 90 (Acero Inox - 780 m3/h - 3 Velocidades)', Cantidad: hoodConic90Count, Unidad: 'Unidades', Detalles: 'SAP 16309 (Ancho 898mm, Fondo 500mm, Iluminación LED 2x2W)' });
+    if (plantDecoCount > 0) hardware.push({ Categoria: 'Decoración', Item: 'Planta Decorativa Interior con Macetero y Soporte de Madera', Cantidad: plantDecoCount, Unidad: 'Unidades', Detalles: 'Ambientación 3D' });
+
+    // 7. ZÓCALO Y PERFILERÍA OPTIMIZADA A TIRAS DE 3000mm (3m)
+    if (kState.showSocle && baseCabinets.length > 0) {
+        const socleSystem = calculateSocleSystem(baseCabinets, kState.walls, kState.roomConfig?.vertices);
+        const frontLengthMm = socleSystem.pieces.reduce((acc, p) => acc + p.length, 0) * 10;
+        const lateralLengthMm = socleSystem.laterals.reduce((acc, l) => acc + l.depth, 0) * 10;
+        const totalLinearLengthMm = frontLengthMm + lateralLengthMm;
+
         const straightJointsCount = socleSystem.straightJoints.length;
-
-        // Tiras comerciales de Zócalo (3000 mm) con cálculo de optimización y 5% de merma
+        const cornerJoints90Count = socleSystem.corners.length;
+        const exposedFlanksCount = socleSystem.laterals.length;
         const socleStrips = Math.max(1, Math.ceil((totalLinearLengthMm * 1.05) / 3000));
-        hardware.push({ Item: 'Zócalo de PVC/Aluminio con Sello de Agua (Tira 3m)', Cantidad: socleStrips, 'Unidad': 'tiras' });
-        
-        // Perfil de Unión Recta (Unión a lo largo 180°) para Zócalo (solo si la corrida supera 3m)
+
+        hardware.push({
+            Categoria: 'Zócalos',
+            Item: 'Zócalo de PVC/Aluminio con Sello de Agua (Tira 3000mm / 3m)',
+            Cantidad: socleStrips,
+            Unidad: 'Tiras',
+            Detalles: `Protección hidrófuga perimetral 10cm. Optimizado a tiras comerciales continuas de 3m (${(totalLinearLengthMm/1000).toFixed(2)} m lineales)`
+        });
         if (straightJointsCount > 0) {
-            hardware.push({ Item: 'Perfil Unión Recta 180° para Zócalo (Empalme a lo largo >3m)', Cantidad: straightJointsCount, 'Unidad': 'un' });
+            hardware.push({
+                Categoria: 'Zócalos',
+                Item: 'Perfil Unión Recta 180° para Zócalo (Empalme >3m)',
+                Cantidad: straightJointsCount,
+                Unidad: 'Unidades',
+                Detalles: 'Continuidad técnica en tramos lineales superiores a 3000mm'
+            });
         }
-
-        // Conector Esquinero 90° para Zócalo (Encuentro frontales con retornos laterales y esquinas L)
         if (cornerJoints90Count > 0) {
-            hardware.push({ Item: 'Conector Esquinero 90° para Zócalo (Ángulo 90°)', Cantidad: cornerJoints90Count, 'Unidad': 'un' });
+            hardware.push({
+                Categoria: 'Zócalos',
+                Item: 'Conector Esquinero 90° para Zócalo',
+                Cantidad: cornerJoints90Count,
+                Unidad: 'Unidades',
+                Detalles: 'Encuentros frontales y retornos en esquinas expuestas'
+            });
         }
-
-        // Terminales de remate a pared
         if (exposedFlanksCount > 0) {
-            hardware.push({ Item: 'Terminal / Tapa Final de Zócalo (Remate a Pared)', Cantidad: exposedFlanksCount, 'Unidad': 'un' });
+            hardware.push({
+                Categoria: 'Zócalos',
+                Item: 'Terminal / Tapa Final de Zócalo (Remate a Pared)',
+                Cantidad: exposedFlanksCount,
+                Unidad: 'Unidades',
+                Detalles: 'Cierre lateral hermético hacia muro estructural'
+            });
         }
-
-        // Clips de fijación para patas de zócalo (2 clips por módulo + 1 por lateral expuesto)
         const totalClips = (baseCabinets.length * 2) + exposedFlanksCount;
-        hardware.push({ Item: 'Pinzas / Clips de Fijación Zócalo a Pata', Cantidad: totalClips, 'Unidad': 'un' });
+        hardware.push({
+            Categoria: 'Zócalos',
+            Item: 'Pinzas / Clips de Fijación Zócalo a Pata',
+            Cantidad: totalClips,
+            Unidad: 'Unidades',
+            Detalles: 'Enganche a presión sobre patas niveladoras'
+        });
     }
 
     return hardware;
 }
+
