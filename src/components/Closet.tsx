@@ -485,11 +485,11 @@ export function Closet() {
     if (showDimensions && dimensionLevel >= 2) {
       const dimY = baseOffset > 0 ? baseOffset / 2 : 1.5;
       parts.push(
-        <group key={`dim-mod-${mod.id}`} position={[modCenterX, dimY, depth / 2 + 10]}>
-          <Line points={[[-mod.width / 2, 0, 0], [mod.width / 2, 0, 0]]} color="#3b82f6" lineWidth={1.5} />
-          <Line points={[[-mod.width / 2, -1.5, 0], [-mod.width / 2, 1.5, 0]]} color="#3b82f6" lineWidth={1.5} />
-          <Line points={[[mod.width / 2, -1.5, 0], [mod.width / 2, 1.5, 0]]} color="#3b82f6" lineWidth={1.5} />
-          <Text position={[0, 2, 0]} fontSize={5} color="#3b82f6" anchorX="center" anchorY="bottom">{Number(mod.width.toFixed(1))} cm</Text>
+        <group key={`dim-mod-${mod.id}`} position={[modCenterX, dimY, depth / 2 + 10]} renderOrder={999}>
+          <Line points={[[-mod.width / 2, 0, 0], [mod.width / 2, 0, 0]]} color="#3b82f6" lineWidth={1.5} depthTest={false} renderOrder={999} />
+          <Line points={[[-mod.width / 2, -1.5, 0], [-mod.width / 2, 1.5, 0]]} color="#3b82f6" lineWidth={1.5} depthTest={false} renderOrder={999} />
+          <Line points={[[mod.width / 2, -1.5, 0], [mod.width / 2, 1.5, 0]]} color="#3b82f6" lineWidth={1.5} depthTest={false} renderOrder={999} />
+          <Text position={[0, 2, 0]} fontSize={5} color="#3b82f6" anchorX="center" anchorY="bottom" material-depthTest={false} material-toneMapped={false} renderOrder={1000}>{Number(mod.width.toFixed(1))} cm</Text>
         </group>
       );
     }
@@ -550,9 +550,9 @@ export function Closet() {
           
           if (showDimensions && dimensionLevel >= 5) {
             parts.push(
-              <group key={`dim-shelf-bot-${mod.id}`} position={[modCenterX, (usableYStart + bottomShelfY) / 2, depth / 2 + 5]}>
-                <Line points={[[0, -12.5, 0], [0, 12.5, 0]]} color="#8b5cf6" lineWidth={1} />
-                <Text position={[3, 0, 0]} fontSize={4} color="#8b5cf6" anchorX="left" anchorY="middle">{(bottomShelfY - usableYStart).toFixed(1)}</Text>
+              <group key={`dim-shelf-bot-${mod.id}`} position={[modCenterX, usableYStart + (bottomShelfY - usableYStart)/2, depth / 2 + 5]} renderOrder={999}>
+                <Line points={[[0, -(bottomShelfY - usableYStart)/2, 0], [0, (bottomShelfY - usableYStart)/2, 0]]} color="#8b5cf6" lineWidth={1} depthTest={false} renderOrder={999} />
+                <Text position={[3, 0, 0]} fontSize={4} color="#8b5cf6" anchorX="left" anchorY="middle" material-depthTest={false} material-toneMapped={false} renderOrder={1000}>{(bottomShelfY - usableYStart).toFixed(1)}</Text>
               </group>
             );
           }
@@ -579,10 +579,11 @@ export function Closet() {
       
       if (showDimensions && dimensionLevel >= 5 && mod.shelves > 0) {
          const maleteroY = baseOffset + height - (showTopWall ? thickness : 0) - 35;
+         const topLimitY = baseOffset + height - (showTopWall ? thickness : 0);
          parts.push(
-           <group key={`dim-shelf-top-${mod.id}`} position={[modCenterX, maleteroY + 17.5, depth / 2 + 5]}>
-             <Line points={[[0, -17.5, 0], [0, 17.5, 0]]} color="#8b5cf6" lineWidth={1} />
-             <Text position={[3, 0, 0]} fontSize={4} color="#8b5cf6" anchorX="left" anchorY="middle">35.0</Text>
+           <group key={`dim-shelf-top-${mod.id}`} position={[modCenterX, maleteroY + 17.5, depth / 2 + 5]} renderOrder={999}>
+             <Line points={[[0, -17.5, 0], [0, 17.5, 0]]} color="#8b5cf6" lineWidth={1} depthTest={false} renderOrder={999} />
+             <Text position={[3, 0, 0]} fontSize={4} color="#8b5cf6" anchorX="left" anchorY="middle" material-depthTest={false} material-toneMapped={false} renderOrder={1000}>35.0</Text>
            </group>
          );
       }
@@ -625,18 +626,18 @@ export function Closet() {
           if (showDimensions && dimensionLevel >= 5) {
             const dimY = shelfY - spacing / 2;
             parts.push(
-              <group key={`dim-shelf-${mod.id}-${i}`} position={[modCenterX, dimY, depth / 2 + 5]}>
-                <Line points={[[0, -spacing / 2, 0], [0, spacing / 2, 0]]} color="#8b5cf6" lineWidth={1} />
-                <Text position={[3, 0, 0]} fontSize={4} color="#8b5cf6" anchorX="left" anchorY="middle">{spacing.toFixed(1)}</Text>
+              <group key={`dim-shelf-${mod.id}-${i}`} position={[modCenterX, dimY, depth / 2 + 5]} renderOrder={999}>
+                <Line points={[[0, -spacing / 2, 0], [0, spacing / 2, 0]]} color="#8b5cf6" lineWidth={1} depthTest={false} renderOrder={999} />
+                <Text position={[3, 0, 0]} fontSize={4} color="#8b5cf6" anchorX="left" anchorY="middle" material-depthTest={false} material-toneMapped={false} renderOrder={1000}>{spacing.toFixed(1)}</Text>
               </group>
             );
             // Si es la última repisa, agregar la cota del último espacio superior
             if (i === mod.shelves) {
               const lastDimY = shelfY + spacing / 2;
               parts.push(
-                <group key={`dim-shelf-last-${mod.id}`} position={[modCenterX, lastDimY, depth / 2 + 5]}>
-                  <Line points={[[0, -spacing / 2, 0], [0, spacing / 2, 0]]} color="#8b5cf6" lineWidth={1} />
-                  <Text position={[3, 0, 0]} fontSize={4} color="#8b5cf6" anchorX="left" anchorY="middle">{spacing.toFixed(1)}</Text>
+                <group key={`dim-shelf-last-${mod.id}`} position={[modCenterX, lastDimY, depth / 2 + 5]} renderOrder={999}>
+                  <Line points={[[0, -spacing / 2, 0], [0, spacing / 2, 0]]} color="#8b5cf6" lineWidth={1} depthTest={false} renderOrder={999} />
+                  <Text position={[3, 0, 0]} fontSize={4} color="#8b5cf6" anchorX="left" anchorY="middle" material-depthTest={false} material-toneMapped={false} renderOrder={1000}>{spacing.toFixed(1)}</Text>
                 </group>
               );
             }
@@ -730,11 +731,11 @@ export function Closet() {
 
         if (showDimensions && dimensionLevel >= 4) {
           parts.push(
-            <group key={`dim-drawer-${mod.id}-${d}`} position={[innerCenterX + frontWidth / 2 + 5, yPosFront, frontZPos + 2]}>
-              <Line points={[[0, -frontHeight / 2, 0], [0, frontHeight / 2, 0]]} color="#10b981" lineWidth={1.5} />
-              <Line points={[[-2, -frontHeight / 2, 0], [2, -frontHeight / 2, 0]]} color="#10b981" lineWidth={1.5} />
-              <Line points={[[-2, frontHeight / 2, 0], [2, frontHeight / 2, 0]]} color="#10b981" lineWidth={1.5} />
-              <Text position={[3, 0, 0]} fontSize={4.5} color="#10b981" anchorX="left" anchorY="middle">{frontHeight.toFixed(1)}</Text>
+            <group key={`dim-drawer-${mod.id}-${d}`} position={[innerCenterX + frontWidth / 2 + 5, yPosFront, frontZPos + 2]} renderOrder={999}>
+              <Line points={[[0, -frontHeight / 2, 0], [0, frontHeight / 2, 0]]} color="#10b981" lineWidth={1.5} depthTest={false} renderOrder={999} />
+              <Line points={[[-2, -frontHeight / 2, 0], [2, -frontHeight / 2, 0]]} color="#10b981" lineWidth={1.5} depthTest={false} renderOrder={999} />
+              <Line points={[[-2, frontHeight / 2, 0], [2, frontHeight / 2, 0]]} color="#10b981" lineWidth={1.5} depthTest={false} renderOrder={999} />
+              <Text position={[3, 0, 0]} fontSize={4.5} color="#10b981" anchorX="left" anchorY="middle" material-depthTest={false} material-toneMapped={false} renderOrder={1000}>{frontHeight.toFixed(1)}</Text>
             </group>
           );
         }
@@ -874,22 +875,22 @@ export function Closet() {
         if (showDimensions && dimensionLevel >= 3) {
           // Dimensión horizontal (ancho de puerta)
           parts.push(
-            <group key={`dim-door-w-${mod.id}-${i}`} position={[dX, doorY + doorHeight / 2 + 5, depth / 2 + thickness + 2]}>
-              <Line points={[[-doorW / 2, 0, 0], [doorW / 2, 0, 0]]} color="#ec4899" lineWidth={1.5} />
-              <Line points={[[-doorW / 2, -2, 0], [-doorW / 2, 2, 0]]} color="#ec4899" lineWidth={1.5} />
-              <Line points={[[doorW / 2, -2, 0], [doorW / 2, 2, 0]]} color="#ec4899" lineWidth={1.5} />
-              <Text position={[0, 3, 0]} fontSize={4.5} color="#ec4899" anchorX="center" anchorY="bottom">{doorW.toFixed(1)}</Text>
+            <group key={`dim-door-w-${mod.id}-${i}`} position={[dX, doorY + doorHeight / 2 + 5, depth / 2 + thickness + 2]} renderOrder={999}>
+              <Line points={[[-doorW / 2, 0, 0], [doorW / 2, 0, 0]]} color="#ec4899" lineWidth={1.5} depthTest={false} renderOrder={999} />
+              <Line points={[[-doorW / 2, -2, 0], [-doorW / 2, 2, 0]]} color="#ec4899" lineWidth={1.5} depthTest={false} renderOrder={999} />
+              <Line points={[[doorW / 2, -2, 0], [doorW / 2, 2, 0]]} color="#ec4899" lineWidth={1.5} depthTest={false} renderOrder={999} />
+              <Text position={[0, 3, 0]} fontSize={4.5} color="#ec4899" anchorX="center" anchorY="bottom" material-depthTest={false} material-toneMapped={false} renderOrder={1000}>{doorW.toFixed(1)}</Text>
             </group>
           );
           
           // Dimensión vertical (alto de puerta) solo una vez para no saturar si hay dos puertas
           if (i === 0) {
             parts.push(
-              <group key={`dim-door-h-${mod.id}`} position={[dX - doorW / 2 - 5, doorY, depth / 2 + thickness + 2]}>
-                <Line points={[[0, -doorHeight / 2, 0], [0, doorHeight / 2, 0]]} color="#ec4899" lineWidth={1.5} />
-                <Line points={[[-2, -doorHeight / 2, 0], [2, -doorHeight / 2, 0]]} color="#ec4899" lineWidth={1.5} />
-                <Line points={[[-2, doorHeight / 2, 0], [2, doorHeight / 2, 0]]} color="#ec4899" lineWidth={1.5} />
-                <Text position={[-3, 0, 0]} rotation={[0, 0, Math.PI/2]} fontSize={4.5} color="#ec4899" anchorX="center" anchorY="bottom">{doorHeight.toFixed(1)}</Text>
+              <group key={`dim-door-h-${mod.id}`} position={[dX - doorW / 2 - 5, doorY, depth / 2 + thickness + 2]} renderOrder={999}>
+                <Line points={[[0, -doorHeight / 2, 0], [0, doorHeight / 2, 0]]} color="#ec4899" lineWidth={1.5} depthTest={false} renderOrder={999} />
+                <Line points={[[-2, -doorHeight / 2, 0], [2, -doorHeight / 2, 0]]} color="#ec4899" lineWidth={1.5} depthTest={false} renderOrder={999} />
+                <Line points={[[-2, doorHeight / 2, 0], [2, doorHeight / 2, 0]]} color="#ec4899" lineWidth={1.5} depthTest={false} renderOrder={999} />
+                <Text position={[-3, 0, 0]} rotation={[0, 0, Math.PI/2]} fontSize={4.5} color="#ec4899" anchorX="center" anchorY="bottom" material-depthTest={false} material-toneMapped={false} renderOrder={1000}>{doorHeight.toFixed(1)}</Text>
               </group>
             );
           }
@@ -914,6 +915,9 @@ export function Closet() {
           anchorY="bottom"
           outlineWidth={0.5}
           outlineColor="#000000"
+          material-depthTest={false}
+          material-toneMapped={false}
+          renderOrder={1000}
         >
           {'Gabinete ' + (index + 1)}
         </Text>
@@ -956,27 +960,27 @@ export function Closet() {
 
       {/* Dimensions (Cotas) */}
       {showDimensions && (
-        <group>
+        <group renderOrder={999}>
           {/* Width Dimension */}
           <group position={[0, baseOffset + height + 15, depth / 2]}>
-            <Line points={[[-totalWidth / 2, 0, 0], [totalWidth / 2, 0, 0]]} color="#f97316" lineWidth={2} />
-            <Line points={[[-totalWidth / 2, -3, 0], [-totalWidth / 2, 3, 0]]} color="#f97316" lineWidth={2} />
-            <Line points={[[totalWidth / 2, -3, 0], [totalWidth / 2, 3, 0]]} color="#f97316" lineWidth={2} />
-            <Text position={[0, 5, 0]} fontSize={8} color="#f97316" anchorX="center" anchorY="bottom">{Number(totalWidth.toFixed(1))} cm</Text>
+            <Line points={[[-totalWidth / 2, 0, 0], [totalWidth / 2, 0, 0]]} color="#f97316" lineWidth={2} depthTest={false} renderOrder={999} />
+            <Line points={[[-totalWidth / 2, -3, 0], [-totalWidth / 2, 3, 0]]} color="#f97316" lineWidth={2} depthTest={false} renderOrder={999} />
+            <Line points={[[totalWidth / 2, -3, 0], [totalWidth / 2, 3, 0]]} color="#f97316" lineWidth={2} depthTest={false} renderOrder={999} />
+            <Text position={[0, 5, 0]} fontSize={8} color="#f97316" anchorX="center" anchorY="bottom" material-depthTest={false} material-toneMapped={false} renderOrder={1000}>{Number(totalWidth.toFixed(1))} cm</Text>
           </group>
           {/* Height Dimension */}
           <group position={[-totalWidth / 2 - 15, baseOffset + height / 2, depth / 2]}>
-            <Line points={[[0, -height / 2, 0], [0, height / 2, 0]]} color="#f97316" lineWidth={2} />
-            <Line points={[[-3, -height / 2, 0], [3, -height / 2, 0]]} color="#f97316" lineWidth={2} />
-            <Line points={[[-3, height / 2, 0], [3, height / 2, 0]]} color="#f97316" lineWidth={2} />
-            <Text position={[-5, 0, 0]} rotation={[0, 0, Math.PI/2]} fontSize={8} color="#f97316" anchorX="center" anchorY="bottom">{Number(height.toFixed(1))} cm</Text>
+            <Line points={[[0, -height / 2, 0], [0, height / 2, 0]]} color="#f97316" lineWidth={2} depthTest={false} renderOrder={999} />
+            <Line points={[[-3, -height / 2, 0], [3, -height / 2, 0]]} color="#f97316" lineWidth={2} depthTest={false} renderOrder={999} />
+            <Line points={[[-3, height / 2, 0], [3, height / 2, 0]]} color="#f97316" lineWidth={2} depthTest={false} renderOrder={999} />
+            <Text position={[-5, 0, 0]} rotation={[0, 0, Math.PI/2]} fontSize={8} color="#f97316" anchorX="center" anchorY="bottom" material-depthTest={false} material-toneMapped={false} renderOrder={1000}>{Number(height.toFixed(1))} cm</Text>
           </group>
           {/* Depth Dimension */}
           <group position={[totalWidth / 2 + 15, Math.max(baseOffset, 2), 0]}>
-            <Line points={[[0, 0, -depth / 2], [0, 0, depth / 2]]} color="#f97316" lineWidth={2} />
-            <Line points={[[-3, 0, -depth / 2], [3, 0, -depth / 2]]} color="#f97316" lineWidth={2} />
-            <Line points={[[-3, 0, depth / 2], [3, 0, depth / 2]]} color="#f97316" lineWidth={2} />
-            <Text position={[3, 4, 0]} rotation={[0, Math.PI / 2, 0]} fontSize={8} color="#f97316" anchorX="center" anchorY="bottom">{Number(depth.toFixed(1))} cm</Text>
+            <Line points={[[0, 0, -depth / 2], [0, 0, depth / 2]]} color="#f97316" lineWidth={2} depthTest={false} renderOrder={999} />
+            <Line points={[[-3, 0, -depth / 2], [3, 0, -depth / 2]]} color="#f97316" lineWidth={2} depthTest={false} renderOrder={999} />
+            <Line points={[[-3, 0, depth / 2], [3, 0, depth / 2]]} color="#f97316" lineWidth={2} depthTest={false} renderOrder={999} />
+            <Text position={[3, 4, 0]} rotation={[0, Math.PI / 2, 0]} fontSize={8} color="#f97316" anchorX="center" anchorY="bottom" material-depthTest={false} material-toneMapped={false} renderOrder={1000}>{Number(depth.toFixed(1))} cm</Text>
           </group>
         </group>
       )}

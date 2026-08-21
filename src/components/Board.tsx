@@ -1,5 +1,6 @@
 import { useRef, useState, useEffect } from 'react';
 import { useStore } from '../store';
+import { useKitchenStore } from '../store/kitchenStore';
 import { DoubleSide } from 'three';
 import { Edges } from '@react-three/drei';
 import * as THREE from 'three';
@@ -15,14 +16,18 @@ interface BoardProps {
   isFrontPanel?: boolean; // NUEVO: Identificador de veta continua
   grainDirection?: 'vertical' | 'horizontal';
   hplBalancerOverride?: boolean;
+  globalPosition?: [number, number, number];
 }
 
-export function Board({ position, args, color, textureUrl, materialType, transparent, opacity, isFrontPanel, grainDirection, hplBalancerOverride }: BoardProps) {
+export function Board({ position, args, color, textureUrl, materialType, transparent, opacity, isFrontPanel, grainDirection, hplBalancerOverride, globalPosition }: BoardProps) {
   const [texture, setTexture] = useState<THREE.Texture | null>(null);
   
   // Obtenemos módulos para saber el ancho total del mueble y anclar la textura globalmente (World-Space)
-  const modules = useStore(state => state.modules);
-  const totalWidth = modules.reduce((sum, m) => sum + m.width, 0);
+  const closetModules = useStore(state => state.modules);
+  const kitchenCabinets = useKitchenStore(state => state.cabinets);
+  const totalWidth = closetModules.length > 0 
+    ? closetModules.reduce((sum, m) => sum + m.width, 0)
+    : kitchenCabinets.reduce((sum, m) => sum + m.width, 0);
 
   useEffect(() => {
     let currentTexture: THREE.Texture | null = null;
@@ -63,10 +68,20 @@ export function Board({ position, args, color, textureUrl, materialType, transpa
         clonedTex.repeat.set(mapWidth / realWidthCm, mapHeight / realHeightCm);
         
         if (materialType === "hpl" && isFrontPanel) {
-          const closetLeftX = -totalWidth / 2;
+          
+          // For closet, it is -totalWidth / 2. For kitchen, maybe we can just use a fixed 0, 
+          // or find the min X of all cabinets.
+          let closetLeftX = -totalWidth / 2;
+          if (kitchenCabinets.length > 0 && closetModules.length === 0) {
+             const minX = Math.min(...kitchenCabinets.map(c => c.position[0] - c.width/2));
+             closetLeftX = minX;
+          }
+
           const closetBottomY = 10;
-          const boardLeftX = position[0] - args[0] / 2;
-          const boardBottomY = position[1] - args[1] / 2;
+          const actualX = globalPosition ? globalPosition[0] : position[0];
+          const actualY = globalPosition ? globalPosition[1] : position[1];
+          const boardLeftX = actualX - args[0] / 2;
+          const boardBottomY = actualY - args[1] / 2;
           const offsetX = (boardLeftX - closetLeftX) / realWidthCm;
           const offsetY = (boardBottomY - closetBottomY) / realHeightCm;
           clonedTex.offset.set(offsetX, offsetY);
