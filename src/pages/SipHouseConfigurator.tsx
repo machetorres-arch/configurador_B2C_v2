@@ -1587,8 +1587,8 @@ export function SipHouseConfigurator({ onNavigate }: { onNavigate: (route: 'home
                             </span>
                           </div>
                           <div className="flex justify-between text-slate-300">
-                            <span className="text-slate-400">Vigas Maestras 2x8" (4.0m):</span>
-                            <span className="text-sky-400 font-bold">{metrics.vigasMaestras40Count} tiras ({metrics.vigasMaestras2x8LinM} m. lin.)</span>
+                            <span className="text-slate-400">Vigas Maestras 2x8" (3.20m):</span>
+                            <span className="text-sky-400 font-bold">{metrics.vigasMaestras32Count ?? metrics.vigasMaestras40Count} tiras ({metrics.vigasMaestras2x8LinM} m. lin.)</span>
                           </div>
                           <div className="flex justify-between text-slate-300">
                             <span className="text-slate-400">Dados Hormigón G20 (45x45x50):</span>

@@ -545,7 +545,7 @@ export function SipBlueprint() {
               <span className="text-slate-400">Fundación:</span>
               <span className="text-sky-300 font-bold text-right text-[10px]">
                 {state.foundationType === 'pilotes_madera'
-                  ? `${metrics.pilaresFundacionCount} Pilotes CCA (${metrics.axesCountX} ejes x ${metrics.pilesCountZ} apoyos) + ${metrics.vigasMaestras40Count} Vigas 2x8"`
+                  ? `${metrics.pilaresFundacionCount} Pilotes CCA (${metrics.axesCountX} ejes x ${metrics.pilesCountZ} apoyos) + ${metrics.vigasMaestras32Count ?? metrics.vigasMaestras40Count} Vigas 2x8" (3.20m)`
                   : state.foundationType === 'radier_sobrecimiento' || state.foundationType === 'radier_hormigon'
                   ? `Radier G20 (${metrics.hormigonG20M3} m³) + ${metrics.pernosAnclaje12Qty} Pernos 1/2"`
                   : `Platea Armada (${metrics.hormigonG20M3} m³ H-25) + ${metrics.mallaAcmaPlanchas} Mallas`}

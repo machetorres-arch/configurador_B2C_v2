@@ -228,6 +228,8 @@ export function SipWallAssembly({
                   position={[seg.xStart + seg.width / 2 - wallLength / 2, timberThick / 4, 0]}
                   orientation="horizontal"
                   materials={materials}
+                  isExploded={isExploded}
+                  explodedProgress={explodedProgress}
                 />
               );
             }
@@ -238,6 +240,8 @@ export function SipWallAssembly({
                 position={[seg.xStart + seg.width / 2 - wallLength / 2, timberThick / 2, 0]}
                 orientation="horizontal"
                 materials={materials}
+                isExploded={isExploded}
+                explodedProgress={explodedProgress}
               />
             );
           })}
@@ -256,6 +260,8 @@ export function SipWallAssembly({
                   ]}
                   orientation="horizontal"
                   materials={materials}
+                  isExploded={isExploded}
+                  explodedProgress={explodedProgress}
                 />
               ))}
             </group>
@@ -267,14 +273,19 @@ export function SipWallAssembly({
             position={[0, wallHeight - timberThick / 2 + (isExploded ? explodedProgress * 0.1 : 0), 0]}
             orientation="horizontal"
             materials={materials}
+            isExploded={isExploded}
+            explodedProgress={explodedProgress}
           />
 
-          {/* A.4 Doble Solera de Amarre / Cap Plate Superior */}
+          {/* A.4 Doble Solera de Amarre / Cap Plate Superior (Con desfase de traslape 1.22m) */}
           <TimberPiece
             args={[wallLength, timberThick, timberWidth]}
             position={[0, wallHeight + timberThick / 2 + (isExploded ? explodedProgress * 0.2 : 0), 0]}
             orientation="horizontal"
             materials={materials}
+            staggerOffset={1.22}
+            isExploded={isExploded}
+            explodedProgress={explodedProgress}
           />
 
           {/* A.5 Pies Derechos de Esquina (Corner Studs) */}

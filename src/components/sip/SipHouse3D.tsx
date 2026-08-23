@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, Suspense } from 'react';
 import * as THREE from 'three';
 import { useSipHouseStore } from '../../store/sipHouseStore';
 import { getSipTextures } from '../../utils/sipTextures';
@@ -7,6 +7,7 @@ import { SipWallAssembly } from './SipWallAssembly';
 import { SipInteriorWallAssembly } from './SipInteriorWallAssembly';
 import { TimberPiece } from './TimberPiece';
 import { SipDimensionAnnotations3D } from './SipDimensionAnnotations3D';
+import { SipGableAssembly } from './SipGableAssembly';
 
 /**
  * Función utilitaria para dividir un tramo estructural en paneles SIP estándar (1.22m ancho x máx 2.44m largo)
@@ -38,8 +39,55 @@ interface Grid2DPanel {
 }
 
 /**
- * Divide una superficie rectangular (Losa o Faldón) en una grilla de paneles SIP estándar
- * con ancho estándar <= 1.22m y longitud estándar <= 2.44m (evitando paneles irreales > 3m)
+ * Modula la vertiente de techumbre a 2 aguas en paneles SIP de formato estándar (1.22 x 2.44 m):
+ * - A lo largo de la caída de agua (rafterLen): Planchas de largo comercial estándar 2.44 m. Si rafterLen <= 2.44 m,
+ *   es un único panel continuo sin cortes longitudinales; si es mayor, se ubica una plancha de 2.44 m y el remate restante.
+ * - A lo largo de la cumbrera/longitud del techo (totalRoofLen): Paneles de ancho comercial estándar 1.22 m.
+ */
+function getRoofModularPanels(rafterLen: number, totalRoofLen: number): Grid2DPanel[] {
+  // Franjas a lo largo de la caída de agua (rafterLen)
+  const xSegments: { xStart: number; width: number }[] = [];
+  if (rafterLen <= 2.44) {
+    xSegments.push({ xStart: -rafterLen / 2, width: rafterLen });
+  } else {
+    let curX = -rafterLen / 2;
+    let remaining = rafterLen;
+    while (remaining > 0.05) {
+      const segW = Math.min(remaining, 2.44);
+      xSegments.push({ xStart: curX, width: segW });
+      curX += segW;
+      remaining -= segW;
+    }
+  }
+
+  // Franjas a lo largo de la cumbrera / longitud del techo (totalRoofLen)
+  const countZ = Math.max(1, Math.ceil(totalRoofLen / 1.22));
+  const stepZ = totalRoofLen / countZ;
+
+  const panels: Grid2DPanel[] = [];
+  xSegments.forEach((xSeg, xi) => {
+    for (let zi = 0; zi < countZ; zi++) {
+      const cz = -totalRoofLen / 2 + stepZ * (zi + 0.5);
+      const cx = xSeg.xStart + xSeg.width / 2;
+      panels.push({
+        xi,
+        zi,
+        cx,
+        cz,
+        w: xSeg.width,
+        l: stepZ,
+        countX: xSegments.length,
+        countZ,
+      });
+    }
+  });
+
+  return panels;
+}
+
+/**
+ * Divide una superficie rectangular (Losa o Faldón plano) en una grilla de paneles SIP estándar
+ * con ancho estándar <= 1.22m y longitud estándar <= 2.44m
  */
 function getModular2DPanels(spanX: number, spanZ: number, maxW = 2.44, maxL = 1.22): Grid2DPanel[] {
   const countX = Math.max(1, Math.ceil(spanX / maxW));
@@ -330,11 +378,13 @@ export function SipHouse3D() {
 
   // Modulaciones estándar de paneles SIP para losas y cubiertas (estándar LP / PROSIP: 1.22m x 2.44m)
   const wallSideLengthM = Math.max(0.6, lengthM - 2 * wallThickM);
+  const totalRoofLengthM = lengthM + 2 * overhangM;
   const floorPanels2D = useMemo(() => getModular2DPanels(widthM, lengthM, 2.44, 1.22), [widthM, lengthM]);
   const roofPanels2D = useMemo(
-    () => getModular2DPanels(roofRafterLength, lengthM + 2 * overhangM, 2.44, 1.22),
-    [roofRafterLength, lengthM, overhangM]
+    () => getRoofModularPanels(roofRafterLength, totalRoofLengthM),
+    [roofRafterLength, totalRoofLengthM]
   );
+  const roofPanelsCountZ = Math.max(1, Math.ceil(totalRoofLengthM / 1.22));
 
   // Frontón triangular a dos aguas (si aplica)
   const gableFrontShape = useMemo(() => {
@@ -405,9 +455,15 @@ export function SipHouse3D() {
               {Array.from({ length: numAxesX }).map((_, idx) => {
                 const px = -widthM / 2 + (idx * widthM) / (numAxesX - 1);
                 return (
-                  <mesh key={`viga-m-${idx}`} position={[px, -0.09, 0]} material={materials.timberPine} castShadow>
-                    <boxGeometry args={[0.1, 0.18, lengthM]} />
-                  </mesh>
+                  <TimberPiece
+                    key={`viga-m-${idx}`}
+                    args={[0.1, 0.18, lengthM]}
+                    position={[px, -0.09, 0]}
+                    orientation="horizontal"
+                    materials={materials}
+                    isExploded={isExploded}
+                    explodedProgress={explodedProgress}
+                  />
                 );
               })}
             </group>
@@ -712,21 +768,41 @@ export function SipHouse3D() {
             );
           })}
 
-          {/* Vigas de Remate Perimetral de Losa (Rim Joists en madera estructural) */}
+          {/* Vigas de Remate Perimetral de Losa (Rim Joists en madera estructural <= 3.20m) */}
           {(layerTimberStructure || isExploded) && (
             <group>
-              <mesh position={[0, 0, lengthM / 2 - timberThickM / 2]} material={materials.timberStructural}>
-                <boxGeometry args={[widthM, floorThickM - 0.022, timberThickM]} />
-              </mesh>
-              <mesh position={[0, 0, -lengthM / 2 + timberThickM / 2]} material={materials.timberStructural}>
-                <boxGeometry args={[widthM, floorThickM - 0.022, timberThickM]} />
-              </mesh>
-              <mesh position={[-widthM / 2 + timberThickM / 2, 0, 0]} material={materials.timberStructural}>
-                <boxGeometry args={[timberThickM, floorThickM - 0.022, lengthM - 2 * timberThickM]} />
-              </mesh>
-              <mesh position={[widthM / 2 - timberThickM / 2, 0, 0]} material={materials.timberStructural}>
-                <boxGeometry args={[timberThickM, floorThickM - 0.022, lengthM - 2 * timberThickM]} />
-              </mesh>
+              <TimberPiece
+                args={[widthM, floorThickM - 0.022, timberThickM]}
+                position={[0, 0, lengthM / 2 - timberThickM / 2]}
+                orientation="horizontal"
+                materials={materials}
+                isExploded={isExploded}
+                explodedProgress={explodedProgress}
+              />
+              <TimberPiece
+                args={[widthM, floorThickM - 0.022, timberThickM]}
+                position={[0, 0, -lengthM / 2 + timberThickM / 2]}
+                orientation="horizontal"
+                materials={materials}
+                isExploded={isExploded}
+                explodedProgress={explodedProgress}
+              />
+              <TimberPiece
+                args={[timberThickM, floorThickM - 0.022, lengthM - 2 * timberThickM]}
+                position={[-widthM / 2 + timberThickM / 2, 0, 0]}
+                orientation="horizontal"
+                materials={materials}
+                isExploded={isExploded}
+                explodedProgress={explodedProgress}
+              />
+              <TimberPiece
+                args={[timberThickM, floorThickM - 0.022, lengthM - 2 * timberThickM]}
+                position={[widthM / 2 - timberThickM / 2, 0, 0]}
+                orientation="horizontal"
+                materials={materials}
+                isExploded={isExploded}
+                explodedProgress={explodedProgress}
+              />
             </group>
           )}
 
@@ -765,17 +841,23 @@ export function SipHouse3D() {
               }}
             />
 
-            {/* Frontón Triangular Frontal a Dos Aguas (si aplica) */}
-            {isGableRoof && gableFrontShape && layerWallsSip && (
+            {/* Frontón Triangular Frontal a Dos Aguas SIP (Espesor idéntico a muro: OSB 11.1 + EPS 92 + OSB 11.1) */}
+            {isGableRoof && (layerWallsSip || layerTimberStructure || isExploded) && (
               <group
-                position={[0, eaveHM + (isExploded ? expY * 0.2 : 0), -wallThickM / 2 + (isExploded ? expOutZ * 0.15 : 0)]}
+                position={[0, eaveHM + (isExploded ? expY * 0.2 : 0), isExploded ? expOutZ * 0.15 : 0]}
               >
-                <mesh
-                  material={layerCladding ? wallExteriorMat : materials.osbSip}
-                  castShadow
-                >
-                  <extrudeGeometry args={[gableFrontShape, { depth: wallThickM, bevelEnabled: false }]} />
-                </mesh>
+                <SipGableAssembly
+                  width={widthM}
+                  height={gableRoofHeightM}
+                  totalThickness={wallThickM}
+                  timberThick={timberThickM}
+                  materials={materials}
+                  useCladdingOnFront={layerCladding}
+                  claddingMaterial={wallExteriorMat}
+                  layerTimberStructure={layerTimberStructure}
+                  isExploded={isExploded}
+                  explodedProgress={explodedProgress}
+                />
               </group>
             )}
           </group>
@@ -803,18 +885,23 @@ export function SipHouse3D() {
               }}
             />
 
-            {/* Frontón Triangular Trasero a Dos Aguas (si aplica) */}
-            {isGableRoof && gableFrontShape && layerWallsSip && (
+            {/* Frontón Triangular Trasero a Dos Aguas SIP (Espesor idéntico a muro: OSB 11.1 + EPS 92 + OSB 11.1) */}
+            {isGableRoof && (layerWallsSip || layerTimberStructure || isExploded) && (
               <group
-                position={[0, eaveHM + (isExploded ? expY * 0.2 : 0), -wallThickM / 2 - (isExploded ? expOutZ * 0.15 : 0)]}
-                rotation={[0, Math.PI, 0]}
+                position={[0, eaveHM + (isExploded ? expY * 0.2 : 0), isExploded ? expOutZ * 0.15 : 0]}
               >
-                <mesh
-                  material={layerCladding ? wallExteriorMat : materials.osbSip}
-                  castShadow
-                >
-                  <extrudeGeometry args={[gableFrontShape, { depth: wallThickM, bevelEnabled: false }]} />
-                </mesh>
+                <SipGableAssembly
+                  width={widthM}
+                  height={gableRoofHeightM}
+                  totalThickness={wallThickM}
+                  timberThick={timberThickM}
+                  materials={materials}
+                  useCladdingOnFront={layerCladding}
+                  claddingMaterial={wallExteriorMat}
+                  layerTimberStructure={layerTimberStructure}
+                  isExploded={isExploded}
+                  explodedProgress={explodedProgress}
+                />
               </group>
             )}
           </group>
@@ -898,6 +985,8 @@ export function SipHouse3D() {
               position={[0, gableRoofHeightM - 0.0925 + (isExploded ? explodedProgress * 0.15 : 0), 0]}
               orientation="horizontal"
               materials={materials}
+              isExploded={isExploded}
+              explodedProgress={explodedProgress}
             />
 
             {/* B. Puntales de Apoyo Cumbrera en Frontones y Centro */}
@@ -908,6 +997,8 @@ export function SipHouse3D() {
                 position={[0, gableRoofHeightM / 2, zPos]}
                 orientation="vertical"
                 materials={materials}
+                isExploded={isExploded}
+                explodedProgress={explodedProgress}
               />
             ))}
           </group>
@@ -957,18 +1048,32 @@ export function SipHouse3D() {
                 {(layerTimberStructure || isExploded) && (
                   <group>
                     {/* Pares / Splines de apoyo alineados con las uniones de panel */}
-                    {roofPanels2D.map((rp, pIdx) => {
-                      const panelOffsetZ = isExploded ? (rp.zi - (rp.countZ - 1) / 2) * (explodedProgress * 0.35) : 0;
+                    {Array.from({ length: roofPanelsCountZ + 1 }).map((_, zi) => {
+                      const cz = -totalRoofLengthM / 2 + (zi * totalRoofLengthM) / roofPanelsCountZ;
                       return (
                         <TimberPiece
-                          key={`roof-timber-l-${pIdx}`}
+                          key={`roof-timber-l-${zi}`}
                           args={[roofRafterLength - 0.06, timberThickM, timberWidthM]}
-                          position={[0, -roofThickM / 2 - timberThickM / 2, rp.cz + panelOffsetZ]}
+                          position={[0, -roofThickM / 2 - timberThickM / 2, cz]}
                           orientation="horizontal"
                           materials={materials}
+                          isExploded={isExploded}
+                          explodedProgress={explodedProgress}
                         />
                       );
                     })}
+
+                    {/* Viga / Solera intermedia de apoyo bajo el empalme de panel (si caída > 2.44m) */}
+                    {roofRafterLength > 2.44 && (
+                      <TimberPiece
+                        args={[timberThickM, timberWidthM, lengthM + 2 * overhangM]}
+                        position={[-roofRafterLength / 2 + 2.44, -roofThickM / 2 - timberThickM / 2, 0]}
+                        orientation="horizontal"
+                        materials={materials}
+                        isExploded={isExploded}
+                        explodedProgress={explodedProgress}
+                      />
+                    )}
 
                     {/* Tapacán de Alero (Fascia Board) en el remate del faldón */}
                     <TimberPiece
@@ -976,6 +1081,8 @@ export function SipHouse3D() {
                       position={[-roofRafterLength / 2 + timberThickM / 2, 0, 0]}
                       orientation="horizontal"
                       materials={materials}
+                      isExploded={isExploded}
+                      explodedProgress={explodedProgress}
                     />
                   </group>
                 )}
@@ -1020,18 +1127,32 @@ export function SipHouse3D() {
                 {(layerTimberStructure || isExploded) && (
                   <group>
                     {/* Pares / Splines de apoyo alineados con las uniones de panel */}
-                    {roofPanels2D.map((rp, pIdx) => {
-                      const panelOffsetZ = isExploded ? (rp.zi - (rp.countZ - 1) / 2) * (explodedProgress * 0.35) : 0;
+                    {Array.from({ length: roofPanelsCountZ + 1 }).map((_, zi) => {
+                      const cz = -totalRoofLengthM / 2 + (zi * totalRoofLengthM) / roofPanelsCountZ;
                       return (
                         <TimberPiece
-                          key={`roof-timber-r-${pIdx}`}
+                          key={`roof-timber-r-${zi}`}
                           args={[roofRafterLength - 0.06, timberThickM, timberWidthM]}
-                          position={[0, -roofThickM / 2 - timberThickM / 2, rp.cz + panelOffsetZ]}
+                          position={[0, -roofThickM / 2 - timberThickM / 2, cz]}
                           orientation="horizontal"
                           materials={materials}
+                          isExploded={isExploded}
+                          explodedProgress={explodedProgress}
                         />
                       );
                     })}
+
+                    {/* Viga / Solera intermedia de apoyo bajo el empalme de panel (si caída > 2.44m) */}
+                    {roofRafterLength > 2.44 && (
+                      <TimberPiece
+                        args={[timberThickM, timberWidthM, lengthM + 2 * overhangM]}
+                        position={[roofRafterLength / 2 - 2.44, -roofThickM / 2 - timberThickM / 2, 0]}
+                        orientation="horizontal"
+                        materials={materials}
+                        isExploded={isExploded}
+                        explodedProgress={explodedProgress}
+                      />
+                    )}
 
                     {/* Tapacán de Alero (Fascia Board) en el remate del faldón */}
                     <TimberPiece
@@ -1039,6 +1160,8 @@ export function SipHouse3D() {
                       position={[roofRafterLength / 2 - timberThickM / 2, 0, 0]}
                       orientation="horizontal"
                       materials={materials}
+                      isExploded={isExploded}
+                      explodedProgress={explodedProgress}
                     />
                   </group>
                 )}
@@ -1094,24 +1217,32 @@ export function SipHouse3D() {
                       position={[0, 0, (lengthM + 2 * overhangM) / 2 - timberThickM / 2]}
                       orientation="horizontal"
                       materials={materials}
+                      isExploded={isExploded}
+                      explodedProgress={explodedProgress}
                     />
                     <TimberPiece
                       args={[widthM + 2 * overhangM, roofThickM - 0.022, timberThickM]}
                       position={[0, 0, -(lengthM + 2 * overhangM) / 2 + timberThickM / 2]}
                       orientation="horizontal"
                       materials={materials}
+                      isExploded={isExploded}
+                      explodedProgress={explodedProgress}
                     />
                     <TimberPiece
                       args={[timberThickM, roofThickM - 0.022, lengthM + 2 * overhangM - 2 * timberThickM]}
                       position={[-(widthM + 2 * overhangM) / 2 + timberThickM / 2, 0, 0]}
                       orientation="horizontal"
                       materials={materials}
+                      isExploded={isExploded}
+                      explodedProgress={explodedProgress}
                     />
                     <TimberPiece
                       args={[timberThickM, roofThickM - 0.022, lengthM + 2 * overhangM - 2 * timberThickM]}
                       position={[(widthM + 2 * overhangM) / 2 - timberThickM / 2, 0, 0]}
                       orientation="horizontal"
                       materials={materials}
+                      isExploded={isExploded}
+                      explodedProgress={explodedProgress}
                     />
                   </group>
                 )}
@@ -1158,7 +1289,9 @@ export function SipHouse3D() {
       )}
 
       {/* 6. COTAS PARAMÉTRICAS Y ANOTACIONES TÉCNICAS BIM */}
-      <SipDimensionAnnotations3D />
+      <Suspense fallback={null}>
+        <SipDimensionAnnotations3D />
+      </Suspense>
     </group>
   );
 }

@@ -162,6 +162,8 @@ export function SipInteriorWallAssembly({
                 position={[0, timberThickM / 2, 0]}
                 orientation="horizontal"
                 materials={materials}
+                isExploded={isExploded}
+                explodedProgress={explodedProgress}
               />
 
               {/* Solera / Spline de Empalme Horizontal Intermedio a H=2.44m (Norma SIP) */}
@@ -171,6 +173,8 @@ export function SipInteriorWallAssembly({
                   position={[0, MAX_PANEL_H + (isExploded ? explodedProgress * 0.12 : 0), 0]}
                   orientation="horizontal"
                   materials={materials}
+                  isExploded={isExploded}
+                  explodedProgress={explodedProgress}
                 />
               )}
 
@@ -180,6 +184,8 @@ export function SipInteriorWallAssembly({
                 position={[0, wallHM - timberThickM / 2 + (isExploded ? explodedProgress * 0.1 : 0), 0]}
                 orientation="horizontal"
                 materials={materials}
+                isExploded={isExploded}
+                explodedProgress={explodedProgress}
               />
               {/* Pie Derecho Izquierdo de Extremo */}
               <TimberPiece

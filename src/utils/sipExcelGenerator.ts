@@ -28,6 +28,24 @@ export interface SipBomItem {
   proveedor: string;
 }
 
+/**
+ * Calcula la cantidad de piezas/tiras comerciales estándar de 3.20 m (3200 mm) necesarias para cubrir
+ * una longitud corrida L (en metros), considerando empalmes o traslapes sobre apoyos estructurales
+ * (mínimo 30 cm de traslape / empalme sobre pie derecho, pilar o apoyo cuando L > 3.20 m).
+ */
+export function calculateStrips320(runLengthM: number, runCount: number = 1, overlapM: number = 0.30): number {
+  if (runLengthM <= 0 || runCount <= 0) return 0;
+  if (runLengthM <= 3.20) {
+    // Si la pieza mide <= 3.20 m, cada corrida requiere 1 tira comercial estándar de 3.20 m
+    return Math.ceil(runCount);
+  }
+  // Si L > 3.20 m, se requieren empalmes sobre pie derecho o apoyo estructural
+  const jointsPerRun = Math.ceil(runLengthM / 3.20) - 1;
+  const effectiveLengthM = runLengthM + jointsPerRun * overlapM;
+  const stripsPerRun = Math.ceil(effectiveLengthM / 3.20);
+  return stripsPerRun * runCount;
+}
+
 export function calculateSipHouseQuantities(
   dim: SipHouseDimensions,
   foundationType: FoundationType,
@@ -59,12 +77,22 @@ export function calculateSipHouseQuantities(
   const floorSipCount = Math.ceil((totalFloorM2 / (1.22 * 2.44)) * 1.1);
 
   // 3. Muros Perimetrales SIP
+  // 3. Muros Perimetrales SIP 114 mm (Rectangulares + Frontones Triangulares)
   const perimeterM = 2 * (lengthM + widthM);
   const rectangularWallAreaM2 = perimeterM * eaveHM;
-  const gableRoofHeightM = Math.max(0.3, ridgeHM - eaveHM);
-  const gableTrianglesAreaM2 = 2 * (0.5 * widthM * gableRoofHeightM);
+  const isGableRoof = ridgeHM > eaveHM + 0.15;
+  const gableRoofHeightM = Math.max(0.05, ridgeHM - eaveHM);
+  // Área neta de los 2 triángulos del frontón (frontal y trasero): 2 * (1/2 * base * altura) = widthM * gableRoofHeightM
+  const gableTrianglesAreaM2 = isGableRoof ? widthM * gableRoofHeightM : 0;
   const extWallAreaM2 = rectangularWallAreaM2 + gableTrianglesAreaM2;
-  const wallExtSip114Count = Math.ceil((extWallAreaM2 / (1.22 * 2.44)) * 1.12);
+
+  // Optimización de cubicación industrial SIP (Aprovechamiento de cortes pareados en frontón diagonal):
+  const wallRectangularSip114Count = Math.ceil((rectangularWallAreaM2 / (1.22 * 2.44)) * 1.08);
+  // Al cortar paneles de 1.22 x 2.44m en diagonal para el frontón, los retazos opuestos son simétricos para ambas vertientes:
+  const gablePanelsCount = isGableRoof
+    ? Math.max(2, Math.ceil((gableTrianglesAreaM2 / (1.22 * 2.44)) * 1.15))
+    : 0;
+  const wallExtSip114Count = wallRectangularSip114Count + gablePanelsCount;
 
   // 4. Tabiquería Interior SIP 90 mm
   let intWallLinM = 0;
@@ -84,11 +112,17 @@ export function calculateSipHouseQuantities(
   const intWallAreaM2 = intWallLinM * eaveHM;
   const wallIntSip90Count = Math.ceil((intWallAreaM2 / (1.22 * 2.44)) * 1.1);
 
-  // 5. Techumbre SIP a Dos Aguas
-  const roofRafterLength = Math.hypot(widthM / 2 + overhangM, gableRoofHeightM) + overhangM;
+  // 5. Techumbre SIP a Dos Aguas (Modulación estándar LP / PROSIP: 1.22m ancho x 2.44m largo, espesor 210 mm)
+  const halfSpanM = widthM / 2 + overhangM;
+  const roofSlopeAngle = isGableRoof ? Math.atan2(gableRoofHeightM, widthM / 2) : 0;
+  const roofRafterLength = isGableRoof ? halfSpanM / Math.cos(roofSlopeAngle) : halfSpanM;
   const totalRoofLengthM = lengthM + 2 * overhangM;
-  const totalRoofAreaM2 = 2 * (roofRafterLength * totalRoofLengthM);
-  const roofSip210Count = Math.ceil((totalRoofAreaM2 / (1.22 * 2.44)) * 1.12);
+  const totalRoofAreaM2 = isGableRoof ? 2 * (roofRafterLength * totalRoofLengthM) : totalRoofLengthM * widthM;
+
+  // Modulación real: Si caída de agua <= 2.44m es 1 panel entero continuo; si > 2.44m son paneles con empalme sobre viga
+  const roofPanelsAlongLen = Math.ceil(totalRoofLengthM / 1.22);
+  const roofPanelsAlongRafter = roofRafterLength <= 2.44 ? 1 : Math.ceil(roofRafterLength / 2.44);
+  const roofSip210Count = (isGableRoof ? 2 : 1) * roofPanelsAlongLen * roofPanelsAlongRafter;
 
   // 6. Tablillas de OSB (Surface Splines) 11.1mm x 100mm x 2.37m (LP / SIPA NTA NER-1038)
   // 2 tablillas por cada unión vertical y horizontal entre paneles SIP cada 1.22m
@@ -98,36 +132,65 @@ export function calculateSipHouseQuantities(
   const floorJointsCount = Math.ceil(lengthM / 1.22);
   const totalSurfaceSplinesOSB = (verticalJointsWalls + horizontalJointsWalls + roofJointsCount + floorJointsCount) * 2;
 
-  // 7. Maderas Estructurales - Despiece y Cálculo por Largos Comerciales Estándar (3.20m, 4.00m)
+  // 7. Maderas Estructurales - Despiece y Cálculo por Largo Comercial Máximo Estándar (3.20 m / 3200 mm)
   // A. Losa de Piso (Pino 2x6" o 2x8" según espesor de losa):
+  // Vigas de borde perimetrales (2 corridas de largo + 2 corridas de ancho) + viguetas intermedias cada 1.22 m
   const floorJoistsCount = Math.ceil(lengthM / 1.22) + 1;
-  const timberFloorNetLinM = 2 * (lengthM + widthM) + (floorJoistsCount - 2) * widthM;
+  const floorRimStripsLength = calculateStrips320(lengthM, 2);
+  const floorRimStripsWidth = calculateStrips320(widthM, 2);
+  const floorInternalJoistsStrips = calculateStrips320(widthM, Math.max(0, floorJoistsCount - 2));
+  const timber2x6Commercial32Count = floorRimStripsLength + floorRimStripsWidth + floorInternalJoistsStrips;
+  const timberFloorNetLinM = 2 * (lengthM + widthM) + Math.max(0, floorJoistsCount - 2) * widthM;
   const timber2x6LinM = Math.ceil(timberFloorNetLinM * 1.08);
-  const timber2x6Commercial32Count = Math.ceil(timber2x6LinM / 3.2);
 
-  // B. Muros Perimetrales e Interiores (Pino Seco Cepillado calibrado al espesor de núcleo):
-  // Solera inferior, solera superior con traslape >= 30cm, cap plate doble solera, solera de empalme horizontal intermedia (si H > 2.44m), esquineros, refuerzo de vanos 41x65/41x92mm
+  // B. Muros Perimetrales e Interiores (Pino Seco Cepillado 2x4" calibrado al espesor de núcleo):
+  // Solera inferior de anclaje, solera superior con traslape >= 30cm, doble solera (cap plate), solera intermedia (si H > 2.44m), pies derechos y refuerzos de vanos
   const openingsCount = openings ? openings.length : 3;
   const wallStudsCount = (Math.ceil(perimeterM / 0.6) + 8) + (openingsCount * 4);
-  const intermediateHorizPlatesLinM = eaveHM > 2.44 ? perimeterM : 0;
-  const wallPlatesLinM = perimeterM * 3 + intermediateHorizPlatesLinM; // Solera inferior + solera superior + doble solera superior + solera intermedia (H>2.44)
-  const wallStudsLinM = wallStudsCount * (eaveHM - 0.082);
+  const platesRunsPerWall = eaveHM > 2.44 ? 4 : 3; // Solera inferior + superior + cap plate + intermedia
+  const wallPlatesLengthStrips = calculateStrips320(lengthM, platesRunsPerWall * 2);
+  const wallPlatesWidthStrips = calculateStrips320(widthM, platesRunsPerWall * 2);
+  const intWallPlatesStrips = intWallLinM > 0 ? calculateStrips320(intWallLinM, 2) : 0;
+  
+  // Pies derechos (studs) de altura eaveHM - 0.082 m (< 3.20 m)
+  const studsPerCommercialStrip = Math.max(1, Math.floor(3.20 / Math.max(0.5, eaveHM - 0.082)));
+  const wallStudsStrips = Math.ceil(wallStudsCount / studsPerCommercialStrip);
+  
+  // Refuerzos de vanos (jambas, dinteles, antepechos)
   const openingsReinforcementLinM = openings
     ? openings.reduce((acc, o) => acc + (2 * (o.width / 100) + 2 * (o.height / 100)), 0)
     : 12.0;
+  const openingsReinforcementStrips = Math.ceil(openingsReinforcementLinM / 3.20);
+  const intWallStudsStrips = Math.ceil((wallIntSip90Count * 2.44 * 1.8) / 3.20);
+  
+  const timber2x4Commercial32Count =
+    wallPlatesLengthStrips +
+    wallPlatesWidthStrips +
+    intWallPlatesStrips +
+    wallStudsStrips +
+    openingsReinforcementStrips +
+    intWallStudsStrips;
+
+  const intermediateHorizPlatesLinM = eaveHM > 2.44 ? perimeterM : 0;
+  const wallPlatesLinM = perimeterM * 3 + intermediateHorizPlatesLinM;
+  const wallStudsLinM = wallStudsCount * (eaveHM - 0.082);
   const timber2x4NetLinM = wallPlatesLinM + wallStudsLinM + openingsReinforcementLinM + (wallIntSip90Count * 2.44 * 1.8);
   const timber2x4LinM = Math.ceil(timber2x4NetLinM * 1.08);
-  const timber2x4Commercial32Count = Math.ceil(timber2x4LinM / 3.2);
 
   // C. Estructura de Techo (Pino 2x8" - 41x185 mm):
-  // Viga cumbrera maestra + Pares de apoyo cada 1.22m + Tapacanes y canecillos
+  // Viga cumbrera maestra continua (doble viga 2x8") + Pares de vigas (rafters) cada 1.22m + Tapacanes y frontones
   const roofRaftersPairsCount = Math.ceil(totalRoofLengthM / 1.22) + 1;
+  const ridgeBeamStrips = calculateStrips320(totalRoofLengthM, 2); // Doble viga cumbrera con empalmes sobre apoyos
+  const roofRaftersStrips = calculateStrips320(roofRafterLength, roofRaftersPairsCount * 2);
+  const roofFasciaStrips = calculateStrips320(totalRoofLengthM, 2) + calculateStrips320(roofRafterLength, 4);
+  const timber2x8Commercial32Count = ridgeBeamStrips + roofRaftersStrips + roofFasciaStrips;
+  const timber2x8Commercial40Count = timber2x8Commercial32Count; // Alias para retrocompatibilidad
+  
   const ridgeBeamLinM = totalRoofLengthM;
   const roofRaftersLinM = roofRaftersPairsCount * 2 * roofRafterLength;
   const roofFasciaLinM = 2 * totalRoofLengthM + 4 * roofRafterLength;
   const timber2x8NetLinM = ridgeBeamLinM * 2 + roofRaftersLinM + roofFasciaLinM;
   const timber2x8LinM = Math.ceil(timber2x8NetLinM * 1.08);
-  const timber2x8Commercial40Count = Math.ceil(timber2x8LinM / 4.0);
 
   // D. Listonado para Fachada Ventilada (Rain Screen 1x4" / 2x4") y Techo Ventilado ("Cold Roof")
   const rainScreenFurringLinM = Math.ceil((perimeterM * 3.5 + totalRoofLengthM * 4) * 1.1);
@@ -156,7 +219,8 @@ export function calculateSipHouseQuantities(
 
   const pilotesMadera5x5Count = foundationType === 'pilotes_madera' ? pilaresFundacionCount : 0;
   const vigasMaestras2x8LinM = Math.ceil(axesCountX * lengthM * 1.05);
-  const vigasMaestras40Count = Math.ceil(vigasMaestras2x8LinM / 4.0);
+  const vigasMaestras32Count = calculateStrips320(lengthM, axesCountX);
+  const vigasMaestras40Count = vigasMaestras32Count;
 
   // Insumos técnicos para fundaciones de hormigón según Especificación Técnica SIP
   const estabilizadoM3 = Math.round(totalFloorM2 * 0.15 * 10) / 10;
@@ -249,13 +313,13 @@ export function calculateSipHouseQuantities(
       proveedor: 'LP Chile / PROSIP',
     },
 
-    // Maderas Estructuración por Medidas Comerciales
+    // Maderas Estructuración por Medidas Comerciales (Restricción máx 3.20m)
     {
       especialidad: 'Maderas y Estructuración',
       codigo: 'MAD-PINO-2X6-3.2',
       item: 'Pino Seco Cepillado 2x6" x 3.20m (Losa SIP)',
-      descripcion: `Vigas perimetrales y soleras de losa 41x138mm. (${timber2x6LinM} m. lin. = ${timber2x6Commercial32Count} tiras)`,
-      unidad: 'Tiras 3.2m',
+      descripcion: `Vigas perimetrales y soleras de losa 41x138mm. (${timber2x6LinM} m lineales totales | ${timber2x6Commercial32Count} Tiras de 3.20 m)`,
+      unidad: 'Tiras de 3.20 m',
       cantidad: timber2x6Commercial32Count,
       precioUnitarioClp: 11040,
       totalClp: timber2x6Commercial32Count * 11040,
@@ -264,9 +328,9 @@ export function calculateSipHouseQuantities(
     {
       especialidad: 'Maderas y Estructuración',
       codigo: 'MAD-PINO-2X4-3.2',
-      item: 'Pino Seco Cepillado 2x4" x 3.20m (Muros & Refuerzo Vanos)',
-      descripcion: `Soleras con traslape >=30cm, cap plates y refuerzos vanos 41x92mm. (${timber2x4LinM} m. lin. = ${timber2x4Commercial32Count} tiras)`,
-      unidad: 'Tiras 3.2m',
+      item: 'Pino Seco Cepillado 2x4" x 3.20m (Soleras Anclaje/Amarre & Muros)',
+      descripcion: `Soleras basales de anclaje, soleras superiores con traslape >=30cm, cap plates y refuerzos vanos 41x92mm. (${timber2x4LinM} m lineales totales | ${timber2x4Commercial32Count} Tiras de 3.20 m)`,
+      unidad: 'Tiras de 3.20 m',
       cantidad: timber2x4Commercial32Count,
       precioUnitarioClp: 7520,
       totalClp: timber2x4Commercial32Count * 7520,
@@ -274,21 +338,21 @@ export function calculateSipHouseQuantities(
     },
     {
       especialidad: 'Maderas y Estructuración',
-      codigo: 'MAD-PINO-2X8-4.0',
-      item: 'Pino Seco Cepillado 2x8" x 4.00m (Techo 2 Aguas)',
-      descripcion: `Viga maestra cumbrera, pares de apoyo cada 1.22m y tapacanes 41x185mm. (${timber2x8LinM} m. lin. = ${timber2x8Commercial40Count} tiras)`,
-      unidad: 'Tiras 4.0m',
-      cantidad: timber2x8Commercial40Count,
-      precioUnitarioClp: 18400,
-      totalClp: timber2x8Commercial40Count * 18400,
+      codigo: 'MAD-PINO-2X8-3.2',
+      item: 'Pino Seco Cepillado 2x8" x 3.20m (Vigas Techo & Cumbrera)',
+      descripcion: `Viga cumbrera maestra, pares de apoyo cada 1.22m y tapacanes 41x185mm con empalmes sobre apoyo (${timber2x8LinM} m lineales totales | ${timber2x8Commercial32Count} Tiras de 3.20 m)`,
+      unidad: 'Tiras de 3.20 m',
+      cantidad: timber2x8Commercial32Count,
+      precioUnitarioClp: 14720,
+      totalClp: timber2x8Commercial32Count * 14720,
       proveedor: 'CMPC / Arauco',
     },
     {
       especialidad: 'Maderas y Estructuración',
       codigo: 'MAD-RAIN-SCREEN-1X4',
       item: 'Listones Pino Cepillado 1x4" x 3.20m (Fachada & Techo Ventilado)',
-      descripcion: `Cámara de aire y enrejillado de ventilación Rain Screen (${rainScreenFurringLinM} m. lin. = ${rainScreenCommercial32Count} tiras)`,
-      unidad: 'Tiras 3.2m',
+      descripcion: `Cámara de aire y enrejillado de ventilación Rain Screen (${rainScreenFurringLinM} m lineales totales | ${rainScreenCommercial32Count} Tiras de 3.20 m)`,
+      unidad: 'Tiras de 3.20 m',
       cantidad: rainScreenCommercial32Count,
       precioUnitarioClp: 3800,
       totalClp: rainScreenCommercial32Count * 3800,
@@ -357,13 +421,13 @@ export function calculateSipHouseQuantities(
           },
           {
             especialidad: 'Fundaciones',
-            codigo: 'FUND-VIGA-MAESTRA-4.0',
-            item: 'Vigas Maestras 2x8" x 4.00m Impregnadas',
-            descripcion: `Envigado maestro sobre pilotes CCA (${vigasMaestras2x8LinM} m. lin. = ${vigasMaestras40Count} tiras de 4.00m)`,
-            unidad: 'Tiras 4.0m',
-            cantidad: vigasMaestras40Count,
-            precioUnitarioClp: 20800,
-            totalClp: vigasMaestras40Count * 20800,
+            codigo: 'FUND-VIGA-MAESTRA-3.2',
+            item: 'Vigas Maestras Pino Impregnado 2x8" x 3.20m (Fundación)',
+            descripcion: `Envigado maestro sobre pilotes CCA con empalmes a media madera sobre apoyos (${vigasMaestras2x8LinM} m lineales totales | ${vigasMaestras32Count} Tiras de 3.20 m)`,
+            unidad: 'Tiras de 3.20 m',
+            cantidad: vigasMaestras32Count,
+            precioUnitarioClp: 16640,
+            totalClp: vigasMaestras32Count * 16640,
             proveedor: 'Arauco',
           },
           {
@@ -655,6 +719,7 @@ export function calculateSipHouseQuantities(
     timber2x4LinM,
     timber2x4Commercial32Count,
     timber2x8LinM,
+    timber2x8Commercial32Count,
     timber2x8Commercial40Count,
     rainScreenFurringLinM,
     rainScreenCommercial32Count,
@@ -667,6 +732,7 @@ export function calculateSipHouseQuantities(
     axesCountX,
     pilesCountZ,
     vigasMaestras2x8LinM,
+    vigasMaestras32Count,
     vigasMaestras40Count,
     hormigonG20M3,
     pernosAnclaje12Qty,
@@ -732,6 +798,7 @@ export function exportSipHouseToExcel(
     ['Clasificación ante Fuego:', result.coreSpec.fireRating],
     [],
     ['CRITERIOS CONSTRUCTIVOS Y REGLAS DE MONTAJE (COMPLIANCE)'],
+    ['Restricción largo comercial de maderas:', 'Largo estándar máx. 3.20 m (3200 mm). Toda pieza continua > 3.20 m (soleras de anclaje, soleras de amarre, vigas de borde 2x6", soleras de muro 2x4", vigas de techo 2x8" y vigas maestras) considera empalmes a media madera o placas de unión en apoyos estructurales (pies derechos/pilotes) con traslape mínimo de 30 cm.'],
     ['Distancia mínima vano a esquina sólida:', '30 cm (LP/Foard - Evita concentración de esfuerzos)'],
     ['Luz máxima de vano sin viga compuesta:', '2.44 m (Dinteles SIP > 30cm sobrecarga < 150 kg/m)'],
     ['Regla de traslape solera superior:', 'Mínimo 30 cm respecto a uniones verticales de paneles'],

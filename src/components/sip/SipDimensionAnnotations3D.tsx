@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Line, Text, Billboard } from '@react-three/drei';
+import { Text } from '@react-three/drei';
 import * as THREE from 'three';
 import { useSipHouseStore, getInteriorZones } from '../../store/sipHouseStore';
 
@@ -14,8 +14,8 @@ interface SimpleCotaProps {
 }
 
 /**
- * Cota limpia y estilizada estándar (idéntica a los otros configuradores de la suite)
- * Utiliza Drei Line + Billboard Text para máxima legibilidad sin saturar la vista con tarjetas HTML
+ * Cota 3D paramétrica sólida y ultraligera construida con geometrías Three nativas
+ * 100% libre de fallos de shader de líneas o excepciones de quaternion en Billboard
  */
 function SimpleCota3D({
   start,
@@ -26,77 +26,72 @@ function SimpleCota3D({
   tickSize = 0.12,
   offsetY = 0,
 }: SimpleCotaProps) {
-  const p1 = new THREE.Vector3(...start);
-  const p2 = new THREE.Vector3(...end);
-  const mid = new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5);
-  mid.y += offsetY;
+  if (!start || !end || !label) return null;
 
-  const dir = new THREE.Vector3().subVectors(p2, p1);
-  const length = dir.length();
+  const { p1, p2, mid, length, orientation, startTickA, startTickB, endTickA, endTickB } = useMemo(() => {
+    const pt1 = new THREE.Vector3(...start);
+    const pt2 = new THREE.Vector3(...end);
+    const m = new THREE.Vector3().addVectors(pt1, pt2).multiplyScalar(0.5);
+    m.y += offsetY;
 
-  const up = new THREE.Vector3(0, 1, 0);
-  let normal = new THREE.Vector3().crossVectors(dir, up).normalize();
-  if (normal.lengthSq() < 0.001) {
-    normal = new THREE.Vector3(1, 0, 0);
-  }
+    const dir = new THREE.Vector3().subVectors(pt2, pt1);
+    const len = dir.length();
+    if (len <= 0.05 || isNaN(len)) {
+      return { p1: pt1, p2: pt2, mid: m, length: 0, orientation: new THREE.Quaternion(), startTickA: pt1, startTickB: pt1, endTickA: pt2, endTickB: pt2 };
+    }
 
-  const startTickA = new THREE.Vector3().addVectors(p1, normal.clone().multiplyScalar(-tickSize));
-  const startTickB = new THREE.Vector3().addVectors(p1, normal.clone().multiplyScalar(tickSize));
-  const endTickA = new THREE.Vector3().addVectors(p2, normal.clone().multiplyScalar(-tickSize));
-  const endTickB = new THREE.Vector3().addVectors(p2, normal.clone().multiplyScalar(tickSize));
+    const up = new THREE.Vector3(0, 1, 0);
+    const dirNorm = dir.clone().normalize();
+    const orient = new THREE.Quaternion();
+    orient.setFromUnitVectors(up, dirNorm);
+
+    let normal = new THREE.Vector3().crossVectors(dir, up).normalize();
+    if (normal.lengthSq() < 0.001 || isNaN(normal.x)) {
+      normal = new THREE.Vector3(1, 0, 0);
+    }
+
+    const sA = new THREE.Vector3().addVectors(pt1, normal.clone().multiplyScalar(-tickSize));
+    const sB = new THREE.Vector3().addVectors(pt1, normal.clone().multiplyScalar(tickSize));
+    const eA = new THREE.Vector3().addVectors(pt2, normal.clone().multiplyScalar(-tickSize));
+    const eB = new THREE.Vector3().addVectors(pt2, normal.clone().multiplyScalar(tickSize));
+
+    return { p1: pt1, p2: pt2, mid: m, length: len, orientation: orient, startTickA: sA, startTickB: sB, endTickA: eA, endTickB: eB };
+  }, [start, end, offsetY, tickSize]);
 
   if (length <= 0.05) return null;
 
   return (
     <group renderOrder={999}>
-      {/* Línea principal */}
-      <Line
-        points={[start, end]}
-        color={color}
-        lineWidth={1.8}
-        depthTest={false}
-        renderOrder={999}
-      />
+      {/* Barra de cota principal */}
+      <mesh position={mid} quaternion={orientation}>
+        <cylinderGeometry args={[0.007, 0.007, length, 6]} />
+        <meshBasicMaterial color={color} depthTest={false} transparent opacity={0.9} />
+      </mesh>
 
-      {/* Ticks extremos */}
-      <Line
-        points={[
-          [startTickA.x, startTickA.y, startTickA.z],
-          [startTickB.x, startTickB.y, startTickB.z],
-        ]}
-        color={color}
-        lineWidth={1.8}
-        depthTest={false}
-        renderOrder={999}
-      />
-      <Line
-        points={[
-          [endTickA.x, endTickA.y, endTickA.z],
-          [endTickB.x, endTickB.y, endTickB.z],
-        ]}
-        color={color}
-        lineWidth={1.8}
-        depthTest={false}
-        renderOrder={999}
-      />
+      {/* Ticks en extremos */}
+      <mesh position={p1}>
+        <sphereGeometry args={[0.018, 6, 6]} />
+        <meshBasicMaterial color={color} depthTest={false} />
+      </mesh>
+      <mesh position={p2}>
+        <sphereGeometry args={[0.018, 6, 6]} />
+        <meshBasicMaterial color={color} depthTest={false} />
+      </mesh>
 
-      {/* Texto de medida simple con Billboard */}
-      <Billboard position={[mid.x, mid.y + fontSize * 0.7, mid.z]} follow={true}>
+      {/* Texto de medida */}
+      <group position={[mid.x, mid.y + fontSize * 0.75, mid.z]}>
         <Text
           fontSize={fontSize}
           color={color}
           anchorX="center"
-          anchorY="middle"
-          outlineWidth={fontSize * 0.12}
+          anchorY="bottom"
+          outlineWidth={fontSize * 0.08}
           outlineColor="#000000"
-          fontWeight="bold"
-          material-depthTest={false}
-          material-toneMapped={false}
           renderOrder={1000}
         >
           {label}
         </Text>
-      </Billboard>
+      </group>
     </group>
   );
 }
@@ -191,50 +186,44 @@ export function SipDimensionAnnotations3D() {
       {dimensionDetailLevel >= 2 && (
         <group>
           {/* Dimensiones y nombres limpios de cada recinto */}
-          {zones.map((zone) => {
-            const zx = (zone.bounds.minX + zone.bounds.maxX) / 200;
-            const zz = (zone.bounds.minZ + zone.bounds.maxZ) / 200;
-            const zwCm = Math.round(zone.bounds.maxX - zone.bounds.minX);
-            const zhCm = Math.round(zone.bounds.maxZ - zone.bounds.minZ);
+          {zones &&
+            zones.map((zone) => {
+              if (!zone || !zone.bounds) return null;
+              const zx = (zone.bounds.minX + zone.bounds.maxX) / 200;
+              const zz = (zone.bounds.minZ + zone.bounds.maxZ) / 200;
+              const zwCm = Math.round(zone.bounds.maxX - zone.bounds.minX);
+              const zhCm = Math.round(zone.bounds.maxZ - zone.bounds.minZ);
 
-            if (zwCm < 40 || zhCm < 40) return null;
+              if (zwCm < 40 || zhCm < 40 || isNaN(zx) || isNaN(zz)) return null;
 
-            return (
-              <group key={`dim-zone-${zone.id}`} position={[zx, floorThickM + 0.08, zz]}>
-                <Billboard follow={true}>
+              return (
+                <group key={`dim-zone-${zone.id}`} position={[zx, floorThickM + 0.04, zz]} rotation={[-Math.PI / 2, 0, 0]}>
                   <Text
-                    fontSize={0.22}
+                    fontSize={0.24}
                     color="#ffffff"
                     anchorX="center"
                     anchorY="bottom"
-                    outlineWidth={0.025}
+                    outlineWidth={0.02}
                     outlineColor="#000000"
-                    fontWeight="bold"
-                    material-depthTest={false}
-                    material-toneMapped={false}
                     renderOrder={1000}
                   >
                     {zone.name}
                   </Text>
                   <Text
                     position={[0, -0.06, 0]}
-                    fontSize={0.18}
+                    fontSize={0.19}
                     color={zone.color || '#38bdf8'}
                     anchorX="center"
                     anchorY="top"
-                    outlineWidth={0.02}
+                    outlineWidth={0.015}
                     outlineColor="#000000"
-                    fontWeight="bold"
-                    material-depthTest={false}
-                    material-toneMapped={false}
                     renderOrder={1000}
                   >
                     {`${zwCm} × ${zhCm} cm`}
                   </Text>
-                </Billboard>
-              </group>
-            );
-          })}
+                </group>
+              );
+            })}
 
           {/* Medidas de tabiques interiores */}
           {interiorWalls &&
