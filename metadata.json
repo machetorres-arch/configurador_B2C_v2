@@ -1,6 +1,6 @@
 {
   "name": "MuebleStudio 3D",
-  "description": "Configurador y diseñador 3D de closets, cocinas modulares y planos de corte para carpintería",
+  "description": "Configurador y diseñador 3D de closets, cocinas modulares, casas SIP modulares y planos de corte técnicos",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
