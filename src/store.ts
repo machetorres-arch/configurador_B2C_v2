@@ -138,13 +138,52 @@ export interface ClosetState {
 
 const defaultModule: ClosetModule = {
   id: 'mod-1',
-  width: 60,
+  width: 90,
   shelves: 2,
   drawers: 2,
   doors: false,
-  hasHanger: true,
-  innerDrawers: false
+  hasHanger: false,
+  innerDrawers: false,
+  overrides: {
+    openElements: { 'drawer-0': true, 'drawer-1': true }
+  }
 };
+
+const defaultModules: ClosetModule[] = [
+  {
+    id: 'mod-1',
+    width: 90,
+    shelves: 2,
+    drawers: 2,
+    doors: false,
+    hasHanger: false,
+    innerDrawers: false,
+    overrides: {
+      openElements: { 'drawer-0': true, 'drawer-1': true }
+    }
+  },
+  {
+    id: 'mod-2',
+    width: 100,
+    shelves: 2,
+    drawers: 0,
+    doors: false,
+    hasHanger: true,
+    innerDrawers: false
+  },
+  {
+    id: 'mod-3',
+    width: 80,
+    shelves: 2,
+    drawers: 2,
+    doors: true,
+    hasHanger: false,
+    innerDrawers: false,
+    overrides: {
+      openElements: { 'drawer-0': true, 'drawer-1': true }
+    }
+  }
+];
 
 const getSavedDesigns = () => {
   const designs = [];
@@ -158,9 +197,9 @@ const getSavedDesigns = () => {
 };
 
 export const useStore = create<ClosetState>((set, get) => ({
-  height: 200,
+  height: 240,
   depth: 60,
-  thickness: 1.5,
+  thickness: 1.8,
   
   structureMaterial: 'melamina',
   structureColor: '#ffffff',
@@ -196,8 +235,8 @@ export const useStore = create<ClosetState>((set, get) => ({
   assemblyType: 'minifix',
   drawerAssemblyType: 'minifix',
   
-  modules: [defaultModule],
-  activeModuleId: defaultModule.id,
+  modules: defaultModules,
+  activeModuleId: 'mod-1',
   savedDesigns: getSavedDesigns(),
   isPrinting: false,
 

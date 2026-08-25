@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { RoomConfig, getPresetRoomVertices, generateWallsFromRoom } from '../utils/roomGeometry';
+import { constrainInsideRoomAndWalls, repositionCabinetsOnRoomChange } from '../utils/kitchenCollision';
 
 export type ViewMode = '2d' | '3d';
 export type ToolMode = 
@@ -266,15 +267,58 @@ export const useKitchenStore = create<KitchenState>((set) => ({
   setToolMode: (mode) => set({ toolMode: mode, drawingStart: null }),
   addWall: (wall) => set((state) => ({ walls: [...state.walls, wall] })),
   setWalls: (walls) => set({ walls }),
-  addCabinet: (cabinet) => set((state) => ({ cabinets: [...state.cabinets, cabinet] })),
+  addCabinet: (cabinet) =>
+    set((state) => {
+      const walls = state.walls;
+      const roomPoly = state.roomConfig?.vertices?.map((v) => [v.x, v.y] as [number, number]) || [];
+      const constrainedPos = constrainInsideRoomAndWalls(
+        cabinet.position,
+        cabinet.rotation || 0,
+        cabinet.width,
+        cabinet.depth,
+        cabinet.height,
+        walls,
+        roomPoly
+      );
+      return { cabinets: [...state.cabinets, { ...cabinet, position: constrainedPos }] };
+    }),
   setActiveCabinet: (id) => set({ activeCabinetId: id }),
   setDrawingStart: (pos) => set({ drawingStart: pos }),
   setShowSocle: (val) => set({ showSocle: val }),
-  updateCabinet: (id, updates) => set((state) => ({ cabinets: resolveCabinetsWithResize(state.cabinets, id, updates) })),
+  updateCabinet: (id, updates) =>
+    set((state) => {
+      const resolved = resolveCabinetsWithResize(state.cabinets, id, updates);
+      const walls = state.walls;
+      const roomPoly = state.roomConfig?.vertices?.map((v) => [v.x, v.y] as [number, number]) || [];
+      const clamped = resolved.map((c) => ({
+        ...c,
+        position: constrainInsideRoomAndWalls(
+          c.position,
+          c.rotation || 0,
+          c.width,
+          c.depth,
+          c.height,
+          walls,
+          roomPoly
+        ),
+      }));
+      return { cabinets: clamped };
+    }),
   setRoomPlannerOpen: (open) => set({ isRoomPlannerOpen: open }),
   setRoomConfig: (config) => {
     const generatedWalls = generateWallsFromRoom(config);
-    set({ roomConfig: config, walls: generatedWalls });
+    set((state) => {
+      const repositionedCabinets = repositionCabinetsOnRoomChange(
+        state.cabinets,
+        generatedWalls,
+        config
+      );
+      return {
+        roomConfig: config,
+        walls: generatedWalls,
+        cabinets: repositionedCabinets,
+      };
+    });
   },
   setWallColor: (color) => set({ wallColor: color }),
   setFloorType: (floorType) => set({ floorType }),

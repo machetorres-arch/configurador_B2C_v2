@@ -68,22 +68,30 @@ export function calculateSipHouseQuantities(
   const ridgeHM = dim.ridgeHeight / 100;
   const overhangM = (dim.overhang || 25) / 100;
 
+  const isLShape = dim.shape === 'l_shape';
+  const wingLengthM = isLShape ? (dim.wingLength || 420) / 100 : 0;
+  const wingWidthM = isLShape ? (dim.wingWidth || 360) / 100 : 0;
+
   const coreSpec = SIP_CORE_SPECS[coreType] || SIP_CORE_SPECS.eps_15kg;
 
-  // 1. Superficie Útil de Piso
-  const totalFloorM2 = lengthM * widthM;
+  // 1. Superficie Útil de Piso (L1 x W1 + L2 x W2)
+  const totalFloorM2 = isLShape ? lengthM * widthM + wingLengthM * wingWidthM : lengthM * widthM;
 
   // 2. Paneles SIP Losa Piso (1.22 x 2.44m = 2.977 m²)
   const floorSipCount = Math.ceil((totalFloorM2 / (1.22 * 2.44)) * 1.1);
 
-  // 3. Muros Perimetrales SIP
   // 3. Muros Perimetrales SIP 114 mm (Rectangulares + Frontones Triangulares)
-  const perimeterM = 2 * (lengthM + widthM);
+  // Perímetro L-shape: 2*(L1 + W1 + W2)
+  const perimeterM = isLShape ? 2 * (lengthM + widthM + wingWidthM) : 2 * (lengthM + widthM);
   const rectangularWallAreaM2 = perimeterM * eaveHM;
   const isGableRoof = ridgeHM > eaveHM + 0.15;
   const gableRoofHeightM = Math.max(0.05, ridgeHM - eaveHM);
-  // Área neta de los 2 triángulos del frontón (frontal y trasero): 2 * (1/2 * base * altura) = widthM * gableRoofHeightM
-  const gableTrianglesAreaM2 = isGableRoof ? widthM * gableRoofHeightM : 0;
+  // Área neta de los frontones triangulares:
+  const gableTrianglesAreaM2 = isGableRoof
+    ? isLShape
+      ? (widthM + wingWidthM) * gableRoofHeightM
+      : widthM * gableRoofHeightM
+    : 0;
   const extWallAreaM2 = rectangularWallAreaM2 + gableTrianglesAreaM2;
 
   // Optimización de cubicación industrial SIP (Aprovechamiento de cortes pareados en frontón diagonal):
@@ -117,12 +125,21 @@ export function calculateSipHouseQuantities(
   const roofSlopeAngle = isGableRoof ? Math.atan2(gableRoofHeightM, widthM / 2) : 0;
   const roofRafterLength = isGableRoof ? halfSpanM / Math.cos(roofSlopeAngle) : halfSpanM;
   const totalRoofLengthM = lengthM + 2 * overhangM;
-  const totalRoofAreaM2 = isGableRoof ? 2 * (roofRafterLength * totalRoofLengthM) : totalRoofLengthM * widthM;
+  
+  // Para techumbre en L:
+  const wingHalfSpanM = wingLengthM / 2 + overhangM;
+  const wingRoofRafterLength = isGableRoof ? wingHalfSpanM / Math.cos(roofSlopeAngle) : wingHalfSpanM;
+  const wingRoofAreaM2 = isLShape ? 2 * (wingRoofRafterLength * (wingWidthM + overhangM)) : 0;
+  const totalRoofAreaM2 = (isGableRoof ? 2 * (roofRafterLength * totalRoofLengthM) : totalRoofLengthM * widthM) + wingRoofAreaM2;
 
   // Modulación real: Si caída de agua <= 2.44m es 1 panel entero continuo; si > 2.44m son paneles con empalme sobre viga
   const roofPanelsAlongLen = Math.ceil(totalRoofLengthM / 1.22);
   const roofPanelsAlongRafter = roofRafterLength <= 2.44 ? 1 : Math.ceil(roofRafterLength / 2.44);
-  const roofSip210Count = (isGableRoof ? 2 : 1) * roofPanelsAlongLen * roofPanelsAlongRafter;
+  const mainRoofSip210Count = (isGableRoof ? 2 : 1) * roofPanelsAlongLen * roofPanelsAlongRafter;
+  const wingRoofSip210Count = isLShape
+    ? (isGableRoof ? 2 : 1) * Math.ceil((wingWidthM + overhangM) / 1.22) * (wingRoofRafterLength <= 2.44 ? 1 : Math.ceil(wingRoofRafterLength / 2.44))
+    : 0;
+  const roofSip210Count = mainRoofSip210Count + wingRoofSip210Count;
 
   // 6. Tablillas de OSB (Surface Splines) 11.1mm x 100mm x 2.37m (LP / SIPA NTA NER-1038)
   // 2 tablillas por cada unión vertical y horizontal entre paneles SIP cada 1.22m
@@ -358,6 +375,21 @@ export function calculateSipHouseQuantities(
       totalClp: rainScreenCommercial32Count * 3800,
       proveedor: 'Arauco / CMPC',
     },
+    ...(isLShape
+      ? [
+          {
+            especialidad: 'Maderas y Estructuración',
+            codigo: 'MAD-LIMAHOYA-2X8',
+            item: 'Viga Limahoya Diagonal 2x8" & Canaleta Hojalatería en V',
+            descripcion: 'Viga diagonal de madera para encuentro de vertientes de techos en L con canaleta hojalatería Zincalum 0.5mm',
+            unidad: 'Kit/Tira',
+            cantidad: 2,
+            precioUnitarioClp: 28900,
+            totalClp: 57800,
+            proveedor: 'Arauco / Cintac',
+          },
+        ]
+      : []),
 
     // Fijaciones y Sellos Normativos
     {
@@ -691,6 +723,180 @@ export function calculateSipHouseQuantities(
       precioUnitarioClp: 54900,
       totalClp: tinetasPinturaLatex * 54900,
       proveedor: 'SIPA / Tricolor',
+    },
+
+    // Revestimientos Exteriores y Fachada Ventilada
+    {
+      especialidad: 'Revestimientos Exteriores',
+      codigo: 'REV-TYVEK-HOMEWRAP',
+      item: 'Membrana Hidrófuga y Respirable Tyvek HomeWrap (Rollo 50m²)',
+      descripcion: 'Barrera continua contra el viento y agua líquida con alta permeabilidad al vapor para protección del OSB SIP',
+      unidad: 'Rollos',
+      cantidad: Math.max(1, Math.ceil((extWallAreaM2 + totalRoofAreaM2) / 45)),
+      precioUnitarioClp: 48900,
+      totalClp: Math.max(1, Math.ceil((extWallAreaM2 + totalRoofAreaM2) / 45)) * 48900,
+      proveedor: 'DuPont Tyvek / Durex',
+    },
+    ...(extCladding === 'arratia_microacanalado'
+      ? [
+          {
+            especialidad: 'Revestimientos Exteriores',
+            codigo: 'REV-ARRATIA-MICRO-04',
+            item: 'Plancha Arratia Microacanalada Zincalum 0.4mm Negro Mate',
+            descripcion: 'Revestimiento metálico microondulado arquitectónico prepintado negro mate para fachada ventilada',
+            unidad: 'Planchas (0.50x2.50m)',
+            cantidad: Math.ceil((extWallAreaM2 * 1.12) / 1.25),
+            precioUnitarioClp: 18900,
+            totalClp: Math.ceil((extWallAreaM2 * 1.12) / 1.25) * 18900,
+            proveedor: 'Arratia Metales / Cintac',
+          },
+        ]
+      : extCladding === 'zincalum_negro'
+      ? [
+          {
+            especialidad: 'Revestimientos Exteriores',
+            codigo: 'REV-ZINC-OND-NEGRO',
+            item: 'Planchas Zincalum Ondulado CA-8 / 5V Prepintado Negro 0.4mm',
+            descripcion: 'Planchas de acero zincalum prepintado negro mate 0.85 x 3.00 m para fachada',
+            unidad: 'Planchas',
+            cantidad: Math.ceil((extWallAreaM2 * 1.12) / 2.55),
+            precioUnitarioClp: 14500,
+            totalClp: Math.ceil((extWallAreaM2 * 1.12) / 2.55) * 14500,
+            proveedor: 'Cintac',
+          },
+        ]
+      : extCladding === 'madera_tinglada'
+      ? [
+          {
+            especialidad: 'Revestimientos Exteriores',
+            codigo: 'REV-TINGLADO-PINO-1X5',
+            item: 'Tinglado Pino Radiata Impregnado CCA 1x5" x 3.20m',
+            descripcion: 'Tablas de madera machihembrada / tinglada para fachada rústica tratada para intemperie',
+            unidad: 'Tiras de 3.20m',
+            cantidad: Math.ceil((extWallAreaM2 * 1.15) / (0.11 * 3.20)),
+            precioUnitarioClp: 4800,
+            totalClp: Math.ceil((extWallAreaM2 * 1.15) / (0.11 * 3.20)) * 4800,
+            proveedor: 'Arauco / CMPC',
+          },
+        ]
+      : extCladding === 'fibrocemento_gris'
+      ? [
+          {
+            especialidad: 'Revestimientos Exteriores',
+            codigo: 'REV-SIDING-FIBROCEMENTO',
+            item: 'Siding Fibrocemento Cedral Madera 6mm (0.19 x 3.66m)',
+            descripcion: 'Tablas de fibrocemento textura madera gris grafito incombustible y resistente a la humedad',
+            unidad: 'Tablas',
+            cantidad: Math.ceil((extWallAreaM2 * 1.12) / (0.16 * 3.66)),
+            precioUnitarioClp: 7200,
+            totalClp: Math.ceil((extWallAreaM2 * 1.12) / (0.16 * 3.66)) * 7200,
+            proveedor: 'Etex / Cedral',
+          },
+        ]
+      : [
+          {
+            especialidad: 'Revestimientos Exteriores',
+            codigo: 'REV-PROTECTOR-OSB',
+            item: 'Protector Hidrorrepelente Impregnante UV OSB (Galón 3.78L)',
+            descripcion: 'Sellador acrílico protector antihumedad con filtro solar UV para paneles SIP vistos',
+            unidad: 'Galones',
+            cantidad: Math.max(1, Math.ceil(extWallAreaM2 / 35)),
+            precioUnitarioClp: 29900,
+            totalClp: Math.max(1, Math.ceil(extWallAreaM2 / 35)) * 29900,
+            proveedor: 'Chilcorrofin / Sika',
+          },
+        ]),
+
+    // Revestimientos de Techumbre y Cubierta
+    ...(roofCladding === 'arratia_microacanalado'
+      ? [
+          {
+            especialidad: 'Cubiertas y Techumbres',
+            codigo: 'CUB-ARRATIA-TECHO-05',
+            item: 'Plancha Arratia Techo Continuo Zincalum 0.5mm Negro Mate',
+            descripcion: 'Cubierta metálica estanca de diseño microacanalado para techos ventilados con fijación estanca',
+            unidad: 'Planchas (0.50x3.66m)',
+            cantidad: Math.ceil((totalRoofAreaM2 * 1.12) / 1.83),
+            precioUnitarioClp: 24500,
+            totalClp: Math.ceil((totalRoofAreaM2 * 1.12) / 1.83) * 24500,
+            proveedor: 'Arratia Metales / Cintac',
+          },
+        ]
+      : roofCladding === 'zinc_ca8_negro'
+      ? [
+          {
+            especialidad: 'Cubiertas y Techumbres',
+            codigo: 'CUB-ZINC-CA8-NEGRO',
+            item: 'Planchas Zinc Acanalado Ondulado CA-8 Negro 0.4mm x 3.66m',
+            descripcion: 'Planchas de zinc acanalado prepintado negro para cubiertas inclinadas',
+            unidad: 'Planchas',
+            cantidad: Math.ceil((totalRoofAreaM2 * 1.12) / (0.85 * 3.66)),
+            precioUnitarioClp: 16900,
+            totalClp: Math.ceil((totalRoofAreaM2 * 1.12) / (0.85 * 3.66)) * 16900,
+            proveedor: 'Cintac',
+          },
+        ]
+      : roofCladding === 'teja_asfaltica_negra'
+      ? [
+          {
+            especialidad: 'Cubiertas y Techumbres',
+            codigo: 'CUB-TEJA-ASFALTICA-3TAB',
+            item: 'Teja Asfáltica 3-Tab Negra Grafito (Paquete 3.1 m²)',
+            descripcion: 'Tejas de base asfáltica reforzada con fibra de vidrio y gránulos minerales cerámicos',
+            unidad: 'Paquetes',
+            cantidad: Math.ceil((totalRoofAreaM2 * 1.15) / 3.1),
+            precioUnitarioClp: 28900,
+            totalClp: Math.ceil((totalRoofAreaM2 * 1.15) / 3.1) * 28900,
+            proveedor: 'CertainTeed / IKO',
+          },
+        ]
+      : [
+          {
+            especialidad: 'Cubiertas y Techumbres',
+            codigo: 'CUB-MEMBRANA-LIQUIDA',
+            item: 'Membrana Impermeabilizante Poliuretánica Líquida UV (Tineta 20kg)',
+            descripcion: 'Impermeabilización elástica sin uniones para techos planos o cubiertas expuestas',
+            unidad: 'Tinetas',
+            cantidad: Math.max(1, Math.ceil(totalRoofAreaM2 / 20)),
+            precioUnitarioClp: 68900,
+            totalClp: Math.max(1, Math.ceil(totalRoofAreaM2 / 20)) * 68900,
+            proveedor: 'Sika Sikalastic',
+          },
+        ]),
+
+    // Hojalatería y Fijaciones de Terminación Exterior
+    {
+      especialidad: 'Hojalatería y Remates',
+      codigo: 'HOJ-ESQUINERO-EXT-NEGRO',
+      item: 'Esquineros Exteriores Hojalatería Zincalum 0.5mm Negro Mate (2.50m)',
+      descripcion: 'Remates angulares 50x50mm prepintados negro para sellado estanco de esquinas exteriores',
+      unidad: 'Tiras de 2.50m',
+      cantidad: Math.max(4, Math.ceil((4 * eaveHM + (isLShape ? 2 * eaveHM : 0)) / 2.4)),
+      precioUnitarioClp: 6800,
+      totalClp: Math.max(4, Math.ceil((4 * eaveHM + (isLShape ? 2 * eaveHM : 0)) / 2.4)) * 6800,
+      proveedor: 'Cintac / Arratia',
+    },
+    {
+      especialidad: 'Hojalatería y Remates',
+      codigo: 'HOJ-CUMBRERA-NEGRO',
+      item: 'Caballete Cumbrera Doble Ala Zincalum 0.5mm Negro Mate (2.50m)',
+      descripcion: 'Remate de cumbrera con doble ala 150mm y solape estanco con ventilación',
+      unidad: 'Tiras de 2.50m',
+      cantidad: Math.max(1, Math.ceil((lengthM + 2 * overhangM + (isLShape ? wingLengthM : 0)) / 2.2)),
+      precioUnitarioClp: 8900,
+      totalClp: Math.max(1, Math.ceil((lengthM + 2 * overhangM + (isLShape ? wingLengthM : 0)) / 2.2)) * 8900,
+      proveedor: 'Cintac / Arratia',
+    },
+    {
+      especialidad: 'Fijaciones y Químicos',
+      codigo: 'FIJ-TORNILLO-EPDM-10X1',
+      item: 'Tornillos Autoperforantes Hexagonales 10 x 1" con Golilla EPDM',
+      descripcion: 'Fijación de planchas y remates con sello hermético de goma de alta durabilidad (Cajas 500u)',
+      unidad: 'Cajas (500u)',
+      cantidad: Math.max(1, Math.ceil(((extWallAreaM2 + totalRoofAreaM2) * 8) / 500)),
+      precioUnitarioClp: 16800,
+      totalClp: Math.max(1, Math.ceil(((extWallAreaM2 + totalRoofAreaM2) * 8) / 500)) * 16800,
+      proveedor: 'Mamut / Spax',
     },
   ];
 

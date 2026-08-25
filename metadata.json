@@ -1,6 +1,6 @@
 {
   "name": "MuebleStudio 3D",
-  "description": "Configurador y diseñador 3D de closets, cocinas modulares, casas SIP modulares y planos de corte técnicos",
+  "description": "Configurador paramétrico y BIM 3D de clósets, cocinas modulares, casas SIP, casas de hormigón armado (ICH/NCh430), muebles especiales y separadores de baños HPL fenólicos",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

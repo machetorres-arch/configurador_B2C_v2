@@ -540,17 +540,151 @@ export function SipHouseConfigurator({ onNavigate }: { onNavigate: (route: 'home
             {/* 1. TAB DIMENSIONES */}
             {activeTab === 'dimensions' && (
               <div className="space-y-4">
-                <div className="bg-sky-500/10 border border-sky-500/30 rounded-xl p-3 text-xs text-sky-200 leading-relaxed">
-                  Ajusta los parámetros geométricos del volumen base rectangular. Los muros cierran perfectamente y el techo a 2 aguas se modula en paneles SIP 210 mm.
+                {/* Selector de Modelo Arquitectónico */}
+                <div className="bg-white/5 rounded-xl p-3.5 border border-white/5 space-y-3">
+                  <span className="text-xs font-bold text-sky-400 uppercase tracking-wider block">
+                    Modelo Arquitectónico Base
+                  </span>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => state.setDimension('shape', 'rectangular')}
+                      className={`p-2.5 rounded-xl border text-left transition-all ${
+                        (state.dimensions.shape || 'rectangular') === 'rectangular'
+                          ? 'bg-sky-500/20 border-sky-500/50 text-white shadow-md shadow-sky-500/10'
+                          : 'bg-slate-950/40 border-white/5 text-slate-400 hover:text-white hover:bg-white/5'
+                      }`}
+                    >
+                      <span className="text-xs font-bold block text-sky-300">1. Cabaña Rectangular</span>
+                      <span className="text-[10px] text-slate-400 block mt-0.5">Volumen puro a 2 aguas estándar</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => state.setDimension('shape', 'l_shape')}
+                      className={`p-2.5 rounded-xl border text-left transition-all ${
+                        state.dimensions.shape === 'l_shape'
+                          ? 'bg-sky-500/20 border-sky-500/50 text-white shadow-md shadow-sky-500/10'
+                          : 'bg-slate-950/40 border-white/5 text-slate-400 hover:text-white hover:bg-white/5'
+                      }`}
+                    >
+                      <span className="text-xs font-bold block text-sky-300">2. Casa en L</span>
+                      <span className="text-[10px] text-slate-400 block mt-0.5">Encuentro de techos y patio interior</span>
+                    </button>
+                  </div>
                 </div>
+
+                {/* Formato y Estilo de Techo / Cubierta (2 Aguas, 1 Agua, Plano/Recto) */}
+                <div className="bg-sky-500/10 border border-sky-500/30 rounded-xl p-3.5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-sky-300 uppercase tracking-wider">
+                      Tipo y Estilo de Techumbre
+                    </span>
+                    <span className="px-2 py-0.5 bg-sky-500/20 text-sky-300 border border-sky-500/30 rounded text-[10px] font-bold">
+                      {(state.dimensions.roofStyle || 'gable_valley') === 'single_shed'
+                        ? '1 AGUA'
+                        : (state.dimensions.roofStyle || 'gable_valley') === 'flat'
+                        ? 'RECTO / PLANO'
+                        : '2 AGUAS'}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => state.setDimension('roofStyle', 'gable_valley')}
+                      className={`p-2 rounded-lg border text-left text-xs transition-all ${
+                        (state.dimensions.roofStyle || 'gable_valley') === 'gable_valley'
+                          ? 'bg-sky-500/30 border-sky-400 text-white font-bold shadow-sm'
+                          : 'bg-slate-950/40 border-white/10 text-slate-400 hover:text-white hover:bg-white/5'
+                      }`}
+                    >
+                      <span className="block text-[11px] font-bold">2 Aguas</span>
+                      <span className="text-[9px] text-slate-400 block mt-0.5">Cumbrera central / Limahoya</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => state.setDimension('roofStyle', 'single_shed')}
+                      className={`p-2 rounded-lg border text-left text-xs transition-all ${
+                        state.dimensions.roofStyle === 'single_shed'
+                          ? 'bg-sky-500/30 border-sky-400 text-white font-bold shadow-sm'
+                          : 'bg-slate-950/40 border-white/10 text-slate-400 hover:text-white hover:bg-white/5'
+                      }`}
+                    >
+                      <span className="block text-[11px] font-bold">1 Agua</span>
+                      <span className="text-[9px] text-slate-400 block mt-0.5">Mono-pitch continuo</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => state.setDimension('roofStyle', 'flat')}
+                      className={`p-2 rounded-lg border text-left text-xs transition-all ${
+                        state.dimensions.roofStyle === 'flat'
+                          ? 'bg-sky-500/30 border-sky-400 text-white font-bold shadow-sm'
+                          : 'bg-slate-950/40 border-white/10 text-slate-400 hover:text-white hover:bg-white/5'
+                      }`}
+                    >
+                      <span className="block text-[11px] font-bold">Recto / Plano</span>
+                      <span className="text-[9px] text-slate-400 block mt-0.5">Cubierta mediterránea horizontal</span>
+                    </button>
+                  </div>
+                </div>
+
+                {state.dimensions.shape === 'l_shape' && (
+                  <div className="bg-sky-500/10 border border-sky-500/30 rounded-xl p-3.5 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-sky-300 uppercase tracking-wider">
+                        Dimensiones Ala Lateral (L2 x W2)
+                      </span>
+                      <span className="px-2 py-0.5 bg-sky-500/20 text-sky-300 border border-sky-500/30 rounded text-[10px] font-bold">
+                        BIM / CAD
+                      </span>
+                    </div>
+
+                    <div className="space-y-3">
+                      <div>
+                        <div className="flex justify-between text-xs text-slate-300 mb-1">
+                          <span>Largo Ala (L2):</span>
+                          <span className="font-mono font-bold text-sky-400">
+                            {state.dimensions.wingLength || 420} cm ({((state.dimensions.wingLength || 420) / 100).toFixed(2)} m)
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min="240"
+                          max="800"
+                          step="20"
+                          value={state.dimensions.wingLength || 420}
+                          onChange={(e) => state.setDimension('wingLength', parseFloat(e.target.value))}
+                          className="w-full accent-sky-500"
+                        />
+                      </div>
+                      <div>
+                        <div className="flex justify-between text-xs text-slate-300 mb-1">
+                          <span>Ancho Crujía Ala (W2):</span>
+                          <span className="font-mono font-bold text-sky-400">
+                            {state.dimensions.wingWidth || 360} cm ({((state.dimensions.wingWidth || 360) / 100).toFixed(2)} m)
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min="240"
+                          max="600"
+                          step="20"
+                          value={state.dimensions.wingWidth || 360}
+                          onChange={(e) => state.setDimension('wingWidth', parseFloat(e.target.value))}
+                          className="w-full accent-sky-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 <div className="bg-white/5 rounded-xl p-3.5 border border-white/5 space-y-3">
                   <span className="text-xs font-bold text-sky-400 uppercase tracking-wider block">
-                    Dimensiones en Planta
+                    Dimensiones Crujía Principal (L1 x W1)
                   </span>
                   <div>
                     <div className="flex justify-between text-xs text-slate-300 mb-1">
-                      <span>Largo (Eje Z):</span>
+                      <span>Largo Principal (L1):</span>
                       <span className="font-mono font-bold text-sky-400">
                         {state.dimensions.length} cm ({(state.dimensions.length / 100).toFixed(2)} m)
                       </span>
@@ -567,7 +701,7 @@ export function SipHouseConfigurator({ onNavigate }: { onNavigate: (route: 'home
                   </div>
                   <div>
                     <div className="flex justify-between text-xs text-slate-300 mb-1">
-                      <span>Ancho Crujía (Eje X):</span>
+                      <span>Ancho Crujía Principal (W1):</span>
                       <span className="font-mono font-bold text-sky-400">
                         {state.dimensions.width} cm ({(state.dimensions.width / 100).toFixed(2)} m)
                       </span>
@@ -586,11 +720,15 @@ export function SipHouseConfigurator({ onNavigate }: { onNavigate: (route: 'home
 
                 <div className="bg-white/5 rounded-xl p-3.5 border border-white/5 space-y-3">
                   <span className="text-xs font-bold text-sky-400 uppercase tracking-wider block">
-                    Alturas y Techo a 2 Aguas
+                    {state.dimensions.roofStyle === 'flat'
+                      ? 'Alturas de Muros y Cubierta Plana'
+                      : state.dimensions.roofStyle === 'single_shed'
+                      ? 'Alturas y Pendiente (Techo 1 Agua)'
+                      : 'Alturas y Cumbrera (Techo 2 Aguas)'}
                   </span>
                   <div>
                     <div className="flex justify-between text-xs text-slate-300 mb-1">
-                      <span>Altura al Alero (Muros):</span>
+                      <span>{state.dimensions.roofStyle === 'single_shed' ? 'Altura Muro Bajo (Alero):' : 'Altura al Alero (Muros):'}</span>
                       <span className="font-mono font-bold text-sky-400">{state.dimensions.eaveHeight} cm</span>
                     </div>
                     <input
@@ -603,24 +741,26 @@ export function SipHouseConfigurator({ onNavigate }: { onNavigate: (route: 'home
                       className="w-full accent-sky-500"
                     />
                   </div>
-                  <div>
-                    <div className="flex justify-between text-xs text-slate-300 mb-1">
-                      <span>Altura a Cumbrera:</span>
-                      <span className="font-mono font-bold text-sky-400">{state.dimensions.ridgeHeight} cm</span>
+                  {state.dimensions.roofStyle !== 'flat' && (
+                    <div>
+                      <div className="flex justify-between text-xs text-slate-300 mb-1">
+                        <span>{state.dimensions.roofStyle === 'single_shed' ? 'Altura Muro Alto (Coronación):' : 'Altura a Cumbrera Central:'}</span>
+                        <span className="font-mono font-bold text-sky-400">{state.dimensions.ridgeHeight} cm</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={state.dimensions.eaveHeight + 30}
+                        max="550"
+                        step="10"
+                        value={state.dimensions.ridgeHeight}
+                        onChange={(e) => state.setDimension('ridgeHeight', parseFloat(e.target.value))}
+                        className="w-full accent-sky-500"
+                      />
                     </div>
-                    <input
-                      type="range"
-                      min={state.dimensions.eaveHeight + 30}
-                      max="550"
-                      step="10"
-                      value={state.dimensions.ridgeHeight}
-                      onChange={(e) => state.setDimension('ridgeHeight', parseFloat(e.target.value))}
-                      className="w-full accent-sky-500"
-                    />
-                  </div>
+                  )}
                   <div>
                     <div className="flex justify-between text-xs text-slate-300 mb-1">
-                      <span>Alero de Cubierta:</span>
+                      <span>Alero Perimetral de Cubierta:</span>
                       <span className="font-mono font-bold text-sky-400">{state.dimensions.overhang || 25} cm</span>
                     </div>
                     <input
@@ -1082,10 +1222,17 @@ export function SipHouseConfigurator({ onNavigate }: { onNavigate: (route: 'home
                                       }
                                       className="w-full bg-slate-900 border border-white/10 rounded-lg p-1.5 text-xs text-white"
                                     >
-                                      <option value="front">Muro Frontal (+Z)</option>
+                                      <option value="front">Muro Frontal Principal (+Z)</option>
                                       <option value="back">Muro Trasero (-Z)</option>
                                       <option value="left">Muro Lateral Izquierdo (-X)</option>
                                       <option value="right">Muro Lateral Derecho (+X)</option>
+                                      {state.dimensions.shape === 'l_shape' && (
+                                        <>
+                                          <option value="wing_front">Ala: Muro Frontal (+Z)</option>
+                                          <option value="wing_side">Ala: Muro Exterior (+X)</option>
+                                          <option value="wing_inner">Ala: Muro Interior Patio (-Z)</option>
+                                        </>
+                                      )}
                                     </select>
                                   </div>
 
@@ -1325,10 +1472,17 @@ export function SipHouseConfigurator({ onNavigate }: { onNavigate: (route: 'home
                         onChange={(e) => setNewOpeningWall(e.target.value as any)}
                         className="w-full bg-slate-900 border border-white/10 rounded-lg p-1.5 text-xs text-white"
                       >
-                        <option value="front">Muro Frontal (+Z)</option>
+                        <option value="front">Muro Frontal Principal (+Z)</option>
                         <option value="back">Muro Trasero (-Z)</option>
                         <option value="left">Muro Lateral Izquierdo (-X)</option>
                         <option value="right">Muro Lateral Derecho (+X)</option>
+                        {state.dimensions.shape === 'l_shape' && (
+                          <>
+                            <option value="wing_front">Ala: Muro Frontal (+Z)</option>
+                            <option value="wing_side">Ala: Muro Exterior (+X)</option>
+                            <option value="wing_inner">Ala: Muro Interior Patio (-Z)</option>
+                          </>
+                        )}
                       </select>
                     </div>
                   </div>
@@ -1641,10 +1795,11 @@ export function SipHouseConfigurator({ onNavigate }: { onNavigate: (route: 'home
                       onChange={(e) => state.setExteriorCladding(e.target.value as ExteriorCladding)}
                       className="w-full bg-slate-950 border border-white/10 rounded-xl p-2 text-xs text-white"
                     >
-                      <option value="panel_sip_visto">Panel SIP OSB Visto (Fabricación Cruda)</option>
+                      <option value="arratia_microacanalado">Arratia Microacanalado Negro Mate (Fachada Ventilada)</option>
                       <option value="zincalum_negro">Zincalum Negro Mate Continuo</option>
                       <option value="madera_tinglada">Madera Tinglada Pino Termotratado</option>
                       <option value="fibrocemento_gris">Fibrocemento Gris Grafito</option>
+                      <option value="panel_sip_visto">Panel SIP OSB Visto (Fabricación Cruda)</option>
                     </select>
                   </div>
                   <div>
@@ -1654,9 +1809,10 @@ export function SipHouseConfigurator({ onNavigate }: { onNavigate: (route: 'home
                       onChange={(e) => state.setRoofCladding(e.target.value as RoofCladding)}
                       className="w-full bg-slate-950 border border-white/10 rounded-xl p-2 text-xs text-white"
                     >
-                      <option value="panel_sip_visto">Panel SIP 210 mm Visto</option>
+                      <option value="arratia_microacanalado">Arratia Microacanalado Techo Negro Mate</option>
                       <option value="zinc_ca8_negro">Planchas Zinc CA-8 Negro Carbón</option>
                       <option value="teja_asfaltica_negra">Teja Asfáltica Negra</option>
+                      <option value="panel_sip_visto">Panel SIP 210 mm Visto</option>
                     </select>
                   </div>
                 </div>

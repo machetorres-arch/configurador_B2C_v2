@@ -1,8 +1,9 @@
 import React, { useMemo } from 'react';
 import * as THREE from 'three';
-import { SipOpening, WallTarget } from '../../store/sipHouseStore';
+import { SipOpening, WallTarget, ExteriorCladding } from '../../store/sipHouseStore';
 import { SipIndividualPanel } from './SipIndividualPanel';
 import { TimberPiece } from './TimberPiece';
+import { SipWallCladdingAssembly } from './SipWallCladdingAssembly';
 
 interface SipWallAssemblyProps {
   wallId: WallTarget;
@@ -13,6 +14,7 @@ interface SipWallAssemblyProps {
   layerWallsSip: boolean;     // Mostrar paneles SIP
   layerTimberStructure: boolean; // Mostrar estructura de madera
   layerCladding: boolean;     // Revestimiento exterior
+  claddingType?: ExteriorCladding;
   layerWindowsDoors: boolean; // Mostrar puertas y ventanas
   isExploded?: boolean;
   explodedProgress?: number;
@@ -33,6 +35,12 @@ interface SipWallAssemblyProps {
     aluminumRpt: THREE.Material;
     doorLenga: THREE.Material;
     doorHardware: THREE.Material;
+    arratiaCladding?: THREE.Material;
+    zincalumBlack?: THREE.Material;
+    timberCladding?: THREE.Material;
+    fiberCement?: THREE.Material;
+    tyvekMembrane?: THREE.Material;
+    flashingBlack?: THREE.Material;
   };
 }
 
@@ -63,6 +71,7 @@ export function SipWallAssembly({
   layerWallsSip,
   layerTimberStructure,
   layerCladding,
+  claddingType,
   layerWindowsDoors,
   isExploded = false,
   explodedProgress = 0,
@@ -619,6 +628,23 @@ export function SipWallAssembly({
             );
           })}
         </group>
+      )}
+
+      {/* ========================================================================= */}
+      {/* D. CAPA DE REVESTIMIENTO EXTERIOR & ENVOLVENTE VENTILADA (DESPIECE BIM)   */}
+      {/* ========================================================================= */}
+      {layerCladding && claddingType && claddingType !== 'panel_sip_visto' && (
+        <SipWallCladdingAssembly
+          wallId={wallId}
+          wallLength={wallLength}
+          wallHeight={wallHeight}
+          wallThickness={wallThickness}
+          openings={openings}
+          claddingType={claddingType}
+          materials={materials}
+          isExploded={isExploded}
+          explodedProgress={explodedProgress}
+        />
       )}
     </group>
   );

@@ -345,6 +345,129 @@ export function constrainInsideRoomAndWalls(
   return [cx, cy, cz];
 }
 
+/**
+ * Re-snaps and clamps all cabinets when the room dimensions, shape or vertices change.
+ * Ensures every cabinet stays strictly within the interior boundary and snaps to the nearest wall.
+ */
+export function repositionCabinetsOnRoomChange(
+  cabinets: CabinetType[],
+  walls: any[],
+  roomConfig?: any
+): CabinetType[] {
+  if (!cabinets || cabinets.length === 0) return [];
+
+  const vertices = roomConfig?.vertices || [];
+  let roomPoly: [number, number][] = [];
+  if (vertices.length >= 3) {
+    roomPoly = vertices.map((v: any) => [v.x, v.y]);
+  } else if (walls && walls.length >= 3) {
+    roomPoly = walls.map((w: any) => [w.start[0], w.start[1]]);
+  }
+
+  const wallBoundTypes = new Set(['base', 'wall', 'tall']);
+
+  return cabinets.map((cab) => {
+    const isWallBound =
+      wallBoundTypes.has(cab.type) ||
+      cab.variant === 'deco_hood' ||
+      cab.variant === 'deco_stove' ||
+      cab.variant === 'deco_fridge';
+
+    if (isWallBound && walls && walls.length > 0) {
+      let bestWall: any = null;
+      let bestDist = Infinity;
+      let bestS = 0;
+      let bestNormal: [number, number] = [0, 1];
+      let bestWallLen = 0;
+
+      for (const w of walls) {
+        const x1 = w.start[0];
+        const z1 = w.start[1];
+        const x2 = w.end[0];
+        const z2 = w.end[1];
+        const dx = x2 - x1;
+        const dz = z2 - z1;
+        const wallLen = Math.hypot(dx, dz);
+        if (wallLen < 1) continue;
+
+        const uX = dx / wallLen;
+        const uZ = dz / wallLen;
+
+        let nX = -uZ;
+        let nZ = uX;
+        const midX = (x1 + x2) / 2;
+        const midZ = (z1 + z2) / 2;
+        if (roomPoly.length >= 3 && !isPointInPolygon(midX + nX * 5, midZ + nZ * 5, roomPoly)) {
+          nX = -nX;
+          nZ = -nZ;
+        }
+
+        const s = (cab.position[0] - x1) * uX + (cab.position[2] - z1) * uZ;
+        const sClamped = Math.max(cab.width / 2 + 0.5, Math.min(wallLen - cab.width / 2 - 0.5, s));
+        const projX = x1 + sClamped * uX;
+        const projZ = z1 + sClamped * uZ;
+        const dist = Math.hypot(cab.position[0] - projX, cab.position[2] - projZ);
+
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestWall = w;
+          bestS = sClamped;
+          bestNormal = [nX, nZ];
+          bestWallLen = wallLen;
+        }
+      }
+
+      if (bestWall) {
+        const wallThickness = bestWall.thickness || roomConfig?.wallThickness || 20;
+        const flushDist = wallThickness / 2 + cab.depth / 2;
+        const rot = Math.atan2(bestNormal[0], bestNormal[1]);
+        const uX = (bestWall.end[0] - bestWall.start[0]) / bestWallLen;
+        const uZ = (bestWall.end[1] - bestWall.start[1]) / bestWallLen;
+        const newX = bestWall.start[0] + bestS * uX + flushDist * bestNormal[0];
+        const newZ = bestWall.start[1] + bestS * uZ + flushDist * bestNormal[1];
+
+        let newY = cab.position[1];
+        if (cab.type === 'base' || cab.type === 'tall' || cab.type === 'island') {
+          newY = cab.height / 2;
+        } else if (cab.type === 'wall') {
+          newY = cab.position[1] || 140 + cab.height / 2;
+        }
+
+        const constrainedPos = constrainInsideRoomAndWalls(
+          [newX, newY, newZ],
+          rot,
+          cab.width,
+          cab.depth,
+          cab.height,
+          walls,
+          roomPoly
+        );
+
+        return {
+          ...cab,
+          position: constrainedPos,
+          rotation: rot,
+        };
+      }
+    }
+
+    const constrainedPos = constrainInsideRoomAndWalls(
+      cab.position,
+      cab.rotation || 0,
+      cab.width,
+      cab.depth,
+      cab.height,
+      walls,
+      roomPoly
+    );
+
+    return {
+      ...cab,
+      position: constrainedPos,
+    };
+  });
+}
+
 export function isCandidateValid(
   candidate: {
     position: [number, number, number];

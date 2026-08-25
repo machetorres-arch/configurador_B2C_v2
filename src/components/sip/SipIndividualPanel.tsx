@@ -45,7 +45,7 @@ export function SipIndividualPanel({
   const epsW = Math.max(0.02, width - 2 * actualRecessX);
   const epsH = Math.max(0.02, height - 2 * actualRecessY);
 
-  const frontMat = useCladdingOnFront && claddingMaterial ? claddingMaterial : osbMaterial;
+  const frontMat = osbMaterial;
   const edgeMat = osbEdgeMaterial || osbMaterial;
 
   // Material de líneas de unión técnicas bien marcadas (seams/chamfers oscuros)

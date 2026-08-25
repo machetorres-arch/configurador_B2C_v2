@@ -2,8 +2,8 @@ import { create } from 'zustand';
 
 // --- 1. ENUMS Y TIPOS BASE ---
 export type FoundationType = 'pilotes_madera' | 'radier_sobrecimiento' | 'platea_fundacion' | 'radier_hormigon';
-export type ExteriorCladding = 'zincalum_negro' | 'madera_tinglada' | 'fibrocemento_gris' | 'panel_sip_visto';
-export type RoofCladding = 'zinc_ca8_negro' | 'teja_asfaltica_negra' | 'panel_sip_visto';
+export type ExteriorCladding = 'zincalum_negro' | 'arratia_microacanalado' | 'madera_tinglada' | 'fibrocemento_gris' | 'panel_sip_visto';
+export type RoofCladding = 'zinc_ca8_negro' | 'arratia_microacanalado' | 'teja_asfaltica_negra' | 'panel_sip_visto';
 export type InteriorCeiling = 'entablado_pino' | 'yeso_carton_blanco';
 export type FlooringType = 'vinilico_spc' | 'porcelanato' | 'radier_pulido';
 
@@ -114,8 +114,16 @@ export const SIP_CORE_SPECS: Record<SipCoreType, SipCoreProperties> = {
   },
 };
 
-// --- 2. VANOS (PUERTAS Y VENTANAS) EN MUROS RECTANGULARES ---
-export type WallTarget = 'front' | 'back' | 'left' | 'right';
+// --- 2. VANOS (PUERTAS Y VENTANAS) EN MUROS PARAMÉTRICOS ---
+export type WallTarget =
+  | 'front'
+  | 'back'
+  | 'left'
+  | 'right'
+  | 'wing_front'
+  | 'wing_back'
+  | 'wing_side'
+  | 'wing_inner';
 
 export interface SipOpening {
   id: string;
@@ -162,13 +170,23 @@ export interface SipFinishesQuantities {
   waterproofingGalQty: number;
 }
 
-// --- 5. DIMENSIONES VOLUMÉTRICAS GLOBALES (CABAÑA RECTANGULAR LIMPIA) ---
+// --- 5. TIPOLOGÍAS Y DIMENSIONES VOLUMÉTRICAS GLOBALES ---
+export type HouseShape = 'rectangular' | 'l_shape';
+export type RoofStyle = 'gable_valley' | 'single_shed' | 'flat' | 'split_shed';
+export type WingCorner = 'front_left' | 'front_right' | 'back_left' | 'back_right';
+
 export interface SipHouseDimensions {
-  length: number;       // cm (Largo eje principal, ej. 600 cm / 6.0m)
-  width: number;        // cm (Ancho crujía, ej. 400 cm / 4.0m)
+  length: number;       // cm (Largo eje principal L1, ej. 800 cm / 8.0m)
+  width: number;        // cm (Ancho crujía principal W1, ej. 450 cm / 4.5m)
   eaveHeight: number;   // cm (Altura al alero / muros laterales, ej. 260 cm / 2.6m)
   ridgeHeight: number;  // cm (Altura a cumbrera techo 2 aguas, ej. 360 cm / 3.6m)
   overhang: number;     // cm (Alero de cubierta, ej. 25 cm)
+  // Parámetros Casa en L:
+  shape: HouseShape;    // 'rectangular' | 'l_shape'
+  wingLength: number;   // cm (Largo ala lateral L2, ej. 420 cm / 4.2m)
+  wingWidth: number;    // cm (Ancho crujía ala W2, ej. 360 cm / 3.6m)
+  wingCorner: WingCorner;// 'front_left' | 'front_right' | 'back_left' | 'back_right'
+  roofStyle: RoofStyle; // 'gable_valley' (2 Aguas con limahoya) | 'split_shed' (Desfasado a desnivel)
 }
 
 // --- 6. ESTADO ZUSTAND INTEGRAL ---
@@ -215,7 +233,7 @@ export interface SipHouseState {
   dimensionDetailLevel: number; // 1 a 4
 
   // Acciones
-  setDimension: <K extends keyof SipHouseDimensions>(key: K, value: number) => void;
+  setDimension: <K extends keyof SipHouseDimensions>(key: K, value: SipHouseDimensions[K]) => void;
   setCoreType: (core: SipCoreType) => void;
   setWallThicknessMm: (t: SipWallThickness) => void;
   setRoofThicknessMm: (t: SipRoofThickness) => void;
@@ -259,6 +277,11 @@ export const DEFAULT_SIP_DIMENSIONS: SipHouseDimensions = {
   eaveHeight: 260.0,  // 2.60 m
   ridgeHeight: 360.0, // 3.60 m
   overhang: 25.0,     // 0.25 m
+  shape: 'rectangular',
+  wingLength: 420.0,  // 4.20 m
+  wingWidth: 360.0,   // 3.60 m
+  wingCorner: 'front_right',
+  roofStyle: 'gable_valley',
 };
 
 export const DEFAULT_PRESET_PARAMS: PresetParams = {
@@ -1652,6 +1675,14 @@ export const DEFAULT_MEP_NETWORK: SipMepNetwork = {
  * Retorna el largo útil en cm para el muro seleccionado
  */
 export function getWallLengthCm(wall: WallTarget, dimensions: SipHouseDimensions): number {
+  if (dimensions.shape === 'l_shape') {
+    if (wall === 'front') return dimensions.width;
+    if (wall === 'back') return dimensions.width;
+    if (wall === 'left' || wall === 'right') return Math.max(100, Math.round(dimensions.length - 22.8));
+    if (wall === 'wing_front' || wall === 'wing_back') return dimensions.wingWidth;
+    if (wall === 'wing_side') return dimensions.wingLength;
+    if (wall === 'wing_inner') return dimensions.wingLength;
+  }
   if (wall === 'front' || wall === 'back') {
     return dimensions.width;
   }
@@ -1737,7 +1768,10 @@ export function validateAndConstrainOpening(
  */
 export function validateAllOpenings(openings: SipOpening[], dimensions: SipHouseDimensions): SipOpening[] {
   const result: SipOpening[] = [];
-  const walls: WallTarget[] = ['front', 'back', 'left', 'right'];
+  const walls: WallTarget[] =
+    dimensions.shape === 'l_shape'
+      ? ['front', 'back', 'left', 'right', 'wing_front', 'wing_back', 'wing_side', 'wing_inner']
+      : ['front', 'back', 'left', 'right'];
 
   for (const wall of walls) {
     const wallOps = openings
@@ -1795,7 +1829,7 @@ export const useSipHouseStore = create<SipHouseState>((set) => ({
     set((state) => {
       const newDims = {
         ...state.dimensions,
-        [key]: Math.max(50, Math.min(3000, value)),
+        [key]: typeof value === 'number' ? Math.max(50, Math.min(3000, value)) : value,
       };
       const updatedWalls =
         state.layoutPreset !== 'custom'

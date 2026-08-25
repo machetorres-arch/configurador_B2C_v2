@@ -644,7 +644,11 @@ export function Closet() {
           }
 
           if (state.showDecorations) {
-            parts.push(<FoldedClothes key={`cloth-${mod.id}-${i}`} position={[modCenterX, shelfY + thickness/2, shelfZ]} width={innerW} depth={shelfDepth} />);
+            if (i === mod.shelves && spacing >= 22) {
+              parts.push(<StorageBox key={`sbox-${mod.id}-${i}`} position={[modCenterX, shelfY + thickness/2, shelfZ]} width={innerW} depth={shelfDepth} />);
+            } else {
+              parts.push(<FoldedClothes key={`cloth-${mod.id}-${i}`} position={[modCenterX, shelfY + thickness/2, shelfZ]} width={innerW} depth={shelfDepth} />);
+            }
           }
         }
       }
