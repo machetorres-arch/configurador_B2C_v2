@@ -4,6 +4,7 @@ import { useFrame } from '@react-three/fiber';
 import { WallType, useKitchenStore } from '../../store/kitchenStore';
 import { useStore } from '../../store';
 import { Edges, Line, Text } from '@react-three/drei';
+import { getWallInwardNormal } from '../../utils/kitchenCollision';
 
 export function Wall({ start, end, thickness, height }: WallType) {
    const length = Math.hypot(end[0] - start[0], end[1] - start[1]);
@@ -17,33 +18,11 @@ export function Wall({ start, end, thickness, height }: WallType) {
 
    const groupRef = useRef<THREE.Group>(null);
 
-   // Calcular centro de la estancia para orientar la normal interior
-   const roomCenter = useMemo(() => {
-      if (roomConfig?.vertices && roomConfig.vertices.length >= 3) {
-         const sum = roomConfig.vertices.reduce((acc, v) => [acc[0] + v.x, acc[1] + v.y], [0, 0]);
-         return [sum[0] / roomConfig.vertices.length, sum[1] / roomConfig.vertices.length] as [number, number];
-      }
-      return [0, 0] as [number, number];
-   }, [roomConfig]);
-
    // Vector normal hacia el interior de la habitación
    const inwardNormal = useMemo(() => {
-      const dx = end[0] - start[0];
-      const dz = end[1] - start[1];
-      const toCenterX = roomCenter[0] - cx;
-      const toCenterZ = roomCenter[1] - cz;
-      let nX = -dz;
-      let nZ = dx;
-      if (nX * toCenterX + nZ * toCenterZ < 0) {
-         nX = -nX;
-         nZ = -nZ;
-      }
-      const len = Math.hypot(nX, nZ);
-      if (len > 0.0001) {
-         return [nX / len, nZ / len] as [number, number];
-      }
-      return [0, 1] as [number, number];
-   }, [start, end, cx, cz, roomCenter]);
+      const poly = roomConfig?.vertices?.map(v => [v.x, v.y] as [number, number]) || [];
+      return getWallInwardNormal(start[0], start[1], end[0], end[1], poly);
+   }, [start, end, roomConfig]);
 
    // Ocultación dinámica inteligente (Camera Occlusion / Cutaway Wall)
    useFrame(({ camera }) => {

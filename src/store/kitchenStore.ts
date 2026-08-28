@@ -59,6 +59,18 @@ export interface CabinetType {
   shelfColor?: string;
   backColor?: string;
   socleColor?: string;
+  structureMaterial?: 'melamina' | 'hpl';
+  doorMaterial?: 'melamina' | 'hpl';
+  drawerFrontMaterial?: 'melamina' | 'hpl';
+  drawerInnerMaterial?: 'melamina' | 'hpl';
+  shelfMaterial?: 'melamina' | 'hpl';
+  backMaterial?: 'melamina' | 'hpl';
+  socleMaterial?: 'melamina' | 'hpl';
+  grainDirection?: 'vertical' | 'horizontal';
+  grainElements?: Record<string, 'vertical' | 'horizontal'>;
+  hplBalancer?: boolean;
+  isOpen?: boolean;
+  openElements?: Record<string, boolean>;
 }
 
 interface KitchenState {
@@ -79,6 +91,7 @@ interface KitchenState {
   addWall: (wall: WallType) => void;
   setWalls: (walls: WallType[]) => void;
   addCabinet: (cabinet: CabinetType) => void;
+  removeCabinet: (id: string) => void;
   setActiveCabinet: (id: string | null) => void;
   setDrawingStart: (pos: [number, number] | null) => void;
   setShowSocle: (val: boolean) => void;
@@ -87,6 +100,7 @@ interface KitchenState {
   setRoomConfig: (config: RoomConfig) => void;
   setWallColor: (color: string) => void;
   setFloorType: (floorType: string) => void;
+  applyGlobalTexture: (part: 'structure' | 'doors' | 'drawerFronts' | 'drawerInner' | 'shelves' | 'back' | 'socle' | 'all', url: string, mat: 'melamina' | 'hpl') => void;
   resetKitchen: () => void;
 }
 
@@ -261,7 +275,7 @@ export const useKitchenStore = create<KitchenState>((set) => ({
   isRoomPlannerOpen: false,
   roomConfig: initialRoomConfig,
   wallColor: '#E2E8F0',
-  floorType: 'porcelain_cement_light',
+  floorType: 'ceramic_white_60x60',
 
   setViewMode: (mode) => set({ viewMode: mode }),
   setToolMode: (mode) => set({ toolMode: mode, drawingStart: null }),
@@ -282,6 +296,11 @@ export const useKitchenStore = create<KitchenState>((set) => ({
       );
       return { cabinets: [...state.cabinets, { ...cabinet, position: constrainedPos }] };
     }),
+  removeCabinet: (id) =>
+    set((state) => ({
+      cabinets: state.cabinets.filter((c) => c.id !== id),
+      activeCabinetId: state.activeCabinetId === id ? null : state.activeCabinetId,
+    })),
   setActiveCabinet: (id) => set({ activeCabinetId: id }),
   setDrawingStart: (pos) => set({ drawingStart: pos }),
   setShowSocle: (val) => set({ showSocle: val }),
@@ -322,6 +341,43 @@ export const useKitchenStore = create<KitchenState>((set) => ({
   },
   setWallColor: (color) => set({ wallColor: color }),
   setFloorType: (floorType) => set({ floorType }),
+  applyGlobalTexture: (part, url, mat) =>
+    set((state) => {
+      const updatedCabinets = state.cabinets.map((c) => {
+        if (c.type === 'decoration') return c;
+        const updates: Partial<CabinetType> = {};
+        if (part === 'structure' || part === 'all') {
+          updates.structureColor = url;
+          updates.structureMaterial = mat;
+        }
+        if (part === 'doors' || part === 'all') {
+          updates.doorColor = url;
+          updates.doorMaterial = mat;
+        }
+        if (part === 'drawerFronts' || part === 'all') {
+          updates.drawerFrontColor = url;
+          updates.drawerFrontMaterial = mat;
+        }
+        if (part === 'drawerInner' || part === 'all') {
+          updates.drawerInnerColor = url;
+          updates.drawerInnerMaterial = mat;
+        }
+        if (part === 'shelves' || part === 'all') {
+          updates.shelfColor = url;
+          updates.shelfMaterial = mat;
+        }
+        if (part === 'back' || part === 'all') {
+          updates.backColor = url;
+          updates.backMaterial = mat;
+        }
+        if (part === 'socle' || part === 'all') {
+          updates.socleColor = url;
+          updates.socleMaterial = mat;
+        }
+        return { ...c, ...updates };
+      });
+      return { cabinets: updatedCabinets };
+    }),
   resetKitchen: () => {
     const defaultRoom: RoomConfig = {
       type: 'rectangular',
@@ -336,7 +392,7 @@ export const useKitchenStore = create<KitchenState>((set) => ({
       walls: defaultWalls,
       roomConfig: defaultRoom,
       wallColor: '#E2E8F0',
-      floorType: 'porcelain_cement_light',
+      floorType: 'ceramic_white_60x60',
       toolMode: 'select',
       viewMode: '3d',
       showSocle: false,

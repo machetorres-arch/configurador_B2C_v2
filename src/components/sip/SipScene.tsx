@@ -5,7 +5,7 @@ import { SipHouse3D } from './SipHouse3D';
 import { useSipHouseStore } from '../../store/sipHouseStore';
 
 export function SipScene() {
-  const { explodedProgress } = useSipHouseStore();
+  const { explodedProgress, isDraggingOpening } = useSipHouseStore();
 
   return (
     <div className="w-full h-full relative bg-slate-900 overflow-hidden select-none">
@@ -19,6 +19,7 @@ export function SipScene() {
           maxDistance={60}
           maxPolarAngle={Math.PI / 2 - 0.02}
           target={[0, 2, 0]}
+          enabled={!isDraggingOpening}
         />
 
         <ambientLight intensity={0.65} />

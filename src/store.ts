@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 
 export type MaterialType = 'melamina' | 'hpl';
-export type PartType = 'structure' | 'doors' | 'drawerFronts' | 'drawerInner' | 'shelves' | 'back' | 'socle';
+export type PartType = 'structure' | 'doors' | 'drawerFronts' | 'drawerInner' | 'shelves' | 'back' | 'socle' | 'all';
 
 export interface TextureItem {
   id: string;
@@ -16,6 +16,14 @@ export interface ClosetModuleOverrides {
   doorColor?: string;
   drawerFrontMaterial?: MaterialType;
   drawerFrontColor?: string;
+  drawerInnerMaterial?: MaterialType;
+  drawerInnerColor?: string;
+  shelfMaterial?: MaterialType;
+  shelfColor?: string;
+  backMaterial?: MaterialType;
+  backColor?: string;
+  socleMaterial?: MaterialType;
+  socleColor?: string;
   grainDirection?: 'vertical' | 'horizontal';
   isOpen?: boolean;
   openElements?: Record<string, boolean>;
@@ -144,9 +152,6 @@ const defaultModule: ClosetModule = {
   doors: false,
   hasHanger: false,
   innerDrawers: false,
-  overrides: {
-    openElements: { 'drawer-0': true, 'drawer-1': true }
-  }
 };
 
 const defaultModules: ClosetModule[] = [
@@ -158,9 +163,6 @@ const defaultModules: ClosetModule[] = [
     doors: false,
     hasHanger: false,
     innerDrawers: false,
-    overrides: {
-      openElements: { 'drawer-0': true, 'drawer-1': true }
-    }
   },
   {
     id: 'mod-2',
@@ -179,9 +181,6 @@ const defaultModules: ClosetModule[] = [
     doors: true,
     hasHanger: false,
     innerDrawers: false,
-    overrides: {
-      openElements: { 'drawer-0': true, 'drawer-1': true }
-    }
   }
 ];
 
@@ -251,6 +250,15 @@ export const useStore = create<ClosetState>((set, get) => ({
       case 'shelves': return { shelfColor: textureUrl };
       case 'back': return { backColor: textureUrl };
       case 'socle': return { socleColor: textureUrl };
+      case 'all': return {
+        structureColor: textureUrl,
+        doorColor: textureUrl,
+        drawerFrontColor: textureUrl,
+        drawerInnerColor: textureUrl,
+        shelfColor: textureUrl,
+        backColor: textureUrl,
+        socleColor: textureUrl,
+      };
       default: return state;
     }
   }),

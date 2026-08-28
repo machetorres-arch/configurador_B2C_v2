@@ -2,6 +2,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { ProjectItem } from '../store/adminStore';
 import { calculateSipHouseQuantities } from './sipExcelGenerator';
+import { renderArquifyPdfLogo } from './pdfLogo';
 
 export function exportProjectToPdf(project: ProjectItem) {
   const doc = new jsPDF({
@@ -22,16 +23,13 @@ export function exportProjectToPdf(project: ProjectItem) {
   doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
   doc.rect(0, 32, 210, 2, 'F');
 
-  // Logo / Title
-  doc.setTextColor(255, 255, 255);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(18);
-  doc.text('MUEBLESTUDIO 3D', 14, 16);
+  // Logo / Title in Bellota Font
+  renderArquifyPdfLogo(doc, 14, 16, 22);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
   doc.setTextColor(200, 200, 200);
-  doc.text('REPORTE TÉCNICO & FICHA DE FABRICACIÓN INDUSTRIAL', 14, 24);
+  doc.text('REPORTE TÉCNICO & FICHA DE FABRICACIÓN INDUSTRIAL', 14, 25);
 
   // Date / Superadmin tag
   doc.setFontSize(8);

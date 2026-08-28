@@ -2,6 +2,7 @@ import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
 import { ClosetModule } from '../store';
+import { renderArquifyPdfLogo } from './pdfLogo';
 
 export interface ManufacturingData {
   height: number;
@@ -520,12 +521,17 @@ export function exportToPDF(data: ManufacturingData, filename = 'optimizacion_co
   // @ts-ignore
   const doc = new jsPDF('landscape', 'mm', 'a4');
   
-  doc.setFontSize(18);
-  doc.text("Plan de Optimización de Cortes - Clóset Modular", 14, 20);
+  renderArquifyPdfLogo(doc, 14, 16, 22);
+
+  doc.setTextColor(30, 41, 59);
+  doc.setFontSize(14);
+  doc.text("Plan de Optimización de Cortes - Clóset Modular", 14, 25);
   
-  doc.setFontSize(10);
-  doc.text("Generado por: Lead Architect AI", 14, 28);
-  doc.text("Material Estándar de Placa: 2440 mm x 1830 mm", 14, 34);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(100, 116, 139);
+  doc.text("Reporte Técnico & Plan de Fabricación Industrial", 14, 31);
+  doc.text("Material Estándar de Placa: 2440 mm x 1830 mm", 14, 36);
 
   const tableData = parts.map(p => [
     p.name,

@@ -10,6 +10,9 @@ import {
   ConcreteFoundationType,
   SlabType,
   RebarSteelQuality,
+  ConcreteWallSystemType,
+  ConcreteMezzanineSystemType,
+  ConcreteRoofStructureType,
 } from '../store/concreteHouseStore';
 import { calculateConcreteHouseBOM, ConcreteSummaryMetrics } from './concreteManufacturing';
 
@@ -24,7 +27,10 @@ export function exportConcreteHouseToExcel(
   rebarQuality: RebarSteelQuality,
   meshDiameterMm: number,
   openings: ConcreteOpening[],
-  interiorWalls: ConcreteInteriorWall[] = []
+  interiorWalls: ConcreteInteriorWall[] = [],
+  wallSystemType: ConcreteWallSystemType = 'hormigon_armado_total',
+  mezzanineSystemType: ConcreteMezzanineSystemType = 'losa_hormigon_armado',
+  roofStructureType: ConcreteRoofStructureType = 'dos_aguas_hormigon'
 ) {
   const metrics: ConcreteSummaryMetrics = calculateConcreteHouseBOM(
     dims,
@@ -37,18 +43,45 @@ export function exportConcreteHouseToExcel(
     rebarQuality,
     meshDiameterMm,
     openings,
-    interiorWalls
+    interiorWalls,
+    wallSystemType,
+    mezzanineSystemType,
+    roofStructureType
   );
 
   const wb = XLSX.utils.book_new();
 
   // --- HOJA 1: RESUMEN EJECUTIVO ---
   const summaryRows = [
-    ['MEMORIA DE CUBICACIÓN Y PRESUPUESTO - CASA HORMIGÓN ARMADO'],
-    ['Normativa Aplicada: NCh430.Of2008 / D.S. N°60 / NCh170:2016 / Manual ICH'],
+    ['MEMORIA DE CUBICACIÓN Y PRESUPUESTO - ESTRUCTURA DE VIVIENDA'],
+    ['Normativa Chilena Aplicada: NCh430 / NCh2123 / NCh1928 / NCh1198 / NCh170:2016 / D.S. N°60'],
     ['Fecha de Emisión:', new Date().toLocaleDateString('es-CL')],
     [''],
-    ['1. PARÁMETROS GENERALES DEL PROYECTO'],
+    ['1. CONFIGURACIÓN SISTEMA ESTRUCTURAL (3 PASOS)'],
+    [
+      'Paso 1 - Sistema de Muros:',
+      wallSystemType === 'hormigon_armado_total'
+        ? 'Hormigón Armado Total (NCh430 / DS60)'
+        : 'Albañilería Confinada con Pilares y Cadenas H20 (NCh2123 / NCh1928)',
+    ],
+    [
+      'Paso 2 - Sistema de Entrepiso:',
+      dims.levels > 1
+        ? mezzanineSystemType === 'losa_hormigon_armado'
+          ? 'Losa Maciza de Hormigón Armado e=12cm (NCh430)'
+          : 'Entrepiso Liviano con Vigas de Pino Estructural C24 @ 40cm (NCh1198)'
+        : 'No Aplica (Vivienda de 1 Nivel)',
+    ],
+    [
+      'Paso 3 - Estructura de Techumbre:',
+      roofStructureType === 'dos_aguas_hormigon'
+        ? 'Losa Inclinada Monolítica Dos Aguas H.A.'
+        : roofStructureType === 'losa_plana_hormigon'
+        ? 'Losa Plana de Hormigón Armado e=12cm + Pretiles'
+        : 'Techumbre Liviana de Madera (Cerchas Pino C16 + Cubierta Zinc-Alum NCh1198)',
+    ],
+    [''],
+    ['2. PARÁMETROS GENERALES DEL PROYECTO'],
     ['Superficie Construida Total:', `${metrics.totalBuiltAreaM2.toFixed(1)} m²`],
     ['Huella en Planta:', `${metrics.footprintAreaM2.toFixed(1)} m² (${(dims.width / 100).toFixed(2)} x ${(dims.length / 100).toFixed(2)} m)`],
     ['Altura Libre de Muros:', `${(dims.wallHeight / 100).toFixed(2)} m`],
@@ -56,19 +89,33 @@ export function exportConcreteHouseToExcel(
     ['Espesor de Muros:', `${wallThicknessMm} mm (${meshType === 'malla_central' ? 'Malla Central' : 'Doble Malla'})`],
     ['Calidad de Hormigón:', `${concreteGrade.replace('_', ' / ')} (Cono: ${concreteSlump === 'fluido_18cm' ? '≥18 cm Fluido' : '10-12 cm'})`],
     ['Tipo de Fundación:', foundationType === 'losa_fundacion_suples' ? 'Losa de Fundación con Suples (ICH Lám. 17/29)' : 'Cimientos Corridos + Radier (ICH Lám. 20/21)'],
-    ['Solución de Cielo / Losa:', slabType.replace(/_/g, ' ')],
     ['Acero de Refuerzo:', `${rebarQuality.replace('_', '-')} + Mallas AT56-50H`],
     [''],
-    ['2. RESUMEN DE CUBICACIÓN GLOBAL'],
+    ['3. RESUMEN DE CUBICACIÓN GLOBAL'],
     ['Volumen Total de Hormigón:', `${metrics.totalConcreteM3.toFixed(2)} m³`, `(~ ${metrics.mixerTruckLoads} camiones mixer 7m³)`],
     ['Superficie Total de Moldaje:', `${metrics.totalFormworkM2.toFixed(2)} m²`, `(${metrics.releaseAgentLiters} L de desmoldante)`],
     ['Peso Total de Acero / Enfierradura:', `${metrics.totalSteelKg.toFixed(1)} kg`, `(Cuantía media: ${metrics.steelRatioKgM3.toFixed(1)} kg/m³)`],
     ['Total Vanos (Puertas y Ventanas):', `${metrics.totalOpeningsCount} unidades`, `(${metrics.openingsAreaM2.toFixed(2)} m² de vanos descontados)`],
-    [''],
-    ['3. PRESUPUESTO ESTIMATIVO DE OBRA GRUESA'],
-    ['Costo Total Estimado:', `$ ${metrics.totalCostClp.toLocaleString('es-CL')} CLP`],
-    ['Costo por m² Construido:', `$ ${metrics.costPerM2Clp.toLocaleString('es-CL')} CLP/m²`],
   ];
+
+  if (metrics.brickCount) {
+    summaryRows.push(['Total Ladrillos Cerámicos Princesa:', `${metrics.brickCount} unidades`]);
+    summaryRows.push(['Mortero de Pega M10/M15:', `${metrics.mortarM3} m³`]);
+  }
+  if (metrics.timberBeamsMl) {
+    summaryRows.push(['Vigas de Entrepiso Madera C24:', `${metrics.timberBeamsMl} ml`]);
+  }
+  if (metrics.roofTrussesCount) {
+    summaryRows.push(['Cerchas de Madera Techumbre:', `${metrics.roofTrussesCount} unidades`]);
+    summaryRows.push(['Cubierta Zinc-Alum:', `${metrics.roofSheetingM2} m²`]);
+  }
+
+  summaryRows.push(
+    [''],
+    ['4. PRESUPUESTO ESTIMATIVO DE OBRA GRUESA'],
+    ['Costo Total Estimado:', `$ ${metrics.totalCostClp.toLocaleString('es-CL')} CLP`],
+    ['Costo por m² Construido:', `$ ${metrics.costPerM2Clp.toLocaleString('es-CL')} CLP/m²`]
+  );
 
   const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
   wsSummary['!cols'] = [{ wch: 38 }, { wch: 25 }, { wch: 35 }];

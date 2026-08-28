@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useKitchenStore } from '../store/kitchenStore';
+import React, { useState, useEffect } from 'react';
+import { useKitchenStore, CabinetType } from '../store/kitchenStore';
 import { useStore } from '../store';
 import { TexturesSection } from '../components/TexturesSection';
 import { KitchenBlueprint } from '../components/KitchenBlueprint';
@@ -9,14 +9,45 @@ import { KitchenScene } from '../components/kitchen/KitchenScene';
 import { RoomPlannerModal } from '../components/kitchen/RoomPlannerModal';
 import { ResetConfirmModal } from '../components/kitchen/ResetConfirmModal';
 import { RoomFinishesSection } from '../components/kitchen/RoomFinishesSection';
+import { KitchenModuleContextMenu } from '../components/kitchen/KitchenModuleContextMenu';
 import { calculatePolygonArea } from '../utils/roomGeometry';
-import { ArrowLeft, Box, Square, Move3D, PenTool, LayoutGrid, Trash2, RotateCw, Flame, Refrigerator, Flower2, Info, Sparkles, Maximize2, Layers } from 'lucide-react';
+import { ArrowLeft, Box, Square, Move3D, PenTool, LayoutGrid, Trash2, RotateCw, Flame, Refrigerator, Flower2, Info, Sparkles, Maximize2, Layers, Palette, ListOrdered } from 'lucide-react';
 
 const sectionTitle = "text-[11px] uppercase tracking-widest text-orange-500 font-bold mb-3 mt-6 first:mt-0";
 const labelClass = "text-[10px] uppercase tracking-widest text-slate-400";
 const btnClass = "w-full p-2.5 bg-white/5 border border-white/10 rounded-lg text-center cursor-pointer hover:border-orange-500/50 hover:bg-white/10 transition-colors text-[10px] uppercase tracking-wide text-slate-300";
 const activeBtnClass = "w-full p-2.5 bg-orange-500/10 border border-orange-500 rounded-lg text-center cursor-pointer text-orange-500 transition-colors text-[10px] uppercase tracking-wide font-bold shadow-[0_0_10px_rgba(249,115,22,0.1)]";
 
+function getCabinetLabel(cab: CabinetType, index: number) {
+  if (cab.variant === 'deco_hood') return 'Campana FDV Conic 90';
+  if (cab.variant === 'deco_stove') return 'Cocina FDV 90';
+  if (cab.variant === 'deco_fridge') return 'Refrigerador SBS 513L';
+  if (cab.variant === 'deco_plant') return 'Planta Interior';
+  if (cab.variant?.startsWith('corner_blind')) return 'Esquinero Ciego';
+  if (cab.variant === 'tall_1_door') return 'Despensa 1 Puerta Larga';
+  if (cab.variant === 'tall_split_2_doors') return 'Despensa 2 Puertas (Línea Base)';
+  if (cab.variant === 'tall_oven_micro') return 'Torre Horno + Micro';
+  if (cab.variant === 'tall_microwave_niche') return 'Torre Nicho Micro';
+  if (cab.variant === 'tall_open') return 'Despensa Abierta';
+  if (cab.variant === 'tall_2_doors') return 'Despensa 2 Puertas';
+  if (cab.variant === 'wall_1_door') return 'Aéreo 1 Puerta';
+  if (cab.variant === 'wall_2_doors') return 'Aéreo 2 Puertas';
+  if (cab.variant === 'wall_lift_up') return 'Aéreo Elevable Aventos';
+  if (cab.variant === 'wall_lift_up_double') return 'Aéreo Doble Elevable';
+  if (cab.variant === 'wall_microwave_niche') return 'Aéreo Nicho Micro';
+  if (cab.variant === 'wall_open') return 'Aéreo Abierto Repisas';
+  if (cab.variant === '1_door_1_drawer') return 'Base 1 Pta + 1 Cajón';
+  if (cab.variant === '4_drawers') return 'Base 4 Cajones';
+  if (cab.variant === '2_pot_drawers') return 'Base 2 Olleros';
+  if (cab.variant === 'spice_rack') return 'Base Especiero';
+  if (cab.variant === '2_doors') return 'Base 2 Puertas';
+  if (cab.variant === '1_door') return 'Base 1 Puerta';
+  if (cab.type === 'base') return 'Mueble Base';
+  if (cab.type === 'tall') return 'Torre / Despensa';
+  if (cab.type === 'wall') return 'Mueble Aéreo';
+  if (cab.type === 'island') return 'Isla Cocina';
+  return `Módulo ${index + 1}`;
+}
 
 const ToggleBtn = ({ active, onClick, label }: { active: boolean, onClick: () => void, label: string }) => (
   <button onClick={onClick} className={active ? activeBtnClass : btnClass}>
@@ -42,22 +73,86 @@ const SliderControl = ({ label, value, min, max, step = 1, unit = "", onChange }
 );
 
 export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) {
-  const { viewMode, setViewMode, toolMode, setToolMode, cabinets, activeCabinetId, updateCabinet, showSocle, setShowSocle, roomConfig, setRoomPlannerOpen } = useKitchenStore();
+  const { viewMode, setViewMode, toolMode, setToolMode, cabinets, activeCabinetId, updateCabinet, removeCabinet, setActiveCabinet, applyGlobalTexture, showSocle, setShowSocle, roomConfig, setRoomPlannerOpen } = useKitchenStore();
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
+  const [leftTab, setLeftTab] = useState<'modules' | 'placed' | 'decorations'>('modules');
+  const [showIndividualMaterial, setShowIndividualMaterial] = useState(false);
   const globalState = useStore();
   const currentAreaM2 = calculatePolygonArea(roomConfig?.vertices || []);
+
+  // Keyboard shortcut listener: Delete or Backspace to delete individual active cabinet
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeTag = (document.activeElement?.tagName || '').toLowerCase();
+      if (activeTag === 'input' || activeTag === 'textarea' || activeTag === 'select') {
+        return;
+      }
+      if ((e.key === 'Delete' || e.key === 'Backspace') && activeCabinetId) {
+        e.preventDefault();
+        removeCabinet(activeCabinetId);
+      } else if (e.key === 'Escape') {
+        setActiveCabinet(null);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeCabinetId, removeCabinet, setActiveCabinet]);
 
   const handleTextureSelect = (url: string, mat: string) => {
     if (!activeCabinetId) return;
     const part = globalState.targetPart;
-    if (part === 'structure') updateCabinet(activeCabinetId, { structureColor: url });
-    else if (part === 'doors') updateCabinet(activeCabinetId, { doorColor: url });
-    else if (part === 'drawerFronts') updateCabinet(activeCabinetId, { drawerFrontColor: url });
-    else if (part === 'drawerInner') updateCabinet(activeCabinetId, { drawerInnerColor: url });
-    else if (part === 'shelves') updateCabinet(activeCabinetId, { shelfColor: url });
-    else if (part === 'back') updateCabinet(activeCabinetId, { backColor: url });
-    else if (part === 'socle') updateCabinet(activeCabinetId, { socleColor: url });
+    if (part === 'all') {
+      updateCabinet(activeCabinetId, {
+        structureColor: url, structureMaterial: mat as any,
+        doorColor: url, doorMaterial: mat as any,
+        drawerFrontColor: url, drawerFrontMaterial: mat as any,
+        drawerInnerColor: url, drawerInnerMaterial: mat as any,
+        shelfColor: url, shelfMaterial: mat as any,
+        backColor: url, backMaterial: mat as any,
+        socleColor: url, socleMaterial: mat as any,
+      });
+    } else if (part === 'structure') updateCabinet(activeCabinetId, { structureColor: url, structureMaterial: mat as any });
+    else if (part === 'doors') updateCabinet(activeCabinetId, { doorColor: url, doorMaterial: mat as any });
+    else if (part === 'drawerFronts') updateCabinet(activeCabinetId, { drawerFrontColor: url, drawerFrontMaterial: mat as any });
+    else if (part === 'drawerInner') updateCabinet(activeCabinetId, { drawerInnerColor: url, drawerInnerMaterial: mat as any });
+    else if (part === 'shelves') updateCabinet(activeCabinetId, { shelfColor: url, shelfMaterial: mat as any });
+    else if (part === 'back') updateCabinet(activeCabinetId, { backColor: url, backMaterial: mat as any });
+    else if (part === 'socle') updateCabinet(activeCabinetId, { socleColor: url, socleMaterial: mat as any });
   };
+
+  const handleGlobalTextureSelect = (url: string, mat: string) => {
+    const part = globalState.targetPart;
+    applyGlobalTexture(part, url, mat as any);
+    if (part === 'structure' || part === 'all') {
+      globalState.setStructureColor(url);
+      globalState.setStructureMaterial(mat as any);
+    }
+    if (part === 'doors' || part === 'all') {
+      globalState.setDoorColor(url);
+      globalState.setDoorMaterial(mat as any);
+    }
+    if (part === 'drawerFronts' || part === 'all') {
+      globalState.setDrawerFrontColor(url);
+      globalState.setDrawerFrontMaterial(mat as any);
+    }
+    if (part === 'drawerInner' || part === 'all') {
+      globalState.setDrawerInnerColor(url);
+      globalState.setDrawerInnerMaterial(mat as any);
+    }
+    if (part === 'shelves' || part === 'all') {
+      globalState.setShelfColor(url);
+      globalState.setShelfMaterial(mat as any);
+    }
+    if (part === 'back' || part === 'all') {
+      globalState.setBackColor(url);
+    }
+    if (part === 'socle' || part === 'all') {
+      globalState.setSocleColor(url);
+      globalState.setSocleMaterial(mat as any);
+    }
+  };
+
   const activeCabinet = cabinets.find(c => c.id === activeCabinetId);
 
   return (
@@ -70,11 +165,12 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
 
       <nav className="flex items-center justify-between px-6 py-3.5 border-b border-white/10 bg-black/60 backdrop-blur-md z-20">
         <div className="flex items-center gap-4">
-          <button onClick={onNavigate} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors border border-white/10">
+          <button onClick={onNavigate} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors border border-white/10" title="Volver al Inicio">
             <ArrowLeft size={18} />
           </button>
           <div className="flex items-center gap-3">
-            <img src="/logo.png" alt="Robfu Logo" className="h-8 w-auto object-contain" /><span className="text-xl font-bold tracking-tighter uppercase">Planificador<span className="text-orange-500">Cocinas</span></span>
+            <span className="font-bellota text-2xl font-bold lowercase text-orange-500 tracking-tight select-none">arquify</span>
+            <span className="text-xs text-slate-500 uppercase tracking-widest border-l border-white/10 pl-3 hidden sm:inline">Cocinas</span>
           </div>
         </div>
 
@@ -114,9 +210,9 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
         </div>
       </nav>
       <main className="flex flex-1 overflow-hidden relative">
-         <div className="w-64 shrink-0 bg-zinc-900 border-r border-white/10 flex flex-col z-10 shadow-2xl">
+         <div className="w-72 shrink-0 bg-zinc-900 border-r border-white/10 flex flex-col z-10 shadow-2xl">
             <div className="p-4 border-b border-white/10">
-               <h3 className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-4">Herramientas</h3>
+               <h3 className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-3">Herramientas</h3>
                <div className="flex flex-col gap-2">
                   <button
                     onClick={() => setRoomPlannerOpen(true)}
@@ -132,54 +228,195 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                   <ToolButton active={toolMode === 'draw_wall'} onClick={() => { setToolMode('draw_wall'); setViewMode('2d'); }} icon={<PenTool size={16}/>} label="Dibujar Tramo Muro" />
                </div>
             </div>
+
+            {/* Pestañas Catálogo Módulos / En Escena / Decorativos */}
+            <div className="grid grid-cols-3 border-b border-white/10 bg-black/40 p-1.5 gap-1">
+              <button
+                onClick={() => setLeftTab('modules')}
+                className={`flex items-center justify-center gap-1 py-2 px-1 rounded-md text-[9px] font-extrabold uppercase tracking-wider transition-all ${
+                  leftTab === 'modules'
+                    ? 'bg-orange-500 text-black shadow-[0_0_10px_rgba(249,115,22,0.2)]'
+                    : 'text-slate-400 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                <Box size={12} />
+                <span>Módulos</span>
+              </button>
+              <button
+                onClick={() => setLeftTab('placed')}
+                className={`flex items-center justify-center gap-1 py-2 px-1 rounded-md text-[9px] font-extrabold uppercase tracking-wider transition-all ${
+                  leftTab === 'placed'
+                    ? 'bg-orange-500 text-black shadow-[0_0_10px_rgba(249,115,22,0.2)]'
+                    : 'text-slate-400 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                <ListOrdered size={12} />
+                <span>Escena ({cabinets.length})</span>
+              </button>
+              <button
+                onClick={() => setLeftTab('decorations')}
+                className={`flex items-center justify-center gap-1 py-2 px-1 rounded-md text-[9px] font-extrabold uppercase tracking-wider transition-all ${
+                  leftTab === 'decorations'
+                    ? 'bg-orange-500 text-black shadow-[0_0_10px_rgba(249,115,22,0.2)]'
+                    : 'text-slate-400 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                <Palette size={12} />
+                <span>Acabados</span>
+              </button>
+            </div>
+
             <div className="p-4 flex-1 overflow-y-auto custom-scrollbar">
-               <h3 className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-4">Catálogo Paramétrico</h3>
-               <div className="flex flex-col gap-2">
-                  
-                  <h3 className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-2">Bases</h3>
-                  <div className="flex flex-col gap-1 mb-4">
-                     <ToolButton active={toolMode === 'place_base_1_door'} onClick={() => { setToolMode('place_base_1_door'); setViewMode('3d'); }} icon={<Box size={14}/>} label="1 Puerta" />
-                     <ToolButton active={toolMode === 'place_base_1_door_1_drawer'} onClick={() => { setToolMode('place_base_1_door_1_drawer'); setViewMode('3d'); }} icon={<Box size={14}/>} label="1 Pta + 1 Cajón" />
-                     <ToolButton active={toolMode === 'place_base_2_doors'} onClick={() => { setToolMode('place_base_2_doors'); setViewMode('3d'); }} icon={<Box size={14}/>} label="2 Puertas" />
-                     <ToolButton active={toolMode === 'place_base_4_drawers'} onClick={() => { setToolMode('place_base_4_drawers'); setViewMode('3d'); }} icon={<Box size={14}/>} label="4 Cajones" />
-                     <ToolButton active={toolMode === 'place_base_2_pot_drawers'} onClick={() => { setToolMode('place_base_2_pot_drawers'); setViewMode('3d'); }} icon={<Box size={14}/>} label="2 Olleros" />
-                     <ToolButton active={toolMode === 'place_base_spice_rack'} onClick={() => { setToolMode('place_base_spice_rack'); setViewMode('3d'); }} icon={<Box size={14}/>} label="Especiero" />
-                     <ToolButton active={toolMode === 'place_base_corner_blind'} onClick={() => { setToolMode('place_base_corner_blind'); setViewMode('3d'); }} icon={<Box size={14}/>} label="Esquinero Ciego" />
-                  </div>
-                  
-                  <h3 className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-2">Torres & Despensas</h3>
-                  <div className="flex flex-col gap-1 mb-4">
-                     <ToolButton active={toolMode === 'place_tall_1_door'} onClick={() => { setToolMode('place_tall_1_door'); setViewMode('3d'); }} icon={<LayoutGrid size={14}/>} label="1 Pta Larga (Repisas)" />
-                     <ToolButton active={toolMode === 'place_tall_split_2_doors'} onClick={() => { setToolMode('place_tall_split_2_doors'); setViewMode('3d'); }} icon={<LayoutGrid size={14}/>} label="2 Ptas (Línea Base + Alta)" />
-                     <ToolButton active={toolMode === 'place_tall_oven_micro'} onClick={() => { setToolMode('place_tall_oven_micro'); setViewMode('3d'); }} icon={<LayoutGrid size={14}/>} label="Torre Horno + Micro Empotrado" />
-                     <ToolButton active={toolMode === 'place_tall_microwave_niche'} onClick={() => { setToolMode('place_tall_microwave_niche'); setViewMode('3d'); }} icon={<LayoutGrid size={14}/>} label="Nicho Micro Portátil" />
-                     <ToolButton active={toolMode === 'place_tall_open'} onClick={() => { setToolMode('place_tall_open'); setViewMode('3d'); }} icon={<LayoutGrid size={14}/>} label="Repisas a la Vista" />
-                     <ToolButton active={toolMode === 'place_tall_2_doors'} onClick={() => { setToolMode('place_tall_2_doors'); setViewMode('3d'); }} icon={<LayoutGrid size={14}/>} label="Despensa 2 Puertas" />
-                  </div>
+               {leftTab === 'modules' ? (
+                 <div className="flex flex-col gap-2">
+                    <h3 className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-2">Bases</h3>
+                    <div className="flex flex-col gap-1 mb-4">
+                       <ToolButton active={toolMode === 'place_base_1_door'} onClick={() => { setToolMode('place_base_1_door'); setViewMode('3d'); }} icon={<Box size={14}/>} label="1 Puerta" />
+                       <ToolButton active={toolMode === 'place_base_1_door_1_drawer'} onClick={() => { setToolMode('place_base_1_door_1_drawer'); setViewMode('3d'); }} icon={<Box size={14}/>} label="1 Pta + 1 Cajón" />
+                       <ToolButton active={toolMode === 'place_base_2_doors'} onClick={() => { setToolMode('place_base_2_doors'); setViewMode('3d'); }} icon={<Box size={14}/>} label="2 Puertas" />
+                       <ToolButton active={toolMode === 'place_base_4_drawers'} onClick={() => { setToolMode('place_base_4_drawers'); setViewMode('3d'); }} icon={<Box size={14}/>} label="4 Cajones" />
+                       <ToolButton active={toolMode === 'place_base_2_pot_drawers'} onClick={() => { setToolMode('place_base_2_pot_drawers'); setViewMode('3d'); }} icon={<Box size={14}/>} label="2 Olleros" />
+                       <ToolButton active={toolMode === 'place_base_spice_rack'} onClick={() => { setToolMode('place_base_spice_rack'); setViewMode('3d'); }} icon={<Box size={14}/>} label="Especiero" />
+                       <ToolButton active={toolMode === 'place_base_corner_blind'} onClick={() => { setToolMode('place_base_corner_blind'); setViewMode('3d'); }} icon={<Box size={14}/>} label="Esquinero Ciego" />
+                    </div>
+                    
+                    <h3 className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-2">Torres & Despensas</h3>
+                    <div className="flex flex-col gap-1 mb-4">
+                       <ToolButton active={toolMode === 'place_tall_1_door'} onClick={() => { setToolMode('place_tall_1_door'); setViewMode('3d'); }} icon={<LayoutGrid size={14}/>} label="1 Pta Larga (Repisas)" />
+                       <ToolButton active={toolMode === 'place_tall_split_2_doors'} onClick={() => { setToolMode('place_tall_split_2_doors'); setViewMode('3d'); }} icon={<LayoutGrid size={14}/>} label="2 Ptas (Línea Base + Alta)" />
+                       <ToolButton active={toolMode === 'place_tall_oven_micro'} onClick={() => { setToolMode('place_tall_oven_micro'); setViewMode('3d'); }} icon={<LayoutGrid size={14}/>} label="Torre Horno + Micro Empotrado" />
+                       <ToolButton active={toolMode === 'place_tall_microwave_niche'} onClick={() => { setToolMode('place_tall_microwave_niche'); setViewMode('3d'); }} icon={<LayoutGrid size={14}/>} label="Nicho Micro Portátil" />
+                       <ToolButton active={toolMode === 'place_tall_open'} onClick={() => { setToolMode('place_tall_open'); setViewMode('3d'); }} icon={<LayoutGrid size={14}/>} label="Repisas a la Vista" />
+                       <ToolButton active={toolMode === 'place_tall_2_doors'} onClick={() => { setToolMode('place_tall_2_doors'); setViewMode('3d'); }} icon={<LayoutGrid size={14}/>} label="Despensa 2 Puertas" />
+                    </div>
 
-                  <h3 className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-2">Murales & Aéreos (6 Diseños)</h3>
-                  <div className="flex flex-col gap-1 mb-4">
-                     <ToolButton active={toolMode === 'place_wall_1_door'} onClick={() => { setToolMode('place_wall_1_door'); setViewMode('3d'); }} icon={<Square size={14}/>} label="1. Aéreo 1 Puerta" />
-                     <ToolButton active={toolMode === 'place_wall_2_doors'} onClick={() => { setToolMode('place_wall_2_doors'); setViewMode('3d'); }} icon={<Square size={14}/>} label="2. Aéreo 2 Puertas" />
-                     <ToolButton active={toolMode === 'place_wall_lift_up'} onClick={() => { setToolMode('place_wall_lift_up'); setViewMode('3d'); }} icon={<Square size={14}/>} label="3. Pta Elevable Aventos" />
-                     <ToolButton active={toolMode === 'place_wall_lift_up_double'} onClick={() => { setToolMode('place_wall_lift_up_double'); setViewMode('3d'); }} icon={<Square size={14}/>} label="4. Doble Pta Elevable" />
-                     <ToolButton active={toolMode === 'place_wall_microwave_niche'} onClick={() => { setToolMode('place_wall_microwave_niche'); setViewMode('3d'); }} icon={<Square size={14}/>} label="5. Nicho Micro + Pta Sup" />
-                     <ToolButton active={toolMode === 'place_wall_open'} onClick={() => { setToolMode('place_wall_open'); setViewMode('3d'); }} icon={<Square size={14}/>} label="6. Repisas a la Vista" />
-                     <ToolButton active={toolMode === 'place_island'} onClick={() => { setToolMode('place_island'); setViewMode('3d'); }} icon={<Box size={14}/>} label="Isla Libre" />
-                  </div>
+                    <h3 className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-2">Murales & Aéreos (6 Diseños)</h3>
+                    <div className="flex flex-col gap-1 mb-4">
+                       <ToolButton active={toolMode === 'place_wall_1_door'} onClick={() => { setToolMode('place_wall_1_door'); setViewMode('3d'); }} icon={<Square size={14}/>} label="1. Aéreo 1 Puerta" />
+                       <ToolButton active={toolMode === 'place_wall_2_doors'} onClick={() => { setToolMode('place_wall_2_doors'); setViewMode('3d'); }} icon={<Square size={14}/>} label="2. Aéreo 2 Puertas" />
+                       <ToolButton active={toolMode === 'place_wall_lift_up'} onClick={() => { setToolMode('place_wall_lift_up'); setViewMode('3d'); }} icon={<Square size={14}/>} label="3. Pta Elevable Aventos" />
+                       <ToolButton active={toolMode === 'place_wall_lift_up_double'} onClick={() => { setToolMode('place_wall_lift_up_double'); setViewMode('3d'); }} icon={<Square size={14}/>} label="4. Doble Pta Elevable" />
+                       <ToolButton active={toolMode === 'place_wall_microwave_niche'} onClick={() => { setToolMode('place_wall_microwave_niche'); setViewMode('3d'); }} icon={<Square size={14}/>} label="5. Nicho Micro + Pta Sup" />
+                       <ToolButton active={toolMode === 'place_wall_open'} onClick={() => { setToolMode('place_wall_open'); setViewMode('3d'); }} icon={<Square size={14}/>} label="6. Repisas a la Vista" />
+                       <ToolButton active={toolMode === 'place_island'} onClick={() => { setToolMode('place_island'); setViewMode('3d'); }} icon={<Box size={14}/>} label="Isla Libre" />
+                    </div>
 
-                  <h3 className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-2">Decoración & Equipamiento</h3>
-                  <div className="flex flex-col gap-1 mb-4">
-                     <ToolButton active={toolMode === 'place_deco_stove'} onClick={() => { setToolMode('place_deco_stove'); setViewMode('3d'); }} icon={<Flame size={14}/>} label="1. Cocina FDV 90" />
-                     <ToolButton active={toolMode === 'place_deco_fridge'} onClick={() => { setToolMode('place_deco_fridge'); setViewMode('3d'); }} icon={<Refrigerator size={14}/>} label="2. Refrigerador SBS" />
-                     <ToolButton active={toolMode === 'place_deco_hood'} onClick={() => { setToolMode('place_deco_hood'); setViewMode('3d'); }} icon={<Sparkles size={14}/>} label="3. Campana FDV Conic 90" />
-                     <ToolButton active={toolMode === 'place_deco_plant'} onClick={() => { setToolMode('place_deco_plant'); setViewMode('3d'); }} icon={<Flower2 size={14}/>} label="4. Planta Interior" />
-                  </div>
-               </div>
+                    <h3 className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-2">Decoración & Equipamiento</h3>
+                    <div className="flex flex-col gap-1 mb-4">
+                       <ToolButton active={toolMode === 'place_deco_stove'} onClick={() => { setToolMode('place_deco_stove'); setViewMode('3d'); }} icon={<Flame size={14}/>} label="1. Cocina FDV 90" />
+                       <ToolButton active={toolMode === 'place_deco_fridge'} onClick={() => { setToolMode('place_deco_fridge'); setViewMode('3d'); }} icon={<Refrigerator size={14}/>} label="2. Refrigerador SBS" />
+                       <ToolButton active={toolMode === 'place_deco_hood'} onClick={() => { setToolMode('place_deco_hood'); setViewMode('3d'); }} icon={<Sparkles size={14}/>} label="3. Campana FDV Conic 90" />
+                       <ToolButton active={toolMode === 'place_deco_plant'} onClick={() => { setToolMode('place_deco_plant'); setViewMode('3d'); }} icon={<Flower2 size={14}/>} label="4. Planta Interior" />
+                    </div>
+                 </div>
+               ) : leftTab === 'placed' ? (
+                 <div className="flex flex-col gap-3">
+                   <div className="flex items-center justify-between">
+                     <div className="text-[10px] uppercase font-bold tracking-widest text-slate-400">
+                       Módulos en Escena ({cabinets.length})
+                     </div>
+                     {cabinets.length > 0 && (
+                       <span className="text-[9px] text-zinc-500">Clic para editar o borrar</span>
+                     )}
+                   </div>
+
+                   {cabinets.length === 0 ? (
+                     <div className="p-5 rounded-xl bg-white/5 border border-white/10 text-center flex flex-col items-center gap-2.5 mt-2">
+                       <Box size={24} className="text-zinc-500" />
+                       <p className="text-xs text-zinc-400 font-medium">No hay muebles cargados en la escena</p>
+                       <button
+                         onClick={() => setLeftTab('modules')}
+                         className="mt-1 px-3 py-1.5 bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 text-[10px] font-bold uppercase tracking-wider rounded-lg border border-orange-500/40 transition-colors"
+                       >
+                         Ver Catálogo de Módulos
+                       </button>
+                     </div>
+                   ) : (
+                     <div className="flex flex-col gap-2">
+                       {cabinets.map((cab, idx) => {
+                         const isSelected = cab.id === activeCabinetId;
+                         const label = getCabinetLabel(cab, idx);
+                         return (
+                           <div
+                             key={cab.id}
+                             onClick={() => setActiveCabinet(cab.id)}
+                             className={`p-3 rounded-xl border transition-all cursor-pointer group flex flex-col gap-2 ${
+                               isSelected
+                                 ? 'bg-orange-500/15 border-orange-500 shadow-[0_0_12px_rgba(249,115,22,0.25)]'
+                                 : 'bg-[#18181b] border-white/10 hover:border-white/20 hover:bg-[#202024]'
+                             }`}
+                           >
+                             <div className="flex items-center justify-between gap-2">
+                               <div className="flex items-center gap-2 min-w-0">
+                                 <span className="shrink-0 px-1.5 py-0.5 rounded bg-black/50 border border-white/10 text-[9px] font-mono font-bold text-orange-400">
+                                   MOD {idx + 1}
+                                 </span>
+                                 <span className="text-xs font-bold text-zinc-200 truncate group-hover:text-white">
+                                   {label}
+                                 </span>
+                               </div>
+                               <div className="flex items-center gap-1 shrink-0">
+                                 <button
+                                   onClick={(e) => {
+                                     e.stopPropagation();
+                                     const currentRot = cab.rotation || 0;
+                                     const nextRot = (currentRot + Math.PI / 2) % (Math.PI * 2);
+                                     updateCabinet(cab.id, { rotation: nextRot });
+                                   }}
+                                   title="Girar 90°"
+                                   className="p-1 rounded text-zinc-400 hover:text-cyan-400 hover:bg-white/5 transition-colors"
+                                 >
+                                   <RotateCw size={13} />
+                                 </button>
+                                 <button
+                                   onClick={(e) => {
+                                     e.stopPropagation();
+                                     removeCabinet(cab.id);
+                                   }}
+                                   title="Eliminar este mueble"
+                                   className="p-1 rounded text-zinc-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                                 >
+                                   <Trash2 size={13} />
+                                 </button>
+                               </div>
+                             </div>
+
+                             <div className="flex items-center justify-between text-[10px] text-zinc-400 font-mono pt-1 border-t border-white/5">
+                               <span>{cab.width} × {cab.height} × {cab.depth} cm</span>
+                               <span className="text-[9px] uppercase font-sans text-zinc-500 tracking-wider">
+                                 {cab.type === 'base' ? 'Base' : cab.type === 'tall' ? 'Torre' : cab.type === 'wall' ? 'Aéreo' : cab.type === 'island' ? 'Isla' : 'Equipamiento'}
+                               </span>
+                             </div>
+                           </div>
+                         );
+                       })}
+                     </div>
+                   )}
+                 </div>
+               ) : (
+                 <div className="flex flex-col gap-3">
+                    <div className="p-3 bg-orange-500/10 border border-orange-500/30 rounded-lg">
+                       <div className="flex items-center gap-1.5 text-orange-400 text-[10px] font-bold uppercase tracking-wider mb-1">
+                          <Palette size={12} />
+                          <span>Decorativos Globales</span>
+                       </div>
+                       <p className="text-[10px] text-slate-300 leading-relaxed">
+                          Al seleccionar un decorativo aquí, se actualizarán <strong>todos los muebles de la cocina</strong> automáticamente.
+                       </p>
+                    </div>
+
+                    <TexturesSection 
+                      onSelectTexture={handleGlobalTextureSelect}
+                      title="Decorativos de Cocina"
+                      badgeText="Toda la Cocina"
+                    />
+                 </div>
+               )}
             </div>
          </div>
          <div className="flex-1 min-w-0 relative bg-[#111]">
             <KitchenScene />
+            <KitchenModuleContextMenu />
             {toolMode === 'draw_wall' && (
               <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-black/80 backdrop-blur-md px-6 py-3 rounded-full border border-white/10 text-xs font-semibold text-slate-300 pointer-events-none uppercase tracking-wider">
                 Haz clic en la grilla para iniciar un muro. Pulsa ESC para cancelar.
@@ -196,227 +433,290 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
         {/* Acabados de la Estancia (Paleta 10 Colores Muros + 10 Tipos de Piso) */}
         <RoomFinishesSection />
 
-        {activeCabinetId && activeCabinet && (() => {
-           const isDecoration = activeCabinet.type === 'decoration' || activeCabinet.variant?.startsWith('deco_');
-           return (
-           <>
-        <h2 className={sectionTitle}>{isDecoration ? 'Ficha Técnica / Decoración' : 'Configurar Módulo'}</h2>
-        <div className="p-4 bg-white/5 border border-white/10 rounded-lg mb-6 shadow-inner">
-           <div className="flex justify-between items-center mb-4 border-b border-white/10 pb-2">
-              <h3 className="text-[10px] uppercase tracking-widest text-orange-400 font-bold truncate pr-2">
-                 {activeCabinet.variant === 'deco_hood' 
-                    ? 'Campana FDV New Conic 90'
-                    : activeCabinet.variant === 'deco_stove' 
-                    ? 'Cocina FDV FS UNIQUE 90'
-                    : activeCabinet.variant === 'deco_fridge'
-                    ? 'Refrigerador FDV SBS 513L'
-                    : activeCabinet.variant === 'deco_plant'
-                    ? 'Planta Interior Decorativa'
-                    : activeCabinet.variant?.startsWith('corner_blind') 
-                    ? 'Esquinero Ciego' 
-                    : activeCabinet.variant === 'tall_1_door' ? 'Despensa 1 Puerta Larga'
-                    : activeCabinet.variant === 'tall_split_2_doors' ? 'Despensa 2 Puertas (Línea Base)'
-                    : activeCabinet.variant === 'tall_oven_micro' ? 'Torre Horno + Micro Empotrado'
-                    : activeCabinet.variant === 'tall_microwave_niche' ? 'Torre Nicho Micro Portátil'
-                    : activeCabinet.variant === 'tall_open' ? 'Despensa Abierta (Repisas)'
-                    : activeCabinet.variant === 'tall_2_doors' ? 'Despensa 2 Puertas Batientes'
-                    : activeCabinet.variant === 'wall_1_door' ? 'Mueble Aéreo 1 Puerta'
-                    : activeCabinet.variant === 'wall_2_doors' ? 'Mueble Aéreo 2 Puertas'
-                    : activeCabinet.variant === 'wall_lift_up' ? 'Aéreo Puerta Elevable Aventos'
-                    : activeCabinet.variant === 'wall_lift_up_double' ? 'Aéreo Doble Puerta Elevable'
-                    : activeCabinet.variant === 'wall_microwave_niche' ? 'Aéreo Nicho Microondas + Puerta'
-                    : activeCabinet.variant === 'wall_open' ? 'Aéreo Repisas a la Vista'
-                    : (activeCabinet.variant || activeCabinet.type)}
-              </h3>
-              <div className="flex items-center gap-2 shrink-0">
-                 <button onClick={() => {
-                    const currentRot = activeCabinet.rotation || 0;
-                    const nextRot = (currentRot + Math.PI / 2) % (Math.PI * 2);
-                    updateCabinet(activeCabinet.id, { rotation: nextRot });
-                 }} className="text-[10px] text-cyan-400 hover:text-cyan-300 flex items-center gap-1 uppercase tracking-widest" title="Girar 90°">
-                    <RotateCw size={12} />
-                    Girar
-                 </button>
-                 <button onClick={() => { setToolMode('move_active'); setViewMode('3d'); }} className="text-[10px] text-orange-400 hover:text-orange-300 flex items-center gap-1 uppercase tracking-widest">
-                    <Move3D size={12} />
-                    Mover
-                 </button>
-                 <button onClick={() => {
-                    useKitchenStore.setState(state => ({ cabinets: state.cabinets.filter(c => c.id !== activeCabinetId), activeCabinetId: null }));
-                 }} className="text-[10px] text-rose-400 hover:text-rose-300 flex items-center gap-1 uppercase tracking-widest">
-                    <Trash2 size={12} />
-                    Eliminar
-                 </button>
-              </div>
-           </div>
-
-           {isDecoration ? (
-              <div className="flex flex-col gap-3">
-                 <div className="p-3 bg-black/40 border border-orange-500/20 rounded-lg">
-                    <div className="flex items-center gap-1.5 text-orange-400 text-[10px] font-bold uppercase tracking-widest mb-1.5">
-                       <Info size={12} />
-                       <span>Especificación del Fabricante</span>
-                    </div>
-                    <p className="text-[10px] text-slate-300 leading-relaxed">
-                       {activeCabinet.variant === 'deco_hood' && 'Campana FDV New Conic 90 (SAP 16309). Acero Inoxidable, aspiración 780 m3/h, 3 velocidades, filtros metálicos antigrasa lavables y 2 luces LED.'}
-                       {activeCabinet.variant === 'deco_stove' && 'Cocina FDV FS UNIQUE 90 (SAP 13297). 5 Quemadores a gas (Wok triple corona), Horno eléctrico 107L con calienta platos inferior. Acero inoxidable.'}
-                       {activeCabinet.variant === 'deco_fridge' && 'Refrigerador FDV SBS SIGNATURE 2.0 513 LTS (SAP 16692). Side by side No Frost, dispensador de agua/hielo automático y display digital Dark Inox.'}
-                       {activeCabinet.variant === 'deco_plant' && 'Ambientación vegetal botánica en 3D con macetero cerámico cilíndrico y soporte trípode de madera.'}
-                    </p>
+        {/* Panel de Módulo Activo (Si hay uno seleccionado) */}
+        {/* Panel de Módulo Activo o Equipamiento Activo */}
+        {activeCabinetId && activeCabinet ? (
+           (activeCabinet.type === 'decoration' || activeCabinet.variant?.startsWith('deco_')) ? (
+             <div className="mb-6">
+               <h2 className={sectionTitle}>Equipamiento Seleccionado</h2>
+               <div className="p-4 bg-white/5 border border-white/10 rounded-lg shadow-inner flex flex-col gap-3">
+                 <div className="flex justify-between items-center border-b border-white/10 pb-2">
+                   <h3 className="text-[10px] uppercase tracking-widest text-cyan-400 font-bold truncate pr-2">
+                     {activeCabinet.variant === 'deco_hood' ? 'Campana FDV New Conic 90'
+                        : activeCabinet.variant === 'deco_stove' ? 'Cocina FDV FS Unique 90'
+                        : activeCabinet.variant === 'deco_fridge' ? 'Refrigerador FDV SBS'
+                        : activeCabinet.variant === 'deco_plant' ? 'Planta Decorativa'
+                        : 'Equipamiento Cocina'}
+                   </h3>
+                   <div className="flex items-center gap-2 shrink-0">
+                     <button
+                       onClick={() => {
+                         const currentRot = activeCabinet.rotation || 0;
+                         const nextRot = (currentRot + Math.PI / 2) % (Math.PI * 2);
+                         updateCabinet(activeCabinet.id, { rotation: nextRot });
+                       }}
+                       className="text-[10px] text-cyan-400 hover:text-cyan-300 flex items-center gap-1 uppercase tracking-widest cursor-pointer"
+                       title="Girar 90°"
+                     >
+                       <RotateCw size={12} />
+                       Girar
+                     </button>
+                     <button
+                       onClick={() => {
+                         setToolMode('move_active');
+                         setViewMode('3d');
+                       }}
+                       className="text-[10px] text-orange-400 hover:text-orange-300 flex items-center gap-1 uppercase tracking-widest cursor-pointer"
+                     >
+                       <Move3D size={12} />
+                       Mover
+                     </button>
+                     <button
+                       onClick={() => removeCabinet(activeCabinet.id)}
+                       className="text-[10px] text-rose-400 hover:text-rose-300 flex items-center gap-1 uppercase tracking-widest cursor-pointer"
+                       title="Eliminar Equipamiento"
+                     >
+                       <Trash2 size={12} />
+                       Eliminar
+                     </button>
+                   </div>
                  </div>
 
-                 <div className="grid grid-cols-3 gap-2 bg-white/5 p-2.5 rounded-lg border border-white/10 text-center">
-                    <div>
-                       <div className="text-[9px] uppercase tracking-widest text-slate-400">Ancho</div>
-                       <div className="text-white font-mono text-xs font-bold">{activeCabinet.width} cm</div>
-                    </div>
-                    <div>
-                       <div className="text-[9px] uppercase tracking-widest text-slate-400">Alto</div>
-                       <div className="text-white font-mono text-xs font-bold">{activeCabinet.height} cm</div>
-                    </div>
-                    <div>
-                       <div className="text-[9px] uppercase tracking-widest text-slate-400">Fondo</div>
-                       <div className="text-white font-mono text-xs font-bold">{activeCabinet.depth} cm</div>
-                    </div>
+                 <div className="grid grid-cols-3 gap-2 bg-black/40 p-2.5 rounded-lg border border-white/10 text-center">
+                   <div>
+                     <div className="text-[9px] uppercase tracking-widest text-slate-400">Ancho</div>
+                     <div className="text-white font-mono text-xs font-bold">{activeCabinet.width} cm</div>
+                   </div>
+                   <div>
+                     <div className="text-[9px] uppercase tracking-widest text-slate-400">Alto</div>
+                     <div className="text-white font-mono text-xs font-bold">{activeCabinet.height} cm</div>
+                   </div>
+                   <div>
+                     <div className="text-[9px] uppercase tracking-widest text-slate-400">Fondo</div>
+                     <div className="text-white font-mono text-xs font-bold">{activeCabinet.depth} cm</div>
+                   </div>
                  </div>
 
-                 {activeCabinet.variant === 'deco_hood' ? (
-                    <div className="flex flex-col gap-2 pt-2 border-t border-white/10">
-                       <SliderControl 
-                          label="Elevación Base Campana (desde Piso)" 
-                          value={Math.round(activeCabinet.position[1] - activeCabinet.height / 2)} 
-                          min={120} 
-                          max={170} 
-                          step={2} 
-                          unit="cm" 
-                          onChange={(newBottom) => {
-                             updateCabinet(activeCabinet.id, {
-                                position: [activeCabinet.position[0], newBottom + activeCabinet.height / 2, activeCabinet.position[2]]
-                             });
-                          }} 
-                       />
-                       <SliderControl 
-                          label="Extensión Ducto Telescópico (Alto)" 
-                          value={activeCabinet.height} 
-                          min={45} 
-                          max={110} 
-                          step={5} 
-                          unit="cm" 
-                          onChange={(newHeight) => {
-                             const currentBottom = activeCabinet.position[1] - activeCabinet.height / 2;
-                             updateCabinet(activeCabinet.id, {
-                                height: newHeight,
-                                position: [activeCabinet.position[0], currentBottom + newHeight / 2, activeCabinet.position[2]]
-                             });
-                          }} 
-                       />
-                    </div>
-                 ) : (
-                    <div className="text-[9px] text-slate-400 bg-white/5 p-2 rounded border border-white/5 flex items-center gap-1.5">
-                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 animate-pulse"></span>
-                       <span>Medidas fijas proporcionales. Apoyado al piso (Y=0).</span>
-                    </div>
+                 {activeCabinet.variant === 'deco_hood' && (
+                   <div className="flex flex-col gap-2 pt-2 border-t border-white/10">
+                     <SliderControl
+                       label="Elevación Base Campana (desde Piso)"
+                       value={Math.round(activeCabinet.position[1] - activeCabinet.height / 2)}
+                       min={120}
+                       max={170}
+                       step={2}
+                       unit="cm"
+                       onChange={(newBottom) => {
+                         updateCabinet(activeCabinet.id, {
+                           position: [activeCabinet.position[0], newBottom + activeCabinet.height / 2, activeCabinet.position[2]]
+                         });
+                       }}
+                     />
+                   </div>
                  )}
-              </div>
+
+                 <div className="flex gap-2 mt-1">
+                   <button
+                     onClick={() => {
+                       setToolMode('move_active');
+                       setViewMode('3d');
+                     }}
+                     className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 bg-orange-500 hover:bg-orange-600 text-black font-bold rounded-lg text-[10px] uppercase tracking-wider transition-all cursor-pointer"
+                   >
+                     <Move3D size={13} />
+                     Reubicar / Mover
+                   </button>
+                   <button
+                     onClick={() => removeCabinet(activeCabinet.id)}
+                     className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-lg text-[10px] uppercase font-bold tracking-wider transition-all cursor-pointer"
+                   >
+                     <Trash2 size={13} />
+                     Eliminar
+                   </button>
+                 </div>
+               </div>
+             </div>
            ) : (
-              <>
-                 {activeCabinet.type === 'tall' && (
-                    <div className="flex flex-col gap-1.5 mb-4 p-2.5 bg-black/40 border border-white/10 rounded-lg">
-                       <label className={labelClass}>Variante de Torre / Despensa</label>
-                       <div className="grid grid-cols-2 gap-1.5 mt-1">
-                          {[
-                             { id: 'tall_1_door', label: '1 Pta Larga' },
-                             { id: 'tall_split_2_doors', label: '2 Ptas Línea Base' },
-                             { id: 'tall_oven_micro', label: 'Horno + Micro' },
-                             { id: 'tall_microwave_niche', label: 'Nicho Micro' },
-                             { id: 'tall_open', label: 'Repisas Vistas' },
-                             { id: 'tall_2_doors', label: '2 Puertas' },
-                          ].map(t => (
-                             <button
-                                key={t.id}
-                                onClick={() => updateCabinet(activeCabinet.id, { variant: t.id })}
-                                className={`py-1.5 px-2 rounded text-[9px] font-bold uppercase tracking-wider transition-all ${(activeCabinet.variant === t.id || (!activeCabinet.variant && t.id === 'tall_1_door')) ? 'bg-orange-500 text-black shadow-[0_0_10px_rgba(249,115,22,0.2)]' : 'bg-white/5 text-slate-400 border border-white/10 hover:border-orange-500/50'}`}
-                             >
-                                {t.label}
-                             </button>
-                          ))}
-                       </div>
-                    </div>
-                 )}
+           <div className="mb-6">
+             <h2 className={sectionTitle}>Módulo Seleccionado</h2>
+             <div className="p-4 bg-white/5 border border-white/10 rounded-lg shadow-inner">
+               <div className="flex justify-between items-center mb-4 border-b border-white/10 pb-2">
+                  <h3 className="text-[10px] uppercase tracking-widest text-orange-400 font-bold truncate pr-2">
+                     {activeCabinet.variant?.startsWith('corner_blind') 
+                        ? 'Esquinero Ciego' 
+                        : activeCabinet.variant === 'tall_1_door' ? 'Despensa 1 Puerta Larga'
+                        : activeCabinet.variant === 'tall_split_2_doors' ? 'Despensa 2 Puertas (Línea Base)'
+                        : activeCabinet.variant === 'tall_oven_micro' ? 'Torre Horno + Micro Empotrado'
+                        : activeCabinet.variant === 'tall_microwave_niche' ? 'Torre Nicho Micro Portátil'
+                        : activeCabinet.variant === 'tall_open' ? 'Despensa Abierta (Repisas)'
+                        : activeCabinet.variant === 'tall_2_doors' ? 'Despensa 2 Puertas Batientes'
+                        : activeCabinet.variant === 'wall_1_door' ? 'Mueble Aéreo 1 Puerta'
+                        : activeCabinet.variant === 'wall_2_doors' ? 'Mueble Aéreo 2 Puertas'
+                        : activeCabinet.variant === 'wall_lift_up' ? 'Aéreo Puerta Elevable Aventos'
+                        : activeCabinet.variant === 'wall_lift_up_double' ? 'Aéreo Doble Puerta Elevable'
+                        : activeCabinet.variant === 'wall_microwave_niche' ? 'Aéreo Nicho Microondas + Puerta'
+                        : activeCabinet.variant === 'wall_open' ? 'Aéreo Repisas a la Vista'
+                        : (activeCabinet.variant || activeCabinet.type)}
+                  </h3>
+                  <div className="flex items-center gap-2 shrink-0">
+                     <button onClick={() => {
+                        const currentRot = activeCabinet.rotation || 0;
+                        const nextRot = (currentRot + Math.PI / 2) % (Math.PI * 2);
+                        updateCabinet(activeCabinet.id, { rotation: nextRot });
+                     }} className="text-[10px] text-cyan-400 hover:text-cyan-300 flex items-center gap-1 uppercase tracking-widest" title="Girar 90°">
+                        <RotateCw size={12} />
+                        Girar
+                     </button>
+                     <button onClick={() => { setToolMode('move_active'); setViewMode('3d'); }} className="text-[10px] text-orange-400 hover:text-orange-300 flex items-center gap-1 uppercase tracking-widest">
+                        <Move3D size={12} />
+                        Mover
+                     </button>
+                     <button onClick={() => removeCabinet(activeCabinet.id)} className="text-[10px] text-rose-400 hover:text-rose-300 flex items-center gap-1 uppercase tracking-widest" title="Eliminar Módulo (Supr)">
+                        <Trash2 size={12} />
+                        Eliminar
+                     </button>
+                  </div>
+               </div>
 
-                 {activeCabinet.type === 'wall' && (
-                    <div className="flex flex-col gap-1.5 mb-4 p-2.5 bg-black/40 border border-white/10 rounded-lg">
-                       <label className={labelClass}>Variante de Mueble Aéreo</label>
-                       <div className="grid grid-cols-2 gap-1.5 mt-1">
-                          {[
-                             { id: 'wall_1_door', label: '1 Puerta' },
-                             { id: 'wall_2_doors', label: '2 Puertas' },
-                             { id: 'wall_lift_up', label: 'Pta Elevable' },
-                             { id: 'wall_lift_up_double', label: 'Doble Elevable' },
-                             { id: 'wall_microwave_niche', label: 'Nicho Micro' },
-                             { id: 'wall_open', label: 'Repisas Vistas' },
-                          ].map(t => (
-                             <button
-                                key={t.id}
-                                onClick={() => updateCabinet(activeCabinet.id, { variant: t.id })}
-                                className={`py-1.5 px-2 rounded text-[9px] font-bold uppercase tracking-wider transition-all ${(activeCabinet.variant === t.id || (!activeCabinet.variant && t.id === 'wall_1_door')) ? 'bg-orange-500 text-black shadow-[0_0_10px_rgba(249,115,22,0.2)]' : 'bg-white/5 text-slate-400 border border-white/10 hover:border-orange-500/50'}`}
-                             >
-                                {t.label}
-                             </button>
-                          ))}
-                       </div>
-                    </div>
-                 )}
+                     {activeCabinet.type === 'tall' && (
+                        <div className="flex flex-col gap-1.5 mb-4 p-2.5 bg-black/40 border border-white/10 rounded-lg">
+                           <label className={labelClass}>Variante de Torre / Despensa</label>
+                           <div className="grid grid-cols-2 gap-1.5 mt-1">
+                              {[
+                                 { id: 'tall_1_door', label: '1 Pta Larga' },
+                                 { id: 'tall_split_2_doors', label: '2 Ptas Línea Base' },
+                                 { id: 'tall_oven_micro', label: 'Horno + Micro' },
+                                 { id: 'tall_microwave_niche', label: 'Nicho Micro' },
+                                 { id: 'tall_open', label: 'Repisas Vistas' },
+                                 { id: 'tall_2_doors', label: '2 Puertas' },
+                              ].map(t => (
+                                 <button
+                                    key={t.id}
+                                    onClick={() => updateCabinet(activeCabinet.id, { variant: t.id })}
+                                    className={`py-1.5 px-2 rounded text-[9px] font-bold uppercase tracking-wider transition-all ${(activeCabinet.variant === t.id || (!activeCabinet.variant && t.id === 'tall_1_door')) ? 'bg-orange-500 text-black shadow-[0_0_10px_rgba(249,115,22,0.2)]' : 'bg-white/5 text-slate-400 border border-white/10 hover:border-orange-500/50'}`}
+                                 >
+                                    {t.label}
+                                 </button>
+                              ))}
+                           </div>
+                        </div>
+                     )}
 
-                 {(activeCabinet.variant?.startsWith('corner_blind') || activeCabinet.variant === 'corner_blind') && (
-                    <div className="flex flex-col gap-1.5 mb-4 p-2.5 bg-black/40 border border-white/10 rounded-lg">
-                       <label className={labelClass}>Mano / Orientación Esquinero</label>
-                       <div className="grid grid-cols-2 gap-2 mt-1">
-                          <button
-                             onClick={() => updateCabinet(activeCabinet.id, { variant: 'corner_blind_right' })}
-                             className={`py-1.5 px-2 rounded text-[10px] font-bold uppercase tracking-wider transition-all ${(activeCabinet.variant !== 'corner_blind_left') ? 'bg-orange-500 text-black shadow-[0_0_10px_rgba(249,115,22,0.2)]' : 'bg-white/5 text-slate-400 border border-white/10 hover:border-orange-500/50'}`}
-                          >
-                             Derecho (Ciego Der)
-                          </button>
-                          <button
-                             onClick={() => updateCabinet(activeCabinet.id, { variant: 'corner_blind_left' })}
-                             className={`py-1.5 px-2 rounded text-[10px] font-bold uppercase tracking-wider transition-all ${(activeCabinet.variant === 'corner_blind_left') ? 'bg-orange-500 text-black shadow-[0_0_10px_rgba(249,115,22,0.2)]' : 'bg-white/5 text-slate-400 border border-white/10 hover:border-orange-500/50'}`}
-                          >
-                             Izquierdo (Ciego Izq)
-                          </button>
-                       </div>
-                    </div>
-                 )}
+                     {activeCabinet.type === 'wall' && (
+                        <div className="flex flex-col gap-1.5 mb-4 p-2.5 bg-black/40 border border-white/10 rounded-lg">
+                           <label className={labelClass}>Variante de Mueble Aéreo</label>
+                           <div className="grid grid-cols-2 gap-1.5 mt-1">
+                              {[
+                                 { id: 'wall_1_door', label: '1 Puerta' },
+                                 { id: 'wall_2_doors', label: '2 Puertas' },
+                                 { id: 'wall_lift_up', label: 'Pta Elevable' },
+                                 { id: 'wall_lift_up_double', label: 'Doble Elevable' },
+                                 { id: 'wall_microwave_niche', label: 'Nicho Micro' },
+                                 { id: 'wall_open', label: 'Repisas Vistas' },
+                              ].map(t => (
+                                 <button
+                                    key={t.id}
+                                    onClick={() => updateCabinet(activeCabinet.id, { variant: t.id })}
+                                    className={`py-1.5 px-2 rounded text-[9px] font-bold uppercase tracking-wider transition-all ${(activeCabinet.variant === t.id || (!activeCabinet.variant && t.id === 'wall_1_door')) ? 'bg-orange-500 text-black shadow-[0_0_10px_rgba(249,115,22,0.2)]' : 'bg-white/5 text-slate-400 border border-white/10 hover:border-orange-500/50'}`}
+                                 >
+                                    {t.label}
+                                 </button>
+                              ))}
+                           </div>
+                        </div>
+                     )}
 
-                 {activeCabinet.type === 'wall' && (
-                    <div className="mb-3 p-2.5 bg-black/40 border border-white/10 rounded-lg">
-                       <SliderControl 
-                          label="Elevación en Muro (Cota Inferior)" 
-                          value={Math.round(activeCabinet.position[1] - activeCabinet.height / 2)} 
-                          min={110} 
-                          max={180} 
-                          step={2} 
-                          unit="cm" 
-                          onChange={(newBottom) => {
-                             updateCabinet(activeCabinet.id, {
-                                position: [activeCabinet.position[0], newBottom + activeCabinet.height / 2, activeCabinet.position[2]]
-                             });
-                          }} 
-                       />
-                    </div>
-                 )}
-                 
-                 <SliderControl label="Ancho del Módulo" value={activeCabinet.width} min={activeCabinet.variant === "spice_rack" ? 15 : (activeCabinet.variant?.startsWith('corner_blind') ? 80 : 30)} max={activeCabinet.variant?.startsWith('corner_blind') ? 130 : 120} step={5} unit="cm" onChange={(v) => updateCabinet(activeCabinet.id, { width: v })} />
-                 <SliderControl label="Alto Total" value={activeCabinet.height} min={activeCabinet.type === 'tall' ? 140 : (activeCabinet.type === 'base' ? 70 : 30)} max={activeCabinet.type === 'tall' ? 240 : (activeCabinet.type === 'wall' ? 120 : 100)} step={5} unit="cm" onChange={(v) => updateCabinet(activeCabinet.id, { height: v })} />
-                 <SliderControl label="Profundidad" value={activeCabinet.depth} min={25} max={80} step={5} unit="cm" onChange={(v) => updateCabinet(activeCabinet.id, { depth: v })} />
-              </>
-           )}
-        </div>
+                     {(activeCabinet.variant?.startsWith('corner_blind') || activeCabinet.variant === 'corner_blind') && (
+                        <div className="flex flex-col gap-1.5 mb-4 p-2.5 bg-black/40 border border-white/10 rounded-lg">
+                           <label className={labelClass}>Mano / Orientación Esquinero</label>
+                           <div className="grid grid-cols-2 gap-2 mt-1">
+                              <button
+                                 onClick={() => updateCabinet(activeCabinet.id, { variant: 'corner_blind_right' })}
+                                 className={`py-1.5 px-2 rounded text-[10px] font-bold uppercase tracking-wider transition-all ${(activeCabinet.variant !== 'corner_blind_left') ? 'bg-orange-500 text-black shadow-[0_0_10px_rgba(249,115,22,0.2)]' : 'bg-white/5 text-slate-400 border border-white/10 hover:border-orange-500/50'}`}
+                              >
+                                 Derecho (Ciego Der)
+                              </button>
+                              <button
+                                 onClick={() => updateCabinet(activeCabinet.id, { variant: 'corner_blind_left' })}
+                                 className={`py-1.5 px-2 rounded text-[10px] font-bold uppercase tracking-wider transition-all ${(activeCabinet.variant === 'corner_blind_left') ? 'bg-orange-500 text-black shadow-[0_0_10px_rgba(249,115,22,0.2)]' : 'bg-white/5 text-slate-400 border border-white/10 hover:border-orange-500/50'}`}
+                              >
+                                 Izquierdo (Ciego Izq)
+                              </button>
+                           </div>
+                        </div>
+                     )}
 
-        {!isDecoration && <TexturesSection onSelectTexture={handleTextureSelect} />}
-        </>
-           );
-        })()}
+                     {activeCabinet.type === 'wall' && (
+                        <div className="mb-3 p-2.5 bg-black/40 border border-white/10 rounded-lg">
+                           <SliderControl 
+                              label="Elevación en Muro (Cota Inferior)" 
+                              value={Math.round(activeCabinet.position[1] - activeCabinet.height / 2)} 
+                              min={110} 
+                              max={180} 
+                              step={2} 
+                              unit="cm" 
+                              onChange={(newBottom) => {
+                                 updateCabinet(activeCabinet.id, {
+                                    position: [activeCabinet.position[0], newBottom + activeCabinet.height / 2, activeCabinet.position[2]]
+                                 });
+                              }} 
+                           />
+                        </div>
+                     )}
+                     
+                     <SliderControl label="Ancho del Módulo" value={activeCabinet.width} min={activeCabinet.variant === "spice_rack" ? 15 : (activeCabinet.variant?.startsWith('corner_blind') ? 80 : 30)} max={activeCabinet.variant?.startsWith('corner_blind') ? 130 : 120} step={5} unit="cm" onChange={(v) => updateCabinet(activeCabinet.id, { width: v })} />
+                     <SliderControl label="Alto Total" value={activeCabinet.height} min={activeCabinet.type === 'tall' ? 140 : (activeCabinet.type === 'base' ? 70 : 30)} max={activeCabinet.type === 'tall' ? 240 : (activeCabinet.type === 'wall' ? 120 : 100)} step={5} unit="cm" onChange={(v) => updateCabinet(activeCabinet.id, { height: v })} />
+                     <SliderControl label="Profundidad" value={activeCabinet.depth} min={25} max={80} step={5} unit="cm" onChange={(v) => updateCabinet(activeCabinet.id, { depth: v })} />
+
+                     {/* Botón para eliminar este módulo individual */}
+                     <button
+                        onClick={() => removeCabinet(activeCabinet.id)}
+                        className="mt-3 w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-[10px] uppercase font-bold tracking-wider transition-all"
+                     >
+                        <Trash2 size={13} />
+                        Eliminar Módulo (Supr)
+                     </button>
+
+                     {/* Opción para personalizar el acabado exclusivo de este módulo */}
+                     <div className="mt-4 pt-3 border-t border-white/10">
+                        <button
+                           onClick={() => setShowIndividualMaterial(!showIndividualMaterial)}
+                           className="w-full flex items-center justify-between p-2 rounded bg-white/5 hover:bg-white/10 text-slate-300 text-[10px] uppercase font-bold tracking-wider transition-colors border border-white/10"
+                        >
+                           <div className="flex items-center gap-2">
+                              <Palette size={13} className="text-orange-400" />
+                              <span>Personalizar Solo este Módulo</span>
+                           </div>
+                           <span className="text-[9px] text-orange-400">{showIndividualMaterial ? 'Ocultar' : 'Personalizar'}</span>
+                        </button>
+                        {showIndividualMaterial && (
+                           <div className="mt-3">
+                              <TexturesSection 
+                                 onSelectTexture={handleTextureSelect}
+                                 title="Acabado Exclusivo de este Módulo"
+                                 badgeText="Solo Módulo Seleccionado"
+                              />
+                           </div>
+                        )}
+                     </div>
+               </div>
+              </div>
+            )
+        ) : (
+           <div className="p-3 bg-white/5 border border-white/10 rounded-lg mb-6 flex items-center gap-2.5">
+             <Info size={16} className="text-orange-400 shrink-0" />
+             <p className="text-[10px] text-slate-300 leading-relaxed">
+               Haz clic en cualquier mueble en el visor 3D para ajustar sus dimensiones, variantes o rotación particular.
+             </p>
+           </div>
+        )}
+
+        {/* Acabados Globales de la Cocina - SIEMPRE VISIBLE Y ACTIVO */}
+        <TexturesSection 
+          onSelectTexture={handleGlobalTextureSelect}
+          title="Decorativos de Cocina (Global)"
+          badgeText="Toda la Cocina"
+        />
 
         <h2 className={sectionTitle}>Ingeniería y Producción</h2>
         <div className="flex flex-col gap-2 mb-6">

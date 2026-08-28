@@ -36,6 +36,18 @@ export interface FloorTypeOption {
 
 export const FLOOR_TYPE_OPTIONS: FloorTypeOption[] = [
   {
+    id: 'ceramic_white_60x60',
+    name: 'Cerámica Blanca 60x60 cm',
+    type: 'ceramico',
+    category: 'Cerámico',
+    description: 'Baldosas 60x60cm esmaltada blanca con juntas finas',
+    primaryColor: '#F8FAFC',
+    accentColor: '#CBD5E1',
+    roughness: 0.35,
+    metalness: 0.05,
+    tileRepeat: [6, 6],
+  },
+  {
     id: 'porcelain_cement_light',
     name: 'Porcelánico Cemento Claro',
     type: 'porcelanato',
@@ -61,7 +73,7 @@ export const FLOOR_TYPE_OPTIONS: FloorTypeOption[] = [
   },
   {
     id: 'ceramic_white_matte',
-    name: 'Cerámica Blanca Mate',
+    name: 'Cerámica Blanca Mate 30x30 cm',
     type: 'ceramico',
     category: 'Cerámico',
     description: 'Cuadrícula 30x30cm esmaltada mate con lechada suave',
@@ -172,68 +184,95 @@ export function generateFloorCanvasTexture(floorId: string): THREE.CanvasTexture
   canvas.height = size;
   const ctx = canvas.getContext('2d')!;
 
-  ctx.fillStyle = option.primaryColor;
-  ctx.fillRect(0, 0, size, size);
-
-  if (option.type === 'porcelanato') {
-    // Large tile with delicate joint lines and subtle cement grain
-    const tileSize = size / 2;
-    for (let r = 0; r < 2; r++) {
-      for (let c = 0; c < 2; c++) {
-        const x = c * tileSize;
-        const y = r * tileSize;
-        ctx.fillStyle = (r + c) % 2 === 0 ? option.primaryColor : option.accentColor;
-        ctx.fillRect(x + 2, y + 2, tileSize - 4, tileSize - 4);
-
-        // subtle noise/speckles
-        ctx.fillStyle = 'rgba(0,0,0,0.03)';
-        for (let i = 0; i < 40; i++) {
-          ctx.fillRect(x + Math.random() * tileSize, y + Math.random() * tileSize, 2, 2);
-        }
-      }
-    }
-    // Grout lines
-    ctx.strokeStyle = '#94a3b8';
-    ctx.lineWidth = 3;
-    ctx.strokeRect(0, 0, size, size);
-    ctx.beginPath();
-    ctx.moveTo(tileSize, 0);
-    ctx.lineTo(tileSize, size);
-    ctx.moveTo(0, tileSize);
-    ctx.lineTo(size, tileSize);
-    ctx.stroke();
-  } else if (option.type === 'ceramico') {
-    // Grid of smaller tiles
-    const tiles = option.id === 'ceramic_gray_subway' ? 4 : 4;
-    const tileW = size / tiles;
-    const tileH = option.id === 'ceramic_gray_subway' ? size / 8 : size / tiles;
-
-    ctx.fillStyle = option.primaryColor;
+  if (option.id === 'ceramic_white_60x60') {
+    // Baldosa individual de Cerámica Blanca 60x60 cm con bisel cerámico y fragüe/junta nítida
+    const groutWidth = 14;
+    
+    // 1. Fondo de junta / fragüe cementicio gris
+    ctx.fillStyle = '#64748B';
     ctx.fillRect(0, 0, size, size);
 
-    ctx.strokeStyle = option.accentColor;
-    ctx.lineWidth = 2.5;
+    // 2. Cuerpo de la baldosa cerámica esmaltada blanca
+    const tileX = groutWidth / 2;
+    const tileY = groutWidth / 2;
+    const tileW = size - groutWidth;
+    const tileH = size - groutWidth;
 
-    if (option.id === 'ceramic_gray_subway') {
-      // Running bond pattern
-      for (let row = 0; row < 8; row++) {
-        const offset = (row % 2) * (tileW / 2);
-        for (let col = -1; col < tiles + 1; col++) {
-          const x = col * tileW + offset;
-          const y = row * tileH;
-          ctx.strokeRect(x, y, tileW, tileH);
-        }
-      }
-    } else {
-      for (let i = 0; i <= tiles; i++) {
-        ctx.beginPath();
-        ctx.moveTo(i * tileW, 0);
-        ctx.lineTo(i * tileW, size);
-        ctx.moveTo(0, i * tileW);
-        ctx.lineTo(size, i * tileW);
-        ctx.stroke();
+    // Gradiente suave de bisel cerámico (borde ligeramente atenuado y centro blanco puro brillante)
+    const radGrad = ctx.createRadialGradient(
+      size / 2, size / 2, size * 0.1,
+      size / 2, size / 2, size * 0.55
+    );
+    radGrad.addColorStop(0, '#FFFFFF');
+    radGrad.addColorStop(0.7, '#F8FAFC');
+    radGrad.addColorStop(0.92, '#EEF2F6');
+    radGrad.addColorStop(1, '#E2E8F0');
+
+    ctx.fillStyle = radGrad;
+    ctx.fillRect(tileX, tileY, tileW, tileH);
+
+    // 3. Bisel óptico: borde superior/izquierdo con reflejo de luz sutil
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(tileX + 1, tileY + tileH - 1);
+    ctx.lineTo(tileX + 1, tileY + 1);
+    ctx.lineTo(tileX + tileW - 1, tileY + 1);
+    ctx.stroke();
+
+    // Bisel óptico: borde inferior/derecho con leve sombra de profundidad
+    ctx.strokeStyle = 'rgba(148, 163, 184, 0.45)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(tileX + tileW - 1, tileY + 1);
+    ctx.lineTo(tileX + tileW - 1, tileY + tileH - 1);
+    ctx.lineTo(tileX + 1, tileY + tileH - 1);
+    ctx.stroke();
+
+    // 4. Línea fina perimetral de junta de separación
+    ctx.strokeStyle = '#475569';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(0, 0, size, size);
+  } else if (option.type === 'porcelanato') {
+    // Large tile with delicate joint lines and subtle cement grain
+    const tileSize = size;
+    ctx.fillStyle = '#64748B';
+    ctx.fillRect(0, 0, size, size);
+
+    const gw = 10;
+    ctx.fillStyle = option.primaryColor;
+    ctx.fillRect(gw / 2, gw / 2, size - gw, size - gw);
+
+    // subtle noise/speckles
+    ctx.fillStyle = 'rgba(0,0,0,0.035)';
+    for (let i = 0; i < 80; i++) {
+      ctx.fillRect(Math.random() * size, Math.random() * size, 3, 3);
+    }
+    
+    // Grout lines
+    ctx.strokeStyle = '#475569';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(0, 0, size, size);
+  } else if (option.type === 'ceramico') {
+    // Grid of smaller tiles
+    const tiles = option.id === 'ceramic_white_matte' ? 2 : (option.id === 'ceramic_gray_subway' ? 4 : 2);
+    const tileW = size / tiles;
+    const tileH = option.id === 'ceramic_gray_subway' ? size / 4 : size / tiles;
+
+    ctx.fillStyle = '#64748B';
+    ctx.fillRect(0, 0, size, size);
+
+    const gw = 6;
+    for (let r = 0; r < tiles; r++) {
+      for (let c = 0; c < tiles; c++) {
+        ctx.fillStyle = option.primaryColor;
+        ctx.fillRect(c * tileW + gw / 2, r * tileH + gw / 2, tileW - gw, tileH - gw);
       }
     }
+
+    ctx.strokeStyle = '#475569';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(0, 0, size, size);
   } else if (option.type === 'madera') {
     // Parquet wood planks with grain
     const plankH = size / 4;
@@ -243,8 +282,8 @@ export function generateFloorCanvasTexture(floorId: string): THREE.CanvasTexture
       ctx.fillRect(0, y + 1, size, plankH - 2);
 
       // Wood grain lines
-      ctx.strokeStyle = 'rgba(0,0,0,0.12)';
-      ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(0,0,0,0.14)';
+      ctx.lineWidth = 1.2;
       for (let g = 0; g < 10; g++) {
         const gy = y + Math.random() * plankH;
         ctx.beginPath();
@@ -253,7 +292,7 @@ export function generateFloorCanvasTexture(floorId: string): THREE.CanvasTexture
         ctx.stroke();
       }
     }
-    ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+    ctx.strokeStyle = 'rgba(0,0,0,0.35)';
     ctx.lineWidth = 2;
     for (let i = 0; i <= 4; i++) {
       ctx.beginPath();
@@ -267,27 +306,21 @@ export function generateFloorCanvasTexture(floorId: string): THREE.CanvasTexture
     ctx.fillRect(0, 0, size, size);
 
     ctx.strokeStyle = option.accentColor;
-    ctx.lineWidth = 2.5;
+    ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.moveTo(20, 0);
     ctx.bezierCurveTo(150, 180, 240, 320, 480, 512);
     ctx.stroke();
 
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(350, 0);
     ctx.bezierCurveTo(280, 200, 180, 380, 50, 512);
     ctx.stroke();
 
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(0, 250);
-    ctx.bezierCurveTo(200, 220, 350, 300, 512, 180);
-    ctx.stroke();
-
     // Tile joint frame
-    ctx.strokeStyle = 'rgba(148, 163, 184, 0.4)';
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(100, 116, 139, 0.6)';
+    ctx.lineWidth = 4;
     ctx.strokeRect(0, 0, size, size);
   } else if (option.type === 'hidraulico') {
     // Hydraulic tile with circular and geometric floral center
@@ -318,16 +351,15 @@ export function generateFloorCanvasTexture(floorId: string): THREE.CanvasTexture
     ctx.fill();
 
     ctx.strokeStyle = '#475569';
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 4;
     ctx.strokeRect(0, 0, size, size);
   } else {
     // Microcemento: continuous mottled mineral texture
     ctx.fillStyle = option.primaryColor;
     ctx.fillRect(0, 0, size, size);
 
-    // Subtle cloud-like spatters
     for (let i = 0; i < 60; i++) {
-      ctx.fillStyle = Math.random() > 0.5 ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)';
+      ctx.fillStyle = Math.random() > 0.5 ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
       ctx.beginPath();
       ctx.arc(Math.random() * size, Math.random() * size, Math.random() * 40 + 10, 0, Math.PI * 2);
       ctx.fill();
@@ -337,8 +369,13 @@ export function generateFloorCanvasTexture(floorId: string): THREE.CanvasTexture
   const texture = new THREE.CanvasTexture(canvas);
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;
-  const [repX, repY] = option.tileRepeat;
-  texture.repeat.set(repX, repY);
+  texture.repeat.set(1, 1);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.generateMipmaps = true;
+  texture.minFilter = THREE.LinearMipmapLinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  texture.needsUpdate = true;
+
   textureCache.set(floorId, texture);
   return texture;
 }

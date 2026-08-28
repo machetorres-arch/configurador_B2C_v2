@@ -8,7 +8,15 @@ const DEFAULT_TEXTURES = [
   { id: 'def_mas_negro', name: 'Masisa Negro', url: '#171717' }
 ];
 
-export const TexturesSection = ({ onSelectTexture }: { onSelectTexture?: (url: string, mat: 'hpl' | 'melamina') => void }) => {
+export const TexturesSection = ({ 
+  onSelectTexture,
+  title = "Catálogo de Materiales",
+  badgeText
+}: { 
+  onSelectTexture?: (url: string, mat: 'hpl' | 'melamina') => void;
+  title?: string;
+  badgeText?: string;
+}) => {
   const state = useStore();
   const [uploading, setUploading] = useState(false);
   const [localTextures, setLocalTextures] = useState<any[]>([]);
@@ -134,16 +142,22 @@ export const TexturesSection = ({ onSelectTexture }: { onSelectTexture?: (url: s
   return (
     <div className="mb-8 p-3 border border-orange-500/30 rounded-lg bg-orange-500/5">
       <div className="flex justify-between items-center mb-3">
-        <h2 className="text-[11px] uppercase tracking-widest text-orange-500 font-bold">Catálogo de Materiales</h2>
+        <h2 className="text-[11px] uppercase tracking-widest text-orange-500 font-bold">{title}</h2>
+        {badgeText && (
+          <span className="text-[8px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-orange-500/20 text-orange-400 border border-orange-500/30">
+            {badgeText}
+          </span>
+        )}
       </div>
       
       <div className="flex flex-col gap-2 mb-4">
         <label className="text-[10px] uppercase tracking-widest text-slate-400">1. Selecciona la zona a modificar:</label>
         <div className="grid grid-cols-2 gap-2 mb-2">
           {[
-            { id: 'structure', label: 'Paredes' },
+            { id: 'all', label: 'Todo el Mueble' },
             { id: 'doors', label: 'Puertas' },
             { id: 'drawerFronts', label: 'Frentes Cajón' },
+            { id: 'structure', label: 'Paredes / Casco' },
             { id: 'drawerInner', label: 'Cajas Cajón' },
             { id: 'shelves', label: 'Repisas' },
             { id: 'back', label: 'Fondo' },

@@ -2,6 +2,7 @@ import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
 import { HplBathroomState, JNF_FINISHES, HPL_STANDARD_COLORS } from '../store/hplBathroomStore';
 import { calculateHplManufacturingBOM } from './hplManufacturing';
+import { renderArquifyPdfLogo } from './pdfLogo';
 
 export function exportHplBathroomPDF(state: HplBathroomState) {
   const doc = new jsPDF('p', 'mm', 'a4');
@@ -18,15 +19,12 @@ export function exportHplBathroomPDF(state: HplBathroomState) {
   doc.setFillColor(15, 23, 42); // slate-900
   doc.rect(0, 0, 210, 30, 'F');
 
-  doc.setTextColor(56, 189, 248); // sky-400
-  doc.setFontSize(16);
-  doc.setFont('helvetica', 'bold');
-  doc.text('MUEBLESTUDIO BIM & ARCHITECTURE', 14, 13);
+  renderArquifyPdfLogo(doc, 14, 14, 22);
 
   doc.setTextColor(248, 250, 252);
-  doc.setFontSize(10);
+  doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
-  doc.text('ESPECIFICACIÓN TÉCNICA Y DESPIECE - SEPARADORES DE BAÑO HPL', 14, 21);
+  doc.text('ESPECIFICACIÓN TÉCNICA Y DESPIECE - SEPARADORES DE BAÑO HPL', 14, 22);
 
   doc.setFontSize(8);
   doc.setTextColor(148, 163, 184);

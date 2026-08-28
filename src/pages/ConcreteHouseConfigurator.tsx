@@ -20,6 +20,7 @@ import {
   Boxes,
   Grid,
   Zap,
+  Sparkles,
 } from 'lucide-react';
 import {
   useConcreteHouseStore,
@@ -33,17 +34,20 @@ import {
   RebarSteelQuality,
   ConcreteRenderMode,
   ConcreteWallTarget,
+  FrameMaterialType,
+  GlazingType,
 } from '../store/concreteHouseStore';
 import { calculateConcreteHouseBOM } from '../utils/concreteManufacturing';
 import { exportConcreteHouseToExcel } from '../utils/concreteExcelGenerator';
 import { exportConcreteHouseToPdf } from '../utils/concretePdfGenerator';
 import { ConcreteScene } from '../components/concrete/ConcreteScene';
 import { ConcreteBlueprint } from '../components/concrete/ConcreteBlueprint';
+import { ConcreteFloorPlannerModal } from '../components/concrete/ConcreteFloorPlannerModal';
 
 export function ConcreteHouseConfigurator({ onNavigate }: { onNavigate: (route: 'home') => void }) {
   const store = useConcreteHouseStore();
   const [viewMode, setViewMode] = useState<'3d' | '2d'>('3d');
-  const [activeTab, setActiveTab] = useState<'geometry' | 'ich_standards' | 'openings' | 'layers' | 'bom'>('geometry');
+  const [activeTab, setActiveTab] = useState<'systems' | 'geometry' | 'ich_standards' | 'openings' | 'layers' | 'bom'>('systems');
 
   // Formulario nuevo vano
   const [newOpType, setNewOpType] = useState<'door' | 'window'>('window');
@@ -53,6 +57,8 @@ export function ConcreteHouseConfigurator({ onNavigate }: { onNavigate: (route: 
   const [newOpHeight, setNewOpHeight] = useState(120);
   const [newOpSill, setNewOpSill] = useState(90);
   const [newOpOffset, setNewOpOffset] = useState(100);
+  const [newOpFrameMaterial, setNewOpFrameMaterial] = useState<FrameMaterialType>('pvc_negro');
+  const [newOpGlazingType, setNewOpGlazingType] = useState<GlazingType>('termopanel_dvp');
 
   // Métricas de cubicación
   const metrics = calculateConcreteHouseBOM(
@@ -66,7 +72,10 @@ export function ConcreteHouseConfigurator({ onNavigate }: { onNavigate: (route: 
     store.rebarSteelQuality,
     store.meshDiameterMm,
     store.openings,
-    store.interiorWalls
+    store.interiorWalls,
+    store.wallSystemType,
+    store.mezzanineSystemType,
+    store.roofStructureType
   );
 
   const handleAddOpening = (e: React.FormEvent) => {
@@ -79,6 +88,8 @@ export function ConcreteHouseConfigurator({ onNavigate }: { onNavigate: (route: 
       height: Number(newOpHeight),
       sillHeight: newOpType === 'door' ? 0 : Number(newOpSill),
       offsetAlongWall: Number(newOpOffset),
+      frameMaterial: newOpFrameMaterial,
+      glazingType: newOpGlazingType,
       hasDiagonalRebar: true,
       lintelRebarDiameter: 12,
     });
@@ -96,7 +107,10 @@ export function ConcreteHouseConfigurator({ onNavigate }: { onNavigate: (route: 
       store.rebarSteelQuality,
       store.meshDiameterMm,
       store.openings,
-      store.interiorWalls
+      store.interiorWalls,
+      store.wallSystemType,
+      store.mezzanineSystemType,
+      store.roofStructureType
     );
   };
 
@@ -112,7 +126,10 @@ export function ConcreteHouseConfigurator({ onNavigate }: { onNavigate: (route: 
       store.rebarSteelQuality,
       store.meshDiameterMm,
       store.openings,
-      store.interiorWalls
+      store.interiorWalls,
+      store.wallSystemType,
+      store.mezzanineSystemType,
+      store.roofStructureType
     );
   };
 
@@ -136,6 +153,13 @@ export function ConcreteHouseConfigurator({ onNavigate }: { onNavigate: (route: 
           >
             <ArrowLeft size={18} />
           </button>
+
+          <span className="font-bellota text-2xl font-bold lowercase text-orange-500 tracking-tight select-none">
+            arquify
+          </span>
+
+          <div className="h-6 w-px bg-slate-800" />
+
           <div>
             <div className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-orange-500 animate-pulse"></span>
@@ -166,6 +190,18 @@ export function ConcreteHouseConfigurator({ onNavigate }: { onNavigate: (route: 
           >
             <Grid size={14} />
             Plano 2D
+          </button>
+
+          <div className="h-5 w-px bg-slate-800 mx-1"></div>
+
+          {/* Botón Diseñador 2D de Planta & Recintos */}
+          <button
+            onClick={() => store.setFloorPlannerOpen(true)}
+            className="px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white shadow-md shadow-orange-500/20 transition-all cursor-pointer ring-1 ring-orange-400/40"
+            title="Diseñar planta 2D personalizada: Casas en L, U, quinchos, terrazas y recintos interiores"
+          >
+            <Sparkles size={14} className="text-yellow-200 animate-pulse" />
+            <span>Diseñador 2D Recintos</span>
           </button>
 
           <div className="h-5 w-px bg-slate-800 mx-1"></div>
@@ -269,6 +305,91 @@ export function ConcreteHouseConfigurator({ onNavigate }: { onNavigate: (route: 
             </div>
           </div>
 
+          {/* Barra Flotante de Inserción Rápida y Drag de Vanos */}
+          {viewMode === '3d' && (
+            <div className="absolute bottom-12 right-4 z-20 flex flex-col items-end gap-2">
+              <div className="bg-slate-900/95 border border-slate-700/80 rounded-2xl p-2.5 shadow-2xl backdrop-blur-md flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-200 px-1.5 flex items-center gap-1.5">
+                  <Sparkles size={15} className="text-orange-400" />
+                  <span>Insertar:</span>
+                </span>
+                <button
+                  onClick={() => {
+                    const count = store.openings.filter((o) => o.type === 'door').length + 1;
+                    store.addOpening({
+                      type: 'door',
+                      name: `Puerta Acceso P${count} (90x210)`,
+                      wall: store.selectedWall || 'front',
+                      width: 90,
+                      height: 210,
+                      sillHeight: 0,
+                      offsetAlongWall: 60,
+                      frameMaterial: 'pvc_negro',
+                      glazingType: 'termopanel_dvp',
+                      hasDiagonalRebar: true,
+                      lintelRebarDiameter: 12,
+                    });
+                    setActiveTab('openings');
+                  }}
+                  className="px-3 py-1.5 bg-orange-500/20 hover:bg-orange-500/30 text-orange-300 border border-orange-500/40 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer"
+                  title="Añadir Puerta estándar 90x210 cm"
+                >
+                  <span>🚪 + Puerta (90x210)</span>
+                </button>
+                <button
+                  onClick={() => {
+                    const count = store.openings.filter((o) => o.type === 'window').length + 1;
+                    store.addOpening({
+                      type: 'window',
+                      name: `Ventana V${count} (140x120)`,
+                      wall: store.selectedWall || 'front',
+                      width: 140,
+                      height: 120,
+                      sillHeight: 90,
+                      offsetAlongWall: 180,
+                      frameMaterial: 'pvc_negro',
+                      glazingType: 'termopanel_dvp',
+                      hasDiagonalRebar: true,
+                      lintelRebarDiameter: 12,
+                    });
+                    setActiveTab('openings');
+                  }}
+                  className="px-3 py-1.5 bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer"
+                  title="Añadir Ventana Termopanel 140x120 cm"
+                >
+                  <span>🪟 + Ventana (140x120)</span>
+                </button>
+                <button
+                  onClick={() => {
+                    const count = store.openings.length + 1;
+                    store.addOpening({
+                      type: 'door',
+                      name: `Ventanal Terraza V${count} (200x215)`,
+                      wall: store.selectedWall || 'front',
+                      width: 200,
+                      height: 215,
+                      sillHeight: 0,
+                      offsetAlongWall: 80,
+                      frameMaterial: 'pvc_negro',
+                      glazingType: 'termopanel_dvp',
+                      hasDiagonalRebar: true,
+                      lintelRebarDiameter: 16,
+                    });
+                    setActiveTab('openings');
+                  }}
+                  className="px-3 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer"
+                  title="Añadir Ventanal Corredero Terraza 200x215 cm"
+                >
+                  <span>🪟 + Ventanal (200x215)</span>
+                </button>
+              </div>
+              <div className="bg-slate-950/90 border border-white/10 px-3 py-1.5 rounded-xl text-xs text-slate-300 flex items-center gap-2 backdrop-blur-md shadow-lg">
+                <span className="text-orange-400 font-bold">💡 Interacción 3D:</span>
+                <span>Arrastra con el mouse sobre cualquier puerta o ventana para moverla dinámicamente con Drag & Drop a lo largo del muro.</span>
+              </div>
+            </div>
+          )}
+
           {/* Banner informativo norma chilena en el pie del visor */}
           <div className="absolute bottom-3 left-4 right-4 z-20 pointer-events-none flex items-center justify-between text-[11px] text-slate-400 bg-slate-900/70 backdrop-blur-md px-4 py-1.5 rounded-xl border border-slate-800/80">
             <span className="flex items-center gap-1.5">
@@ -285,6 +406,15 @@ export function ConcreteHouseConfigurator({ onNavigate }: { onNavigate: (route: 
         <aside className="w-full lg:w-[420px] h-[45vh] lg:h-full bg-slate-900/95 border-t lg:border-t-0 lg:border-l border-slate-800 flex flex-col z-20 shadow-2xl shrink-0 overflow-hidden">
           {/* Navegación de Tabs del Sidebar */}
           <div className="flex border-b border-slate-800 bg-slate-950/60 shrink-0 overflow-x-auto p-1.5 gap-1">
+            <button
+              onClick={() => setActiveTab('systems')}
+              className={`px-3 py-2 rounded-lg text-xs font-bold tracking-wider flex items-center gap-1.5 transition-all whitespace-nowrap cursor-pointer ${
+                activeTab === 'systems' ? 'bg-orange-500/20 text-orange-400 border border-orange-500/40' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Boxes size={14} />
+              3 Pasos Estructurales
+            </button>
             <button
               onClick={() => setActiveTab('geometry')}
               className={`px-3 py-2 rounded-lg text-xs font-bold tracking-wider flex items-center gap-1.5 transition-all whitespace-nowrap cursor-pointer ${
@@ -334,6 +464,254 @@ export function ConcreteHouseConfigurator({ onNavigate }: { onNavigate: (route: 
 
           {/* Contenido Scrolleable de los Tabs */}
           <div className="flex-1 overflow-y-auto p-5 space-y-6 text-xs text-slate-300">
+            {/* TAB 0: 3 PASOS ESTRUCTURALES */}
+            {activeTab === 'systems' && (
+              <div className="space-y-5">
+                {/* Paso 1: Sistema de Muros */}
+                <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-orange-500/20 text-orange-400 border border-orange-500/30">
+                      Paso 1
+                    </span>
+                    <span className="text-[10px] font-mono text-slate-400">NCh430 / NCh2123</span>
+                  </div>
+                  <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+                    Sistema de Muros (La Base de la Casa)
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    Elige de qué material y sistema constructivo se levantarán las paredes portantes perimetrales e interiores:
+                  </p>
+
+                  <div className="space-y-2 pt-1">
+                    {/* Opción 1: Hormigón Armado Total */}
+                    <button
+                      onClick={() => store.setWallSystemType('hormigon_armado_total')}
+                      className={`w-full p-3 rounded-xl border transition-all text-left flex items-start gap-3 cursor-pointer ${
+                        store.wallSystemType === 'hormigon_armado_total'
+                          ? 'bg-orange-500/15 border-orange-500 text-white shadow-lg'
+                          : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className={`mt-0.5 p-2 rounded-lg shrink-0 ${store.wallSystemType === 'hormigon_armado_total' ? 'bg-orange-500 text-slate-950 font-black' : 'bg-slate-800 text-slate-400'}`}>
+                        HA
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-xs text-white">Hormigón Armado Total</span>
+                          {store.wallSystemType === 'hormigon_armado_total' && (
+                            <span className="text-[9px] uppercase font-bold text-orange-400 font-mono">Activo</span>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
+                          Muros completamente vaciados en hormigón con doble malla o malla central electrosoldada (NCh430/D.S. N°60). Ideal para diseños modernos, mediterráneos o muros vistos.
+                        </p>
+                      </div>
+                    </button>
+
+                    {/* Opción 2: Albañilería Confinada */}
+                    <button
+                      onClick={() => store.setWallSystemType('albanileria_confinada')}
+                      className={`w-full p-3 rounded-xl border transition-all text-left flex items-start gap-3 cursor-pointer ${
+                        store.wallSystemType === 'albanileria_confinada'
+                          ? 'bg-orange-500/15 border-orange-500 text-white shadow-lg'
+                          : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className={`mt-0.5 p-2 rounded-lg shrink-0 ${store.wallSystemType === 'albanileria_confinada' ? 'bg-orange-500 text-slate-950 font-black' : 'bg-slate-800 text-slate-400'}`}>
+                        AC
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-xs text-white">Albañilería Confinada</span>
+                          {store.wallSystemType === 'albanileria_confinada' && (
+                            <span className="text-[9px] uppercase font-bold text-orange-400 font-mono">Activo</span>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
+                          Ladrillos cerámicos estructurales Princesa/Titan estructurados y confinados con pilares y cadenas de hormigón armado H20 (NCh2123/NCh1928). El sistema tradicional y térmico chileno.
+                        </p>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Paso 2: Sistema de Entrepiso */}
+                <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-sky-500/20 text-sky-400 border border-sky-500/30">
+                      Paso 2
+                    </span>
+                    <span className="text-[10px] font-mono text-slate-400">
+                      {store.dimensions.levels > 1 ? 'Activo (2 Pisos)' : 'Requiere 2 Pisos'}
+                    </span>
+                  </div>
+                  <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+                    Sistema de Entrepiso (Nivel Superior)
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    Define la estructura que separará y soportará los pisos si la vivienda tiene 2 plantas:
+                  </p>
+
+                  {store.dimensions.levels === 1 ? (
+                    <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800/80 text-center space-y-2">
+                      <p className="text-slate-400 text-xs">La vivienda está actualmente en 1 piso (planta única).</p>
+                      <button
+                        onClick={() => store.setDimensions({ levels: 2 })}
+                        className="px-3 py-1.5 bg-sky-500/20 hover:bg-sky-500/30 text-sky-400 border border-sky-500/40 rounded-lg text-xs font-bold transition-all cursor-pointer"
+                      >
+                        + Activar 2° Piso para Habilitar Entrepiso
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2 pt-1">
+                      {/* Losa de Hormigón Armado */}
+                      <button
+                        onClick={() => store.setMezzanineSystemType('losa_hormigon_armado')}
+                        className={`w-full p-3 rounded-xl border transition-all text-left flex items-start gap-3 cursor-pointer ${
+                          store.mezzanineSystemType === 'losa_hormigon_armado'
+                            ? 'bg-sky-500/15 border-sky-500 text-white shadow-lg'
+                            : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                        }`}
+                      >
+                        <div className={`mt-0.5 p-2 rounded-lg shrink-0 ${store.mezzanineSystemType === 'losa_hormigon_armado' ? 'bg-sky-500 text-slate-950 font-black' : 'bg-slate-800 text-slate-400'}`}>
+                          LH
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-xs text-white">Losa de Hormigón Armado</span>
+                            {store.mezzanineSystemType === 'losa_hormigon_armado' && (
+                              <span className="text-[9px] uppercase font-bold text-sky-400 font-mono">Activo</span>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
+                            Losa monolítica e=12cm de alta inercia. Máxima aislación acústica al ruido de impacto y capacidad para muros o cargas pesadas superiores (NCh430).
+                          </p>
+                        </div>
+                      </button>
+
+                      {/* Entrepiso Liviano de Madera */}
+                      <button
+                        onClick={() => store.setMezzanineSystemType('entrepiso_madera_liviano')}
+                        className={`w-full p-3 rounded-xl border transition-all text-left flex items-start gap-3 cursor-pointer ${
+                          store.mezzanineSystemType === 'entrepiso_madera_liviano'
+                            ? 'bg-sky-500/15 border-sky-500 text-white shadow-lg'
+                            : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                        }`}
+                      >
+                        <div className={`mt-0.5 p-2 rounded-lg shrink-0 ${store.mezzanineSystemType === 'entrepiso_madera_liviano' ? 'bg-sky-500 text-slate-950 font-black' : 'bg-slate-800 text-slate-400'}`}>
+                          EM
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-xs text-white">Entrepiso Liviano de Madera</span>
+                            {store.mezzanineSystemType === 'entrepiso_madera_liviano' && (
+                              <span className="text-[9px] uppercase font-bold text-sky-400 font-mono">Activo</span>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
+                            Envigado con vigas de pino estructural C24 (3x8" @ 40cm) + placa OSB e=20mm y lana aislante (NCh1198). Estructura liviana, rápida y de menor costo.
+                          </p>
+                        </div>
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Paso 3: Estructura de Techumbre */}
+                <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                      Paso 3
+                    </span>
+                    <span className="text-[10px] font-mono text-slate-400">NCh1198 / NCh430</span>
+                  </div>
+                  <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+                    Estructura de Techumbre (La Cubierta)
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    Selecciona cómo se cerrará la vivienda por arriba:
+                  </p>
+
+                  <div className="space-y-2 pt-1">
+                    {/* Opción 1: Techumbre Liviana de Madera */}
+                    <button
+                      onClick={() => store.setRoofStructureType('techumbre_madera_liviana')}
+                      className={`w-full p-3 rounded-xl border transition-all text-left flex items-start gap-3 cursor-pointer ${
+                        store.roofStructureType === 'techumbre_madera_liviana'
+                          ? 'bg-emerald-500/15 border-emerald-500 text-white shadow-lg'
+                          : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className={`mt-0.5 p-2 rounded-lg shrink-0 ${store.roofStructureType === 'techumbre_madera_liviana' ? 'bg-emerald-500 text-slate-950 font-black' : 'bg-slate-800 text-slate-400'}`}>
+                        TL
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-xs text-white">Techumbre Liviana de Madera</span>
+                          {store.roofStructureType === 'techumbre_madera_liviana' && (
+                            <span className="text-[9px] uppercase font-bold text-emerald-400 font-mono">Activo</span>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
+                          Cerchas y tijerales de madera pino C16 @ 90cm con costaneras y cubierta zinc-alum/teja (NCh1198). Ideal para techos con pendientes pronunciadas y evacuación pluvial.
+                        </p>
+                      </div>
+                    </button>
+
+                    {/* Opción 2: Losa Plana de Hormigón */}
+                    <button
+                      onClick={() => store.setRoofStructureType('losa_plana_hormigon')}
+                      className={`w-full p-3 rounded-xl border transition-all text-left flex items-start gap-3 cursor-pointer ${
+                        store.roofStructureType === 'losa_plana_hormigon'
+                          ? 'bg-emerald-500/15 border-emerald-500 text-white shadow-lg'
+                          : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className={`mt-0.5 p-2 rounded-lg shrink-0 ${store.roofStructureType === 'losa_plana_hormigon' ? 'bg-emerald-500 text-slate-950 font-black' : 'bg-slate-800 text-slate-400'}`}>
+                        LP
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-xs text-white">Losa Plana de Hormigón Armado</span>
+                          {store.roofStructureType === 'losa_plana_hormigon' && (
+                            <span className="text-[9px] uppercase font-bold text-emerald-400 font-mono">Activo</span>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
+                          Losa horizontal e=12cm con pretil perimetral de hormigón. Permite terrazas transitables o azoteas en estilo mediterráneo moderno.
+                        </p>
+                      </div>
+                    </button>
+
+                    {/* Opción 3: Losa Dos Aguas Monolítica H.A. */}
+                    <button
+                      onClick={() => store.setRoofStructureType('dos_aguas_hormigon')}
+                      className={`w-full p-3 rounded-xl border transition-all text-left flex items-start gap-3 cursor-pointer ${
+                        store.roofStructureType === 'dos_aguas_hormigon'
+                          ? 'bg-emerald-500/15 border-emerald-500 text-white shadow-lg'
+                          : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className={`mt-0.5 p-2 rounded-lg shrink-0 ${store.roofStructureType === 'dos_aguas_hormigon' ? 'bg-emerald-500 text-slate-950 font-black' : 'bg-slate-800 text-slate-400'}`}>
+                        DA
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-xs text-white">Losa Dos Aguas Monolítica H.A.</span>
+                          {store.roofStructureType === 'dos_aguas_hormigon' && (
+                            <span className="text-[9px] uppercase font-bold text-emerald-400 font-mono">Activo</span>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
+                          Losa inclinada de hormigón visto e=15cm y hastiales triangulares continuos (Estilo Casa TT).
+                        </p>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* TAB 1: GEOMETRÍA & DIMENSIONES */}
             {activeTab === 'geometry' && (
               <div className="space-y-5">
@@ -394,50 +772,55 @@ export function ConcreteHouseConfigurator({ onNavigate }: { onNavigate: (route: 
                     />
                   </div>
 
-                  {/* Tipo de Cubierta / Techumbre */}
+                  {/* Tipo de Cubierta / Techumbre (Sincronizado con Paso 3) */}
                   <div className="pt-2">
-                    <label className="block font-semibold text-slate-300 mb-2">Diseño de Techumbre / Cubierta:</label>
-                    <div className="grid grid-cols-2 gap-2">
+                    <label className="block font-semibold text-slate-300 mb-2">Estructura de Techumbre / Cubierta:</label>
+                    <div className="grid grid-cols-3 gap-2">
                       <button
-                        onClick={() => {
-                          store.setDimensions({ roofType: 'dos_aguas_hormigon', roofRidgeHeightCm: 175 });
-                          store.setSlabType('dos_aguas_hormigon');
-                        }}
-                        className={`py-2 px-2.5 rounded-lg font-bold text-xs border transition-all text-left cursor-pointer ${
-                          store.dimensions.roofType === 'dos_aguas_hormigon'
+                        onClick={() => store.setRoofStructureType('dos_aguas_hormigon')}
+                        className={`py-2 px-2 rounded-lg font-bold text-xs border transition-all text-left cursor-pointer ${
+                          store.roofStructureType === 'dos_aguas_hormigon'
                             ? 'bg-orange-500/20 text-orange-400 border-orange-500'
                             : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
                         }`}
                       >
-                        <div className="font-bold">Dos Aguas H.A.</div>
-                        <div className="text-[10px] text-slate-400">Techo inclinado (Casa TT)</div>
+                        <div className="font-bold text-[11px]">Dos Aguas H.A.</div>
+                        <div className="text-[9px] text-slate-400">Inclinada H.A.</div>
                       </button>
                       <button
-                        onClick={() => {
-                          store.setDimensions({ roofType: 'losa_plana' });
-                          store.setSlabType('losa_hormigon_12cm');
-                        }}
-                        className={`py-2 px-2.5 rounded-lg font-bold text-xs border transition-all text-left cursor-pointer ${
-                          store.dimensions.roofType === 'losa_plana'
+                        onClick={() => store.setRoofStructureType('losa_plana_hormigon')}
+                        className={`py-2 px-2 rounded-lg font-bold text-xs border transition-all text-left cursor-pointer ${
+                          store.roofStructureType === 'losa_plana_hormigon'
                             ? 'bg-orange-500/20 text-orange-400 border-orange-500'
                             : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
                         }`}
                       >
-                        <div className="font-bold">Losa Plana</div>
-                        <div className="text-[10px] text-slate-400">Cubierta horizontal e=12cm</div>
+                        <div className="font-bold text-[11px]">Losa Plana</div>
+                        <div className="text-[9px] text-slate-400">Plana e=12cm</div>
+                      </button>
+                      <button
+                        onClick={() => store.setRoofStructureType('techumbre_madera_liviana')}
+                        className={`py-2 px-2 rounded-lg font-bold text-xs border transition-all text-left cursor-pointer ${
+                          store.roofStructureType === 'techumbre_madera_liviana'
+                            ? 'bg-orange-500/20 text-orange-400 border-orange-500'
+                            : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        <div className="font-bold text-[11px]">Cerchas Madera</div>
+                        <div className="text-[9px] text-slate-400">Zinc / Tejas</div>
                       </button>
                     </div>
                   </div>
 
-                  {store.dimensions.roofType === 'dos_aguas_hormigon' && (
+                  {(store.roofStructureType === 'dos_aguas_hormigon' || store.roofStructureType === 'techumbre_madera_liviana') && (
                     <div className="space-y-1.5 pt-1">
                       <div className="flex justify-between text-xs">
-                        <span className="font-semibold text-slate-300">Altura de Cumbrera (Dos Aguas)</span>
+                        <span className="font-semibold text-slate-300">Altura de Cumbrera</span>
                         <span className="font-mono font-bold text-orange-400">{store.dimensions.roofRidgeHeightCm ?? 175} cm</span>
                       </div>
                       <input
                         type="range"
-                        min={50}
+                        min={60}
                         max={250}
                         step={10}
                         value={store.dimensions.roofRidgeHeightCm ?? 175}
@@ -544,31 +927,54 @@ export function ConcreteHouseConfigurator({ onNavigate }: { onNavigate: (route: 
                       <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
                       Patio Interior / Tender Central
                     </h3>
-                    <input
-                      type="checkbox"
-                      checked={store.hasCentralPatio}
-                      onChange={(e) => store.setHasCentralPatio(e.target.checked)}
-                      className="w-4 h-4 accent-emerald-500 cursor-pointer"
-                    />
+                    {store.dimensions.length >= 1200 && store.dimensions.width >= 450 && (
+                      <input
+                        type="checkbox"
+                        checked={store.hasCentralPatio}
+                        onChange={(e) => store.setHasCentralPatio(e.target.checked)}
+                        className="w-4 h-4 accent-emerald-500 cursor-pointer"
+                      />
+                    )}
                   </div>
 
-                  {store.hasCentralPatio && (
-                    <div className="space-y-3 pt-1">
-                      <div className="space-y-1.5">
-                        <div className="flex justify-between text-xs">
-                          <span className="font-semibold text-slate-300">Largo Patio Central</span>
-                          <span className="font-mono font-bold text-emerald-400">{(store.centralPatioLengthCm / 100).toFixed(2)} m</span>
+                  {store.dimensions.length >= 1200 && store.dimensions.width >= 450 ? (
+                    store.hasCentralPatio ? (
+                      <div className="space-y-3 pt-1">
+                        <div className="space-y-1.5">
+                          <div className="flex justify-between text-xs">
+                            <span className="font-semibold text-slate-300">Largo Patio Central</span>
+                            <span className="font-mono font-bold text-emerald-400">{(store.centralPatioLengthCm / 100).toFixed(2)} m</span>
+                          </div>
+                          <input
+                            type="range"
+                            min={150}
+                            max={Math.min(500, store.dimensions.length - 600)}
+                            step={20}
+                            value={store.centralPatioLengthCm}
+                            onChange={(e) => store.setCentralPatioDimensions({ length: Number(e.target.value) })}
+                            className="w-full accent-emerald-500 cursor-pointer"
+                          />
                         </div>
-                        <input
-                          type="range"
-                          min={150}
-                          max={600}
-                          step={20}
-                          value={store.centralPatioLengthCm}
-                          onChange={(e) => store.setCentralPatioDimensions({ length: Number(e.target.value) })}
-                          className="w-full accent-emerald-500 cursor-pointer"
-                        />
                       </div>
+                    ) : (
+                      <p className="text-[10px] text-slate-400 leading-relaxed">
+                        El diseño actual permite incorporar un patio interior para separar áreas sociales y privadas (como en Casa TT). Activa la casilla para integrarlo.
+                      </p>
+                    )
+                  ) : (
+                    <div className="p-2.5 bg-slate-900/70 rounded-lg border border-slate-800 text-[11px] text-slate-400 space-y-2">
+                      <p>
+                        El patio interior requiere una vivienda de diseño longitudinal (largo ≥ 12.00 m y ancho ≥ 4.50 m) para estructurar pabellones vinculados.
+                      </p>
+                      <button
+                        onClick={() => {
+                          store.setDimensions({ length: 1400, width: Math.max(500, store.dimensions.width) });
+                          store.setHasCentralPatio(true);
+                        }}
+                        className="px-2.5 py-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/40 rounded text-xs font-bold transition-all cursor-pointer"
+                      >
+                        + Habilitar Dimensiones para Patio (Largo 14.0m)
+                      </button>
                     </div>
                   )}
                 </div>
@@ -803,6 +1209,36 @@ export function ConcreteHouseConfigurator({ onNavigate }: { onNavigate: (route: 
                     </div>
                   </div>
 
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[10px] font-semibold text-slate-400 mb-1">Material de Marco:</label>
+                      <select
+                        value={newOpFrameMaterial}
+                        onChange={(e) => setNewOpFrameMaterial(e.target.value as FrameMaterialType)}
+                        className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-xs font-bold text-white"
+                      >
+                        <option value="pvc_negro">PVC Negro Mate</option>
+                        <option value="pvc_blanco">PVC Blanco</option>
+                        <option value="madera_roble">Madera Roble</option>
+                        <option value="aluminio_mate">Aluminio Mate</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-semibold text-slate-400 mb-1">Tipo de Cristal:</label>
+                      <select
+                        value={newOpGlazingType}
+                        onChange={(e) => setNewOpGlazingType(e.target.value as GlazingType)}
+                        className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-xs font-bold text-white"
+                      >
+                        <option value="termopanel_dvp">Termopanel DVP</option>
+                        <option value="vidrio_laminado_seguridad">Laminado Seguridad</option>
+                        <option value="termopanel_control_solar">Control Solar Low-E</option>
+                        <option value="vidrio_simple_templado">Templado Simple</option>
+                      </select>
+                    </div>
+                  </div>
+
                   <div>
                     <label className="block text-[10px] font-semibold text-slate-400 mb-1">Offset desde extremo izquierdo (cm):</label>
                     <input
@@ -831,18 +1267,21 @@ export function ConcreteHouseConfigurator({ onNavigate }: { onNavigate: (route: 
                       key={op.id}
                       className="bg-slate-950/60 p-3 rounded-xl border border-slate-800 flex items-center justify-between gap-2 hover:border-slate-700 transition-all"
                     >
-                      <div>
+                      <div className="space-y-1">
                         <div className="font-bold text-white flex items-center gap-2">
                           <span className="text-orange-400 font-mono text-[10px] uppercase px-1.5 py-0.5 bg-orange-500/10 rounded border border-orange-500/20">
                             {op.wall}
                           </span>
                           <span>{op.name}</span>
+                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">
+                            {op.frameMaterial === 'pvc_blanco' ? 'PVC Blanco' : op.frameMaterial === 'madera_roble' ? 'Madera' : op.frameMaterial === 'aluminio_mate' ? 'Aluminio' : 'PVC Negro'}
+                          </span>
                         </div>
-                        <div className="text-[10px] text-slate-400 mt-1">
+                        <div className="text-[10px] text-slate-400">
                           Dim: {op.width}x{op.height} cm • Antepecho: {op.sillHeight} cm • Offset: {op.offsetAlongWall} cm
                         </div>
-                        <div className="text-[9px] text-emerald-400 font-mono mt-0.5">
-                          ✓ Dintel 2Ø12 extendido 50cm + 4 diagonales 45°
+                        <div className="text-[9px] text-emerald-400 font-mono">
+                          ✓ Dintel 2Ø12 extendido 50cm + 4 diagonales 45° • Cristal {op.glazingType === 'vidrio_laminado_seguridad' ? 'Laminado' : op.glazingType === 'termopanel_control_solar' ? 'Solar Low-E' : op.glazingType === 'vidrio_simple_templado' ? 'Templado' : 'Termopanel DVP'}
                         </div>
                       </div>
 
@@ -966,6 +1405,12 @@ export function ConcreteHouseConfigurator({ onNavigate }: { onNavigate: (route: 
           </div>
         </aside>
       </div>
+
+      {/* Modal Diseñador 2D de Planta & Recintos */}
+      <ConcreteFloorPlannerModal
+        isOpen={store.isFloorPlannerOpen}
+        onClose={() => store.setFloorPlannerOpen(false)}
+      />
     </div>
   );
 }

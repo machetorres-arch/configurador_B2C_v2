@@ -151,6 +151,7 @@ export function SipHouse3D() {
 
   // Parámetros Tipología en L
   const isLShape = dim.shape === 'l_shape';
+  const isWingExtended = isLShape;
   const wingLengthM = (dim.wingLength || 420) / 100; // L2
   const wingWidthM = (dim.wingWidth || 360) / 100;   // W2
   const roofStyle = dim.roofStyle || 'gable_valley';
@@ -372,14 +373,14 @@ export function SipHouse3D() {
         roughness: 0.3,
         metalness: 0.85,
       }),
-      glassWindow: new THREE.MeshPhysicalMaterial({
-        color: '#dbeafe',
+      glassWindow: new THREE.MeshStandardMaterial({
+        color: '#bae6fd',
         transparent: true,
         opacity: 0.35,
         roughness: 0.05,
-        transmission: 0.92,
-        thickness: 0.15,
-        ior: 1.5,
+        metalness: 0.15,
+        depthWrite: false,
+        side: THREE.DoubleSide,
       }),
       pvcFrameBlack: new THREE.MeshStandardMaterial({ color: '#0f172a', roughness: 0.3, metalness: 0.2 }),
       pvcFrameWood: new THREE.MeshStandardMaterial({ color: '#854d0e', roughness: 0.5, metalness: 0.05 }),
@@ -443,16 +444,16 @@ export function SipHouse3D() {
   const roofRafterLength = isGableRoof ? halfSpanM / Math.cos(roofSlopeAngle) : halfSpanM;
 
   // 2. Techo a 1 Agua (Mono-pitch continuo paramétrico)
-  const singleTotalSpanX = isLShape ? widthM + wingWidthM : widthM;
+  const singleTotalSpanX = isWingExtended ? widthM + wingWidthM : widthM;
   const singleSlopeAngle = isSingleShed ? Math.atan2(gableRoofHeightM, singleTotalSpanX) : 0;
   
   // Rafters para techo a 1 agua
-  const singleMainSpanX = isLShape ? widthM + overhangM : widthM + 2 * overhangM;
+  const singleMainSpanX = isWingExtended ? widthM + overhangM : widthM + 2 * overhangM;
   const singleRafterLength = isSingleShed ? singleMainSpanX / Math.cos(singleSlopeAngle) : singleMainSpanX;
-  const singleRoofMidX = isLShape ? -overhangM / 2 : 0;
-  const hTransitionSingle = isLShape ? (gableRoofHeightM * widthM) / singleTotalSpanX : gableRoofHeightM;
+  const singleRoofMidX = isWingExtended ? -overhangM / 2 : 0;
+  const hTransitionSingle = isWingExtended ? (gableRoofHeightM * widthM) / singleTotalSpanX : gableRoofHeightM;
   const singleRoofMidY = isSingleShed
-    ? (isLShape
+    ? (isWingExtended
         ? (hTransitionSingle - overhangM * Math.tan(singleSlopeAngle)) / 2
         : gableRoofHeightM / 2) + (roofThickM / 2) / Math.cos(singleSlopeAngle)
     : roofThickM / 2;
@@ -476,16 +477,16 @@ export function SipHouse3D() {
   const totalRoofLengthM = lengthM + 2 * overhangM;
   const floorPanels2D = useMemo(() => getModular2DPanels(widthM, lengthM, 2.44, 1.22), [widthM, lengthM]);
   const wingFloorPanels2D = useMemo(
-    () => (isLShape ? getModular2DPanels(wingWidthM, wingLengthM, 2.44, 1.22) : []),
-    [isLShape, wingWidthM, wingLengthM]
+    () => (isWingExtended ? getModular2DPanels(wingWidthM, wingLengthM, 2.44, 1.22) : []),
+    [isWingExtended, wingWidthM, wingLengthM]
   );
   const flatRoofPanels2D = useMemo(
     () => getModular2DPanels(widthM + 2 * overhangM, totalRoofLengthM, 2.44, 1.22),
     [widthM, overhangM, totalRoofLengthM]
   );
   const wingFlatRoofPanels2D = useMemo(
-    () => (isLShape ? getModular2DPanels(wingWidthM + overhangM, wingLengthM + 2 * overhangM, 2.44, 1.22) : []),
-    [isLShape, wingWidthM, overhangM, wingLengthM]
+    () => (isWingExtended ? getModular2DPanels(wingWidthM + overhangM, wingLengthM + 2 * overhangM, 2.44, 1.22) : []),
+    [isWingExtended, wingWidthM, overhangM, wingLengthM]
   );
   const singleRoofPanels2D = useMemo(
     () => (isSingleShed ? getRoofModularPanels(singleRafterLength, totalRoofLengthM) : []),
@@ -502,12 +503,12 @@ export function SipHouse3D() {
   const totalWingRoofLengthM = wingWidthM + overhangM;
   const wingRoofCenterX = widthM / 2 + totalWingRoofLengthM / 2;
   const wingRoofPanels2D = useMemo(
-    () => (isLShape ? getRoofModularPanels(wingRafterLength, totalWingRoofLengthM) : []),
-    [isLShape, wingRafterLength, totalWingRoofLengthM]
+    () => (isWingExtended ? getRoofModularPanels(wingRafterLength, totalWingRoofLengthM) : []),
+    [isWingExtended, wingRafterLength, totalWingRoofLengthM]
   );
   const wingSingleRoofPanels2D = useMemo(
-    () => (isLShape && isSingleShed ? getRoofModularPanels(wingSingleRafterLength, wingLengthM + 2 * overhangM) : []),
-    [isLShape, isSingleShed, wingSingleRafterLength, wingLengthM, overhangM]
+    () => (isWingExtended && isSingleShed ? getRoofModularPanels(wingSingleRafterLength, wingLengthM + 2 * overhangM) : []),
+    [isWingExtended, isSingleShed, wingSingleRafterLength, wingLengthM, overhangM]
   );
   const wingRoofMidY = isGableRoof
     ? (gableRoofHeightM - overhangM * Math.tan(wingSlopeAngle)) / 2 + (roofThickM / 2) * Math.cos(wingSlopeAngle)
@@ -597,8 +598,8 @@ export function SipHouse3D() {
                 );
               })}
 
-              {/* Fundaciones en Pilotes para Ala en L */}
-              {isLShape && (
+              {/* Fundaciones en Pilotes para Ala en L o Multivolumen */}
+              {isWingExtended && (
                 <group>
                   {Array.from({ length: Math.max(1, Math.ceil(wingWidthM / 1.5)) }).map((_, xi) => {
                     const px = widthM / 2 + ((xi + 1) * wingWidthM) / (Math.max(1, Math.ceil(wingWidthM / 1.5)) + 0.001);
@@ -699,8 +700,8 @@ export function SipHouse3D() {
               <mesh position={[-widthM / 2, -0.08, 0]} material={materials.concreteG20} castShadow receiveShadow>
                 <boxGeometry args={[0.2, 0.28, lengthM - 0.2]} />
               </mesh>
-              <mesh position={[widthM / 2, -0.08, isLShape ? -wingLengthM / 2 : 0]} material={materials.concreteG20} castShadow receiveShadow>
-                <boxGeometry args={[0.2, 0.28, isLShape ? Math.max(0.4, lengthM - wingLengthM - 0.2) : lengthM - 0.2]} />
+              <mesh position={[widthM / 2, -0.08, isWingExtended ? -wingLengthM / 2 : 0]} material={materials.concreteG20} castShadow receiveShadow>
+                <boxGeometry args={[0.2, 0.28, isWingExtended ? Math.max(0.4, lengthM - wingLengthM - 0.2) : lengthM - 0.2]} />
               </mesh>
 
               {/* Estructura Metálica del Sobrecimiento Continuo (Canastillo 4 barras + estribos) */}
@@ -751,8 +752,8 @@ export function SipHouse3D() {
                 <boxGeometry args={[widthM - 0.2, 0.12, lengthM - 0.2]} />
               </mesh>
 
-              {/* Fundaciones de Radier y Sobrecimiento para Ala en L */}
-              {isLShape && (
+              {/* Fundaciones de Radier y Sobrecimiento para Ala en L o Multivolumen */}
+              {isWingExtended && (
                 <group position={[widthM / 2 + wingWidthM / 2, 0, lengthM / 2 - wingLengthM / 2]}>
                   {/* Cimiento Corrido Ala */}
                   <mesh position={[0, -0.45, 0]} material={materials.concreteG20} receiveShadow>
@@ -849,8 +850,8 @@ export function SipHouse3D() {
                 <boxGeometry args={[widthM + 0.25, 0.18, lengthM + 0.25]} />
               </mesh>
 
-              {/* Fundaciones Platea Armada para Ala en L */}
-              {isLShape && (
+              {/* Fundaciones Platea Armada para Ala en L o Multivolumen */}
+              {isWingExtended && (
                 <group position={[widthM / 2 + wingWidthM / 2, 0, lengthM / 2 - wingLengthM / 2]}>
                   {/* Cama de Estabilizado Ala */}
                   <mesh position={[0, -0.32, 0]} receiveShadow>
@@ -946,8 +947,8 @@ export function SipHouse3D() {
             </mesh>
           )}
 
-          {/* Losa de Piso de Ala Lateral en L */}
-          {isLShape && (
+          {/* Losa de Piso de Ala Lateral en L o Multivolumen */}
+          {isWingExtended && (
             <group
               position={[
                 widthM / 2 + wingWidthM / 2,
@@ -1153,14 +1154,14 @@ export function SipHouse3D() {
             position={[
               widthM / 2 - wallThickM / 2 + expOutX,
               0,
-              isLShape ? -wingLengthM / 2 : 0,
+              isWingExtended ? -wingLengthM / 2 : 0,
             ]}
             rotation={[0, Math.PI / 2, 0]}
           >
             <SipWallAssembly
               wallId="right"
-              wallLength={isLShape ? Math.max(0.6, lengthM - wingLengthM - wallThickM) : wallSideLengthM}
-              wallHeight={!isLShape && isSingleShed ? eaveHM + gableRoofHeightM : (isLShape && isSingleShed ? eaveHM + hTransitionSingle : eaveHM)}
+              wallLength={isWingExtended ? Math.max(0.6, lengthM - wingLengthM - wallThickM) : wallSideLengthM}
+              wallHeight={!isWingExtended && isSingleShed ? eaveHM + gableRoofHeightM : (isWingExtended && isSingleShed ? eaveHM + hTransitionSingle : eaveHM)}
               wallThickness={wallThickM}
               openings={openings}
               layerWallsSip={layerWallsSip}
@@ -1177,8 +1178,8 @@ export function SipHouse3D() {
             />
           </group>
 
-          {/* MUROS ADICIONALES DE LA TIPOLOGÍA EN L */}
-          {isLShape && (
+          {/* MUROS ADICIONALES DE LA TIPOLOGÍA EN L O MULTIVOLUMEN */}
+          {isWingExtended && (
             <group>
               {/* 3.5 Muro Frontal de Ala (+Z) */}
               <group
@@ -1628,8 +1629,8 @@ export function SipHouse3D() {
                 </mesh>
               )}
 
-              {/* TECHUMBRE ADOSADA A 2 AGUAS PARA ALA LATERAL (CASA EN L) */}
-              {isLShape && (
+              {/* TECHUMBRE ADOSADA A 2 AGUAS PARA ALA LATERAL (CASA EN L O MULTIVOLUMEN) */}
+              {isWingExtended && (
                 <group
                   position={[
                     wingRoofCenterX,
@@ -1952,19 +1953,19 @@ export function SipHouse3D() {
               {layerRoofSip && (
                 <mesh
                   position={[
-                    (isLShape ? widthM / 2 + wingWidthM : widthM / 2) + overhangM,
+                    (isWingExtended ? widthM / 2 + wingWidthM : widthM / 2) + overhangM,
                     gableRoofHeightM + (roofThickM / 2) / Math.cos(singleSlopeAngle) + 0.02 + (isExploded ? expY * 0.25 : 0),
-                    isLShape ? lengthM / 2 - wingLengthM / 2 : 0,
+                    isWingExtended ? lengthM / 2 - wingLengthM / 2 : 0,
                   ]}
                   material={materials.zincalumBlack}
                   castShadow
                 >
-                  <boxGeometry args={[0.25, 0.04, (isLShape ? wingLengthM : lengthM) + 2 * overhangM + 0.06]} />
+                  <boxGeometry args={[0.25, 0.04, (isWingExtended ? wingLengthM : lengthM) + 2 * overhangM + 0.06]} />
                 </mesh>
               )}
 
-              {/* Cubierta de Ala Lateral para Casa en L a 1 Agua */}
-              {isLShape && (
+              {/* Cubierta de Ala Lateral para Casa en L o Multivolumen a 1 Agua */}
+              {isWingExtended && (
                 <group
                   position={[
                     wingSingleRoofMidX,
@@ -2018,6 +2019,23 @@ export function SipHouse3D() {
                           />
                         );
                       })}
+                      {/* Tapacán de Alero y Coronación de Ala a 1 Agua */}
+                      <TimberPiece
+                        args={[timberThickM, roofThickM, wingLengthM + 2 * overhangM]}
+                        position={[-wingSingleRafterLength / 2 + timberThickM / 2, 0, 0]}
+                        orientation="horizontal"
+                        materials={materials}
+                        isExploded={isExploded}
+                        explodedProgress={explodedProgress}
+                      />
+                      <TimberPiece
+                        args={[timberThickM, roofThickM, wingLengthM + 2 * overhangM]}
+                        position={[wingSingleRafterLength / 2 - timberThickM / 2, 0, 0]}
+                        orientation="horizontal"
+                        materials={materials}
+                        isExploded={isExploded}
+                        explodedProgress={explodedProgress}
+                      />
                     </group>
                   )}
 
@@ -2086,8 +2104,8 @@ export function SipHouse3D() {
                 />
               )}
 
-              {/* Losa Techo Plana Ala Lateral en L */}
-              {isLShape && layerRoofSip &&
+              {/* Losa Techo Plana Ala Lateral en L o Multivolumen */}
+              {isWingExtended && layerRoofSip &&
                 wingFlatRoofPanels2D.map((rp, rIdx) => {
                   const spreadZ = (rp.zi - (rp.countZ - 1) / 2) * (explodedProgress * 0.35);
                   const spreadX = (rp.xi - (rp.countX - 1) / 2) * (explodedProgress * 0.25);
@@ -2123,9 +2141,68 @@ export function SipHouse3D() {
                   );
                 })}
 
-              {/* Vigas de Remate Perimetral de Techo (Rim Beams en madera tratada) */}
+              {/* Estructura de Madera de Cubierta Plana (Viguetas/Listones entre paneles y Vigas Perimetrales) */}
               {(layerTimberStructure || isExploded) && (
                 <group>
+                  {/* Viguetas / Listones transversales de madera entre paneles SIP cada 1.22 m en Nave Principal */}
+                  {Array.from({ length: roofPanelsCountZ + 1 }).map((_, zi) => {
+                    const cz = -totalRoofLengthM / 2 + (zi * totalRoofLengthM) / roofPanelsCountZ;
+                    return (
+                      <TimberPiece
+                        key={`flat-roof-joist-${zi}`}
+                        args={[widthM + 2 * overhangM - 2 * timberThickM, timberWidthM, timberThickM]}
+                        position={[0, -roofThickM / 2 - timberThickM / 2, cz]}
+                        orientation="horizontal"
+                        materials={materials}
+                        isExploded={isExploded}
+                        explodedProgress={explodedProgress}
+                      />
+                    );
+                  })}
+
+                  {/* Listones de apoyo longitudinal bajo uniones intermedias de panel (si ancho > 2.44m) */}
+                  {widthM + 2 * overhangM > 2.44 && (
+                    <TimberPiece
+                      args={[timberThickM, timberWidthM, totalRoofLengthM - 2 * timberThickM]}
+                      position={[0, -roofThickM / 2 - timberThickM / 2, 0]}
+                      orientation="horizontal"
+                      materials={materials}
+                      isExploded={isExploded}
+                      explodedProgress={explodedProgress}
+                    />
+                  )}
+
+                  {/* Viguetas / Listones de madera entre paneles SIP cada 1.22 m en Ala Lateral en L o Multivolumen */}
+                  {isWingExtended && (
+                    <group>
+                      {Array.from({
+                        length: Math.max(1, Math.ceil((wingLengthM + 2 * overhangM) / 1.22)) + 1,
+                      }).map((_, zi) => {
+                        const count = Math.max(1, Math.ceil((wingLengthM + 2 * overhangM) / 1.22));
+                        const cz = -(wingLengthM + 2 * overhangM) / 2 + (zi * (wingLengthM + 2 * overhangM)) / count;
+                        const wingCenterFlatX = widthM / 2 + (wingWidthM + overhangM) / 2;
+                        const wingCenterFlatZ = lengthM / 2 - wingLengthM / 2;
+
+                        return (
+                          <TimberPiece
+                            key={`flat-wing-joist-${zi}`}
+                            args={[wingWidthM + overhangM - timberThickM, timberWidthM, timberThickM]}
+                            position={[
+                              wingCenterFlatX,
+                              -roofThickM / 2 - timberThickM / 2,
+                              wingCenterFlatZ + cz,
+                            ]}
+                            orientation="horizontal"
+                            materials={materials}
+                            isExploded={isExploded}
+                            explodedProgress={explodedProgress}
+                          />
+                        );
+                      })}
+                    </group>
+                  )}
+
+                  {/* Vigas de Remate Perimetral de Techo (Rim Beams) */}
                   <TimberPiece
                     args={[widthM + 2 * overhangM, roofThickM - 0.022, timberThickM]}
                     position={[0, 0, (lengthM + 2 * overhangM) / 2 - timberThickM / 2]}
@@ -2150,7 +2227,7 @@ export function SipHouse3D() {
                     isExploded={isExploded}
                     explodedProgress={explodedProgress}
                   />
-                  {!isLShape && (
+                  {!isWingExtended && (
                     <TimberPiece
                       args={[timberThickM, roofThickM - 0.022, lengthM + 2 * overhangM - 2 * timberThickM]}
                       position={[(widthM + 2 * overhangM) / 2 - timberThickM / 2, 0, 0]}
@@ -2160,7 +2237,7 @@ export function SipHouse3D() {
                       explodedProgress={explodedProgress}
                     />
                   )}
-                  {isLShape && (
+                  {isWingExtended && (
                     <group>
                       {/* Viga Frontal Ala (+Z) */}
                       <TimberPiece
@@ -2227,7 +2304,7 @@ export function SipHouse3D() {
                   >
                     <boxGeometry args={[0.12, 0.03, lengthM + 2 * overhangM + 0.04]} />
                   </mesh>
-                  {!isLShape ? (
+                  {!isWingExtended ? (
                     <mesh
                       position={[(widthM + 2 * overhangM) / 2, 0, 0]}
                       material={materials.zincalumBlack}

@@ -3,9 +3,11 @@ import * as THREE from 'three';
 import {
   useConcreteHouseStore,
   ConcreteWallTarget,
+  RoomBlock,
 } from '../../store/concreteHouseStore';
 import { ConcreteWall3D } from './ConcreteWall3D';
 import { getConcreteTextures } from '../../utils/concreteTextures';
+import { getSpanPillars } from '../../utils/concreteConfinement';
 
 export function ConcreteHouse3D() {
   const {
@@ -14,9 +16,13 @@ export function ConcreteHouse3D() {
     meshType,
     foundationType,
     slabType,
+    wallSystemType = 'hormigon_armado_total',
+    mezzanineSystemType = 'losa_hormigon_armado',
+    roofStructureType = 'dos_aguas_hormigon',
     renderMode,
     openings,
     interiorWalls,
+    roomBlocks = [],
     showRebarMesh,
     showEdgeReinforcement,
     showOpeningReinforcement,
@@ -47,12 +53,69 @@ export function ConcreteHouse3D() {
     roofType = 'dos_aguas_hormigon',
   } = dimensions;
   const wallThicknessCm = wallThicknessMm / 10;
+  const safeRidgeH = Math.max(80, roofRidgeHeightCm || 175);
+  const effectivePatio = Boolean(hasCentralPatio && widthCm >= 450 && lengthCm >= 1200);
 
   // Filtrar vanos por muro
   const frontOpenings = useMemo(() => openings.filter((o) => o.wall === 'front'), [openings]);
   const backOpenings = useMemo(() => openings.filter((o) => o.wall === 'back'), [openings]);
   const leftOpenings = useMemo(() => openings.filter((o) => o.wall === 'left'), [openings]);
   const rightOpenings = useMemo(() => openings.filter((o) => o.wall === 'right'), [openings]);
+
+  // Texturas y Materiales
+  const { brickTexture, brickBumpMap, timberTexture } = useMemo(() => getConcreteTextures(), []);
+
+  // Material de Ladrillo para Muros Interiores en Albañilería
+  const brickMat = useMemo(() => {
+    if (renderMode === 'xray') {
+      return new THREE.MeshStandardMaterial({
+        color: '#c2410c',
+        roughness: 0.4,
+        transparent: true,
+        opacity: 0.28,
+        depthWrite: false,
+      });
+    }
+    const map = brickTexture.clone();
+    const bump = brickBumpMap.clone();
+    map.wrapS = THREE.RepeatWrapping;
+    map.wrapT = THREE.RepeatWrapping;
+    bump.wrapS = THREE.RepeatWrapping;
+    bump.wrapT = THREE.RepeatWrapping;
+    map.repeat.set(Math.max(1, widthCm / 120), Math.max(1, wallHeightCm / 120));
+    bump.repeat.set(Math.max(1, widthCm / 120), Math.max(1, wallHeightCm / 120));
+    map.needsUpdate = true;
+    bump.needsUpdate = true;
+    return new THREE.MeshStandardMaterial({
+      map,
+      bumpMap: bump,
+      bumpScale: 0.1,
+      roughness: 0.88,
+      metalness: 0.02,
+    });
+  }, [renderMode, brickTexture, brickBumpMap, widthCm, wallHeightCm]);
+
+  // Material de Madera para Vigas de Entrepiso y Cerchas de Techumbre
+  const timberStructureMat = useMemo(() => {
+    if (renderMode === 'xray') {
+      return new THREE.MeshStandardMaterial({
+        color: '#d97706',
+        roughness: 0.4,
+        transparent: true,
+        opacity: 0.35,
+        depthWrite: false,
+      });
+    }
+    const map = timberTexture.clone();
+    map.repeat.set(1, 1);
+    map.needsUpdate = true;
+    return new THREE.MeshStandardMaterial({
+      map,
+      roughness: 0.75,
+      metalness: 0.05,
+      color: '#c29b68',
+    });
+  }, [renderMode, timberTexture]);
 
   // Materiales de Fundación, Losa y Techo
   const concreteMat = useMemo(() => {
@@ -193,10 +256,10 @@ export function ConcreteHouse3D() {
     []
   );
 
-  // Geometría del hastial triangular (Gable) para dos aguas
+  // Geometría del hastial triangular (Gable / Tímpano) para dos aguas
   const gableGeometry = useMemo(() => {
     const halfW = widthCm / 2;
-    const ridgeH = roofRidgeHeightCm;
+    const ridgeH = safeRidgeH;
     const shape = new THREE.Shape();
     shape.moveTo(-halfW, 0);
     shape.lineTo(halfW, 0);
@@ -208,16 +271,96 @@ export function ConcreteHouse3D() {
       bevelEnabled: false,
     };
     return new THREE.ExtrudeGeometry(shape, extrudeSettings);
-  }, [widthCm, roofRidgeHeightCm, wallThicknessCm]);
+  }, [widthCm, safeRidgeH, wallThicknessCm]);
+
+  const masonryGableGeometry = useMemo(() => {
+    const halfW = widthCm / 2;
+    const ridgeH = safeRidgeH;
+    const shape = new THREE.Shape();
+    shape.moveTo(-halfW, 0);
+    shape.lineTo(halfW, 0);
+    shape.lineTo(0, ridgeH);
+    shape.closePath();
+
+    const extrudeSettings = {
+      depth: 14,
+      bevelEnabled: false,
+    };
+    return new THREE.ExtrudeGeometry(shape, extrudeSettings);
+  }, [widthCm, safeRidgeH]);
 
   // Cálculo de pendiente y dimensiones de la losa inclinada
   const { roofAngle, roofSlopeLength } = useMemo(() => {
     const halfW = widthCm / 2 + overhangCm;
-    const ridgeH = roofRidgeHeightCm;
+    const ridgeH = safeRidgeH;
     const slopeLen = Math.sqrt(halfW * halfW + ridgeH * ridgeH);
     const angle = Math.atan2(ridgeH, halfW);
     return { roofAngle: angle, roofSlopeLength: slopeLen };
-  }, [widthCm, overhangCm, roofRidgeHeightCm]);
+  }, [widthCm, overhangCm, safeRidgeH]);
+
+  const isMasonryGlobal = wallSystemType === 'albanileria_confinada';
+  const effectiveGableThickness = isMasonryGlobal ? 14 : wallThicknessCm;
+
+  const renderGable = (pos: [number, number, number], keySuffix: string) => {
+    const halfW = widthCm / 2;
+    const mat = isMasonryGlobal ? brickMat : ceilingConcreteMat;
+    const geom = isMasonryGlobal ? masonryGableGeometry : gableGeometry;
+
+    return (
+      <group key={`gable-${keySuffix}`} position={pos}>
+        {/* Paño Triangular del Tímpano/Frontón */}
+        <mesh
+          geometry={geom}
+          material={mat}
+          castShadow
+          receiveShadow
+        />
+
+        {/* Si es Albañilería Confinada: Marco Estructural de Confinamiento H20 per NCh2123 */}
+        {isMasonryGlobal && renderMode !== 'rebar_only' && (
+          <group position={[0, 0, effectiveGableThickness / 2]}>
+            {/* 1. Cadena Basal Horizontal de Coronación */}
+            <mesh position={[0, 7.5, 0]} material={concreteMat} castShadow receiveShadow>
+              <boxGeometry args={[widthCm, 15, effectiveGableThickness + 0.6]} />
+            </mesh>
+
+            {/* 2. Pilar Central de Cumbrera (Pilar Vertical H.A.) */}
+            <mesh position={[0, safeRidgeH / 2, 0]} material={concreteMat} castShadow receiveShadow>
+              <boxGeometry args={[15, safeRidgeH, effectiveGableThickness + 0.6]} />
+            </mesh>
+
+            {/* 3. Cadenas Inclinadas de Coronación (Dos Aguas) */}
+            <mesh
+              position={[-halfW / 2, safeRidgeH / 2, 0]}
+              rotation={[0, 0, roofAngle]}
+              material={concreteMat}
+              castShadow
+              receiveShadow
+            >
+              <boxGeometry args={[roofSlopeLength, 15, effectiveGableThickness + 0.6]} />
+            </mesh>
+            <mesh
+              position={[halfW / 2, safeRidgeH / 2, 0]}
+              rotation={[0, 0, -roofAngle]}
+              material={concreteMat}
+              castShadow
+              receiveShadow
+            >
+              <boxGeometry args={[roofSlopeLength, 15, effectiveGableThickness + 0.6]} />
+            </mesh>
+
+            {/* 4. Pilaretes Laterales en los Extremos */}
+            <mesh position={[-halfW + 7.5, 15, 0]} material={concreteMat} castShadow receiveShadow>
+              <boxGeometry args={[15, 30, effectiveGableThickness + 0.6]} />
+            </mesh>
+            <mesh position={[halfW - 7.5, 15, 0]} material={concreteMat} castShadow receiveShadow>
+              <boxGeometry args={[15, 30, effectiveGableThickness + 0.6]} />
+            </mesh>
+          </group>
+        )}
+      </group>
+    );
+  };
 
   return (
     <group position={[0, 0, 0]}>
@@ -298,119 +441,452 @@ export function ConcreteHouse3D() {
         </group>
       )}
 
-      {/* 2. MUROS DE HORMIGÓN ARMADO (Nivel 1) */}
+      {/* 2. MUROS (Nivel 1) */}
       <group position={[0, 0, 0]}>
-        {/* Front Wall (Z = +length/2) */}
-        <group position={[0, 0, lengthCm / 2 - wallThicknessCm / 2]}>
-          <ConcreteWall3D
-            wallTarget="front"
-            wallLengthCm={widthCm}
-            wallHeightCm={wallHeightCm}
-            wallThicknessMm={wallThicknessMm}
-            meshType={meshType}
-            renderMode={renderMode}
-            openings={frontOpenings}
-            showRebarMesh={showRebarMesh}
-            showEdgeReinforcement={showEdgeReinforcement}
-            showOpeningReinforcement={showOpeningReinforcement}
-            showSpacers={showSpacers}
-            showFormworkTieHoles={showFormworkTieHoles}
-            isSelected={selectedWall === 'front'}
-            onSelectWall={() => setSelectedWall('front')}
-            onSelectOpening={setSelectedOpeningId}
-          />
-          {/* Marquesina / Visera de acceso principal */}
-          {renderMode !== 'rebar_only' && (
-            <group position={[120 / 2 + 20 - widthCm / 2, 245, wallThicknessCm / 2 + 50]}>
-              <mesh material={steelStructureMat}>
-                <boxGeometry args={[180, 8, 100]} />
-              </mesh>
-              {/* Tensores metálicos */}
-              <mesh position={[-80, 30, -40]} rotation={[0.6, 0, 0]} material={steelStructureMat}>
-                <cylinderGeometry args={[0.6, 0.6, 70, 8]} />
-              </mesh>
-              <mesh position={[80, 30, -40]} rotation={[0.6, 0, 0]} material={steelStructureMat}>
-                <cylinderGeometry args={[0.6, 0.6, 70, 8]} />
-              </mesh>
+        {roomBlocks && roomBlocks.length > 0 ? (
+          /* Renderizado dinámico exacto según el plano 2D de recintos (roomBlocks) */
+          <group>
+            {roomBlocks.map((block) => {
+              const bWidth = block.width;
+              const bLength = block.length;
+              // b.x y b.z en el plano 2D van de 0 a widthCm / lengthCm
+              // En Three.js el centro de la vivienda está en (0, 0, 0), por lo que X va de -widthCm/2 a +widthCm/2 y Z va de -lengthCm/2 a +lengthCm/2
+              const bCenterX = block.x + bWidth / 2 - widthCm / 2;
+              const bCenterZ = block.z + bLength / 2 - lengthCm / 2;
+              const isOutdoor = block.category === 'patio' || block.category === 'terrace';
+              const blockWallH = block.category === 'patio' ? 120 : wallHeightCm;
+              const isMasonry = wallSystemType === 'albanileria_confinada' || block.wallType === 'masonry_140';
+              const isDrywall = !isMasonry && block.wallType === 'drywall_90';
+              const blockMat = isMasonry ? brickMat : isDrywall ? ceilingConcreteMat : concreteMat;
+              const bWallThick = isMasonry ? 14 : block.wallType === 'concrete_200' ? 20 : isDrywall ? 9 : wallThicknessCm;
+              const pillarSize = isMasonry ? 15 : 0;
+
+              return (
+                <group key={block.id} position={[bCenterX, 0, bCenterZ]}>
+                  {/* Losa de piso del recinto */}
+                  {renderMode !== 'rebar_only' && (
+                    <mesh position={[0, -2.5, 0]} material={isOutdoor ? leanConcreteMat : concreteMat} receiveShadow>
+                      <boxGeometry args={[bWidth, 5, bLength]} />
+                    </mesh>
+                  )}
+
+                  {/* 4 Muros perimetrales del recinto */}
+                  {/* Muro Frontal (Sur, Z = +bLength/2) */}
+                  <mesh
+                    position={[0, blockWallH / 2, bLength / 2 - bWallThick / 2]}
+                    material={blockMat}
+                    castShadow
+                    receiveShadow
+                  >
+                    <boxGeometry args={[bWidth, blockWallH, bWallThick]} />
+                  </mesh>
+
+                  {/* Muro Posterior (Norte, Z = -bLength/2) */}
+                  <mesh
+                    position={[0, blockWallH / 2, -bLength / 2 + bWallThick / 2]}
+                    material={blockMat}
+                    castShadow
+                    receiveShadow
+                  >
+                    <boxGeometry args={[bWidth, blockWallH, bWallThick]} />
+                  </mesh>
+
+                  {/* Muro Lateral Izquierdo (Oeste, X = -bWidth/2) */}
+                  <mesh
+                    position={[-bWidth / 2 + bWallThick / 2, blockWallH / 2, 0]}
+                    material={blockMat}
+                    castShadow
+                    receiveShadow
+                  >
+                    <boxGeometry args={[bWallThick, blockWallH, bLength - bWallThick * 2]} />
+                  </mesh>
+
+                  {/* Muro Lateral Derecho (Este, X = +bWidth/2) */}
+                  <mesh
+                    position={[bWidth / 2 - bWallThick / 2, blockWallH / 2, 0]}
+                    material={blockMat}
+                    castShadow
+                    receiveShadow
+                  >
+                    <boxGeometry args={[bWallThick, blockWallH, bLength - bWallThick * 2]} />
+                  </mesh>
+
+                  {/* En Albañilería Confinada: Sistema Completo de Confinamiento H20 per NCh2123 / NCh1928 */}
+                  {renderMode !== 'rebar_only' && isMasonry && (
+                    <group>
+                      {/* 1. Pilares Verticales de Confinamiento (Esquinas + Intermedios <= 2.80m) */}
+                      {(() => {
+                        const xPillars = getSpanPillars(bWidth, pillarSize, 280);
+                        const zPillars = getSpanPillars(bLength, pillarSize, 280);
+                        const intermediateZ = zPillars.slice(1, -1);
+
+                        return (
+                          <group>
+                            {/* Pilares a lo largo del Muro Frontal (Sur) */}
+                            {xPillars.map((px, idx) => (
+                              <mesh
+                                key={`col-f-${idx}`}
+                                position={[px, blockWallH / 2, bLength / 2 - bWallThick / 2]}
+                                material={concreteMat}
+                                castShadow
+                                receiveShadow
+                              >
+                                <boxGeometry args={[pillarSize, blockWallH, bWallThick + 0.6]} />
+                              </mesh>
+                            ))}
+
+                            {/* Pilares a lo largo del Muro Posterior (Norte) */}
+                            {xPillars.map((px, idx) => (
+                              <mesh
+                                key={`col-b-${idx}`}
+                                position={[px, blockWallH / 2, -bLength / 2 + bWallThick / 2]}
+                                material={concreteMat}
+                                castShadow
+                                receiveShadow
+                              >
+                                <boxGeometry args={[pillarSize, blockWallH, bWallThick + 0.6]} />
+                              </mesh>
+                            ))}
+
+                            {/* Pilares Intermedios Muro Lateral Izquierdo (Oeste) */}
+                            {intermediateZ.map((pz, idx) => (
+                              <mesh
+                                key={`col-l-${idx}`}
+                                position={[-bWidth / 2 + bWallThick / 2, blockWallH / 2, pz]}
+                                material={concreteMat}
+                                castShadow
+                                receiveShadow
+                              >
+                                <boxGeometry args={[bWallThick + 0.6, blockWallH, pillarSize]} />
+                              </mesh>
+                            ))}
+
+                            {/* Pilares Intermedios Muro Lateral Derecho (Este) */}
+                            {intermediateZ.map((pz, idx) => (
+                              <mesh
+                                key={`col-r-${idx}`}
+                                position={[bWidth / 2 - bWallThick / 2, blockWallH / 2, pz]}
+                                material={concreteMat}
+                                castShadow
+                                receiveShadow
+                              >
+                                <boxGeometry args={[bWallThick + 0.6, blockWallH, pillarSize]} />
+                              </mesh>
+                            ))}
+                          </group>
+                        );
+                      })()}
+
+                      {/* 2. Cadena de Sobrecimiento / Fundación Inferior (H = 20 cm) */}
+                      <group>
+                        <mesh position={[0, 10, bLength / 2 - bWallThick / 2]} material={concreteMat} castShadow receiveShadow>
+                          <boxGeometry args={[bWidth, 20, bWallThick + 0.6]} />
+                        </mesh>
+                        <mesh position={[0, 10, -bLength / 2 + bWallThick / 2]} material={concreteMat} castShadow receiveShadow>
+                          <boxGeometry args={[bWidth, 20, bWallThick + 0.6]} />
+                        </mesh>
+                        <mesh position={[-bWidth / 2 + bWallThick / 2, 10, 0]} material={concreteMat} castShadow receiveShadow>
+                          <boxGeometry args={[bWallThick + 0.6, 20, bLength - bWallThick * 2]} />
+                        </mesh>
+                        <mesh position={[bWidth / 2 - bWallThick / 2, 10, 0]} material={concreteMat} castShadow receiveShadow>
+                          <boxGeometry args={[bWallThick + 0.6, 20, bLength - bWallThick * 2]} />
+                        </mesh>
+                      </group>
+
+                      {/* 3. Cadena Intermedia / Dintel (H = 15 cm a Y = 210 cm si blockWallH >= 260 cm) */}
+                      {blockWallH >= 260 && (
+                        <group>
+                          <mesh position={[0, 210, bLength / 2 - bWallThick / 2]} material={concreteMat} castShadow receiveShadow>
+                            <boxGeometry args={[bWidth, 15, bWallThick + 0.6]} />
+                          </mesh>
+                          <mesh position={[0, 210, -bLength / 2 + bWallThick / 2]} material={concreteMat} castShadow receiveShadow>
+                            <boxGeometry args={[bWidth, 15, bWallThick + 0.6]} />
+                          </mesh>
+                          <mesh position={[-bWidth / 2 + bWallThick / 2, 210, 0]} material={concreteMat} castShadow receiveShadow>
+                            <boxGeometry args={[bWallThick + 0.6, 15, bLength - bWallThick * 2]} />
+                          </mesh>
+                          <mesh position={[bWidth / 2 - bWallThick / 2, 210, 0]} material={concreteMat} castShadow receiveShadow>
+                            <boxGeometry args={[bWallThick + 0.6, 15, bLength - bWallThick * 2]} />
+                          </mesh>
+                        </group>
+                      )}
+
+                      {/* 4. Cadena de Coronación Superior (H = 20 cm) */}
+                      <group>
+                        <mesh position={[0, blockWallH - 10, bLength / 2 - bWallThick / 2]} material={concreteMat} castShadow receiveShadow>
+                          <boxGeometry args={[bWidth, 20, bWallThick + 0.6]} />
+                        </mesh>
+                        <mesh position={[0, blockWallH - 10, -bLength / 2 + bWallThick / 2]} material={concreteMat} castShadow receiveShadow>
+                          <boxGeometry args={[bWidth, 20, bWallThick + 0.6]} />
+                        </mesh>
+                        <mesh position={[-bWidth / 2 + bWallThick / 2, blockWallH - 10, 0]} material={concreteMat} castShadow receiveShadow>
+                          <boxGeometry args={[bWallThick + 0.6, 20, bLength - bWallThick * 2]} />
+                        </mesh>
+                        <mesh position={[bWidth / 2 - bWallThick / 2, blockWallH - 10, 0]} material={concreteMat} castShadow receiveShadow>
+                          <boxGeometry args={[bWallThick + 0.6, 20, bLength - bWallThick * 2]} />
+                        </mesh>
+                      </group>
+                    </group>
+                  )}
+
+                  {/* Viga Corona / Losa de cielo para recintos de Hormigón Armado Total */}
+                  {renderMode !== 'rebar_only' && !isMasonry && !isOutdoor && block.hasSlabCover && (
+                    <mesh position={[0, blockWallH - 10, 0]} material={concreteMat}>
+                      <boxGeometry args={[bWidth, 20, bLength]} />
+                    </mesh>
+                  )}
+                </group>
+              );
+            })}
+          </group>
+        ) : (
+          /* Renderizado paramétrico estándar monolítico */
+          <group>
+            {/* Front Wall (Z = +length/2) */}
+            <group position={[0, 0, lengthCm / 2 - wallThicknessCm / 2]}>
+              <ConcreteWall3D
+                wallTarget="front"
+                wallLengthCm={widthCm}
+                wallHeightCm={wallHeightCm}
+                wallThicknessMm={wallThicknessMm}
+                meshType={meshType}
+                renderMode={renderMode}
+                openings={frontOpenings}
+                wallSystemType={wallSystemType}
+                showRebarMesh={showRebarMesh}
+                showEdgeReinforcement={showEdgeReinforcement}
+                showOpeningReinforcement={showOpeningReinforcement}
+                showSpacers={showSpacers}
+                showFormworkTieHoles={showFormworkTieHoles}
+                isSelected={selectedWall === 'front'}
+                onSelectWall={() => setSelectedWall('front')}
+                onSelectOpening={setSelectedOpeningId}
+              />
+              {/* Marquesina / Visera de acceso principal */}
+              {renderMode !== 'rebar_only' && (
+                <group position={[120 / 2 + 20 - widthCm / 2, 245, wallThicknessCm / 2 + 50]}>
+                  <mesh material={steelStructureMat}>
+                    <boxGeometry args={[180, 8, 100]} />
+                  </mesh>
+                  {/* Tensores metálicos */}
+                  <mesh position={[-80, 30, -40]} rotation={[0.6, 0, 0]} material={steelStructureMat}>
+                    <cylinderGeometry args={[0.6, 0.6, 70, 8]} />
+                  </mesh>
+                  <mesh position={[80, 30, -40]} rotation={[0.6, 0, 0]} material={steelStructureMat}>
+                    <cylinderGeometry args={[0.6, 0.6, 70, 8]} />
+                  </mesh>
+                </group>
+              )}
             </group>
-          )}
-        </group>
 
-        {/* Back Wall (Z = -length/2) */}
-        <group position={[0, 0, -lengthCm / 2 + wallThicknessCm / 2]} rotation={[0, Math.PI, 0]}>
-          <ConcreteWall3D
-            wallTarget="back"
-            wallLengthCm={widthCm}
-            wallHeightCm={wallHeightCm}
-            wallThicknessMm={wallThicknessMm}
-            meshType={meshType}
-            renderMode={renderMode}
-            openings={backOpenings}
-            showRebarMesh={showRebarMesh}
-            showEdgeReinforcement={showEdgeReinforcement}
-            showOpeningReinforcement={showOpeningReinforcement}
-            showSpacers={showSpacers}
-            showFormworkTieHoles={showFormworkTieHoles}
-            isSelected={selectedWall === 'back'}
-            onSelectWall={() => setSelectedWall('back')}
-            onSelectOpening={setSelectedOpeningId}
-          />
-        </group>
+            {/* Back Wall (Z = -length/2) */}
+            <group position={[0, 0, -lengthCm / 2 + wallThicknessCm / 2]} rotation={[0, Math.PI, 0]}>
+              <ConcreteWall3D
+                wallTarget="back"
+                wallLengthCm={widthCm}
+                wallHeightCm={wallHeightCm}
+                wallThicknessMm={wallThicknessMm}
+                meshType={meshType}
+                renderMode={renderMode}
+                openings={backOpenings}
+                wallSystemType={wallSystemType}
+                showRebarMesh={showRebarMesh}
+                showEdgeReinforcement={showEdgeReinforcement}
+                showOpeningReinforcement={showOpeningReinforcement}
+                showSpacers={showSpacers}
+                showFormworkTieHoles={showFormworkTieHoles}
+                isSelected={selectedWall === 'back'}
+                onSelectWall={() => setSelectedWall('back')}
+                onSelectOpening={setSelectedOpeningId}
+              />
+            </group>
 
-        {/* Left Wall (X = -width/2) */}
-        <group position={[-widthCm / 2 + wallThicknessCm / 2, 0, 0]} rotation={[0, Math.PI / 2, 0]}>
-          <ConcreteWall3D
-            wallTarget="left"
-            wallLengthCm={lengthCm - wallThicknessCm * 2}
-            wallHeightCm={wallHeightCm}
-            wallThicknessMm={wallThicknessMm}
-            meshType={meshType}
-            renderMode={renderMode}
-            openings={leftOpenings}
-            showRebarMesh={showRebarMesh}
-            showEdgeReinforcement={showEdgeReinforcement}
-            showOpeningReinforcement={showOpeningReinforcement}
-            showSpacers={showSpacers}
-            showFormworkTieHoles={showFormworkTieHoles}
-            isSelected={selectedWall === 'left'}
-            onSelectWall={() => setSelectedWall('left')}
-            onSelectOpening={setSelectedOpeningId}
-          />
-        </group>
+            {/* Left Wall (X = -width/2) */}
+            <group position={[-widthCm / 2 + wallThicknessCm / 2, 0, 0]} rotation={[0, Math.PI / 2, 0]}>
+              <ConcreteWall3D
+                wallTarget="left"
+                wallLengthCm={lengthCm - wallThicknessCm * 2}
+                wallHeightCm={wallHeightCm}
+                wallThicknessMm={wallThicknessMm}
+                meshType={meshType}
+                renderMode={renderMode}
+                openings={leftOpenings}
+                wallSystemType={wallSystemType}
+                showRebarMesh={showRebarMesh}
+                showEdgeReinforcement={showEdgeReinforcement}
+                showOpeningReinforcement={showOpeningReinforcement}
+                showSpacers={showSpacers}
+                showFormworkTieHoles={showFormworkTieHoles}
+                isSelected={selectedWall === 'left'}
+                onSelectWall={() => setSelectedWall('left')}
+                onSelectOpening={setSelectedOpeningId}
+              />
+            </group>
 
-        {/* Right Wall (X = +width/2) */}
-        <group position={[widthCm / 2 - wallThicknessCm / 2, 0, 0]} rotation={[0, -Math.PI / 2, 0]}>
-          <ConcreteWall3D
-            wallTarget="right"
-            wallLengthCm={lengthCm - wallThicknessCm * 2}
-            wallHeightCm={wallHeightCm}
-            wallThicknessMm={wallThicknessMm}
-            meshType={meshType}
-            renderMode={renderMode}
-            openings={rightOpenings}
-            showRebarMesh={showRebarMesh}
-            showEdgeReinforcement={showEdgeReinforcement}
-            showOpeningReinforcement={showOpeningReinforcement}
-            showSpacers={showSpacers}
-            showFormworkTieHoles={showFormworkTieHoles}
-            isSelected={selectedWall === 'right'}
-            onSelectWall={() => setSelectedWall('right')}
-            onSelectOpening={setSelectedOpeningId}
-          />
-        </group>
+            {/* Right Wall (X = +width/2) */}
+            <group position={[widthCm / 2 - wallThicknessCm / 2, 0, 0]} rotation={[0, -Math.PI / 2, 0]}>
+              <ConcreteWall3D
+                wallTarget="right"
+                wallLengthCm={lengthCm - wallThicknessCm * 2}
+                wallHeightCm={wallHeightCm}
+                wallThicknessMm={wallThicknessMm}
+                meshType={meshType}
+                renderMode={renderMode}
+                openings={rightOpenings}
+                wallSystemType={wallSystemType}
+                showRebarMesh={showRebarMesh}
+                showEdgeReinforcement={showEdgeReinforcement}
+                showOpeningReinforcement={showOpeningReinforcement}
+                showSpacers={showSpacers}
+                showFormworkTieHoles={showFormworkTieHoles}
+                isSelected={selectedWall === 'right'}
+                onSelectWall={() => setSelectedWall('right')}
+                onSelectOpening={setSelectedOpeningId}
+              />
+            </group>
+          </group>
+        )}
 
-        {/* Muros Interiores de Hormigón Armado */}
+        {/* Muros Interiores (solo en modo paramétrico estándar cuando no hay plano de recintos 2D) */}
         {renderMode !== 'rebar_only' &&
+          (!roomBlocks || roomBlocks.length === 0) &&
           interiorWalls.map((iw) => {
-            const zPos = iw.startZ - lengthCm / 2;
-            const wThickness = iw.thicknessMm / 10;
+            const wThickness = (iw.thicknessMm || 150) / 10;
+            const mat = wallSystemType === 'albanileria_confinada' ? brickMat : ceilingConcreteMat;
+
+            // Ancho del paño transversal ajustado al ancho libre interior
+            const spanX = widthCm - wallThicknessCm * 2;
+            const rawZ = (iw.startZ !== undefined ? iw.startZ : lengthCm / 2) - lengthCm / 2;
+
+            // Clamping defensivo para garantizar que nunca sobresalga del perímetro
+            const maxZ = lengthCm / 2 - wallThicknessCm - wThickness / 2;
+            const minZ = -lengthCm / 2 + wallThicknessCm + wThickness / 2;
+            const zPos = Math.max(minZ, Math.min(maxZ, rawZ));
+
             return (
-              <mesh key={iw.id} position={[0, wallHeightCm / 2, zPos]} material={ceilingConcreteMat} castShadow>
-                <boxGeometry args={[widthCm - wallThicknessCm * 2, wallHeightCm, wThickness]} />
+              <mesh key={iw.id} position={[0, wallHeightCm / 2, zPos]} material={mat} castShadow>
+                <boxGeometry args={[spanX, wallHeightCm, wThickness]} />
               </mesh>
             );
           })}
       </group>
+
+      {/* 2.5. SISTEMA DE ENTREPISO Y NIVEL 2 (Si levels === 2) */}
+      {levels === 2 && (
+        <group position={[0, wallHeightCm, 0]}>
+          {/* Estructura de Entrepiso (Losa H.A. vs Envigado Madera) */}
+          {renderMode !== 'rebar_only' && (
+            <group position={[0, 0, 0]}>
+              {mezzanineSystemType === 'losa_hormigon_armado' ? (
+                /* Losa de Hormigón Armado e=12cm */
+                <mesh position={[0, 6, 0]} material={ceilingConcreteMat} castShadow receiveShadow>
+                  <boxGeometry args={[widthCm, 12, lengthCm]} />
+                </mesh>
+              ) : (
+                /* Entrepiso Liviano de Madera: Vigas 3x8" @ 40cm + Placa Colaborante */
+                <group>
+                  {/* Vigas de Madera Transversales */}
+                  {Array.from({ length: Math.floor(lengthCm / 40) + 1 }).map((_, idx) => {
+                    const zPos = -lengthCm / 2 + idx * 40;
+                    return (
+                      <mesh key={`joist-${idx}`} position={[0, 10, zPos]} material={timberStructureMat} castShadow>
+                        <boxGeometry args={[widthCm - wallThicknessCm * 2, 20, 7.5]} />
+                      </mesh>
+                    );
+                  })}
+                  {/* Vigas Maestras / Soleras de Borde */}
+                  <mesh position={[-widthCm / 2 + wallThicknessCm, 10, 0]} material={timberStructureMat}>
+                    <boxGeometry args={[10, 20, lengthCm]} />
+                  </mesh>
+                  <mesh position={[widthCm / 2 - wallThicknessCm, 10, 0]} material={timberStructureMat}>
+                    <boxGeometry args={[10, 20, lengthCm]} />
+                  </mesh>
+                  {/* Tablero Estructural de Piso / Placa e=2.5cm */}
+                  <mesh position={[0, 21.25, 0]} material={timberSlatMat} receiveShadow>
+                    <boxGeometry args={[widthCm, 2.5, lengthCm]} />
+                  </mesh>
+                </group>
+              )}
+            </group>
+          )}
+
+          {/* Muros del Nivel 2 */}
+          <group position={[0, mezzanineSystemType === 'losa_hormigon_armado' ? 12 : 22.5, 0]}>
+            {/* Front Wall N2 */}
+            <group position={[0, 0, lengthCm / 2 - wallThicknessCm / 2]}>
+              <ConcreteWall3D
+                wallTarget="front"
+                wallLengthCm={widthCm}
+                wallHeightCm={wallHeightCm}
+                wallThicknessMm={wallThicknessMm}
+                meshType={meshType}
+                renderMode={renderMode}
+                openings={[]}
+                wallSystemType={wallSystemType}
+                showRebarMesh={showRebarMesh}
+                showEdgeReinforcement={showEdgeReinforcement}
+                showOpeningReinforcement={showOpeningReinforcement}
+                showSpacers={showSpacers}
+                showFormworkTieHoles={showFormworkTieHoles}
+              />
+            </group>
+            {/* Back Wall N2 */}
+            <group position={[0, 0, -lengthCm / 2 + wallThicknessCm / 2]} rotation={[0, Math.PI, 0]}>
+              <ConcreteWall3D
+                wallTarget="back"
+                wallLengthCm={widthCm}
+                wallHeightCm={wallHeightCm}
+                wallThicknessMm={wallThicknessMm}
+                meshType={meshType}
+                renderMode={renderMode}
+                openings={[]}
+                wallSystemType={wallSystemType}
+                showRebarMesh={showRebarMesh}
+                showEdgeReinforcement={showEdgeReinforcement}
+                showOpeningReinforcement={showOpeningReinforcement}
+                showSpacers={showSpacers}
+                showFormworkTieHoles={showFormworkTieHoles}
+              />
+            </group>
+            {/* Left Wall N2 */}
+            <group position={[-widthCm / 2 + wallThicknessCm / 2, 0, 0]} rotation={[0, Math.PI / 2, 0]}>
+              <ConcreteWall3D
+                wallTarget="left"
+                wallLengthCm={lengthCm - wallThicknessCm * 2}
+                wallHeightCm={wallHeightCm}
+                wallThicknessMm={wallThicknessMm}
+                meshType={meshType}
+                renderMode={renderMode}
+                openings={[]}
+                wallSystemType={wallSystemType}
+                showRebarMesh={showRebarMesh}
+                showEdgeReinforcement={showEdgeReinforcement}
+                showOpeningReinforcement={showOpeningReinforcement}
+                showSpacers={showSpacers}
+                showFormworkTieHoles={showFormworkTieHoles}
+              />
+            </group>
+            {/* Right Wall N2 */}
+            <group position={[widthCm / 2 - wallThicknessCm / 2, 0, 0]} rotation={[0, -Math.PI / 2, 0]}>
+              <ConcreteWall3D
+                wallTarget="right"
+                wallLengthCm={lengthCm - wallThicknessCm * 2}
+                wallHeightCm={wallHeightCm}
+                wallThicknessMm={wallThicknessMm}
+                meshType={meshType}
+                renderMode={renderMode}
+                openings={[]}
+                wallSystemType={wallSystemType}
+                showRebarMesh={showRebarMesh}
+                showEdgeReinforcement={showEdgeReinforcement}
+                showOpeningReinforcement={showOpeningReinforcement}
+                showSpacers={showSpacers}
+                showFormworkTieHoles={showFormworkTieHoles}
+              />
+            </group>
+          </group>
+        </group>
+      )}
 
       {/* 3. PÉRGOLA EXTERIOR & ASADOR / QUINCHO (Casa TT) */}
       {showPergola && renderMode !== 'rebar_only' && (
@@ -436,7 +912,7 @@ export function ConcreteHouse3D() {
             <boxGeometry args={[14, 20, pergolaLengthCm + 30]} />
           </mesh>
 
-          {/* Viga de Anclaje al Muro de Hormigón */}
+          {/* Viga de Anclaje al Muro */}
           <mesh
             position={[0, pergolaHeightCm, pergolaLengthCm / 2]}
             material={steelStructureMat}
@@ -491,52 +967,57 @@ export function ConcreteHouse3D() {
         </group>
       )}
 
-      {/* 4. CUBIERTA SUPERIOR & HASTIALES (Monolítica a Dos Aguas o Losa Plana) */}
+      {/* 4. CUBIERTA SUPERIOR & HASTIALES (Paso 3: Dos Aguas H.A., Losa Plana H.A., o Techumbre Liviana Madera) */}
       {showRoof && renderMode !== 'rebar_only' && (
-        <group position={[0, wallHeightCm * levels, 0]}>
-          {slabType === 'dos_aguas_hormigon' || roofType === 'dos_aguas_hormigon' ? (
+        <group position={[0, wallHeightCm * levels + (levels === 2 ? (mezzanineSystemType === 'losa_hormigon_armado' ? 12 : 22.5) : 0), 0]}>
+          {(dimensions.roofType === 'dos_aguas_hormigon' || roofStructureType === 'dos_aguas_hormigon') && dimensions.roofType !== 'losa_plana' ? (
             <group>
-              {/* Hastial Frontal Triangular */}
-              <mesh
-                position={[0, 0, lengthCm / 2 - wallThicknessCm]}
-                geometry={gableGeometry}
-                material={ceilingConcreteMat}
-                castShadow
-              />
+              {/* 1. Hastial Frontal Triangular (Sur) */}
+              {renderGable([0, 0, lengthCm / 2 - effectiveGableThickness], 'front')}
 
-              {/* Hastial Posterior Triangular */}
-              <mesh
-                position={[0, 0, -lengthCm / 2]}
-                geometry={gableGeometry}
-                material={ceilingConcreteMat}
-                castShadow
-              />
+              {/* 2. Hastial Posterior Triangular (Norte) */}
+              {renderGable([0, 0, -lengthCm / 2], 'back')}
+
+              {/* 3 y 4. Hastiales Interiores hacia el Patio Central (Casa TT) */}
+              {effectivePatio && (() => {
+                const safePatioOffset = Math.min(Math.max(200, centralPatioOffsetCm), lengthCm - 350);
+                const safePatioLen = Math.min(Math.max(150, centralPatioLengthCm), lengthCm - safePatioOffset - 100);
+                const patioEnd = safePatioOffset + safePatioLen;
+
+                return (
+                  <group>
+                    {/* Hastial Pabellón 1 hacia Patio (Sur del Pabellón 1) */}
+                    {renderGable([0, 0, -lengthCm / 2 + safePatioOffset - effectiveGableThickness], 'patio-pav1')}
+
+                    {/* Hastial Pabellón 2 hacia Patio (Norte del Pabellón 2) */}
+                    {renderGable([0, 0, -lengthCm / 2 + patioEnd], 'patio-pav2')}
+                  </group>
+                );
+              })()}
 
               {/* Si hay patio central, dividimos el techo en 2 pabellones con corte al centro */}
-              {hasCentralPatio ? (
+              {effectivePatio ? (
                 <group>
-                  {/* Pabellón 1 (Social & Acceso): Z desde -length/2 hasta -length/2 + centralPatioOffset */}
+                  {/* Pabellón 1 */}
                   {(() => {
-                    const pav1Len = centralPatioOffsetCm;
+                    const safePatioOffset = Math.min(Math.max(200, centralPatioOffsetCm), lengthCm - 350);
+                    const pav1Len = safePatioOffset;
                     const pav1CenterZ = -lengthCm / 2 + pav1Len / 2;
                     const halfW = widthCm / 2 + overhangCm;
                     const halfSlopeX = (halfW / 2);
 
                     return (
                       <group position={[0, 0, pav1CenterZ]}>
-                        {/* Faldón Izquierdo */}
                         <mesh
-                          position={[-halfSlopeX, roofRidgeHeightCm / 2, 0]}
+                          position={[-halfSlopeX, safeRidgeH / 2, 0]}
                           rotation={[0, 0, roofAngle]}
                           material={ceilingConcreteMat}
                           castShadow
                         >
                           <boxGeometry args={[roofSlopeLength, 15, pav1Len]} />
                         </mesh>
-
-                        {/* Faldón Derecho */}
                         <mesh
-                          position={[halfSlopeX, roofRidgeHeightCm / 2, 0]}
+                          position={[halfSlopeX, safeRidgeH / 2, 0]}
                           rotation={[0, 0, -roofAngle]}
                           material={ceilingConcreteMat}
                           castShadow
@@ -547,39 +1028,37 @@ export function ConcreteHouse3D() {
                     );
                   })()}
 
-                  {/* Pabellón 2 (Privado / Dormitorios): Z desde -length/2 + patioEnd hasta +length/2 */}
+                  {/* Pabellón 2 */}
                   {(() => {
-                    const patioEnd = centralPatioOffsetCm + centralPatioLengthCm;
-                    const pav2Len = lengthCm - patioEnd;
+                    const safePatioOffset = Math.min(Math.max(200, centralPatioOffsetCm), lengthCm - 350);
+                    const safePatioLen = Math.min(Math.max(150, centralPatioLengthCm), lengthCm - safePatioOffset - 100);
+                    const patioEnd = safePatioOffset + safePatioLen;
+                    const pav2Len = Math.max(80, lengthCm - patioEnd);
                     const pav2CenterZ = -lengthCm / 2 + patioEnd + pav2Len / 2;
                     const halfW = widthCm / 2 + overhangCm;
                     const halfSlopeX = (halfW / 2);
 
                     return (
                       <group position={[0, 0, pav2CenterZ]}>
-                        {/* Faldón Izquierdo con Lucarna */}
                         <mesh
-                          position={[-halfSlopeX, roofRidgeHeightCm / 2, 0]}
+                          position={[-halfSlopeX, safeRidgeH / 2, 0]}
                           rotation={[0, 0, roofAngle]}
                           material={ceilingConcreteMat}
                           castShadow
                         >
                           <boxGeometry args={[roofSlopeLength, 15, pav2Len]} />
                         </mesh>
-
-                        {/* Faldón Derecho */}
                         <mesh
-                          position={[halfSlopeX, roofRidgeHeightCm / 2, 0]}
+                          position={[halfSlopeX, safeRidgeH / 2, 0]}
                           rotation={[0, 0, -roofAngle]}
                           material={ceilingConcreteMat}
                           castShadow
                         >
                           <boxGeometry args={[roofSlopeLength, 15, pav2Len]} />
                         </mesh>
-
-                        {/* Lucarna / Claraboya cenital de hormigón en cubierta */}
+                        {/* Lucarna cenital */}
                         <mesh
-                          position={[-halfSlopeX * 0.7, roofRidgeHeightCm * 0.75 + 10, pav2Len * 0.3]}
+                          position={[-halfSlopeX * 0.7, safeRidgeH * 0.75 + 10, pav2Len * 0.3]}
                           material={steelStructureMat}
                         >
                           <boxGeometry args={[90, 20, 110]} />
@@ -591,19 +1070,16 @@ export function ConcreteHouse3D() {
               ) : (
                 /* Cubierta continua sin patio */
                 <group>
-                  {/* Faldón Izquierdo */}
                   <mesh
-                    position={[-(widthCm / 2 + overhangCm) / 2, roofRidgeHeightCm / 2, 0]}
+                    position={[-(widthCm / 2 + overhangCm) / 2, safeRidgeH / 2, 0]}
                     rotation={[0, 0, roofAngle]}
                     material={ceilingConcreteMat}
                     castShadow
                   >
                     <boxGeometry args={[roofSlopeLength, 15, lengthCm + overhangCm * 2]} />
                   </mesh>
-
-                  {/* Faldón Derecho */}
                   <mesh
-                    position={[(widthCm / 2 + overhangCm) / 2, roofRidgeHeightCm / 2, 0]}
+                    position={[(widthCm / 2 + overhangCm) / 2, safeRidgeH / 2, 0]}
                     rotation={[0, 0, -roofAngle]}
                     material={ceilingConcreteMat}
                     castShadow
@@ -613,23 +1089,115 @@ export function ConcreteHouse3D() {
                 </group>
               )}
             </group>
-          ) : slabType.startsWith('losa_hormigon') ? (
-            <mesh position={[0, 6, 0]} material={ceilingConcreteMat} castShadow>
-              <boxGeometry args={[widthCm + overhangCm * 2, 12, lengthCm + overhangCm * 2]} />
-            </mesh>
-          ) : (
+          ) : roofStructureType === 'losa_plana_hormigon' ? (
             <group>
-              {/* Cadena de coronación perimetral */}
+              {/* Losa Plana de Hormigón Armado e=12cm */}
+              <mesh position={[0, 6, 0]} material={ceilingConcreteMat} castShadow receiveShadow>
+                <boxGeometry args={[widthCm + overhangCm * 2, 12, lengthCm + overhangCm * 2]} />
+              </mesh>
+              {/* Parapeto / Antepecho perimetral de H.A. h=25cm */}
+              <mesh position={[0, 24.5, (lengthCm + overhangCm * 2) / 2 - 5]} material={concreteMat}>
+                <boxGeometry args={[widthCm + overhangCm * 2, 25, 10]} />
+              </mesh>
+              <mesh position={[0, 24.5, -(lengthCm + overhangCm * 2) / 2 + 5]} material={concreteMat}>
+                <boxGeometry args={[widthCm + overhangCm * 2, 25, 10]} />
+              </mesh>
+              <mesh position={[-(widthCm + overhangCm * 2) / 2 + 5, 24.5, 0]} material={concreteMat}>
+                <boxGeometry args={[10, 25, lengthCm + overhangCm * 2 - 20]} />
+              </mesh>
+              <mesh position={[(widthCm + overhangCm * 2) / 2 - 5, 24.5, 0]} material={concreteMat}>
+                <boxGeometry args={[10, 25, lengthCm + overhangCm * 2 - 20]} />
+              </mesh>
+            </group>
+          ) : (
+            /* Techumbre Liviana de Madera (Cerchas de pino + costaneras + cubierta zinc/teja) */
+            <group>
+              {/* Hastiales de Cierre Estructural (Frontal, Posterior y Patio) */}
+              {renderGable([0, 0, lengthCm / 2 - effectiveGableThickness], 'timber-front')}
+              {renderGable([0, 0, -lengthCm / 2], 'timber-back')}
+              {effectivePatio && (() => {
+                const safePatioOffset = Math.min(Math.max(200, centralPatioOffsetCm), lengthCm - 350);
+                const safePatioLen = Math.min(Math.max(150, centralPatioLengthCm), lengthCm - safePatioOffset - 100);
+                const patioEnd = safePatioOffset + safePatioLen;
+
+                return (
+                  <group>
+                    {renderGable([0, 0, -lengthCm / 2 + safePatioOffset - effectiveGableThickness], 'timber-patio-pav1')}
+                    {renderGable([0, 0, -lengthCm / 2 + patioEnd], 'timber-patio-pav2')}
+                  </group>
+                );
+              })()}
+
+              {/* Cadena de coronación perimetral de Hormigón Armado */}
               <mesh position={[0, 10, lengthCm / 2 - wallThicknessCm / 2]} material={concreteMat}>
                 <boxGeometry args={[widthCm, 20, wallThicknessCm]} />
               </mesh>
               <mesh position={[0, 10, -lengthCm / 2 + wallThicknessCm / 2]} material={concreteMat}>
                 <boxGeometry args={[widthCm, 20, wallThicknessCm]} />
               </mesh>
-              {/* Techo Liviano */}
-              <mesh position={[0, 25, 0]} material={roofMat} castShadow>
-                <boxGeometry args={[widthCm + overhangCm * 2, 8, lengthCm + overhangCm * 2]} />
+              <mesh position={[-widthCm / 2 + wallThicknessCm / 2, 10, 0]} material={concreteMat}>
+                <boxGeometry args={[wallThicknessCm, 20, lengthCm - wallThicknessCm * 2]} />
               </mesh>
+              <mesh position={[widthCm / 2 - wallThicknessCm / 2, 10, 0]} material={concreteMat}>
+                <boxGeometry args={[wallThicknessCm, 20, lengthCm - wallThicknessCm * 2]} />
+              </mesh>
+
+              {/* Cerchas / Tijerales de Madera Estructural cada 90cm */}
+              {Array.from({ length: Math.floor(lengthCm / 90) + 1 }).map((_, idx) => {
+                const zPos = -lengthCm / 2 + idx * 90;
+                return (
+                  <group key={`truss-${idx}`} position={[0, 20, zPos]}>
+                    {/* Tirante inferior de madera */}
+                    <mesh position={[0, 2.5, 0]} material={timberStructureMat}>
+                      <boxGeometry args={[widthCm, 5, 5]} />
+                    </mesh>
+                    {/* Par izquierdo de cercha */}
+                    <mesh
+                      position={[-(widthCm / 2) / 2, roofRidgeHeightCm / 2, 0]}
+                      rotation={[0, 0, roofAngle]}
+                      material={timberStructureMat}
+                    >
+                      <boxGeometry args={[roofSlopeLength, 10, 5]} />
+                    </mesh>
+                    {/* Par derecho de cercha */}
+                    <mesh
+                      position={[(widthCm / 2) / 2, roofRidgeHeightCm / 2, 0]}
+                      rotation={[0, 0, -roofAngle]}
+                      material={timberStructureMat}
+                    >
+                      <boxGeometry args={[roofSlopeLength, 10, 5]} />
+                    </mesh>
+                    {/* Pendolón central */}
+                    <mesh position={[0, roofRidgeHeightCm / 2, 0]} material={timberStructureMat}>
+                      <boxGeometry args={[5, roofRidgeHeightCm, 5]} />
+                    </mesh>
+                  </group>
+                );
+              })}
+
+              {/* Cubierta Liviana Superior Inclinada (Teja Asfáltica / Zinc Ondulado) */}
+              <group position={[0, 20, 0]}>
+                <mesh
+                  position={[-(widthCm / 2 + overhangCm) / 2, roofRidgeHeightCm / 2 + 5, 0]}
+                  rotation={[0, 0, roofAngle]}
+                  material={roofMat}
+                  castShadow
+                >
+                  <boxGeometry args={[roofSlopeLength, 4, lengthCm + overhangCm * 2]} />
+                </mesh>
+                <mesh
+                  position={[(widthCm / 2 + overhangCm) / 2, roofRidgeHeightCm / 2 + 5, 0]}
+                  rotation={[0, 0, -roofAngle]}
+                  material={roofMat}
+                  castShadow
+                >
+                  <boxGeometry args={[roofSlopeLength, 4, lengthCm + overhangCm * 2]} />
+                </mesh>
+                {/* Caballete / Cumbrera de zinc */}
+                <mesh position={[0, roofRidgeHeightCm + 8, 0]} material={steelStructureMat}>
+                  <boxGeometry args={[20, 3, lengthCm + overhangCm * 2 + 4]} />
+                </mesh>
+              </group>
             </group>
           )}
         </group>

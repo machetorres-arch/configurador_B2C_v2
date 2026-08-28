@@ -6,14 +6,21 @@ import { ConcreteDimensionAnnotations3D } from './ConcreteDimensionAnnotations3D
 import { useConcreteHouseStore } from '../../store/concreteHouseStore';
 
 export function ConcreteScene() {
-  const { renderMode } = useConcreteHouseStore();
+  const { renderMode, isDraggingOpening } = useConcreteHouseStore();
 
   return (
     <div className="w-full h-full relative bg-[#090d16] overflow-hidden select-none">
-      <Canvas shadows gl={{ antialias: true, alpha: false, toneMappingExposure: 1.1 }}>
+      <Canvas
+        shadows
+        gl={{ antialias: true, alpha: false, toneMappingExposure: 1.1 }}
+        onPointerMissed={() => {
+          useConcreteHouseStore.getState().setSelectedOpeningId(null);
+        }}
+      >
         <PerspectiveCamera makeDefault position={[16, 11, 16]} fov={45} />
         <OrbitControls
           makeDefault
+          enabled={!isDraggingOpening}
           enableDamping
           dampingFactor={0.08}
           minDistance={3}

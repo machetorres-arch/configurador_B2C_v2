@@ -89,8 +89,9 @@ export function ClosetConfigurator({ onNavigate }: { onNavigate: () => void }) {
       <Blueprint />
       <nav className="flex items-center justify-between px-8 py-4 border-b border-white/10 bg-black/40 backdrop-blur-md z-20 relative print:hidden">
         <div className="flex items-center gap-3">
-          <img src="/logo.png" alt="Robfu Logo" className="h-8 w-auto object-contain" />
-          <button onClick={onNavigate} className="mr-4 p-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors border border-white/10"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg></button><span className="text-xl font-bold tracking-tighter uppercase">Mueble<span className="text-orange-500">Studio</span></span>
+          <button onClick={onNavigate} className="mr-2 p-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors border border-white/10" title="Volver al Inicio"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg></button>
+          <span className="font-bellota text-2xl font-bold lowercase text-orange-500 tracking-tight select-none">arquify</span>
+          <span className="text-xs text-slate-500 uppercase tracking-widest border-l border-white/10 pl-3 hidden sm:inline">Clóset Modular</span>
         </div>
         <div className="flex items-center gap-6">
           <button 

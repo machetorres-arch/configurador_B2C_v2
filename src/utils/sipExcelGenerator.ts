@@ -75,14 +75,18 @@ export function calculateSipHouseQuantities(
   const coreSpec = SIP_CORE_SPECS[coreType] || SIP_CORE_SPECS.eps_15kg;
 
   // 1. Superficie Útil de Piso (L1 x W1 + L2 x W2)
-  const totalFloorM2 = isLShape ? lengthM * widthM + wingLengthM * wingWidthM : lengthM * widthM;
+  const totalFloorM2 = isLShape 
+    ? lengthM * widthM + wingLengthM * wingWidthM 
+    : lengthM * widthM;
 
   // 2. Paneles SIP Losa Piso (1.22 x 2.44m = 2.977 m²)
   const floorSipCount = Math.ceil((totalFloorM2 / (1.22 * 2.44)) * 1.1);
 
   // 3. Muros Perimetrales SIP 114 mm (Rectangulares + Frontones Triangulares)
-  // Perímetro L-shape: 2*(L1 + W1 + W2)
-  const perimeterM = isLShape ? 2 * (lengthM + widthM + wingWidthM) : 2 * (lengthM + widthM);
+  // Perímetro L-shape:
+  const perimeterM = isLShape
+    ? 2 * (lengthM + widthM + wingWidthM)
+    : 2 * (lengthM + widthM);
   const rectangularWallAreaM2 = perimeterM * eaveHM;
   const isGableRoof = ridgeHM > eaveHM + 0.15;
   const gableRoofHeightM = Math.max(0.05, ridgeHM - eaveHM);
@@ -194,20 +198,61 @@ export function calculateSipHouseQuantities(
   const timber2x4NetLinM = wallPlatesLinM + wallStudsLinM + openingsReinforcementLinM + (wallIntSip90Count * 2.44 * 1.8);
   const timber2x4LinM = Math.ceil(timber2x4NetLinM * 1.08);
 
-  // C. Estructura de Techo (Pino 2x8" - 41x185 mm):
-  // Viga cumbrera maestra continua (doble viga 2x8") + Pares de vigas (rafters) cada 1.22m + Tapacanes y frontones
-  const roofRaftersPairsCount = Math.ceil(totalRoofLengthM / 1.22) + 1;
-  const ridgeBeamStrips = calculateStrips320(totalRoofLengthM, 2); // Doble viga cumbrera con empalmes sobre apoyos
-  const roofRaftersStrips = calculateStrips320(roofRafterLength, roofRaftersPairsCount * 2);
-  const roofFasciaStrips = calculateStrips320(totalRoofLengthM, 2) + calculateStrips320(roofRafterLength, 4);
-  const timber2x8Commercial32Count = ridgeBeamStrips + roofRaftersStrips + roofFasciaStrips;
+  // C. Estructura de Techo (Pino 2x8" - 41x185 mm / Viguetas y Pares según Tipo de Techumbre):
+  const roofStyle = dim.roofStyle || 'gable_valley';
+  let timber2x8Commercial32Count = 0;
+  let timber2x8LinM = 0;
+  let roofStructureDesc = '';
+
+  if (roofStyle === 'flat') {
+    // Cubierta Plana: Viguetas de madera entre paneles cada 1.22m + vigas de remate perimetral (rim beams) + viguetas de ala en L
+    const joistsCount = Math.ceil(totalRoofLengthM / 1.22) + 1;
+    const joistsSpanM = widthM + 2 * overhangM;
+    const wingJoistsCount = isLShape ? Math.ceil((wingLengthM + 2 * overhangM) / 1.22) + 1 : 0;
+    const wingJoistsSpanM = isLShape ? wingWidthM + overhangM : 0;
+    const rimBeamsLinM = 2 * (widthM + 2 * overhangM) + 2 * totalRoofLengthM + (isLShape ? 2 * (wingWidthM + overhangM) + (wingLengthM + 2 * overhangM) : 0);
+
+    const roofJoistsStrips = calculateStrips320(joistsSpanM, joistsCount) + calculateStrips320(wingJoistsSpanM, wingJoistsCount);
+    const roofRimStrips = calculateStrips320(rimBeamsLinM, 1);
+    timber2x8Commercial32Count = roofJoistsStrips + roofRimStrips;
+    timber2x8LinM = Math.ceil((joistsCount * joistsSpanM + wingJoistsCount * wingJoistsSpanM + rimBeamsLinM) * 1.08);
+    roofStructureDesc = `Viguetas de apoyo entre paneles SIP cada 1.22m y vigas de remate perimetral 41x185mm (${timber2x8LinM} m lineales totales | ${timber2x8Commercial32Count} Tiras de 3.20 m)`;
+  } else if (roofStyle === 'single_shed') {
+    // Techo a 1 Agua: Solera de coronación alta + pares de apoyo cada 1.22m + tapacanes perimetrales y ala en L
+    const singleTotalSpanX = isLShape ? widthM + wingWidthM : widthM;
+    const singleSlopeAngle = Math.atan2(gableRoofHeightM, singleTotalSpanX);
+    const singleRafterLength = (widthM + (isLShape ? overhangM : 2 * overhangM)) / Math.cos(singleSlopeAngle);
+    const raftersCount = Math.ceil(totalRoofLengthM / 1.22) + 1;
+    const wingRafterLength = isLShape ? (wingWidthM + overhangM) / Math.cos(singleSlopeAngle) : 0;
+    const wingRaftersCount = isLShape ? Math.ceil((wingLengthM + 2 * overhangM) / 1.22) + 1 : 0;
+
+    const highWallBeamStrips = calculateStrips320(totalRoofLengthM, 2); // Doble solera alta
+    const roofRaftersStrips = calculateStrips320(singleRafterLength, raftersCount) + calculateStrips320(wingRafterLength, wingRaftersCount);
+    const fasciaStrips = calculateStrips320(totalRoofLengthM, 2) + calculateStrips320(singleRafterLength, 2) +
+      (isLShape ? calculateStrips320(wingLengthM + 2 * overhangM, 2) + calculateStrips320(wingRafterLength, 2) : 0);
+
+    timber2x8Commercial32Count = highWallBeamStrips + roofRaftersStrips + fasciaStrips;
+    const singleTotalLinM = totalRoofLengthM * 2 + raftersCount * singleRafterLength + wingRaftersCount * wingRafterLength + 2 * totalRoofLengthM + 2 * singleRafterLength;
+    timber2x8LinM = Math.ceil(singleTotalLinM * 1.08);
+    roofStructureDesc = `Solera alta de coronación, pares inclinados cada 1.22m y tapacanes 41x185mm (${timber2x8LinM} m lineales totales | ${timber2x8Commercial32Count} Tiras de 3.20 m)`;
+  } else {
+    // Techo a 2 Aguas (Gable / Valley): Viga cumbrera maestra + pares cada 1.22m a dos vertientes + tapacanes
+    const roofRaftersPairsCount = Math.ceil(totalRoofLengthM / 1.22) + 1;
+    const ridgeBeamStrips = calculateStrips320(totalRoofLengthM, 2) + (isLShape ? calculateStrips320(wingWidthM + overhangM, 2) : 0);
+    const wingRaftersCount = isLShape ? Math.ceil((wingWidthM + overhangM) / 1.22) + 1 : 0;
+    const roofRaftersStrips = calculateStrips320(roofRafterLength, roofRaftersPairsCount * 2) + calculateStrips320(wingRoofRafterLength, wingRaftersCount * 2);
+    const roofFasciaStrips = calculateStrips320(totalRoofLengthM, 2) + calculateStrips320(roofRafterLength, 4) +
+      (isLShape ? calculateStrips320(wingWidthM + overhangM, 2) + calculateStrips320(wingRoofRafterLength, 4) : 0);
+
+    timber2x8Commercial32Count = ridgeBeamStrips + roofRaftersStrips + roofFasciaStrips;
+    const ridgeBeamLinM = totalRoofLengthM + (isLShape ? wingWidthM + overhangM : 0);
+    const roofRaftersLinM = roofRaftersPairsCount * 2 * roofRafterLength + wingRaftersCount * 2 * wingRoofRafterLength;
+    const roofFasciaLinM = 2 * totalRoofLengthM + 4 * roofRafterLength + (isLShape ? 2 * (wingWidthM + overhangM) + 4 * wingRoofRafterLength : 0);
+    const timber2x8NetLinM = ridgeBeamLinM * 2 + roofRaftersLinM + roofFasciaLinM;
+    timber2x8LinM = Math.ceil(timber2x8NetLinM * 1.08);
+    roofStructureDesc = `Viga cumbrera maestra, pares de apoyo cada 1.22m y tapacanes 41x185mm (${timber2x8LinM} m lineales totales | ${timber2x8Commercial32Count} Tiras de 3.20 m)`;
+  }
   const timber2x8Commercial40Count = timber2x8Commercial32Count; // Alias para retrocompatibilidad
-  
-  const ridgeBeamLinM = totalRoofLengthM;
-  const roofRaftersLinM = roofRaftersPairsCount * 2 * roofRafterLength;
-  const roofFasciaLinM = 2 * totalRoofLengthM + 4 * roofRafterLength;
-  const timber2x8NetLinM = ridgeBeamLinM * 2 + roofRaftersLinM + roofFasciaLinM;
-  const timber2x8LinM = Math.ceil(timber2x8NetLinM * 1.08);
 
   // D. Listonado para Fachada Ventilada (Rain Screen 1x4" / 2x4") y Techo Ventilado ("Cold Roof")
   const rainScreenFurringLinM = Math.ceil((perimeterM * 3.5 + totalRoofLengthM * 4) * 1.1);
@@ -356,8 +401,8 @@ export function calculateSipHouseQuantities(
     {
       especialidad: 'Maderas y Estructuración',
       codigo: 'MAD-PINO-2X8-3.2',
-      item: 'Pino Seco Cepillado 2x8" x 3.20m (Vigas Techo & Cumbrera)',
-      descripcion: `Viga cumbrera maestra, pares de apoyo cada 1.22m y tapacanes 41x185mm con empalmes sobre apoyo (${timber2x8LinM} m lineales totales | ${timber2x8Commercial32Count} Tiras de 3.20 m)`,
+      item: 'Pino Seco Cepillado 2x8" x 3.20m (Estructura Techo & Viguetas)',
+      descripcion: roofStructureDesc,
       unidad: 'Tiras de 3.20 m',
       cantidad: timber2x8Commercial32Count,
       precioUnitarioClp: 14720,

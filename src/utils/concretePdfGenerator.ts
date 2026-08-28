@@ -1,5 +1,6 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { renderArquifyPdfLogo } from './pdfLogo';
 import {
   ConcreteHouseDimensions,
   ConcreteOpening,
@@ -11,6 +12,9 @@ import {
   ConcreteFoundationType,
   SlabType,
   RebarSteelQuality,
+  ConcreteWallSystemType,
+  ConcreteMezzanineSystemType,
+  ConcreteRoofStructureType,
 } from '../store/concreteHouseStore';
 import { calculateConcreteHouseBOM, ConcreteSummaryMetrics } from './concreteManufacturing';
 
@@ -25,7 +29,10 @@ export function exportConcreteHouseToPdf(
   rebarQuality: RebarSteelQuality,
   meshDiameterMm: number,
   openings: ConcreteOpening[],
-  interiorWalls: ConcreteInteriorWall[] = []
+  interiorWalls: ConcreteInteriorWall[] = [],
+  wallSystemType: ConcreteWallSystemType = 'hormigon_armado_total',
+  mezzanineSystemType: ConcreteMezzanineSystemType = 'losa_hormigon_armado',
+  roofStructureType: ConcreteRoofStructureType = 'dos_aguas_hormigon'
 ) {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const metrics: ConcreteSummaryMetrics = calculateConcreteHouseBOM(
@@ -39,7 +46,10 @@ export function exportConcreteHouseToPdf(
     rebarQuality,
     meshDiameterMm,
     openings,
-    interiorWalls
+    interiorWalls,
+    wallSystemType,
+    mezzanineSystemType,
+    roofStructureType
   );
 
   // Colores corporativos de ingeniería
@@ -49,45 +59,53 @@ export function exportConcreteHouseToPdf(
 
   // 1. Encabezado
   doc.setFillColor(15, 23, 42);
-  doc.rect(0, 0, 210, 28, 'F');
+  doc.rect(0, 0, 210, 30, 'F');
+
+  renderArquifyPdfLogo(doc, 14, 13, 22);
 
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(16);
-  doc.text('MEMORIA TÉCNICA DE HORMIGÓN ARMADO', 14, 12);
+  doc.setFontSize(10);
+  doc.text('MEMORIA TÉCNICA Y CUBICACIÓN ESTRUCTURAL', 14, 20);
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(220, 220, 220);
-  doc.text('VIVIENDAS DE 1 Y 2 NIVELES • ICH / NCh430 / NCh170 / D.S. N°60', 14, 18);
-  doc.text(`Fecha: ${new Date().toLocaleDateString('es-CL')}`, 160, 18);
+  doc.setFontSize(7.5);
+  doc.setTextColor(200, 200, 200);
+  doc.text('VIVIENDA 1 Y 2 NIVELES • NCh430 / NCh2123 / NCh1928 / NCh1198 / NCh170 / D.S. N°60', 14, 26);
+  doc.text(`Fecha: ${new Date().toLocaleDateString('es-CL')}`, 160, 20);
 
   // 2. Ficha del Proyecto
   doc.setTextColor(15, 23, 42);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
-  doc.text('1. PARÁMETROS DE DISEÑO Y FABRICACIÓN', 14, 36);
+  doc.text('1. CONFIGURACIÓN SISTEMA ESTRUCTURAL (3 PASOS) Y PARÁMETROS', 14, 35);
 
   doc.setDrawColor(226, 232, 240);
   doc.setFillColor(248, 250, 252);
-  doc.roundedRect(14, 40, 182, 34, 2, 2, 'FD');
+  doc.roundedRect(14, 38, 182, 40, 2, 2, 'FD');
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
+  doc.setFontSize(8.5);
   doc.setTextColor(51, 65, 85);
 
   const col1X = 18;
   const col2X = 105;
 
-  doc.text(`• Superficie Construida: ${metrics.totalBuiltAreaM2.toFixed(1)} m² (${dims.levels} ${dims.levels === 1 ? 'Piso' : 'Pisos'})`, col1X, 46);
-  doc.text(`• Dimensiones en Planta: ${(dims.width / 100).toFixed(2)} x ${(dims.length / 100).toFixed(2)} m (H: ${(dims.wallHeight / 100).toFixed(2)} m)`, col1X, 52);
-  doc.text(`• Espesor de Muros: ${wallThicknessMm} mm (${meshType === 'malla_central' ? 'Malla Central' : 'Doble Malla'})`, col1X, 58);
-  doc.text(`• Grado de Hormigón: ${concreteGrade.replace('_', ' / ')} (Cono ${concreteSlump === 'fluido_18cm' ? '≥18 cm Fluido' : '10-12 cm'})`, col1X, 64);
+  const wallSystemText = wallSystemType === 'hormigon_armado_total' ? 'H.A. Total (NCh430)' : 'Albañilería Confinada (NCh2123)';
+  const mezText = dims.levels > 1 ? (mezzanineSystemType === 'losa_hormigon_armado' ? 'Losa H.A. 12cm' : 'Entrepiso Liviano Madera C24') : 'No aplica (1 nivel)';
+  const roofText = roofStructureType === 'dos_aguas_hormigon' ? 'Losa Dos Aguas H.A.' : roofStructureType === 'losa_plana_hormigon' ? 'Losa Plana H.A.' : 'Techumbre Liviana Madera';
 
-  doc.text(`• Tipo de Fundación: ${foundationType === 'losa_fundacion_suples' ? 'Losa con Suples (ICH Lám. 17/29)' : 'Cimiento Corrido (ICH Lám. 20/21)'}`, col2X, 46);
-  doc.text(`• Solución Cubierta/Losa: ${slabType.replace(/_/g, ' ')}`, col2X, 52);
-  doc.text(`• Calidad de Acero: ${rebarQuality.replace('_', '-')} + Malla AT56-50H`, col2X, 58);
-  doc.text(`• Refuerzo Sísmico Vanos: Diagonales 45° + Dinteles extendidos`, col2X, 64);
+  doc.text(`• Paso 1 (Muros): ${wallSystemText}`, col1X, 44);
+  doc.text(`• Paso 2 (Entrepiso): ${mezText}`, col1X, 50);
+  doc.text(`• Paso 3 (Techumbre): ${roofText}`, col1X, 56);
+  doc.text(`• Sup. Construida: ${metrics.totalBuiltAreaM2.toFixed(1)} m² (${dims.levels} Niveles)`, col1X, 62);
+  doc.text(`• Planta: ${(dims.width / 100).toFixed(2)} x ${(dims.length / 100).toFixed(2)} m (H: ${(dims.wallHeight / 100).toFixed(2)} m)`, col1X, 68);
+
+  doc.text(`• Espesor Muros: ${wallThicknessMm} mm (${meshType === 'malla_central' ? 'Malla Central' : 'Doble Malla'})`, col2X, 44);
+  doc.text(`• Hormigón: ${concreteGrade.replace('_', ' / ')} (Cono ${concreteSlump === 'fluido_18cm' ? '≥18cm' : '10-12cm'})`, col2X, 50);
+  doc.text(`• Fundación: ${foundationType === 'losa_fundacion_suples' ? 'Losa Suples (ICH 17)' : 'Cimiento Corrido (ICH 20)'}`, col2X, 56);
+  doc.text(`• Acero Refuerzo: ${rebarQuality.replace('_', '-')} + Malla AT56-50H`, col2X, 62);
+  doc.text(`• Vanos: ${metrics.totalOpeningsCount} un (${metrics.openingsAreaM2.toFixed(1)} m² descontados)`, col2X, 68);
 
   // 3. Resumen Global de Partidas (Indicadores clave)
   doc.setFont('helvetica', 'bold');

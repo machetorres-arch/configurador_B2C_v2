@@ -1,97 +1,133 @@
-import React, { useMemo } from 'react';
-import { Text } from '@react-three/drei';
+import React, { useMemo, useRef, useState } from 'react';
+import { Html } from '@react-three/drei';
+import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { useSipHouseStore, getInteriorZones } from '../../store/sipHouseStore';
+import { useSipHouseStore } from '../../store/sipHouseStore';
 
-interface SimpleCotaProps {
+interface VolumeCotaProps {
   start: [number, number, number];
   end: [number, number, number];
   label: string;
+  dimensionValue: string;
   color?: string;
-  fontSize?: number;
-  tickSize?: number;
-  offsetY?: number;
+  extensionStart?: [number, number, number];
+  extensionEnd?: [number, number, number];
+  badgeBg?: string;
 }
 
 /**
- * Cota 3D paramétrica sólida y ultraligera construida con geometrías Three nativas
- * 100% libre de fallos de shader de líneas o excepciones de quaternion en Billboard
+ * Cota 3D arquitectónica robusta y de alta visibilidad para volúmenes espaciales.
+ * Utiliza geometrías Three nativas para líneas/terminales y badges Html para garantizar
+ * legibilidad perfecta sin problemas de fuentes WebGL ni errores de hooks.
  */
-function SimpleCota3D({
+function VolumeCota3D({
   start,
   end,
   label,
+  dimensionValue,
   color = '#38bdf8',
-  fontSize = 0.22,
-  tickSize = 0.12,
-  offsetY = 0,
-}: SimpleCotaProps) {
-  if (!start || !end || !label) return null;
+  extensionStart,
+  extensionEnd,
+  badgeBg = 'rgba(15, 23, 42, 0.92)',
+}: VolumeCotaProps) {
+  if (!start || !end) return null;
 
-  const { p1, p2, mid, length, orientation, startTickA, startTickB, endTickA, endTickB } = useMemo(() => {
-    const pt1 = new THREE.Vector3(...start);
-    const pt2 = new THREE.Vector3(...end);
-    const m = new THREE.Vector3().addVectors(pt1, pt2).multiplyScalar(0.5);
-    m.y += offsetY;
+  const pt1 = useMemo(() => new THREE.Vector3(...start), [start]);
+  const pt2 = useMemo(() => new THREE.Vector3(...end), [end]);
+  const mid = useMemo(() => new THREE.Vector3().addVectors(pt1, pt2).multiplyScalar(0.5), [pt1, pt2]);
 
+  const length = useMemo(() => pt1.distanceTo(pt2), [pt1, pt2]);
+
+  const orientation = useMemo(() => {
     const dir = new THREE.Vector3().subVectors(pt2, pt1);
-    const len = dir.length();
-    if (len <= 0.05 || isNaN(len)) {
-      return { p1: pt1, p2: pt2, mid: m, length: 0, orientation: new THREE.Quaternion(), startTickA: pt1, startTickB: pt1, endTickA: pt2, endTickB: pt2 };
-    }
-
+    if (dir.lengthSq() < 0.0001) return new THREE.Quaternion();
     const up = new THREE.Vector3(0, 1, 0);
-    const dirNorm = dir.clone().normalize();
     const orient = new THREE.Quaternion();
-    orient.setFromUnitVectors(up, dirNorm);
+    orient.setFromUnitVectors(up, dir.normalize());
+    return orient;
+  }, [pt1, pt2]);
 
-    let normal = new THREE.Vector3().crossVectors(dir, up).normalize();
-    if (normal.lengthSq() < 0.001 || isNaN(normal.x)) {
-      normal = new THREE.Vector3(1, 0, 0);
-    }
+  // Líneas de proyección
+  const ext1 = useMemo(() => {
+    if (!extensionStart) return null;
+    const pExt = new THREE.Vector3(...extensionStart);
+    const pMid = new THREE.Vector3().addVectors(pExt, pt1).multiplyScalar(0.5);
+    const dist = pExt.distanceTo(pt1);
+    const dir = new THREE.Vector3().subVectors(pt1, pExt);
+    const orient = new THREE.Quaternion();
+    if (dist > 0.01) orient.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
+    return { mid: pMid, length: dist, orient };
+  }, [extensionStart, pt1]);
 
-    const sA = new THREE.Vector3().addVectors(pt1, normal.clone().multiplyScalar(-tickSize));
-    const sB = new THREE.Vector3().addVectors(pt1, normal.clone().multiplyScalar(tickSize));
-    const eA = new THREE.Vector3().addVectors(pt2, normal.clone().multiplyScalar(-tickSize));
-    const eB = new THREE.Vector3().addVectors(pt2, normal.clone().multiplyScalar(tickSize));
-
-    return { p1: pt1, p2: pt2, mid: m, length: len, orientation: orient, startTickA: sA, startTickB: sB, endTickA: eA, endTickB: eB };
-  }, [start, end, offsetY, tickSize]);
+  const ext2 = useMemo(() => {
+    if (!extensionEnd) return null;
+    const pExt = new THREE.Vector3(...extensionEnd);
+    const pMid = new THREE.Vector3().addVectors(pExt, pt2).multiplyScalar(0.5);
+    const dist = pExt.distanceTo(pt2);
+    const dir = new THREE.Vector3().subVectors(pt2, pExt);
+    const orient = new THREE.Quaternion();
+    if (dist > 0.01) orient.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
+    return { mid: pMid, length: dist, orient };
+  }, [extensionEnd, pt2]);
 
   if (length <= 0.05) return null;
 
   return (
-    <group renderOrder={999}>
+    <group renderOrder={9999}>
       {/* Barra de cota principal */}
       <mesh position={mid} quaternion={orientation}>
-        <cylinderGeometry args={[0.007, 0.007, length, 6]} />
-        <meshBasicMaterial color={color} depthTest={false} transparent opacity={0.9} />
+        <cylinderGeometry args={[0.018, 0.018, length, 12]} />
+        <meshBasicMaterial color={color} depthTest={false} transparent opacity={0.95} />
       </mesh>
 
-      {/* Ticks en extremos */}
-      <mesh position={p1}>
-        <sphereGeometry args={[0.018, 6, 6]} />
+      {/* Terminales en extremos (Esferas) */}
+      <mesh position={pt1}>
+        <sphereGeometry args={[0.045, 10, 10]} />
         <meshBasicMaterial color={color} depthTest={false} />
       </mesh>
-      <mesh position={p2}>
-        <sphereGeometry args={[0.018, 6, 6]} />
+      <mesh position={pt2}>
+        <sphereGeometry args={[0.045, 10, 10]} />
         <meshBasicMaterial color={color} depthTest={false} />
       </mesh>
 
-      {/* Texto de medida */}
-      <group position={[mid.x, mid.y + fontSize * 0.75, mid.z]}>
-        <Text
-          fontSize={fontSize}
-          color={color}
-          anchorX="center"
-          anchorY="bottom"
-          outlineWidth={fontSize * 0.08}
-          outlineColor="#000000"
-          renderOrder={1000}
+      {/* Línea auxiliar de proyección 1 */}
+      {ext1 && ext1.length > 0.02 && (
+        <mesh position={ext1.mid} quaternion={ext1.orient}>
+          <cylinderGeometry args={[0.008, 0.008, ext1.length, 6]} />
+          <meshBasicMaterial color={color} depthTest={false} transparent opacity={0.5} />
+        </mesh>
+      )}
+
+      {/* Línea auxiliar de proyección 2 */}
+      {ext2 && ext2.length > 0.02 && (
+        <mesh position={ext2.mid} quaternion={ext2.orient}>
+          <cylinderGeometry args={[0.008, 0.008, ext2.length, 6]} />
+          <meshBasicMaterial color={color} depthTest={false} transparent opacity={0.5} />
+        </mesh>
+      )}
+
+      {/* Badge HTML con información de medida nítida y reactiva */}
+      <Html
+        position={[mid.x, mid.y, mid.z]}
+        center
+        distanceFactor={18}
+        className="pointer-events-none select-none"
+      >
+        <div
+          style={{ backgroundColor: badgeBg }}
+          className="flex flex-col items-center justify-center px-3 py-1.5 rounded-xl border border-sky-400/40 shadow-2xl backdrop-blur-md whitespace-nowrap transform -translate-y-1/2 transition-transform"
         >
-          {label}
-        </Text>
-      </group>
+          <span className="text-[11px] font-bold text-slate-300 tracking-wider uppercase leading-none mb-1">
+            {label}
+          </span>
+          <span
+            style={{ color }}
+            className="text-base font-black tracking-tight leading-none drop-shadow-md"
+          >
+            {dimensionValue}
+          </span>
+        </div>
+      </Html>
     </group>
   );
 }
@@ -100,18 +136,38 @@ export function SipDimensionAnnotations3D() {
   const {
     dimensions: dim,
     floorThicknessMm,
-    openings,
-    interiorWalls,
-    layoutPreset,
-    presetParams,
     showDimensions,
-    dimensionDetailLevel,
     explodedProgress,
   } = useSipHouseStore();
 
-  if (!showDimensions || dimensionDetailLevel < 1) {
+  const signXRef = useRef<1 | -1>(1);
+  const signZRef = useRef<1 | -1>(1);
+  const [signs, setSigns] = useState<{ signX: 1 | -1; signZ: 1 | -1 }>({ signX: 1, signZ: 1 });
+
+  useFrame(({ camera }) => {
+    const curX = signXRef.current;
+    const curZ = signZRef.current;
+    let newX = curX;
+    let newZ = curZ;
+
+    if (curX === 1 && camera.position.x < -0.1) newX = -1;
+    else if (curX === -1 && camera.position.x > 0.1) newX = 1;
+
+    if (curZ === 1 && camera.position.z < -0.1) newZ = -1;
+    else if (curZ === -1 && camera.position.z > 0.1) newZ = 1;
+
+    if (newX !== curX || newZ !== curZ) {
+      signXRef.current = newX;
+      signZRef.current = newZ;
+      setSigns({ signX: newX, signZ: newZ });
+    }
+  });
+
+  if (!showDimensions) {
     return null;
   }
+
+  const { signX, signZ } = signs;
 
   // Dimensiones en metros
   const lengthM = dim.length / 100;
@@ -120,252 +176,119 @@ export function SipDimensionAnnotations3D() {
   const ridgeHM = dim.ridgeHeight / 100;
   const floorThickM = (floorThicknessMm || 162) / 1000;
 
+  const isLShape = dim.shape === 'l_shape';
+  const wingWidthM = isLShape ? (dim.wingWidth || 360) / 100 : 0;
+  const wingLengthM = isLShape ? (dim.wingLength || 420) / 100 : 0;
+
   // Offset vertical si está explosionado
   const expY = explodedProgress * 0.4;
+  const offsetD = 0.65;
 
-  // Zonas interiores para nivel 2+
-  const zones = useMemo(() => {
-    return getInteriorZones(layoutPreset, dim, presetParams);
-  }, [layoutPreset, dim, presetParams]);
-
-  // Cálculos de modulación de paneles en muros para nivel 4
-  const frontPanelsCount = Math.max(1, Math.ceil(widthM / 1.22));
-  const frontPanelStep = widthM / frontPanelsCount;
-
-  const sidePanelsCount = Math.max(1, Math.ceil(lengthM / 1.22));
-  const sidePanelStep = lengthM / sidePanelsCount;
+  const cotaZ = signZ * (lengthM / 2 + offsetD);
+  const wallZ = signZ * (lengthM / 2);
+  const cotaX = signX * (widthM / 2 + offsetD);
+  const wallX = signX * (widthM / 2);
 
   return (
     <group position={[0, expY, 0]}>
       {/* ========================================================================= */}
-      {/* NIVEL 1: MEDIDAS GENERALES EXTERIORES (Ancho, Largo y Alturas)           */}
+      {/* VOLUMEN PRINCIPAL: ANCHO, LARGO Y ALTURAS (ALERO Y CUMBRERA)              */}
       {/* ========================================================================= */}
-      {dimensionDetailLevel >= 1 && (
-        <group>
-          {/* Cota Ancho Frontal (Eje X) */}
-          <SimpleCota3D
-            start={[-widthM / 2, 0.05, lengthM / 2 + 0.35]}
-            end={[widthM / 2, 0.05, lengthM / 2 + 0.35]}
-            label={`${dim.width} cm`}
-            color="#38bdf8"
-            fontSize={0.28}
-          />
 
-          {/* Cota Largo Lateral (Eje Z) */}
-          <SimpleCota3D
-            start={[-widthM / 2 - 0.35, 0.05, -lengthM / 2]}
-            end={[-widthM / 2 - 0.35, 0.05, lengthM / 2]}
-            label={`${dim.length} cm`}
-            color="#38bdf8"
-            fontSize={0.28}
-          />
+      {/* 1. ANCHO NAVE PRINCIPAL (Eje X) */}
+      <VolumeCota3D
+        start={[-widthM / 2, 0.05, cotaZ]}
+        end={[widthM / 2, 0.05, cotaZ]}
+        extensionStart={[-widthM / 2, 0.05, wallZ]}
+        extensionEnd={[widthM / 2, 0.05, wallZ]}
+        label={isLShape ? 'Ancho Nave Principal' : 'Ancho Total'}
+        dimensionValue={`${(dim.width / 100).toFixed(2)} m · ${dim.width} cm`}
+        color="#38bdf8"
+      />
 
-          {/* Cota Altura Alero Muro (Eje Y) */}
-          <SimpleCota3D
-            start={[widthM / 2 + 0.35, floorThickM, lengthM / 2]}
-            end={[widthM / 2 + 0.35, floorThickM + eaveHM, lengthM / 2]}
-            label={`${dim.eaveHeight} cm`}
-            color="#0ea5e9"
-            fontSize={0.25}
-          />
+      {/* 2. LARGO NAVE PRINCIPAL (Eje Z) */}
+      <VolumeCota3D
+        start={[cotaX, 0.05, -lengthM / 2]}
+        end={[cotaX, 0.05, lengthM / 2]}
+        extensionStart={[wallX, 0.05, -lengthM / 2]}
+        extensionEnd={[wallX, 0.05, lengthM / 2]}
+        label={isLShape ? 'Largo Nave Principal' : 'Largo Total'}
+        dimensionValue={`${(dim.length / 100).toFixed(2)} m · ${dim.length} cm`}
+        color="#38bdf8"
+      />
 
-          {/* Cota Altura Cumbrera Total (Eje Y) */}
-          <SimpleCota3D
-            start={[0, 0, lengthM / 2 + 0.35]}
-            end={[0, floorThickM + ridgeHM, lengthM / 2 + 0.35]}
-            label={`${dim.ridgeHeight} cm`}
-            color="#f59e0b"
-            fontSize={0.26}
-          />
-        </group>
+      {/* 3. ALTO ALERO MURO (Eje Y) */}
+      <VolumeCota3D
+        start={[cotaX, floorThickM, cotaZ]}
+        end={[cotaX, floorThickM + eaveHM, cotaZ]}
+        extensionStart={[wallX, floorThickM, wallZ]}
+        extensionEnd={[wallX, floorThickM + eaveHM, wallZ]}
+        label="Alto Alero Muro"
+        dimensionValue={`${(dim.eaveHeight / 100).toFixed(2)} m · ${dim.eaveHeight} cm`}
+        color="#0ea5e9"
+      />
+
+      {/* 4. ALTO CUMBRERA TOTAL (Eje Y) */}
+      {dim.roofStyle !== 'flat' ? (
+        <VolumeCota3D
+          start={[0, 0, cotaZ]}
+          end={[0, floorThickM + ridgeHM, cotaZ]}
+          extensionStart={[0, 0, wallZ]}
+          extensionEnd={[0, floorThickM + ridgeHM, wallZ]}
+          label="Alto Cumbrera Total"
+          dimensionValue={`${(dim.ridgeHeight / 100).toFixed(2)} m · ${dim.ridgeHeight} cm`}
+          color="#f59e0b"
+          badgeBg="rgba(30, 27, 75, 0.95)"
+        />
+      ) : (
+        <VolumeCota3D
+          start={[0, 0, cotaZ]}
+          end={[0, floorThickM + eaveHM, cotaZ]}
+          extensionStart={[0, 0, wallZ]}
+          extensionEnd={[0, floorThickM + eaveHM, wallZ]}
+          label="Alto Total Techo Plano"
+          dimensionValue={`${(dim.eaveHeight / 100).toFixed(2)} m · ${dim.eaveHeight} cm`}
+          color="#0ea5e9"
+        />
       )}
 
       {/* ========================================================================= */}
-      {/* NIVEL 2: MEDIDAS DE RECINTOS INTERIORES Y TABIQUES                       */}
+      {/* VOLUMEN ALA LATERAL (SI TIPOLOGÍA EN L)                                  */}
       {/* ========================================================================= */}
-      {dimensionDetailLevel >= 2 && (
+      {isLShape && (
         <group>
-          {/* Dimensiones y nombres limpios de cada recinto */}
-          {zones &&
-            zones.map((zone) => {
-              if (!zone || !zone.bounds) return null;
-              const zx = (zone.bounds.minX + zone.bounds.maxX) / 200;
-              const zz = (zone.bounds.minZ + zone.bounds.maxZ) / 200;
-              const zwCm = Math.round(zone.bounds.maxX - zone.bounds.minX);
-              const zhCm = Math.round(zone.bounds.maxZ - zone.bounds.minZ);
+          {/* 5. ANCHO ALA LATERAL (Eje X) */}
+          <VolumeCota3D
+            start={[widthM / 2, 0.05, cotaZ]}
+            end={[widthM / 2 + wingWidthM, 0.05, cotaZ]}
+            extensionStart={[widthM / 2, 0.05, wallZ]}
+            extensionEnd={[widthM / 2 + wingWidthM, 0.05, wallZ]}
+            label="Ancho Ala Lateral"
+            dimensionValue={`${wingWidthM.toFixed(2)} m · ${dim.wingWidth || 360} cm`}
+            color="#c084fc"
+          />
 
-              if (zwCm < 40 || zhCm < 40 || isNaN(zx) || isNaN(zz)) return null;
+          {/* 6. LARGO ALA LATERAL (Eje Z) */}
+          <VolumeCota3D
+            start={[widthM / 2 + wingWidthM + offsetD, 0.05, lengthM / 2 - wingLengthM]}
+            end={[widthM / 2 + wingWidthM + offsetD, 0.05, lengthM / 2]}
+            extensionStart={[widthM / 2 + wingWidthM, 0.05, lengthM / 2 - wingLengthM]}
+            extensionEnd={[widthM / 2 + wingWidthM, 0.05, lengthM / 2]}
+            label="Largo Ala Lateral"
+            dimensionValue={`${wingLengthM.toFixed(2)} m · ${dim.wingLength || 420} cm`}
+            color="#c084fc"
+          />
 
-              return (
-                <group key={`dim-zone-${zone.id}`} position={[zx, floorThickM + 0.04, zz]} rotation={[-Math.PI / 2, 0, 0]}>
-                  <Text
-                    fontSize={0.24}
-                    color="#ffffff"
-                    anchorX="center"
-                    anchorY="bottom"
-                    outlineWidth={0.02}
-                    outlineColor="#000000"
-                    renderOrder={1000}
-                  >
-                    {zone.name}
-                  </Text>
-                  <Text
-                    position={[0, -0.06, 0]}
-                    fontSize={0.19}
-                    color={zone.color || '#38bdf8'}
-                    anchorX="center"
-                    anchorY="top"
-                    outlineWidth={0.015}
-                    outlineColor="#000000"
-                    renderOrder={1000}
-                  >
-                    {`${zwCm} × ${zhCm} cm`}
-                  </Text>
-                </group>
-              );
-            })}
-
-          {/* Medidas de tabiques interiores */}
-          {interiorWalls &&
-            interiorWalls.map((wall) => {
-              if (!wall.visible) return null;
-              const wx1 = wall.startX / 100;
-              const wz1 = wall.startZ / 100;
-              const wx2 = wall.endX / 100;
-              const wz2 = wall.endZ / 100;
-              const wallLenCm = Math.round(Math.hypot(wx2 - wx1, wz2 - wz1) * 100);
-
-              return (
-                <SimpleCota3D
-                  key={`dim-iwall-${wall.id}`}
-                  start={[wx1, floorThickM + 0.15, wz1]}
-                  end={[wx2, floorThickM + 0.15, wz2]}
-                  label={`${wallLenCm} cm`}
-                  color="#c084fc"
-                  fontSize={0.18}
-                  tickSize={0.08}
-                />
-              );
-            })}
-        </group>
-      )}
-
-      {/* ========================================================================= */}
-      {/* NIVEL 3: MEDIDAS DE VANOS (Puertas y Ventanas)                           */}
-      {/* ========================================================================= */}
-      {dimensionDetailLevel >= 3 && (
-        <group>
-          {openings.map((op) => {
-            const opWM = op.width / 100;
-            const opHM = op.height / 100;
-            const sillHM = op.sillHeight / 100;
-            const offsetM = op.offsetAlongWall / 100;
-
-            let pStart: [number, number, number] = [0, 0, 0];
-            let pEnd: [number, number, number] = [0, 0, 0];
-            const color = op.type === 'door' ? '#fbbf24' : '#38bdf8';
-
-            if (op.assignedWall === 'front') {
-              const startX = -widthM / 2 + offsetM;
-              const endX = startX + opWM;
-              pStart = [startX, floorThickM + sillHM + opHM + 0.08, lengthM / 2 + 0.06];
-              pEnd = [endX, floorThickM + sillHM + opHM + 0.08, lengthM / 2 + 0.06];
-            } else if (op.assignedWall === 'back') {
-              const startX = -widthM / 2 + offsetM;
-              const endX = startX + opWM;
-              pStart = [startX, floorThickM + sillHM + opHM + 0.08, -lengthM / 2 - 0.06];
-              pEnd = [endX, floorThickM + sillHM + opHM + 0.08, -lengthM / 2 - 0.06];
-            } else if (op.assignedWall === 'left') {
-              const startZ = -lengthM / 2 + offsetM;
-              const endZ = startZ + opWM;
-              pStart = [-widthM / 2 - 0.06, floorThickM + sillHM + opHM + 0.08, startZ];
-              pEnd = [-widthM / 2 - 0.06, floorThickM + sillHM + opHM + 0.08, endZ];
-            } else if (op.assignedWall === 'right') {
-              const startZ = -lengthM / 2 + offsetM;
-              const endZ = startZ + opWM;
-              pStart = [widthM / 2 + 0.06, floorThickM + sillHM + opHM + 0.08, startZ];
-              pEnd = [widthM / 2 + 0.06, floorThickM + sillHM + opHM + 0.08, endZ];
-            }
-
-            return (
-              <SimpleCota3D
-                key={`dim-op-${op.id}`}
-                start={pStart}
-                end={pEnd}
-                label={`${op.width}×${op.height} cm`}
-                color={color}
-                fontSize={0.17}
-                tickSize={0.06}
-              />
-            );
-          })}
-        </group>
-      )}
-
-      {/* ========================================================================= */}
-      {/* NIVEL 4: MEDIDAS DE MODULACIÓN DE PANELES SIP                            */}
-      {/* ========================================================================= */}
-      {dimensionDetailLevel >= 4 && (
-        <group>
-          {/* Paneles Frontales */}
-          {Array.from({ length: frontPanelsCount }).map((_, idx) => {
-            const pX1 = -widthM / 2 + idx * frontPanelStep;
-            const pX2 = -widthM / 2 + (idx + 1) * frontPanelStep;
-            const pStepW = Math.round((pX2 - pX1) * 100);
-
-            return (
-              <SimpleCota3D
-                key={`dim-front-panel-${idx}`}
-                start={[pX1, 0.02, lengthM / 2 + 0.18]}
-                end={[pX2, 0.02, lengthM / 2 + 0.18]}
-                label={`${pStepW} cm`}
-                color="#34d399"
-                fontSize={0.15}
-                tickSize={0.05}
-              />
-            );
-          })}
-
-          {/* Paneles Laterales */}
-          {Array.from({ length: sidePanelsCount }).map((_, idx) => {
-            const pZ1 = -lengthM / 2 + idx * sidePanelStep;
-            const pZ2 = -lengthM / 2 + (idx + 1) * sidePanelStep;
-            const pStepL = Math.round((pZ2 - pZ1) * 100);
-
-            return (
-              <SimpleCota3D
-                key={`dim-side-panel-${idx}`}
-                start={[-widthM / 2 - 0.18, 0.02, pZ1]}
-                end={[-widthM / 2 - 0.18, 0.02, pZ2]}
-                label={`${pStepL} cm`}
-                color="#34d399"
-                fontSize={0.15}
-                tickSize={0.05}
-              />
-            );
-          })}
-
-          {/* Despiece en Altura si el muro supera el largo estándar máximo de 244 cm */}
-          {eaveHM > 2.44 && (
-            <group>
-              <SimpleCota3D
-                start={[widthM / 2 + 0.18, floorThickM, lengthM / 2 + 0.02]}
-                end={[widthM / 2 + 0.18, floorThickM + 2.44, lengthM / 2 + 0.02]}
-                label="244 cm (Panel Base)"
-                color="#10b981"
-                fontSize={0.15}
-                tickSize={0.05}
-              />
-              <SimpleCota3D
-                start={[widthM / 2 + 0.18, floorThickM + 2.44, lengthM / 2 + 0.02]}
-                end={[widthM / 2 + 0.18, floorThickM + eaveHM, lengthM / 2 + 0.02]}
-                label={`${Math.round((eaveHM - 2.44) * 100)} cm (Remate)`}
-                color="#10b981"
-                fontSize={0.15}
-                tickSize={0.05}
-              />
-            </group>
-          )}
+          {/* 7. ANCHO TOTAL COMBINADO (Eje X) */}
+          <VolumeCota3D
+            start={[-widthM / 2, 0.05, cotaZ + (signZ >= 0 ? 0.75 : -0.75)]}
+            end={[widthM / 2 + wingWidthM, 0.05, cotaZ + (signZ >= 0 ? 0.75 : -0.75)]}
+            extensionStart={[-widthM / 2, 0.05, cotaZ]}
+            extensionEnd={[widthM / 2 + wingWidthM, 0.05, cotaZ]}
+            label="Ancho Total Envolvente L"
+            dimensionValue={`${((dim.width + (dim.wingWidth || 360)) / 100).toFixed(2)} m · ${dim.width + (dim.wingWidth || 360)} cm`}
+            color="#34d399"
+          />
         </group>
       )}
     </group>

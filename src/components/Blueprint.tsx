@@ -157,7 +157,7 @@ export function Blueprint() {
           <div className="font-bold">HOJA {pageNum} DE {totalPages}</div>
         </div>
         <div className="flex items-center gap-1">
-          <span className="font-bold text-lg"><span className="text-slate-800">Mueble</span><span className="text-orange-600">Studio</span></span>
+          <span className="font-bellota font-bold text-2xl lowercase text-orange-600 tracking-tight select-none">arquify</span>
         </div>
       </div>
     </div>

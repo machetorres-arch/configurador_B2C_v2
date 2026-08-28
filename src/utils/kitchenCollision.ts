@@ -114,7 +114,57 @@ export function getWallBox2D(wall: {
   };
 }
 
-// Separating Axis Theorem (SAT) collision test in 2D XZ
+export function getPolygonSignedArea(poly: [number, number][]): number {
+  if (!poly || poly.length < 3) return 0;
+  let area = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const p1 = poly[i];
+    const p2 = poly[(i + 1) % poly.length];
+    area += (p1[0] * p2[1] - p2[0] * p1[1]);
+  }
+  return area / 2;
+}
+
+export function getWallInwardNormal(
+  x1: number,
+  z1: number,
+  x2: number,
+  z2: number,
+  roomPoly: [number, number][] = []
+): [number, number] {
+  const dx = x2 - x1;
+  const dz = z2 - z1;
+  const wallLen = Math.hypot(dx, dz);
+  if (wallLen < 0.0001) return [0, 1];
+
+  const uX = dx / wallLen;
+  const uZ = dz / wallLen;
+
+  let nX = -uZ;
+  let nZ = uX;
+
+  if (roomPoly && roomPoly.length >= 3) {
+    const signedArea = getPolygonSignedArea(roomPoly);
+    if (signedArea < 0) {
+      nX = uZ;
+      nZ = -uX;
+    }
+
+    // Comprobación local con punto de prueba perpendicular al punto medio del muro
+    const midX = (x1 + x2) / 2;
+    const midZ = (z1 + z2) / 2;
+    const testDist = 2.0;
+    const isCandidateInside = isPointInPolygon(midX + nX * testDist, midZ + nZ * testDist, roomPoly);
+    const isOppositeInside = isPointInPolygon(midX - nX * testDist, midZ - nZ * testDist, roomPoly);
+
+    if (!isCandidateInside && isOppositeInside) {
+      nX = -nX;
+      nZ = -nZ;
+    }
+  }
+
+  return [nX, nZ];
+}
 export function checkOBBCollision(
   boxA: Box2D,
   boxB: Box2D,
@@ -266,38 +316,38 @@ export function constrainInsideRoomAndWalls(
       rotation: rot,
     });
 
-    // 1. Constrain against each wall line
-    for (const w of walls) {
-      const x1 = w.start[0];
-      const z1 = w.start[1];
-      const x2 = w.end[0];
-      const z2 = w.end[1];
-      const wallLen = Math.hypot(x2 - x1, z2 - z1);
-      if (wallLen < 1) continue;
+    // 1. Constrain against actual wall segments (finite segments)
+    if (walls && walls.length > 0) {
+      for (const w of walls) {
+        const x1 = w.start[0];
+        const z1 = w.start[1];
+        const x2 = w.end[0];
+        const z2 = w.end[1];
+        const dx = x2 - x1;
+        const dz = z2 - z1;
+        const wallLen = Math.hypot(dx, dz);
+        if (wallLen < 1) continue;
 
-      const uX = (x2 - x1) / wallLen;
-      const uZ = (z2 - z1) / wallLen;
-      const thickness = w.thickness || 20;
+        const uX = dx / wallLen;
+        const uZ = dz / wallLen;
+        const thickness = w.thickness || 20;
 
-      // Inward normal pointing into the room
-      let nX = -uZ;
-      let nZ = uX;
-      const midX = (x1 + x2) / 2;
-      const midZ = (z1 + z2) / 2;
-      if (roomPoly.length >= 3 && !isPointInPolygon(midX + nX * 5, midZ + nZ * 5, roomPoly)) {
-        nX = -nX;
-        nZ = -nZ;
-      }
+        // Inward normal pointing into the room
+        const [nX, nZ] = getWallInwardNormal(x1, z1, x2, z2, roomPoly);
 
-      // Check all 4 corners of the cabinet box
-      for (const [px, pz] of box.corners) {
-        // Distance along inward normal from wall centerline: (p - start) · normal
-        const distFromWallLine = (px - x1) * nX + (pz - z1) * nZ;
-        const requiredDist = thickness / 2 + 0.1; // Must stay at or in front of inner face
-        if (distFromWallLine < requiredDist) {
-          const push = requiredDist - distFromWallLine;
-          cx += push * nX;
-          cz += push * nZ;
+        // Check if any corner penetrates THIS finite wall segment
+        for (const [px, pz] of box.corners) {
+          const s = (px - x1) * uX + (pz - z1) * uZ;
+          // Only apply if the point is within this finite wall segment span
+          if (s >= -2 && s <= wallLen + 2) {
+            const distFromWallLine = (px - x1) * nX + (pz - z1) * nZ;
+            const requiredDist = thickness / 2 + 0.1;
+            if (distFromWallLine < requiredDist) {
+              const push = requiredDist - distFromWallLine;
+              cx += push * nX;
+              cz += push * nZ;
+            }
+          }
         }
       }
     }
@@ -312,15 +362,13 @@ export function constrainInsideRoomAndWalls(
         rotation: rot,
       });
 
-      let polyCx = 0, polyCz = 0;
-      roomPoly.forEach(([vx, vz]) => { polyCx += vx; polyCz += vz; });
-      polyCx /= roomPoly.length;
-      polyCz /= roomPoly.length;
-
       for (const [cpx, cpz] of currentBox.corners) {
         if (!isPointInPolygon(cpx, cpz, roomPoly)) {
           let closestDist = Infinity;
-          let closestPt: [number, number] = [polyCx, polyCz];
+          let closestPt: [number, number] = [cpx, cpz];
+          let edgeStart: [number, number] = [0, 0];
+          let edgeEnd: [number, number] = [0, 0];
+
           for (let i = 0; i < roomPoly.length; i++) {
             const p1 = roomPoly[i];
             const p2 = roomPoly[(i + 1) % roomPoly.length];
@@ -328,14 +376,24 @@ export function constrainInsideRoomAndWalls(
             if (cp.dist < closestDist) {
               closestDist = cp.dist;
               closestPt = cp.point;
+              edgeStart = p1;
+              edgeEnd = p2;
             }
           }
-          const toCentroidX = polyCx - closestPt[0];
-          const toCentroidZ = polyCz - closestPt[1];
-          const lenC = Math.hypot(toCentroidX, toCentroidZ) || 1;
-          const pushInward = closestDist + 2;
-          cx += (toCentroidX / lenC) * pushInward;
-          cz += (toCentroidZ / lenC) * pushInward;
+
+          const [edgeNormalX, edgeNormalZ] = getWallInwardNormal(
+            edgeStart[0],
+            edgeStart[1],
+            edgeEnd[0],
+            edgeEnd[1],
+            roomPoly
+          );
+
+          // Push the point directly back across the edge into the room interior
+          const pushX = (closestPt[0] - cpx) + edgeNormalX * 0.5;
+          const pushZ = (closestPt[1] - cpz) + edgeNormalZ * 0.5;
+          cx += pushX;
+          cz += pushZ;
           break;
         }
       }
@@ -393,14 +451,7 @@ export function repositionCabinetsOnRoomChange(
         const uX = dx / wallLen;
         const uZ = dz / wallLen;
 
-        let nX = -uZ;
-        let nZ = uX;
-        const midX = (x1 + x2) / 2;
-        const midZ = (z1 + z2) / 2;
-        if (roomPoly.length >= 3 && !isPointInPolygon(midX + nX * 5, midZ + nZ * 5, roomPoly)) {
-          nX = -nX;
-          nZ = -nZ;
-        }
+        const [nX, nZ] = getWallInwardNormal(x1, z1, x2, z2, roomPoly);
 
         const s = (cab.position[0] - x1) * uX + (cab.position[2] - z1) * uZ;
         const sClamped = Math.max(cab.width / 2 + 0.5, Math.min(wallLen - cab.width / 2 - 0.5, s));
@@ -427,10 +478,19 @@ export function repositionCabinetsOnRoomChange(
         const newZ = bestWall.start[1] + bestS * uZ + flushDist * bestNormal[1];
 
         let newY = cab.position[1];
-        if (cab.type === 'base' || cab.type === 'tall' || cab.type === 'island') {
+        if (
+          cab.type === 'base' ||
+          cab.type === 'tall' ||
+          cab.type === 'island' ||
+          cab.variant === 'deco_stove' ||
+          cab.variant === 'deco_fridge' ||
+          cab.variant === 'deco_plant'
+        ) {
           newY = cab.height / 2;
         } else if (cab.type === 'wall') {
           newY = cab.position[1] || 140 + cab.height / 2;
+        } else if (cab.variant === 'deco_hood') {
+          newY = cab.position[1] || 145 + cab.height / 2;
         }
 
         const constrainedPos = constrainInsideRoomAndWalls(
@@ -677,9 +737,15 @@ export function resolvePlacement({
   }
 
   // 2. Detección y atracción magnética directa al muro para muebles
-  // Los muebles base, despensa (tall) y murales (wall) se anclan SIEMPRE a muro por su cara posterior
-  const isWallBound = cabType === 'base' || cabType === 'tall' || cabType === 'wall' || variant === 'deco_hood';
-  const wallSnapThreshold = isWallBound ? Infinity : 35;
+  // Los muebles base, despensa (tall), murales (wall) y electrodomésticos se anclan SIEMPRE a muro por su cara posterior
+  const isWallBound =
+    cabType === 'base' ||
+    cabType === 'tall' ||
+    cabType === 'wall' ||
+    variant === 'deco_hood' ||
+    variant === 'deco_stove' ||
+    variant === 'deco_fridge';
+  const wallSnapThreshold = isWallBound ? Infinity : 50;
   let bestWallSnap: { pos: [number, number, number]; rot: number; dist: number; isColliding: boolean } | null = null;
 
   // Construir lista efectiva de muros si vienen desde vertices de habitación
@@ -712,29 +778,8 @@ export function resolvePlacement({
       const uX = (x2 - x1) / wallLen;
       const uZ = (z2 - z1) / wallLen;
 
-      // Vector normal
-      let nX = -uZ;
-      let nZ = uX;
-
-      // Orientar normal rigurosamente hacia el interior de la habitación
-      const midX = (x1 + x2) / 2;
-      const midZ = (z1 + z2) / 2;
-      const testInX = midX + nX * 5;
-      const testInZ = midZ + nZ * 5;
-
-      if (roomPoly.length >= 3) {
-        if (!isPointInPolygon(testInX, testInZ, roomPoly)) {
-          nX = -nX;
-          nZ = -nZ;
-        }
-      } else {
-        const toCenterX = roomCenterX - midX;
-        const toCenterZ = roomCenterZ - midZ;
-        if (nX * toCenterX + nZ * toCenterZ < 0) {
-          nX = -nX;
-          nZ = -nZ;
-        }
-      }
+      // Inward normal pointing into the room
+      const [nX, nZ] = getWallInwardNormal(x1, z1, x2, z2, roomPoly);
 
       // Proyectar ratón sobre el muro
       const s = (mouseX - x1) * uX + (mouseZ - z1) * uZ;
@@ -861,7 +906,7 @@ export function resolvePlacement({
       const distToSnap = Math.hypot(mouseX - snapCandidatePos[0], mouseZ - snapCandidatePos[2]);
 
       if (distToSnap < wallSnapThreshold) {
-        if (!bestWallSnap || (!isStillColliding && bestWallSnap.isColliding) || distToSnap < bestWallSnap.dist) {
+        if (!bestWallSnap || distToSnap < bestWallSnap.dist) {
           bestWallSnap = {
             pos: snapCandidatePos,
             rot: wallRot,

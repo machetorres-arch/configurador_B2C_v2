@@ -280,7 +280,6 @@ export const StoveFDVUnique90: React.FC<StoveProps> = ({
           position={[0, -ovenH / 2 + 4.5, 0.7]}
           fontSize={2.6}
           color="#94a3b8"
-          font="https://fonts.gstatic.com/s/inter/v12/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hjp-Ek-_EeA.woff"
           fontWeight="bold"
           anchorX="center"
           anchorY="middle"

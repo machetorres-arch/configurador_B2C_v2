@@ -21,8 +21,9 @@ export function Home({ onNavigate }: { onNavigate: (route: 'closet' | 'kitchen' 
     <div className="min-h-screen bg-[#0A0A0A] text-slate-200 font-sans p-8 flex flex-col items-center overflow-y-auto">
       <header className="w-full max-w-7xl flex flex-wrap justify-between items-center mb-16 gap-4">
         <div className="flex items-center gap-3">
-          <img src="/logo.png" alt="Robfu Logo" className="h-10 w-auto object-contain" />
-          <span className="text-2xl font-bold tracking-tighter uppercase">Mueble<span className="text-orange-500">Studio</span></span>
+          <span className="font-bellota text-4xl font-bold lowercase text-orange-500 tracking-tight select-none">
+            arquify
+          </span>
         </div>
         
         <div className="flex items-center gap-4">

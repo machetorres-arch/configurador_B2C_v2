@@ -2,6 +2,7 @@ import * as XLSX from 'xlsx-js-style';
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
 import { SpecialFurnitureState, SPECIAL_COLORS, ABET_TEXTURES } from '../store/specialFurnitureStore';
+import { renderArquifyPdfLogo } from './pdfLogo';
 
 export interface SpecialPart {
   id: string;
@@ -441,18 +442,15 @@ export function exportSpecialFurniturePDF(state: SpecialFurnitureState) {
 
   // Header
   doc.setFillColor(24, 24, 27);
-  doc.rect(0, 0, 210, 25, 'F');
+  doc.rect(0, 0, 210, 28, 'F');
   
-  doc.setTextColor(249, 115, 22);
-  doc.setFontSize(16);
-  doc.setFont('helvetica', 'bold');
-  doc.text('MUEBLESTUDIO - FICHA TÉCNICA DE FABRICACIÓN', 14, 12);
+  renderArquifyPdfLogo(doc, 14, 14, 22);
   
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
-  doc.text('Línea Muebles Especiales | Aparador Vitrina de Autor', 14, 18);
-  doc.text(`Fecha: ${new Date().toLocaleDateString('es-CL')}`, 160, 18);
+  doc.text('Línea Muebles Especiales | Aparador Vitrina de Autor', 14, 22);
+  doc.text(`Fecha: ${new Date().toLocaleDateString('es-CL')}`, 160, 22);
 
   // Technical Summary Card
   doc.setTextColor(30, 41, 59);

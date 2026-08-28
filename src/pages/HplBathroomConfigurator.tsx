@@ -128,6 +128,12 @@ export function HplBathroomConfigurator({ onNavigate }: { onNavigate: () => void
 
           <div className="h-6 w-px bg-slate-800" />
 
+          <span className="font-bellota text-2xl font-bold lowercase text-orange-500 tracking-tight select-none">
+            arquify
+          </span>
+
+          <div className="h-6 w-px bg-slate-800" />
+
           <div>
             <div className="flex items-center gap-2">
               <span className="font-bold text-white uppercase tracking-wider text-sm">

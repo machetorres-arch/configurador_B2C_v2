@@ -115,8 +115,8 @@ export function SpecialFurnitureConfigurator({ onNavigate }: { onNavigate: () =>
             <ArrowLeft size={18} />
           </button>
           <div className="flex items-center gap-2">
-            <span className="text-lg font-bold tracking-tighter uppercase">
-              Mueble<span className="text-orange-500">Studio</span>
+            <span className="font-bellota text-2xl font-bold lowercase text-orange-500 tracking-tight select-none">
+              arquify
             </span>
             <span className="px-2 py-0.5 bg-orange-500/20 text-orange-400 text-[10px] font-bold uppercase tracking-widest rounded border border-orange-500/30">
               Muebles Especiales

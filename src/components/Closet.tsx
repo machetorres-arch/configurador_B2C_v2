@@ -275,19 +275,11 @@ function ShelfHardware({ shelfYs, xLeft, xRight, zFront, zBack, bounds }: { shel
 }
 
 function AnimatedDrawer({ children, openZOffset, forceOpen, onClickAction }: { children: React.ReactNode, openZOffset: number, forceOpen?: boolean, onClickAction?: () => void }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [hovered, setHovered] = useState(false);
   const groupRef = useRef<THREE.Group>(null);
-  
-  useCursor(hovered);
 
-  React.useEffect(() => {
-    if (forceOpen !== undefined) setIsOpen(forceOpen);
-  }, [forceOpen]);
-  
-  useFrame((state, delta) => {
+  useFrame((_, delta) => {
     if (groupRef.current) {
-      const targetZ = isOpen ? openZOffset : 0;
+      const targetZ = forceOpen ? openZOffset : 0;
       groupRef.current.position.z = THREE.MathUtils.lerp(groupRef.current.position.z, targetZ, delta * 3);
     }
   });
@@ -297,11 +289,8 @@ function AnimatedDrawer({ children, openZOffset, forceOpen, onClickAction }: { c
       ref={groupRef}
       onClick={(e) => { 
         e.stopPropagation(); 
-        setIsOpen(!isOpen); 
-        if(onClickAction) onClickAction(); 
+        if (onClickAction) onClickAction(); 
       }}
-      onPointerOver={(e) => { e.stopPropagation(); setHovered(true); }}
-      onPointerOut={(e) => { e.stopPropagation(); setHovered(false); }}
     >
       {children}
     </group>
@@ -330,19 +319,11 @@ function AnimatedDoor({
   forceOpen?: boolean,
   onClickAction?: () => void
 }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [hovered, setHovered] = useState(false);
   const groupRef = useRef<THREE.Group>(null);
-  
-  useCursor(hovered);
 
-  React.useEffect(() => {
-    if (forceOpen !== undefined) setIsOpen(forceOpen);
-  }, [forceOpen]);
-  
-  useFrame((state, delta) => {
+  useFrame((_, delta) => {
     if (groupRef.current) {
-      const targetRotation = isOpen ? (isRightHinge ? Math.PI / 2 : -Math.PI / 2) : 0;
+      const targetRotation = forceOpen ? (isRightHinge ? Math.PI / 2 : -Math.PI / 2) : 0;
       groupRef.current.rotation.y = THREE.MathUtils.lerp(groupRef.current.rotation.y, targetRotation, delta * 3);
     }
   });
@@ -359,19 +340,14 @@ function AnimatedDoor({
   }
   const hingeDir = isRightHinge ? -1 : 1;
 
-  const storeColor = useStore((state) => state.structureColor); // just to get access or pass it explicitly? Board handles it internally if we pass transparent flag directly. We'll let Board handle the global store value.
-
   return (
     <group 
       position={[position[0] + hingeXOffset, position[1], position[2]]}
       ref={groupRef}
       onClick={(e) => { 
         e.stopPropagation(); 
-        setIsOpen(!isOpen); 
-        if(onClickAction) onClickAction(); 
+        if (onClickAction) onClickAction(); 
       }}
-      onPointerOver={(e) => { e.stopPropagation(); setHovered(true); }}
-      onPointerOut={(e) => { e.stopPropagation(); setHovered(false); }}
     >
       <Board position={[-hingeXOffset, 0, 0]} args={[doorW, doorHeight, thickness]} color={color} textureUrl={textureUrl} materialType={materialType} isFrontPanel={true} grainDirection={grainDirection} hplBalancerOverride={hplBalancerOverride} />
       
@@ -412,8 +388,10 @@ export function Closet() {
   const baseOffset = showSocle ? 10 : showLegs ? 10 : 0;
 
   const getTextureProps = (c: string, mat: 'melamina' | 'hpl') => {
-    if (c.startsWith('#')) return { color: c };
-    return { color: '#ffffff', textureUrl: (c.startsWith('http') || c.startsWith('data:')) ? c : `/textures/${c}`, materialType: mat };
+    if (!c) return { color: '#ffffff', materialType: mat };
+    if (c.startsWith('#')) return { color: c, materialType: mat };
+    const url = (c.startsWith('/') || c.startsWith('http') || c.startsWith('data:') || c.startsWith('blob:')) ? c : `/textures/${c}`;
+    return { color: '#ffffff', textureUrl: url, materialType: mat };
   };
   
   const structureProps = getTextureProps(color, state.structureMaterial);
@@ -437,9 +415,12 @@ export function Closet() {
 
   const moduleElements = modules.map((mod, index) => {
     const modStructureProps = getTextureProps(mod.overrides?.structureColor || color, mod.overrides?.structureMaterial || state.structureMaterial);
-    const modShelfProps = getTextureProps(mod.overrides?.structureColor || state.shelfColor, mod.overrides?.structureMaterial || state.shelfMaterial);
+    const modShelfProps = getTextureProps(mod.overrides?.shelfColor || mod.overrides?.structureColor || state.shelfColor, mod.overrides?.shelfMaterial || mod.overrides?.structureMaterial || state.shelfMaterial);
     const modDoorProps = getTextureProps(mod.overrides?.doorColor || doorColor, mod.overrides?.doorMaterial || state.doorMaterial);
     const modDrawerFrontProps = getTextureProps(mod.overrides?.drawerFrontColor || state.drawerFrontColor, mod.overrides?.drawerFrontMaterial || state.drawerFrontMaterial);
+    const modDrawerInnerProps = getTextureProps(mod.overrides?.drawerInnerColor || state.drawerInnerColor, mod.overrides?.drawerInnerMaterial || state.drawerInnerMaterial);
+    const modBackProps = getTextureProps(mod.overrides?.backColor || backColor, mod.overrides?.backMaterial || state.structureMaterial);
+    const modSocleProps = getTextureProps(mod.overrides?.socleColor || socleColor, mod.overrides?.socleMaterial || (state.socleMaterial as 'melamina' | 'hpl'));
     const modGrainDirection = mod.overrides?.grainDirection || 'vertical';
     const modHplBalancer = mod.overrides?.hplBalancer !== undefined ? mod.overrides.hplBalancer : state.hplBalancer;
 
@@ -472,13 +453,13 @@ export function Closet() {
       parts.push(<Board key={`T-${mod.id}`} position={[innerCenterX, baseOffset + height - thickness / 2, 0]} args={[innerW, thickness, depth]} {...modStructureProps} />);
     }
     if (showBackWall) {
-      parts.push(<Board key={`Back-${mod.id}`} position={[innerCenterX, baseOffset + height / 2, -depth / 2 + thickness / 2]} args={[innerW, innerHeight, thickness]} {...backProps} />);
+      parts.push(<Board key={`Back-${mod.id}`} position={[innerCenterX, baseOffset + height / 2, -depth / 2 + thickness / 2]} args={[innerW, innerHeight, thickness]} {...modBackProps} />);
     }
     if (showSocle) {
       // Zócalo frontal (retranqueado 2cm o al ras de la puerta)
-      parts.push(<Board key={`socle-front-${mod.id}`} position={[innerCenterX, baseOffset / 2, depth / 2 - thickness / 2 - 2]} args={[innerW, baseOffset, thickness]} {...socleProps} />);
+      parts.push(<Board key={`socle-front-${mod.id}`} position={[innerCenterX, baseOffset / 2, depth / 2 - thickness / 2 - 2]} args={[innerW, baseOffset, thickness]} {...modSocleProps} />);
       // Zócalo trasero
-      parts.push(<Board key={`socle-back-${mod.id}`} position={[innerCenterX, baseOffset / 2, -depth / 2 + thickness / 2 + (showBackWall ? thickness : 0) + 2]} args={[innerW, baseOffset, thickness]} {...socleProps} />);
+      parts.push(<Board key={`socle-back-${mod.id}`} position={[innerCenterX, baseOffset / 2, -depth / 2 + thickness / 2 + (showBackWall ? thickness : 0) + 2]} args={[innerW, baseOffset, thickness]} {...modSocleProps} />);
     }
 
     // --- COTAS DE MÓDULO (Nivel >= 2) ---
@@ -746,13 +727,13 @@ export function Closet() {
 
         // --- Representación 3D del Cajón Interior (Caja) ---
         drawerElements.push(
-          <Board key={`drawer-L-${mod.id}-${d}`} position={[innerCenterX - boxOuterWidth/2 + thickness/2, yBoxCenter, boxZCenter]} args={[thickness, sideHeight, drawerBoxLength]} {...drawerInnerProps} />
+          <Board key={`drawer-L-${mod.id}-${d}`} position={[innerCenterX - boxOuterWidth/2 + thickness/2, yBoxCenter, boxZCenter]} args={[thickness, sideHeight, drawerBoxLength]} {...modDrawerInnerProps} />
         );
         drawerElements.push(
-          <Board key={`drawer-R-${mod.id}-${d}`} position={[innerCenterX + boxOuterWidth/2 - thickness/2, yBoxCenter, boxZCenter]} args={[thickness, sideHeight, drawerBoxLength]} {...drawerInnerProps} />
+          <Board key={`drawer-R-${mod.id}-${d}`} position={[innerCenterX + boxOuterWidth/2 - thickness/2, yBoxCenter, boxZCenter]} args={[thickness, sideHeight, drawerBoxLength]} {...modDrawerInnerProps} />
         );
         drawerElements.push(
-          <Board key={`drawer-B-${mod.id}-${d}`} position={[innerCenterX, yBoxCenter, boxZCenter - drawerBoxLength/2 + thickness/2]} args={[boxOuterWidth - thickness*2, sideHeight, thickness]} {...drawerInnerProps} />
+          <Board key={`drawer-B-${mod.id}-${d}`} position={[innerCenterX, yBoxCenter, boxZCenter - drawerBoxLength/2 + thickness/2]} args={[boxOuterWidth - thickness*2, sideHeight, thickness]} {...modDrawerInnerProps} />
         );
         drawerElements.push(
           <Board key={`drawer-Bot-${mod.id}-${d}`} position={[innerCenterX, yBoxBase + 0.3, boxZCenter]} args={[boxOuterWidth - thickness*2, 0.3, drawerBoxLength - thickness*2]} color="#dddddd" />
@@ -790,21 +771,14 @@ export function Closet() {
         );
 
         parts.push(
-          <AnimatedDrawer key={`anim-drawer-${mod.id}-${d}`} openZOffset={drawerBoxLength - 3} forceOpen={mod.overrides?.openElements?.[`drawer-${d}`] ?? mod.overrides?.isOpen} onClickAction={() => {
+          <AnimatedDrawer 
+            key={`anim-drawer-${mod.id}-${d}`} 
+            openZOffset={drawerBoxLength - 3} 
+            forceOpen={mod.overrides?.openElements?.[`drawer-${d}`] ?? mod.overrides?.isOpen} 
+            onClickAction={() => {
               state.setActiveModule(mod.id);
-              const overrides = mod.overrides || {};
-              const openElements = { ...(overrides.openElements || {}) };
-              const current = openElements[`drawer-${d}`] ?? overrides.isOpen ?? false;
-              openElements[`drawer-${d}`] = !current;
-              
-              if (!current && mod.innerDrawers && mod.doors) {
-                const doorsCount = mod.width > 60 ? 2 : 1;
-                for (let di = 0; di < doorsCount; di++) {
-                   openElements[`door-${di}`] = true;
-                }
-              }
-              state.updateModuleOverrides(mod.id, { openElements });
-            }}>
+            }}
+          >
             {drawerElements}
           </AnimatedDrawer>
         );
@@ -861,17 +835,6 @@ export function Closet() {
             forceOpen={mod.overrides?.openElements?.[`door-${i}`] ?? mod.overrides?.isOpen}
             onClickAction={() => {
               state.setActiveModule(mod.id);
-              const overrides = mod.overrides || {};
-              const openElements = { ...(overrides.openElements || {}) };
-              const current = openElements[`door-${i}`] ?? overrides.isOpen ?? false;
-              openElements[`door-${i}`] = !current;
-              
-              if (current && mod.innerDrawers && mod.drawers > 0) {
-                for (let dj = 0; dj < mod.drawers; dj++) {
-                  openElements[`drawer-${dj}`] = false;
-                }
-              }
-              state.updateModuleOverrides(mod.id, { openElements });
             }}
           />
         );
@@ -935,6 +898,10 @@ export function Closet() {
         key={`mod-${mod.id}`}
         onClick={(e) => { e.stopPropagation(); state.setActiveModule(mod.id); }}
       >
+        <mesh position={[modCenterX, height / 2 + baseOffset, 0]}>
+          <boxGeometry args={[mod.width, height + baseOffset, depth]} />
+          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+        </mesh>
         {state.activeModuleId === mod.id && (
           <mesh position={[modCenterX, height / 2 + baseOffset, 0]}>
             <boxGeometry args={[mod.width + 1, height + 1, depth + 1]} />

@@ -22,6 +22,7 @@ export function ConcreteBlueprint() {
     hasCentralPatio,
     centralPatioOffsetCm,
     centralPatioLengthCm,
+    roomBlocks = [],
   } = useConcreteHouseStore();
 
   const { width: wCm, length: lCm } = dimensions;
@@ -230,8 +231,46 @@ export function ConcreteBlueprint() {
             </g>
           )}
 
-          {/* Ambientes / Distribución Casa TT */}
-          {hasCentralPatio ? (
+          {/* Ambientes / Distribución */}
+          {roomBlocks && roomBlocks.length > 0 ? (
+            <g>
+              {roomBlocks.map((rb) => {
+                const isOutdoor = rb.category === 'patio' || rb.category === 'terrace';
+                return (
+                  <g key={rb.id}>
+                    <rect
+                      x={originX + rb.x}
+                      y={originY + rb.z}
+                      width={rb.width}
+                      height={rb.length}
+                      fill={isOutdoor ? 'url(#gardenPattern)' : 'url(#slabDots)'}
+                      stroke="#475569"
+                      strokeWidth="1.5"
+                    />
+                    <text
+                      x={originX + rb.x + rb.width / 2}
+                      y={originY + rb.z + rb.length / 2 - 4}
+                      textAnchor="middle"
+                      fill={isOutdoor ? '#10b981' : '#f8fafc'}
+                      fontSize="10"
+                      fontWeight="bold"
+                    >
+                      {rb.name.toUpperCase()}
+                    </text>
+                    <text
+                      x={originX + rb.x + rb.width / 2}
+                      y={originY + rb.z + rb.length / 2 + 10}
+                      textAnchor="middle"
+                      fill="#94a3b8"
+                      fontSize="8.5"
+                    >
+                      {( (rb.width * rb.length) / 10000 ).toFixed(1)} m²
+                    </text>
+                  </g>
+                );
+              })}
+            </g>
+          ) : hasCentralPatio ? (
             <g>
               {/* Pabellón 1: Estar - Comedor - Cocina */}
               <text x={originX + wCm / 2} y={originY + 350} textAnchor="middle" fill="#f8fafc" fontSize="12" fontWeight="bold">
@@ -278,18 +317,25 @@ export function ConcreteBlueprint() {
           <rect x={originX + wCm - wallThickCm} y={originY} width={wallThickCm} height={lCm} fill="url(#concreteHatch)" stroke="#94a3b8" strokeWidth="2" />
 
           {/* Muros Interiores */}
-          {interiorWalls.map((iw) => (
-            <rect
-              key={iw.id}
-              x={originX + wallThickCm}
-              y={originY + iw.startZ - iw.thicknessMm / 20}
-              width={wCm - wallThickCm * 2}
-              height={iw.thicknessMm / 10}
-              fill="url(#concreteHatch)"
-              stroke="#94a3b8"
-              strokeWidth="1.5"
-            />
-          ))}
+          {interiorWalls.map((iw) => {
+            const wThick = (iw.thicknessMm || 150) / 10;
+            const minY = originY + wallThickCm;
+            const maxY = originY + lCm - wallThickCm - wThick;
+            const rawY = originY + iw.startZ - wThick / 2;
+            const yPos = Math.max(minY, Math.min(maxY, rawY));
+            return (
+              <rect
+                key={iw.id}
+                x={originX + wallThickCm}
+                y={yPos}
+                width={wCm - wallThickCm * 2}
+                height={wThick}
+                fill="url(#concreteHatch)"
+                stroke="#94a3b8"
+                strokeWidth="1.5"
+              />
+            );
+          })}
 
           {/* 5. Dibujo de Vanos */}
           {openings.map((op) => {

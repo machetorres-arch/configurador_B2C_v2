@@ -255,7 +255,6 @@ export const FridgeFDVSignatureSBS: React.FC<FridgeProps> = ({
           <Text
             fontSize={2.4}
             color="#cbd5e1"
-            font="https://fonts.gstatic.com/s/inter/v12/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hjp-Ek-_EeA.woff"
             fontWeight="bold"
             anchorX="center"
             anchorY="middle"

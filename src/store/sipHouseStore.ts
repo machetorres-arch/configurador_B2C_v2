@@ -172,7 +172,7 @@ export interface SipFinishesQuantities {
 
 // --- 5. TIPOLOGÍAS Y DIMENSIONES VOLUMÉTRICAS GLOBALES ---
 export type HouseShape = 'rectangular' | 'l_shape';
-export type RoofStyle = 'gable_valley' | 'single_shed' | 'flat' | 'split_shed';
+export type RoofStyle = 'gable_valley' | 'single_shed' | 'flat';
 export type WingCorner = 'front_left' | 'front_right' | 'back_left' | 'back_right';
 
 export interface SipHouseDimensions {
@@ -186,7 +186,7 @@ export interface SipHouseDimensions {
   wingLength: number;   // cm (Largo ala lateral L2, ej. 420 cm / 4.2m)
   wingWidth: number;    // cm (Ancho crujía ala W2, ej. 360 cm / 3.6m)
   wingCorner: WingCorner;// 'front_left' | 'front_right' | 'back_left' | 'back_right'
-  roofStyle: RoofStyle; // 'gable_valley' (2 Aguas con limahoya) | 'split_shed' (Desfasado a desnivel)
+  roofStyle: RoofStyle; // 'gable_valley' (2 Aguas con limahoya) | 'single_shed' | 'flat'
 }
 
 // --- 6. ESTADO ZUSTAND INTEGRAL ---
@@ -231,6 +231,12 @@ export interface SipHouseState {
   // Cotas y Niveles de Intensidad Paramétrica (0: Off, 1: Generales, 2: Interiores/Ejes, 3: Vanos, 4: BIM/Paneles SIP)
   showDimensions: boolean;
   dimensionDetailLevel: number; // 1 a 4
+
+  // Vanos Seleccionados y Arrastre Interactivo 3D
+  selectedOpeningId: string | null;
+  setSelectedOpeningId: (id: string | null) => void;
+  isDraggingOpening: boolean;
+  setIsDraggingOpening: (isDragging: boolean) => void;
 
   // Acciones
   setDimension: <K extends keyof SipHouseDimensions>(key: K, value: SipHouseDimensions[K]) => void;
@@ -496,6 +502,70 @@ export function generateInteriorWallsForPreset(
   const eaveH = dimensions.eaveHeight;
 
   let rawWalls: InteriorWall[] = [];
+
+  // --- TIPOLOGÍA CASA EN L ---
+  if (dimensions.shape === 'l_shape') {
+    const wingWidth = dimensions.wingWidth || 360;
+    const wingLength = dimensions.wingLength || 420;
+    const wingMinX = width / 2 + outerThick;
+    const wingMaxX = width / 2 + wingWidth - outerThick;
+    const wingMinZ = length / 2 - wingLength + outerThick;
+    const wingMaxZ = length / 2 - outerThick;
+
+    const splitZ = minZ + usableLength * 0.45;
+    const splitX = minX + usableWidth * 0.45;
+
+    rawWalls.push({
+      id: 'iw-l-main-div',
+      name: 'Muro Principal Divisorio (Noche / Día)',
+      zone: 'hallway',
+      startX: minX,
+      startZ: splitZ,
+      endX: maxX,
+      endZ: splitZ,
+      thicknessMm: 90,
+      heightCm: eaveH,
+      visible: true,
+      openings: [
+        { id: 'id-l-d1', type: 'door', name: 'Puerta Baño / D2', width: 80, height: 200, offsetAlongWall: 20 },
+      ],
+    });
+
+    rawWalls.push({
+      id: 'iw-l-bath-div',
+      name: 'Muro Baño / Dormitorio 2',
+      zone: 'bathroom',
+      startX: splitX,
+      startZ: minZ,
+      endX: splitX,
+      endZ: splitZ,
+      thicknessMm: 90,
+      heightCm: eaveH,
+      visible: true,
+      openings: [],
+    });
+
+    if (preset === '2bed_2bath' || preset === '3bed_2bath' || preset === '4bed_2bath') {
+      const wingBathZ = wingMinZ + (wingMaxZ - wingMinZ) * 0.35;
+      rawWalls.push({
+        id: 'iw-l-wing-bath',
+        name: 'Muro Baño en Suite Ala',
+        zone: 'bathroom',
+        startX: wingMinX,
+        startZ: wingBathZ,
+        endX: wingMaxX,
+        endZ: wingBathZ,
+        thicknessMm: 90,
+        heightCm: eaveH,
+        visible: true,
+        openings: [
+          { id: 'id-l-wbath', type: 'door', name: 'Puerta Baño Suite', width: 70, height: 200, offsetAlongWall: 20 },
+        ],
+      });
+    }
+
+    return rawWalls.map((wall) => transformWall(wall, params.mirrorX, params.mirrorZ));
+  }
 
   const strategy = params.placementStrategy || 'rear';
 
@@ -1183,7 +1253,6 @@ export function getInteriorZones(
   dimensions: SipHouseDimensions,
   params: PresetParams = DEFAULT_PRESET_PARAMS
 ): InteriorZone[] {
-  const totalFloorM2 = (dimensions.width * dimensions.length) / 10000;
   const width = dimensions.width;
   const length = dimensions.length;
 
@@ -1193,6 +1262,173 @@ export function getInteriorZones(
   const maxZ = length / 2;
 
   let rawZones: InteriorZone[] = [];
+
+  // --- TIPOLOGÍA CASA EN L ---
+  if (dimensions.shape === 'l_shape') {
+    const wingWidth = dimensions.wingWidth || 360;
+    const wingLength = dimensions.wingLength || 420;
+    const mainM2 = (width * length) / 10000;
+    const wingM2 = (wingWidth * wingLength) / 10000;
+
+    const wingMinX = width / 2;
+    const wingMaxX = width / 2 + wingWidth;
+    const wingMinZ = length / 2 - wingLength;
+    const wingMaxZ = length / 2;
+
+    if (preset === 'open_loft') {
+      rawZones = [
+        {
+          id: 'z-loft-main',
+          name: 'Living - Comedor - Cocina Integrada',
+          type: 'living',
+          areaM2: Math.round(mainM2 * 10) / 10,
+          labelPosition: { x: 0, z: 0 },
+          bounds: { minX, maxX, minZ, maxZ },
+          color: '#38bdf8',
+        },
+        {
+          id: 'z-loft-wing',
+          name: 'Espacio Abierto Multiuso / Estar (Ala Lateral)',
+          type: 'living',
+          areaM2: Math.round(wingM2 * 10) / 10,
+          labelPosition: { x: wingMinX + wingWidth / 2, z: wingMinZ + wingLength / 2 },
+          bounds: { minX: wingMinX, maxX: wingMaxX, minZ: wingMinZ, maxZ: wingMaxZ },
+          color: '#818cf8',
+        },
+      ];
+    } else if (preset === '1bed_1bath') {
+      const splitZ = minZ + length * 0.40;
+      const splitX = minX + width * 0.45;
+
+      rawZones = [
+        {
+          id: 'z-living-main',
+          name: 'Living - Comedor - Cocina',
+          type: 'living',
+          areaM2: Math.round(mainM2 * 0.75 * 10) / 10,
+          labelPosition: { x: 0, z: splitZ + (maxZ - splitZ) / 2 },
+          bounds: { minX, maxX, minZ: splitZ, maxZ },
+          color: '#38bdf8',
+        },
+        {
+          id: 'z-bath-main',
+          name: 'Baño Completo',
+          type: 'bathroom',
+          areaM2: Math.round(mainM2 * 0.25 * 10) / 10,
+          labelPosition: { x: minX + (splitX - minX) / 2, z: minZ + (splitZ - minZ) / 2 },
+          bounds: { minX, maxX: splitX, minZ, maxZ: splitZ },
+          color: '#34d399',
+        },
+        {
+          id: 'z-suite-wing',
+          name: 'Dormitorio Principal Suite (Ala)',
+          type: 'bedroom',
+          areaM2: Math.round(wingM2 * 10) / 10,
+          labelPosition: { x: wingMinX + wingWidth / 2, z: wingMinZ + wingLength / 2 },
+          bounds: { minX: wingMinX, maxX: wingMaxX, minZ: wingMinZ, maxZ: wingMaxZ },
+          color: '#818cf8',
+        },
+      ];
+    } else if (preset === '2bed_1bath') {
+      const splitZ = minZ + length * 0.45;
+      const splitX = minX + width * 0.45;
+
+      rawZones = [
+        {
+          id: 'z-living-main',
+          name: 'Living - Comedor - Cocina',
+          type: 'living',
+          areaM2: Math.round(mainM2 * 0.55 * 10) / 10,
+          labelPosition: { x: 0, z: splitZ + (maxZ - splitZ) / 2 },
+          bounds: { minX, maxX, minZ: splitZ, maxZ },
+          color: '#38bdf8',
+        },
+        {
+          id: 'z-bath-main',
+          name: 'Baño Completo',
+          type: 'bathroom',
+          areaM2: Math.round(mainM2 * 0.18 * 10) / 10,
+          labelPosition: { x: minX + (splitX - minX) / 2, z: minZ + (splitZ - minZ) / 2 },
+          bounds: { minX, maxX: splitX, minZ, maxZ: splitZ },
+          color: '#34d399',
+        },
+        {
+          id: 'z-bed2-main',
+          name: 'Dormitorio 2 (Norte)',
+          type: 'bedroom',
+          areaM2: Math.round(mainM2 * 0.27 * 10) / 10,
+          labelPosition: { x: splitX + (maxX - splitX) / 2, z: minZ + (splitZ - minZ) / 2 },
+          bounds: { minX: splitX, maxX, minZ, maxZ: splitZ },
+          color: '#a78bfa',
+        },
+        {
+          id: 'z-suite-wing',
+          name: 'Dormitorio Principal Suite (Ala)',
+          type: 'bedroom',
+          areaM2: Math.round(wingM2 * 10) / 10,
+          labelPosition: { x: wingMinX + wingWidth / 2, z: wingMinZ + wingLength / 2 },
+          bounds: { minX: wingMinX, maxX: wingMaxX, minZ: wingMinZ, maxZ: wingMaxZ },
+          color: '#818cf8',
+        },
+      ];
+    } else {
+      const splitZ = minZ + length * 0.45;
+      const splitX = minX + width * 0.45;
+      const wingBathZ = wingMinZ + wingLength * 0.35;
+
+      rawZones = [
+        {
+          id: 'z-living-main',
+          name: 'Gran Living - Comedor - Cocina',
+          type: 'living',
+          areaM2: Math.round(mainM2 * 0.55 * 10) / 10,
+          labelPosition: { x: 0, z: splitZ + (maxZ - splitZ) / 2 },
+          bounds: { minX, maxX, minZ: splitZ, maxZ },
+          color: '#38bdf8',
+        },
+        {
+          id: 'z-bath-main',
+          name: 'Baño General',
+          type: 'bathroom',
+          areaM2: Math.round(mainM2 * 0.18 * 10) / 10,
+          labelPosition: { x: minX + (splitX - minX) / 2, z: minZ + (splitZ - minZ) / 2 },
+          bounds: { minX, maxX: splitX, minZ, maxZ: splitZ },
+          color: '#2dd4bf',
+        },
+        {
+          id: 'z-bed2-main',
+          name: 'Dormitorio 2',
+          type: 'bedroom',
+          areaM2: Math.round(mainM2 * 0.27 * 10) / 10,
+          labelPosition: { x: splitX + (maxX - splitX) / 2, z: minZ + (splitZ - minZ) / 2 },
+          bounds: { minX: splitX, maxX, minZ, maxZ: splitZ },
+          color: '#a78bfa',
+        },
+        {
+          id: 'z-suite-wing',
+          name: 'Suite Master (Ala Lateral)',
+          type: 'bedroom',
+          areaM2: Math.round(wingM2 * 0.70 * 10) / 10,
+          labelPosition: { x: wingMinX + wingWidth / 2, z: wingBathZ + (wingMaxZ - wingBathZ) / 2 },
+          bounds: { minX: wingMinX, maxX: wingMaxX, minZ: wingBathZ, maxZ: wingMaxZ },
+          color: '#818cf8',
+        },
+        {
+          id: 'z-bath-wing',
+          name: 'Baño en Suite (Ala)',
+          type: 'bathroom',
+          areaM2: Math.round(wingM2 * 0.30 * 10) / 10,
+          labelPosition: { x: wingMinX + wingWidth / 2, z: wingMinZ + (wingBathZ - wingMinZ) / 2 },
+          bounds: { minX: wingMinX, maxX: wingMaxX, minZ: wingMinZ, maxZ: wingBathZ },
+          color: '#34d399',
+        },
+      ];
+    }
+
+    return rawZones.map((zone) => transformZone(zone, params.mirrorX, params.mirrorZ));
+  }
+
+  const totalFloorM2 = (dimensions.width * dimensions.length) / 10000;
 
   if (preset === 'open_loft') {
     rawZones = [
@@ -1824,6 +2060,11 @@ export const useSipHouseStore = create<SipHouseState>((set) => ({
 
   showDimensions: true,
   dimensionDetailLevel: 1, // 1: Generales, 2: Interiores/Ejes, 3: Vanos, 4: BIM/Paneles SIP
+
+  selectedOpeningId: null,
+  setSelectedOpeningId: (id) => set({ selectedOpeningId: id }),
+  isDraggingOpening: false,
+  setIsDraggingOpening: (isDragging) => set({ isDraggingOpening: isDragging }),
 
   setDimension: (key, value) =>
     set((state) => {

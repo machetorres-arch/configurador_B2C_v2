@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { useKitchenStore } from '../../store/kitchenStore';
 import { analyzeRoomWalls, calculatePolygonArea } from '../../utils/roomGeometry';
 import { FLOOR_TYPE_OPTIONS, generateFloorCanvasTexture } from '../../utils/kitchenMaterials';
+import { getWallInwardNormal } from '../../utils/kitchenCollision';
 import { Text, Line } from '@react-three/drei';
 
 export function RoomFloorAndDimensions() {
@@ -16,14 +17,14 @@ export function RoomFloorAndDimensions() {
 
   const floorTexture = useMemo(() => {
     try {
-      return generateFloorCanvasTexture(floorType || 'porcelain_cement_light');
+      return generateFloorCanvasTexture(floorType || 'ceramic_white_60x60');
     } catch (e) {
       console.warn('Error loading floor texture', e);
       return null;
     }
   }, [floorType]);
 
-  // Crear la geometría del piso poligonal de la cocina de forma segura
+  // Crear la geometría del piso poligonal de la cocina con mapeo UV métrico para baldosas reales
   const floorGeometry = useMemo(() => {
     if (!vertices || vertices.length < 3) return null;
     try {
@@ -34,7 +35,21 @@ export function RoomFloorAndDimensions() {
         shape.lineTo(vertices[i].x, -vertices[i].y);
       }
       shape.closePath();
-      return new THREE.ShapeGeometry(shape);
+      const geom = new THREE.ShapeGeometry(shape);
+
+      // Calcular coordenadas UV métricas exactas: cada unidad = 60 cm (baldosa 60x60 cm)
+      const posAttr = geom.attributes.position;
+      const uvs = new Float32Array(posAttr.count * 2);
+      const tileSizeCm = 60;
+      for (let i = 0; i < posAttr.count; i++) {
+        const x = posAttr.getX(i);
+        const y = posAttr.getY(i);
+        uvs[i * 2] = x / tileSizeCm;
+        uvs[i * 2 + 1] = y / tileSizeCm;
+      }
+      geom.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+      geom.computeVertexNormals();
+      return geom;
     } catch (e) {
       console.warn('Error generating floor geometry', e);
       return null;
@@ -111,24 +126,20 @@ export function RoomFloorAndDimensions() {
             const len = Math.hypot(dx, dz);
             if (len === 0) return null;
 
-            // Vector normal
-            const nx = -dz / len;
-            const nz = dx / len;
+            const poly = vertices.map((v) => [v.x, v.y] as [number, number]);
+            const [inwardX, inwardZ] = getWallInwardNormal(p1[0], p1[1], p2[0], p2[1], poly);
+            const outX = -inwardX;
+            const outZ = -inwardZ;
 
-            // Factor hacia afuera
             const midX = (p1[0] + p2[0]) / 2;
             const midZ = (p1[1] + p2[1]) / 2;
-            const toCenterX = center[0] - midX;
-            const toCenterZ = center[1] - midZ;
-            const dot = nx * toCenterX + nz * toCenterZ;
-            const out = dot > 0 ? -1 : 1;
 
             const cotaDist = (roomConfig?.wallThickness || 20) / 2 + 28;
             const labelDist = cotaDist + 24;
 
-            const c1: [number, number, number] = [p1[0] + nx * out * cotaDist, 2, p1[1] + nz * out * cotaDist];
-            const c2: [number, number, number] = [p2[0] + nx * out * cotaDist, 2, p2[1] + nz * out * cotaDist];
-            const labelPos: [number, number, number] = [midX + nx * out * labelDist, 2, midZ + nz * out * labelDist];
+            const c1: [number, number, number] = [p1[0] + outX * cotaDist, 2, p1[1] + outZ * cotaDist];
+            const c2: [number, number, number] = [p2[0] + outX * cotaDist, 2, p2[1] + outZ * cotaDist];
+            const labelPos: [number, number, number] = [midX + outX * labelDist, 2, midZ + outZ * labelDist];
             const textPos: [number, number, number] = [(c1[0] + c2[0]) / 2, 2, (c1[2] + c2[2]) / 2];
 
             return (
@@ -137,8 +148,8 @@ export function RoomFloorAndDimensions() {
                 <Line points={[c1, c2]} color="#2563eb" lineWidth={2} depthTest={false} renderOrder={999} />
                 <Line
                   points={[
-                    [p1[0] + nx * out * 4, 2, p1[1] + nz * out * 4],
-                    [p1[0] + nx * out * (cotaDist + 6), 2, p1[1] + nz * out * (cotaDist + 6)],
+                    [p1[0] + outX * 4, 2, p1[1] + outZ * 4],
+                    [p1[0] + outX * (cotaDist + 6), 2, p1[1] + outZ * (cotaDist + 6)],
                   ]}
                   color="#2563eb"
                   lineWidth={1.5}
@@ -147,8 +158,8 @@ export function RoomFloorAndDimensions() {
                 />
                 <Line
                   points={[
-                    [p2[0] + nx * out * 4, 2, p2[1] + nz * out * 4],
-                    [p2[0] + nx * out * (cotaDist + 6), 2, p2[1] + nz * out * (cotaDist + 6)],
+                    [p2[0] + outX * 4, 2, p2[1] + outZ * 4],
+                    [p2[0] + outX * (cotaDist + 6), 2, p2[1] + outZ * (cotaDist + 6)],
                   ]}
                   color="#2563eb"
                   lineWidth={1.5}

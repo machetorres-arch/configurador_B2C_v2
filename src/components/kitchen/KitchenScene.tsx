@@ -3,6 +3,7 @@ import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { Edges, OrthographicCamera, PerspectiveCamera, OrbitControls, Environment, Grid, Line, Text } from '@react-three/drei';
 import * as THREE from 'three';
 import { useKitchenStore } from '../../store/kitchenStore';
+import { useStore } from '../../store';
 import { Wall } from './Wall';
 import { Cabinet } from './Cabinet';
 import { KitchenSocle } from './KitchenSocle';
@@ -11,7 +12,7 @@ import { RoomFloorAndDimensions } from './RoomFloorAndDimensions';
 import { resolvePlacement } from '../../utils/kitchenCollision';
 
 function SceneContent() {
-  const { viewMode, toolMode, walls, cabinets, addWall, drawingStart, setDrawingStart, addCabinet, setToolMode, setActiveCabinet, roomConfig } = useKitchenStore();
+  const { viewMode, toolMode, walls, cabinets, addWall, drawingStart, setDrawingStart, addCabinet, setToolMode, setActiveCabinet, roomConfig, activeCabinetId } = useKitchenStore();
   const [currentMousePos, setCurrentMousePos] = useState<[number, number] | null>(null);
   const [ghostCabinet, setGhostCabinet] = useState<{pos: [number,number,number], rot: number, isColliding?: boolean} | null>(null);
   const { camera, raycaster, pointer, scene } = useThree();
@@ -19,6 +20,20 @@ function SceneContent() {
   const is2D = viewMode === '2d';
   const groundPlaneMath = React.useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), []);
   const intersectPoint = React.useMemo(() => new THREE.Vector3(), []);
+
+  // Al activar la herramienta "Mover", situar de inmediato el ghost y la flecha sobre el mueble activo
+  useEffect(() => {
+    if (toolMode === 'move_active' && activeCabinetId) {
+      const activeCab = useKitchenStore.getState().cabinets.find(c => c.id === activeCabinetId);
+      if (activeCab) {
+        setGhostCabinet({
+          pos: [activeCab.position[0], activeCab.position[1], activeCab.position[2]],
+          rot: activeCab.rotation || 0,
+          isColliding: false,
+        });
+      }
+    }
+  }, [toolMode, activeCabinetId]);
 
   useFrame(() => {
     raycaster.setFromCamera(pointer, camera);
@@ -286,6 +301,7 @@ function SceneContent() {
       }
 
       const newId = crypto.randomUUID();
+      const gState = useStore.getState();
       addCabinet({
          id: newId,
          type: cabType,
@@ -295,9 +311,27 @@ function SceneContent() {
          depth: cabDepth,
          position: ghostCabinet.pos,
          rotation: ghostCabinet.rot,
-         color: '#f8fafc'
+         color: '#f8fafc',
+         structureColor: gState.structureColor || '#f8fafc',
+         doorColor: gState.doorColor || '#f8fafc',
+         drawerFrontColor: gState.drawerFrontColor || gState.doorColor || '#f8fafc',
+         drawerInnerColor: gState.drawerInnerColor || '#f8fafc',
+         shelfColor: gState.shelfColor || '#f8fafc',
+         backColor: gState.backColor || '#f8fafc',
+         socleColor: gState.socleColor || '#111',
+         structureMaterial: gState.structureMaterial,
+         doorMaterial: gState.doorMaterial,
+         drawerFrontMaterial: gState.drawerFrontMaterial,
+         drawerInnerMaterial: gState.drawerInnerMaterial,
+         shelfMaterial: gState.shelfMaterial,
+         socleMaterial: gState.socleMaterial,
       });
-      setActiveCabinet(newId);
+      const isDeco = cabType === 'decoration' || cabVariant.startsWith('deco_');
+      if (!isDeco) {
+        setActiveCabinet(newId);
+      } else {
+        setActiveCabinet(null);
+      }
       setToolMode('select');
     }
   };
@@ -406,6 +440,10 @@ function SceneContent() {
               previewW = 91;
               previewH = 177;
               previewD = 67;
+           } else if (toolMode === 'place_deco_hood') {
+              previewW = 89.8;
+              previewH = 70;
+              previewD = 50;
            } else if (toolMode === 'place_deco_plant') {
               previewW = 40;
               previewH = 95;
@@ -413,11 +451,16 @@ function SceneContent() {
            }
 
            return (
-             <mesh position={ghostCabinet.pos} rotation={[0, ghostCabinet.rot, 0]}>
-                <boxGeometry args={[previewW, previewH, previewD]} />
-                <meshStandardMaterial color={ghostCabinet.isColliding ? '#ef4444' : '#f97316'} transparent opacity={0.45} />
-                <Edges scale={1.0} color={ghostCabinet.isColliding ? '#ef4444' : '#f97316'} />
-             </mesh>
+             <group position={ghostCabinet.pos} rotation={[0, ghostCabinet.rot, 0]}>
+               <mesh>
+                 <boxGeometry args={[previewW, previewH, previewD]} />
+                 <meshStandardMaterial color={ghostCabinet.isColliding ? '#ef4444' : '#f97316'} transparent opacity={0.45} />
+                 <Edges scale={1.0} color={ghostCabinet.isColliding ? '#ef4444' : '#f97316'} />
+               </mesh>
+               {toolMode === 'move_active' && (
+                 <MoveArrowGizmo height={previewH} width={previewW} depth={previewD} isColliding={ghostCabinet.isColliding} />
+               )}
+             </group>
            );
         })()}
       </group>
@@ -439,24 +482,115 @@ export function KitchenScene() {
   )
 }
 
-function WallPreview({start, end, thickness, height}: any) {
-   const length = Math.hypot(end[0] - start[0], end[1] - start[1]);
-   const cx = (start[0] + end[0]) / 2;
-   const cz = (start[1] + end[1]) / 2;
-   const rotY = Math.atan2(start[0] - end[0], start[1] - end[1]);
+function MoveArrowGizmo({ height, width, depth, isColliding }: { height: number; width: number; depth: number; isColliding?: boolean }) {
+  const groupRef = React.useRef<THREE.Group>(null);
+  const color = isColliding ? '#ef4444' : '#f97316';
+  const glowColor = isColliding ? '#fca5a5' : '#fed7aa';
 
-   return (
-     <group position={[cx, height/2, cz]} rotation={[0, rotY, 0]}>
-       <mesh position={[0, 0, 0]}>
-         <boxGeometry args={[thickness, height, length]} />
-         <meshStandardMaterial color="#3b82f6" transparent opacity={0.5} />
-       </mesh>
-       <group position={[0, height / 2 + 10, 0]} renderOrder={999}>
-         <Line points={[[0, 0, -length / 2], [0, 0, length / 2]]} color="#3b82f6" lineWidth={2} depthTest={false} renderOrder={999} />
-         <Line points={[[-3, 0, -length / 2], [3, 0, -length / 2]]} color="#3b82f6" lineWidth={2} depthTest={false} renderOrder={999} />
-         <Line points={[[-3, 0, length / 2], [3, 0, length / 2]]} color="#3b82f6" lineWidth={2} depthTest={false} renderOrder={999} />
-         <Text position={[0, 4, 0]} rotation={[0, Math.PI / 2, 0]} fontSize={7} color="#3b82f6" anchorX="center" anchorY="bottom" material-depthTest={false} material-toneMapped={false} renderOrder={1000}>{Math.round(length)} cm</Text>
-       </group>
-     </group>
-   );
+  useFrame(({ clock }) => {
+    if (!groupRef.current) return;
+    const t = clock.getElapsedTime();
+    groupRef.current.position.y = height / 2 + 18 + Math.sin(t * 5) * 2.5;
+  });
+
+  const arrowArm = Math.max(25, Math.min(45, width * 0.4));
+
+  return (
+    <group position={[0, 0, 0]}>
+      {/* 1. Flechas cardinales en el piso/base del mueble indicando traslación */}
+      <group position={[0, -height / 2 + 0.5, 0]}>
+        {/* Eje X (Izquierda / Derecha) */}
+        <Line points={[[-arrowArm, 0, 0], [arrowArm, 0, 0]]} color={color} lineWidth={3} depthTest={false} renderOrder={1001} />
+        <mesh position={[arrowArm, 0, 0]} rotation={[0, 0, -Math.PI / 2]}>
+          <coneGeometry args={[2.5, 5, 8]} />
+          <meshBasicMaterial color={color} depthTest={false} />
+        </mesh>
+        <mesh position={[-arrowArm, 0, 0]} rotation={[0, 0, Math.PI / 2]}>
+          <coneGeometry args={[2.5, 5, 8]} />
+          <meshBasicMaterial color={color} depthTest={false} />
+        </mesh>
+
+        {/* Eje Z (Adelante / Atrás) */}
+        <Line points={[[0, 0, -arrowArm], [0, 0, arrowArm]]} color={color} lineWidth={3} depthTest={false} renderOrder={1001} />
+        <mesh position={[0, 0, arrowArm]} rotation={[Math.PI / 2, 0, 0]}>
+          <coneGeometry args={[2.5, 5, 8]} />
+          <meshBasicMaterial color={color} depthTest={false} />
+        </mesh>
+        <mesh position={[0, 0, -arrowArm]} rotation={[-Math.PI / 2, 0, 0]}>
+          <coneGeometry args={[2.5, 5, 8]} />
+          <meshBasicMaterial color={color} depthTest={false} />
+        </mesh>
+      </group>
+
+      {/* 2. Flecha / Cursor 3D vertical descendente situada directamente sobre el mueble */}
+      <group ref={groupRef} position={[0, height / 2 + 18, 0]}>
+        {/* Fuste cilíndrico de la flecha */}
+        <mesh position={[0, 6, 0]}>
+          <cylinderGeometry args={[1.2, 1.2, 12, 16]} />
+          <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.6} roughness={0.2} metalness={0.8} />
+        </mesh>
+        {/* Punta cónica de la flecha apuntando hacia abajo al mueble */}
+        <mesh position={[0, 0, 0]} rotation={[Math.PI, 0, 0]}>
+          <coneGeometry args={[4.5, 9, 24]} />
+          <meshStandardMaterial color={color} emissive={glowColor} emissiveIntensity={0.8} roughness={0.2} metalness={0.8} />
+        </mesh>
+
+        {/* Anillo de enfoque / halo luminoso */}
+        <mesh position={[0, 12, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <torusGeometry args={[5, 0.6, 12, 24]} />
+          <meshBasicMaterial color={color} />
+        </mesh>
+
+        {/* Rótulo 3D flotante */}
+        <group position={[0, 16, 0]}>
+          <Text
+            fontSize={6.5}
+            color={color}
+            anchorX="center"
+            anchorY="bottom"
+            font="bold"
+            material-depthTest={false}
+            material-toneMapped={false}
+            renderOrder={1002}
+          >
+            {isColliding ? '⚠️ POSICIÓN BLOQUEADA' : '✛ MOVER ELEMENTO'}
+          </Text>
+          <Text
+            position={[0, -4.5, 0]}
+            fontSize={4}
+            color="#ffffff"
+            anchorX="center"
+            anchorY="bottom"
+            material-depthTest={false}
+            material-toneMapped={false}
+            renderOrder={1002}
+          >
+            Clic en muro o piso para fijar
+          </Text>
+        </group>
+      </group>
+    </group>
+  );
+}
+
+function WallPreview({start, end, thickness, height}: any) {
+  const length = Math.hypot(end[0] - start[0], end[1] - start[1]);
+  const cx = (start[0] + end[0]) / 2;
+  const cz = (start[1] + end[1]) / 2;
+  const rotY = Math.atan2(start[0] - end[0], start[1] - end[1]);
+
+  return (
+    <group position={[cx, height/2, cz]} rotation={[0, rotY, 0]}>
+      <mesh position={[0, 0, 0]}>
+        <boxGeometry args={[thickness, height, length]} />
+        <meshStandardMaterial color="#3b82f6" transparent opacity={0.5} />
+      </mesh>
+      <group position={[0, height / 2 + 10, 0]} renderOrder={999}>
+        <Line points={[[0, 0, -length / 2], [0, 0, length / 2]]} color="#3b82f6" lineWidth={2} depthTest={false} renderOrder={999} />
+        <Line points={[[-3, 0, -length / 2], [3, 0, -length / 2]]} color="#3b82f6" lineWidth={2} depthTest={false} renderOrder={999} />
+        <Line points={[[-3, 0, length / 2], [3, 0, length / 2]]} color="#3b82f6" lineWidth={2} depthTest={false} renderOrder={999} />
+        <Text position={[0, 4, 0]} rotation={[0, Math.PI / 2, 0]} fontSize={7} color="#3b82f6" anchorX="center" anchorY="bottom" material-depthTest={false} material-toneMapped={false} renderOrder={1000}>{Math.round(length)} cm</Text>
+      </group>
+    </group>
+  );
 }

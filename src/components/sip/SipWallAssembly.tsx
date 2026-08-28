@@ -4,6 +4,7 @@ import { SipOpening, WallTarget, ExteriorCladding } from '../../store/sipHouseSt
 import { SipIndividualPanel } from './SipIndividualPanel';
 import { TimberPiece } from './TimberPiece';
 import { SipWallCladdingAssembly } from './SipWallCladdingAssembly';
+import { SipInteractiveOpening } from './SipInteractiveOpening';
 
 interface SipWallAssemblyProps {
   wallId: WallTarget;
@@ -514,119 +515,26 @@ export function SipWallAssembly({
       {/* ========================================================================= */}
       {layerWindowsDoors && (
         <group>
-          {wallOpenings.map((op, idx) => {
-            const opXCenter = op.offsetM + op.wM / 2 - wallLength / 2;
-            const opYCenter = op.sillM + op.hM / 2;
-            const wM = op.wM;
-            const hM = op.hM;
-            const carpentryZ = isExploded ? explodedProgress * 0.28 : 0;
-
-            const frameMat =
-              op.frameMaterial === 'madera_lenga'
-                ? materials.doorLenga
-                : op.frameMaterial === 'pvc_folio_madera'
-                ? materials.pvcFrameWood
-                : op.frameMaterial === 'aluminio_rtt'
-                ? materials.aluminumRpt
-                : materials.pvcFrameBlack;
-
-            return (
-              <group
-                key={`installed-opening-${idx}`}
-                position={[opXCenter, opYCenter, carpentryZ]}
-              >
-                {/* 1. Marco Perimetral Encastrado (Flush en el espesor del muro) */}
-                <mesh material={frameMat} castShadow receiveShadow>
-                  <boxGeometry args={[wM, hM, wallThickness + 0.02]} />
-                </mesh>
-
-                {/* 2. VENTANA: Hoja con Vidrio Termopanel y Junquillos */}
-                {op.type === 'window' && (
-                  <group>
-                    {/* Hueco / Vidrio principal */}
-                    <mesh position={[0, 0, 0]} material={materials.glassWindow}>
-                      <boxGeometry args={[Math.max(0.08, wM - 0.12), Math.max(0.08, hM - 0.12), 0.024]} />
-                    </mesh>
-
-                    {/* Perfil central / travesaño o batiente (según proporción) */}
-                    {wM > 1.1 ? (
-                      // Ventana corredera / doble hoja
-                      <>
-                        <mesh position={[0, 0, 0.01]} material={frameMat}>
-                          <boxGeometry args={[0.06, hM - 0.08, 0.05]} />
-                        </mesh>
-                        <mesh position={[wM / 4, 0, 0]} material={frameMat}>
-                          <boxGeometry args={[wM / 2 - 0.06, hM - 0.08, 0.03]} />
-                        </mesh>
-                        <mesh position={[wM / 4, 0, 0]} material={materials.glassWindow}>
-                          <boxGeometry args={[wM / 2 - 0.12, hM - 0.14, 0.02]} />
-                        </mesh>
-                      </>
-                    ) : (
-                      // Ventana proyectante / abatible
-                      <mesh position={[0, -hM / 2 + 0.08, 0.02]} material={materials.doorHardware}>
-                        <boxGeometry args={[0.12, 0.025, 0.04]} />
-                      </mesh>
-                    )}
-
-                    {/* Botaguas / Vierteaguas inferior de aluminio o madera */}
-                    <mesh position={[0, -hM / 2 - 0.015, wallThickness / 2 + 0.025]} material={frameMat}>
-                      <boxGeometry args={[wM + 0.06, 0.03, 0.06]} />
-                    </mesh>
-                  </group>
-                )}
-
-                {/* 3. PUERTA: Puerta corredera vidriada o puerta maciza según tipo */}
-                {op.type === 'door' && (
-                  <group>
-                    {wM > 1.4 ? (
-                      // Ventanal / Puerta corredera vidriada tipo terraza (como en la Imagen 1 y 2)
-                      <group>
-                        {/* Hoja corredera 1 */}
-                        <mesh position={[-wM / 4, 0, 0.01]} material={frameMat}>
-                          <boxGeometry args={[wM / 2 - 0.04, hM - 0.06, 0.04]} />
-                        </mesh>
-                        <mesh position={[-wM / 4, 0, 0.01]} material={materials.glassWindow}>
-                          <boxGeometry args={[wM / 2 - 0.12, hM - 0.14, 0.02]} />
-                        </mesh>
-
-                        {/* Hoja corredera 2 */}
-                        <mesh position={[wM / 4, 0, -0.01]} material={frameMat}>
-                          <boxGeometry args={[wM / 2 - 0.04, hM - 0.06, 0.04]} />
-                        </mesh>
-                        <mesh position={[wM / 4, 0, -0.01]} material={materials.glassWindow}>
-                          <boxGeometry args={[wM / 2 - 0.12, hM - 0.14, 0.02]} />
-                        </mesh>
-
-                        {/* Manillón ergonómico en perfil de aluminio/PVC */}
-                        <mesh position={[0.02, 0, 0.035]} material={materials.doorHardware}>
-                          <boxGeometry args={[0.025, 0.3, 0.03]} />
-                        </mesh>
-                      </group>
-                    ) : (
-                      // Puerta de acceso con manilla y cerradura
-                      <group>
-                        <mesh
-                          position={[0, 0, 0]}
-                          material={op.frameMaterial === 'madera_lenga' ? materials.doorLenga : frameMat}
-                          castShadow
-                        >
-                          <boxGeometry args={[wM - 0.08, hM - 0.06, 0.045]} />
-                        </mesh>
-                        {/* Manilla y bocallave */}
-                        <mesh position={[wM / 2 - 0.14, 0, 0.035]} material={materials.doorHardware}>
-                          <boxGeometry args={[0.03, 0.14, 0.03]} />
-                        </mesh>
-                        <mesh position={[wM / 2 - 0.14, 0, -0.035]} material={materials.doorHardware}>
-                          <boxGeometry args={[0.03, 0.14, 0.03]} />
-                        </mesh>
-                      </group>
-                    )}
-                  </group>
-                )}
-              </group>
-            );
-          })}
+          {wallOpenings.map((op, idx) => (
+            <SipInteractiveOpening
+              key={`installed-opening-${op.id || idx}`}
+              opening={op}
+              wallId={wallId}
+              wallLength={wallLength}
+              wallHeight={wallHeight}
+              wallThickness={wallThickness}
+              isExploded={isExploded}
+              explodedProgress={explodedProgress}
+              materials={{
+                glassWindow: materials.glassWindow,
+                pvcFrameBlack: materials.pvcFrameBlack,
+                pvcFrameWood: materials.pvcFrameWood,
+                aluminumRpt: materials.aluminumRpt,
+                doorLenga: materials.doorLenga,
+                doorHardware: materials.doorHardware,
+              }}
+            />
+          ))}
         </group>
       )}
 
