@@ -157,6 +157,9 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
 
   return (
     <div className="flex flex-col h-screen w-screen bg-[#0A0A0A] text-slate-200 font-sans overflow-hidden">
+      {/* Planos de Fabricación y Despiece CAD/CAM */}
+      <KitchenBlueprint />
+
       {/* Modal de Configuración y Dibujo de Estancia */}
       <RoomPlannerModal />
 

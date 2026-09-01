@@ -1,21 +1,31 @@
-import React, { useEffect } from 'react';
+import React, { useState } from 'react';
+import { Printer, Download, X, FileText, Loader2 } from 'lucide-react';
 import { useStore, ClosetModule } from '../store';
-import { generatePartsList, Part } from '../utils/manufacturing';
+import { generatePartsList, Part, exportToPDF } from '../utils/manufacturing';
 import { optimizeNesting, NestingPart, BoardResult } from '../utils/nesting';
+import { exportBlueprintDomToPdf } from '../utils/blueprintPdfExport';
 
 export function Blueprint() {
   const state = useStore();
-  
-  useEffect(() => {
-    if (state.isPrinting) {
-      const timer = setTimeout(() => {
-        window.print();
-      }, 500);
-      return () => clearTimeout(timer);
-    }
-  }, [state.isPrinting]);
+  const [isExportingA3, setIsExportingA3] = useState(false);
+  const [exportProgress, setExportProgress] = useState<{ current: number; total: number } | null>(null);
 
   if (!state.isPrinting) return null;
+
+  const handleExportA3 = async () => {
+    setIsExportingA3(true);
+    try {
+      await exportBlueprintDomToPdf('planos_closet_completos_A3.pdf', (curr, tot) => {
+        setExportProgress({ current: curr, total: tot });
+      });
+    } catch (err) {
+      console.error('Error al exportar planos A3 en PDF', err);
+      alert('Ocurrió un detalle al generar el archivo. También puedes utilizar el botón "Imprimir / Guardar".');
+    } finally {
+      setIsExportingA3(false);
+      setExportProgress(null);
+    }
+  };
 
   const allParts = generatePartsList(state);
   
@@ -103,6 +113,8 @@ export function Blueprint() {
       allowRotation = false; // keep vertical or preserve pattern
     }
 
+    const isBack = p.material === 'Melamina Fondo' || p.thickness === 3 || p.name.startsWith('Trasera') || p.name.startsWith('Fondo Cajón');
+
     if (materialType === 'hpl') {
       addPartToBoard(`HPL_CARA_${color}`, `PLANCHA HPL - COLOR: ${getColorName(color)}`, color, 3050, 1300, {
         id: "part-hpl-cara-" + index, name: p.name + " (Cara)", width: finalW + hplOversize, length: finalL + hplOversize, qty: p.qty, color: color, edgeL1: p.edgeL1, edgeL2: p.edgeL2, edgeW1: p.edgeW1, edgeW2: p.edgeW2, allowRotation
@@ -115,8 +127,12 @@ export function Blueprint() {
           id: "part-hpl-bal-" + index, name: p.name + " (Trascara)", width: finalW + hplOversize, length: finalL + hplOversize, qty: p.qty, color: "#ffffff", edgeL1: p.edgeL1, edgeL2: p.edgeL2, edgeW1: p.edgeW1, edgeW2: p.edgeW2, allowRotation
         });
       }
+    } else if (isBack) {
+      addPartToBoard(`DUROLAC_${color}`, `PLANCHA DUROLAC / MDF 3MM (FONDOS Y TRASERAS) - COLOR: ${getColorName(color)}`, color, 2440, 1830, {
+        id: "part-durolac-" + index, name: p.name, width: finalW, length: finalL, qty: p.qty, color: color, edgeL1: false, edgeL2: false, edgeW1: false, edgeW2: false, allowRotation: true
+      });
     } else {
-      addPartToBoard(`MEL_${color}`, `PLANCHA ${p.material === 'Melamina Fondo' ? 'MDF 3mm' : 'MELAMINA'} - COLOR: ${getColorName(color)}`, color, 2500, 1830, {
+      addPartToBoard(`MEL_${color}`, `PLANCHA MELAMINA ${state.thickness * 10}MM - COLOR: ${getColorName(color)}`, color, 2500, 1830, {
         id: "part-" + index, name: p.name, width: finalW, length: finalL, qty: p.qty, color: color, edgeL1: p.edgeL1, edgeL2: p.edgeL2, edgeW1: p.edgeW1, edgeW2: p.edgeW2, allowRotation
       });
     }
@@ -268,13 +284,63 @@ export function Blueprint() {
   };
 
   return (
-    <div className="fixed inset-0 z-[100] bg-white text-black overflow-y-auto print-only-container">
-      <button 
-        onClick={() => state.setIsPrinting(false)}
-        className="fixed top-6 right-6 z-[200] bg-red-600 text-white px-6 py-3 rounded-lg font-bold uppercase text-xs tracking-widest print:hidden shadow-xl hover:bg-red-700 hover:scale-105 transition-all"
-      >
-        Cerrar Vista de Impresión
-      </button>
+    <div className="fixed inset-0 z-[100] bg-neutral-800 text-black overflow-auto print-only-container">
+      {/* Barra Superior Flotante de Acciones y Descarga de PDF */}
+      <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[200] print:hidden flex flex-wrap items-center justify-center gap-3 bg-slate-900/95 text-white px-5 py-3 rounded-2xl shadow-2xl border border-white/20 backdrop-blur-md max-w-[95vw]">
+        <div className="flex items-center gap-2 text-xs font-bold text-orange-400 mr-2 border-r border-white/20 pr-3">
+          <FileText size={16} />
+          <span>PLANOS DE CLÓSET</span>
+        </div>
+
+        {/* Botón Principal: Descargar Planos Completos A3 en PDF */}
+        <button 
+          onClick={handleExportA3}
+          disabled={isExportingA3}
+          className="bg-orange-500 hover:bg-orange-600 disabled:opacity-50 active:scale-95 text-white px-4 py-2 rounded-xl font-bold uppercase text-xs tracking-wider shadow-lg flex items-center gap-2 transition-all cursor-pointer"
+          title="Generar y descargar todos los planos y despieces de clóset en formato A3"
+        >
+          {isExportingA3 ? (
+            <>
+              <Loader2 size={15} className="animate-spin text-white" />
+              <span>Generando PDF ({exportProgress ? `${exportProgress.current}/${exportProgress.total}` : 'Iniciando...'})</span>
+            </>
+          ) : (
+            <>
+              <Download size={15} />
+              <span>Descargar Planos Completos PDF (A3)</span>
+            </>
+          )}
+        </button>
+
+        {/* Botón Secundario: Ficha Técnica PDF Directo */}
+        <button 
+          onClick={() => exportToPDF(state)}
+          className="bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white px-4 py-2 rounded-xl font-bold uppercase text-xs tracking-wider shadow-lg flex items-center gap-2 transition-all cursor-pointer"
+          title="Descargar archivo PDF estructurado con despiece y cubicación"
+        >
+          <FileText size={15} />
+          <span>Ficha Técnica PDF (Directo)</span>
+        </button>
+
+        {/* Botón Terciario: Cuadro de Impresión Nativo */}
+        <button 
+          onClick={() => window.print()}
+          className="bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white px-3.5 py-2 rounded-xl font-semibold text-xs tracking-wider border border-white/10 transition-all flex items-center gap-1.5 cursor-pointer"
+          title="Abrir cuadro de diálogo de impresión del navegador"
+        >
+          <Printer size={14} />
+          <span>Imprimir</span>
+        </button>
+
+        {/* Botón Cerrar */}
+        <button 
+          onClick={() => state.setIsPrinting(false)}
+          className="bg-slate-700 hover:bg-red-600 text-white px-3.5 py-2 rounded-xl font-semibold text-xs tracking-wider shadow-md hover:shadow-red-500/20 transition-all flex items-center gap-1.5 cursor-pointer ml-1"
+        >
+          <X size={15} />
+          <span>Cerrar</span>
+        </button>
+      </div>
 
       <style>{`
         @media screen { 
@@ -398,21 +464,29 @@ export function Blueprint() {
                               {part.edgeW1 && <div className="absolute top-0 left-1/2 -translate-y-1/2 -translate-x-1/2 w-3.5 h-3.5 rotate-45 bg-blue-500 border-2 border-white shadow-sm z-30" title="Canto Ancho 1"></div>}
                               {part.edgeW2 && <div className="absolute bottom-0 left-1/2 translate-y-1/2 -translate-x-1/2 w-3.5 h-3.5 rotate-45 bg-blue-500 border-2 border-white shadow-sm z-30" title="Canto Ancho 2"></div>}
                               
-                              {/* Cotas Exteriores Modificadas */}
-                              <div className="absolute -bottom-8 left-0 w-full flex flex-col items-center">
-                                 <div className="w-full border-b border-zinc-400 relative">
-                                     <div className="absolute -top-1 left-0 h-2 border-l border-zinc-400"></div>
-                                     <div className="absolute -top-1 right-0 h-2 border-r border-zinc-400"></div>
+                              {/* Cotas Exteriores Modificadas (Nivel 2 Exterior) */}
+                              <div className="absolute -bottom-11 left-0 w-full flex flex-col items-center pointer-events-none">
+                                 <div className="w-full relative h-0">
+                                     <div className="absolute -top-5 left-0 h-5 border-l border-zinc-400/60 border-dashed"></div>
+                                     <div className="absolute -top-5 right-0 h-5 border-r border-zinc-400/60 border-dashed"></div>
                                  </div>
-                                 <div className="text-[11px] mt-1 text-zinc-800 font-bold tracking-tight">{part.width.toFixed(1)}</div>
+                                 <div className="w-full border-b border-zinc-500 relative">
+                                     <div className="absolute -top-1 left-0 h-2 border-l border-zinc-500"></div>
+                                     <div className="absolute -top-1 right-0 h-2 border-r border-zinc-500"></div>
+                                 </div>
+                                 <div className="text-[10px] mt-0.5 text-zinc-800 font-bold tracking-tight bg-white/90 px-1 rounded">{part.width.toFixed(1)}</div>
                               </div>
 
-                              <div className="absolute top-0 -right-8 h-full flex items-center">
-                                 <div className="h-full border-r border-zinc-400 relative">
-                                     <div className="absolute top-0 -left-1 w-2 border-t border-zinc-400"></div>
-                                     <div className="absolute bottom-0 -left-1 w-2 border-b border-zinc-400"></div>
+                              <div className="absolute top-0 -right-12 h-full flex items-center pointer-events-none">
+                                 <div className="h-full relative w-0">
+                                     <div className="absolute top-0 -left-6 w-6 border-t border-zinc-400/60 border-dashed"></div>
+                                     <div className="absolute bottom-0 -left-6 w-6 border-b border-zinc-400/60 border-dashed"></div>
                                  </div>
-                                 <div className="text-[11px] ml-1.5 -rotate-90 origin-left translate-x-2.5 text-zinc-800 font-bold tracking-tight">{part.length.toFixed(1)}</div>
+                                 <div className="h-full border-r border-zinc-500 relative">
+                                     <div className="absolute top-0 -left-1 w-2 border-t border-zinc-500"></div>
+                                     <div className="absolute bottom-0 -left-1 w-2 border-b border-zinc-500"></div>
+                                 </div>
+                                 <div className="text-[10px] ml-1 -rotate-90 origin-center text-zinc-800 font-bold tracking-tight bg-white/90 px-1 rounded whitespace-nowrap">{part.length.toFixed(1)}</div>
                               </div>
 
                               {renderDrillingDetailsSVG(part, page.mod, drawW, drawH, scale)}

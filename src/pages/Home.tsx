@@ -1,16 +1,23 @@
 import React, { useState } from 'react';
-import { Box, LayoutDashboard, Sparkles, ArrowRight, Home as HomeIcon, Lock, Settings2, ShieldCheck, Layers, Shield, Building2 } from 'lucide-react';
+import { Box, LayoutDashboard, Sparkles, ArrowRight, Home as HomeIcon, Lock, Settings2, ShieldCheck, Layers, Shield, Building2, User, LogIn, Cloud } from 'lucide-react';
 import { useAdminStore } from '../store/adminStore';
+import { useSupabaseAuthStore } from '../store/supabaseAuthStore';
+import { isSupabaseConfigured } from '../lib/supabase';
 import { AdminLoginModal } from '../components/admin/AdminLoginModal';
 import { AdminBackofficeModal } from '../components/admin/AdminBackofficeModal';
 
 export function Home({ onNavigate }: { onNavigate: (route: 'closet' | 'kitchen' | 'special' | 'sip-house' | 'hpl-bathroom' | 'concrete-house') => void }) {
   const [isLoginOpen, setIsLoginOpen] = useState(false);
   const [isBackofficeOpen, setIsBackofficeOpen] = useState(false);
-  const isAuthenticated = useAdminStore((state) => state.isAuthenticated);
+  const isLocalAuth = useAdminStore((state) => state.isAuthenticated);
+  const supabaseUser = useSupabaseAuthStore((state) => state.user);
+  const supabaseTenant = useSupabaseAuthStore((state) => state.tenant);
+  const isCloud = isSupabaseConfigured();
+
+  const isUserLoggedIn = Boolean(isLocalAuth || supabaseUser);
 
   const handleOpenAdmin = () => {
-    if (isAuthenticated) {
+    if (isUserLoggedIn) {
       setIsBackofficeOpen(true);
     } else {
       setIsLoginOpen(true);
@@ -26,23 +33,46 @@ export function Home({ onNavigate }: { onNavigate: (route: 'closet' | 'kitchen' 
           </span>
         </div>
         
-        <div className="flex items-center gap-4">
-          <button
-            onClick={handleOpenAdmin}
-            className="group px-4 py-2 bg-zinc-900/90 hover:bg-orange-500/10 border border-orange-500/30 hover:border-orange-500 rounded-xl text-xs font-bold uppercase tracking-wider text-slate-200 hover:text-orange-400 flex items-center gap-2 transition-all shadow-md shadow-orange-500/5 cursor-pointer"
-            title="Panel de Superadministrador (Proyectos, Costos & Texturas)"
-          >
-            <div className="p-1 bg-orange-500/20 rounded-md text-orange-400 group-hover:scale-105 transition-transform">
-              <Lock size={14} />
-            </div>
-            <span>Administración / Backoffice</span>
-            {isAuthenticated && (
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" title="Sesión activa" />
-            )}
-          </button>
+        <div className="flex items-center gap-3">
+          {isUserLoggedIn ? (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsBackofficeOpen(true)}
+                className="group px-4 py-2 bg-gradient-to-r from-orange-500/20 to-amber-500/20 hover:from-orange-500/30 hover:to-amber-500/30 border border-orange-500/50 rounded-xl text-xs font-bold uppercase tracking-wider text-orange-300 hover:text-orange-200 flex items-center gap-2 transition-all shadow-lg shadow-orange-500/10 cursor-pointer"
+                title="Abrir panel de control y administración"
+              >
+                <div className="p-1 bg-orange-500/30 rounded-md text-orange-400">
+                  <ShieldCheck size={14} />
+                </div>
+                <span>Backoffice</span>
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" title="Sesión activa" />
+              </button>
 
-          <div className="hidden sm:block text-sm font-semibold uppercase tracking-widest text-slate-500 border-l border-zinc-800 pl-4">
-            Suite de Diseño 3D & BIM
+              <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-slate-300">
+                <User size={13} className="text-orange-400" />
+                <span className="font-mono text-[11px] truncate max-w-[150px]">
+                  {supabaseUser?.email || 'marcelo@robfu.cl'}
+                </span>
+                {supabaseUser?.role && (
+                  <span className="px-1.5 py-0.5 bg-orange-500/20 text-orange-400 text-[9px] font-bold uppercase rounded">
+                    {supabaseUser.role}
+                  </span>
+                )}
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => setIsLoginOpen(true)}
+              className="group px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-400 hover:to-amber-500 text-white rounded-xl text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition-all shadow-lg shadow-orange-500/20 cursor-pointer"
+              title="Iniciar sesión en Backoffice o registrar empresa proveedora"
+            >
+              <LogIn size={15} />
+              <span>Iniciar Sesión / Proveedores</span>
+            </button>
+          )}
+
+          <div className="hidden md:block text-xs font-semibold uppercase tracking-widest text-slate-500 border-l border-zinc-800 pl-3">
+            Suite BIM 3D
           </div>
         </div>
       </header>

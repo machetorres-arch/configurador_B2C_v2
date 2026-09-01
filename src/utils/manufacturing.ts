@@ -3,6 +3,7 @@ import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
 import { ClosetModule } from '../store';
 import { renderArquifyPdfLogo } from './pdfLogo';
+import { getFriendlyColorName } from './colorNames';
 
 export interface ManufacturingData {
   height: number;
@@ -124,7 +125,7 @@ export function generatePartsList(data: ManufacturingData): Part[] {
         qty: 1,
         length: innerHeight * 10,
         width: innerW * 10,
-        thickness: thickness * 10,
+        thickness: 3,
         material: 'Melamina Fondo',
         edgeL1: false, edgeL2: false, edgeW1: false, edgeW2: false,
         notes: 'Placa encajada'
@@ -535,7 +536,7 @@ export function exportToPDF(data: ManufacturingData, filename = 'optimizacion_co
 
   const tableData = parts.map(p => [
     p.name,
-    p.material,
+    getFriendlyColorName(p.material, (data as any).customTextures),
     p.qty,
     `${p.length.toFixed(1)} x ${p.width.toFixed(1)}`,
     (p.edgeL1 || p.edgeL2 || p.edgeW1 || p.edgeW2) ? 'Perimetral / Seleccionado' : 'Sin Tapacanto'
@@ -547,7 +548,15 @@ export function exportToPDF(data: ManufacturingData, filename = 'optimizacion_co
     head: [['Pieza', 'Material', 'Cant.', 'Dimensiones (L x A) [mm]', 'Tapacantos']],
     body: tableData,
     theme: 'grid',
-    headStyles: { fillColor: [249, 115, 22] } 
+    headStyles: { fillColor: [249, 115, 22], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
+    styles: { fontSize: 7.5, cellPadding: 2.2, overflow: 'linebreak' },
+    columnStyles: {
+      0: { cellWidth: 70 },
+      1: { cellWidth: 60 },
+      2: { cellWidth: 20, halign: 'center' },
+      3: { cellWidth: 60, halign: 'center' },
+      4: { cellWidth: 50 }
+    }
   });
 
   // @ts-ignore

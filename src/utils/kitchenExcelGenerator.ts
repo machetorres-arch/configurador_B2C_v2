@@ -132,62 +132,16 @@ export const exportKitchenToExcel = () => {
     // BoM consolidado
     const dataBoM: any[] = [];
 
-    // Tableros / Melamina / Sustrato
-    Object.values(placasByMaterial).forEach(mat => {
-      const required = Math.ceil(mat.m2 / m2PorPlacaMDF);
-      const efficiency = required > 0 ? ((mat.m2 / (required * m2PorPlacaMDF)) * 100).toFixed(1) : '0.0';
-      dataBoM.push({
-        Categoria: 'Tableros',
-        Item: `Plancha Melamina / Sustrato (${mat.name})`,
-        Cantidad: required,
-        Unidad: 'Planchas (2440x1830mm)',
-        Detalles: `Área neta: ${mat.m2.toFixed(2)} m² | Eficiencia: ${efficiency}%`
-      });
-    });
-
-    // Tapacantos (+10% merma)
-    if (cantosGabTotal > 0) {
-      dataBoM.push({
-        Categoria: 'Insumos',
-        Item: `Metros de Tapacanto Gabinetes (${state.edgeBandingThicknessCabinets.toFixed(1)}mm)`,
-        Cantidad: cantosGabTotal,
-        Unidad: 'Metros Lineales',
-        Detalles: `Cuerpo de gabinetes (incluye 10% de merma)`
-      });
-    }
-    if (cantosFrentesTotal > 0) {
-      dataBoM.push({
-        Categoria: 'Insumos',
-        Item: `Metros de Tapacanto Frentes (${state.edgeBandingThicknessFronts.toFixed(1)}mm)`,
-        Cantidad: cantosFrentesTotal,
-        Unidad: 'Metros Lineales',
-        Detalles: `Puertas y frentes de cajón (incluye 10% de merma)`
-      });
-    }
-
-    // Placas HPL si existen
-    Object.values(hplByDecorativo).forEach(hpl => {
-      const required = Math.ceil(hpl.m2 / m2PorPlacaHPL);
-      const efficiency = required > 0 ? ((hpl.m2 / (required * m2PorPlacaHPL)) * 100).toFixed(1) : '0.0';
-      dataBoM.push({
-        Categoria: 'Enchape HPL',
-        Item: `Plancha HPL (${hpl.name})`,
-        Cantidad: required,
-        Unidad: 'Planchas (3050x1300mm)',
-        Detalles: `Área neta: ${hpl.m2.toFixed(2)} m² | Eficiencia: ${efficiency}%`
-      });
-    });
-
     // Mecanizado
     dataBoM.push({
       Categoria: 'Mecanizado',
       Item: 'Descuento de Sierra (Kerf de Corte)',
       Cantidad: kerf,
       Unidad: 'mm',
-      Detalles: 'Espesor de sierra compensado en optimización CNC / Nesting'
+      Detalles: 'Espesor de sierra compensado en optimización de corte (Guillotina / Panelera)'
     });
 
-    // Herrajes de armado e insumos calculados en generateKitchenHardwareList
+    // Herrajes de armado, tableros, tapacantos e insumos calculados en generateKitchenHardwareList
     hardware.forEach(h => {
       dataBoM.push({
         Categoria: h.Categoria || 'Herrajes',

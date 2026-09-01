@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ShieldCheck,
   FolderKanban,
@@ -11,9 +11,15 @@ import {
   Layers,
   FileSpreadsheet,
   CheckCircle,
-  HelpCircle
+  HelpCircle,
+  Building,
+  Database,
+  Cloud
 } from 'lucide-react';
 import { useAdminStore } from '../../store/adminStore';
+import { useSupabaseAuthStore } from '../../store/supabaseAuthStore';
+import { useTenantDataStore } from '../../store/tenantDataStore';
+import { isSupabaseConfigured } from '../../lib/supabase';
 import { ProjectsManagerTab } from './ProjectsManagerTab';
 import { SuppliesPriceTab } from './SuppliesPriceTab';
 import { TexturesManagerTab } from './TexturesManagerTab';
@@ -30,12 +36,24 @@ export function AdminBackofficeModal({
   onNavigateToModule,
 }: AdminBackofficeModalProps) {
   const [activeTab, setActiveTab] = useState<'projects' | 'supplies' | 'textures'>('projects');
-  const { adminEmail, logout, projects, supplies, textures } = useAdminStore();
+  const { adminEmail, logout: localLogout, projects, supplies, textures } = useAdminStore();
+  const { user: supabaseUser, tenant: supabaseTenant, logout: supabaseLogout } = useSupabaseAuthStore();
+  const { fetchTenantData, materials, hardware, projects: cloudProjects } = useTenantDataStore();
+  const isCloud = isSupabaseConfigured();
+
+  useEffect(() => {
+    if (isOpen && isCloud && supabaseUser?.tenant_id) {
+      fetchTenantData();
+    }
+  }, [isOpen, isCloud, supabaseUser?.tenant_id]);
 
   if (!isOpen) return null;
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    if (isCloud) {
+      await supabaseLogout();
+    }
+    localLogout();
     onClose();
   };
 
@@ -67,11 +85,22 @@ export function AdminBackofficeModal({
                   Mueble<span className="text-orange-500">Studio</span> Backoffice
                 </h1>
                 <span className="px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-widest bg-orange-500/20 text-orange-400 border border-orange-500/30 rounded">
-                  Superadmin
+                  {supabaseUser?.role || 'Superadmin'}
                 </span>
+                {isCloud && (
+                  <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded">
+                    <Cloud size={10} /> Supabase RLS
+                  </span>
+                )}
               </div>
-              <p className="text-xs text-slate-400">
-                Panel Central de Proyectos, Precios Unitarios de Insumos & Catálogo de Texturas
+              <p className="text-xs text-slate-400 flex items-center gap-2 mt-0.5">
+                {supabaseTenant?.name ? (
+                  <span className="text-orange-300 font-semibold flex items-center gap-1">
+                    <Building size={12} /> {supabaseTenant.name}
+                  </span>
+                ) : (
+                  'Panel Central de Proyectos, Precios Unitarios de Insumos & Catálogo de Texturas'
+                )}
               </p>
             </div>
           </div>
@@ -79,14 +108,18 @@ export function AdminBackofficeModal({
           {/* User & Actions */}
           <div className="flex items-center gap-3">
             <div className="hidden sm:flex flex-col text-right">
-              <span className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">Sesión Activa</span>
-              <span className="text-xs font-mono text-slate-300 font-semibold">{adminEmail || 'marcelo@robfu.com'}</span>
+              <span className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">
+                {supabaseTenant?.name ? 'Proveedor / Usuario' : 'Sesión Activa'}
+              </span>
+              <span className="text-xs font-mono text-slate-300 font-semibold">
+                {supabaseUser?.email || adminEmail || 'marcelo@robfu.cl'}
+              </span>
             </div>
 
             <button
               onClick={handleLogout}
               className="px-3 py-1.5 bg-zinc-800/80 hover:bg-red-500/20 border border-zinc-700 hover:border-red-500/30 text-slate-300 hover:text-red-400 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
-              title="Cerrar sesión de Superadministrador"
+              title="Cerrar sesión"
             >
               <LogOut size={14} />
               <span className="hidden sm:inline">Cerrar Sesión</span>

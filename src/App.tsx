@@ -6,9 +6,15 @@ import { SpecialFurnitureConfigurator } from './pages/SpecialFurnitureConfigurat
 import { SipHouseConfigurator } from './pages/SipHouseConfigurator';
 import { HplBathroomConfigurator } from './pages/HplBathroomConfigurator';
 import { ConcreteHouseConfigurator } from './pages/ConcreteHouseConfigurator';
+import { useSupabaseAuthStore } from './store/supabaseAuthStore';
 
 export default function App() {
   const [route, setRoute] = useState<'home' | 'closet' | 'kitchen' | 'special' | 'sip-house' | 'hpl-bathroom' | 'concrete-house'>('home');
+  const checkSession = useSupabaseAuthStore((state) => state.checkSession);
+
+  useEffect(() => {
+    checkSession();
+  }, [checkSession]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);

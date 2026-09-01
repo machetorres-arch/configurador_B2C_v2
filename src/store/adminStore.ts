@@ -582,7 +582,10 @@ export const useAdminStore = create<AdminState>((set, get) => {
     login: (user: string, pass: string) => {
       const cleanUser = user.trim().toLowerCase();
       const cleanPass = pass.trim();
-      if (cleanUser === 'marcelo@robfu.com' && cleanPass === '123456') {
+      if (
+        (cleanUser === 'marcelo@robfu.cl' && cleanPass === 'Robfu2026@') ||
+        (cleanUser === 'marcelo@robfu.com' && cleanPass === '123456')
+      ) {
         persist({ isAuthenticated: true, adminEmail: cleanUser });
         return { success: true };
       }

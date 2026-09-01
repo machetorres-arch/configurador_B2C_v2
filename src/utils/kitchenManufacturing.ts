@@ -639,6 +639,23 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
                 notes: 'Fondo ranurado/clavado 3mm'
             });
         }
+    } else if (cab.variant !== 'wall_open' && cab.variant !== 'tall_open' && cab.variant !== 'open') {
+        // Fallback estándar para puertas batientes en cualquier variante base, mural o torre
+        const isDouble = w > 60;
+        const doorQty = isDouble ? 2 : 1;
+        const doorWidth = isDouble ? ((w - gap * 3) / 2) * 10 : (w - gap * 2) * 10;
+        parts.push({
+            name: `Puerta Frontal ${cabName}`,
+            moduleId: cab.id,
+            moduleIndex: index,
+            qty: doorQty,
+            length: (cabH - gap * 2) * 10,
+            width: doorWidth,
+            thickness: thickness * 10,
+            material: frontMat,
+            edgeL1: true, edgeL2: true, edgeW1: true, edgeW2: true,
+            notes: isDouble ? 'Puertas batientes dobles' : 'Puerta batiente estándar'
+        });
     }
   });
 
@@ -646,11 +663,168 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
 }
 
 export function generateKitchenHardwareList(cabinets: CabinetType[]) {
-    const hardware = [];
+    const hardware: { Categoria: string; Item: string; Cantidad: number; Unidad: string; Detalles?: string }[] = [];
 
     const state = useStore.getState();
     const kState = useKitchenStore.getState();
     const hwSpec = HARDWARE_SPECS[state.drawerHardware || 'Provelcar'] || HARDWARE_SPECS.Provelcar;
+    const thicknessMm = (state.thickness || 1.5) * 10;
+
+    const DEFAULT_NAMES: Record<string, string> = {
+      '#FFFFFF': 'Blanco Frost',
+      '#171717': 'Negro Profundo',
+      '#F8F9FA': 'Bianco Polo',
+      '#202020': 'Nero',
+      '#D4A373': 'Roble Natural',
+      '#A3B18A': 'Verde Salvia',
+      '#588157': 'Verde Bosque',
+      '#3A5A40': 'Verde Olivo',
+      '#E0E1DD': 'Gris Humo',
+      '#778DA9': 'Azul Nórdico',
+      '#415A77': 'Azul Petróleo',
+      '#1B263B': 'Azul Noche',
+      '#2B2D42': 'Grafito Mate',
+      '#8D99AE': 'Gris Plata',
+      '#EDF2F4': 'Blanco Nieve',
+      '#DDA15E': 'Madera Teca',
+      '#BC6C25': 'Nogal Ceniza',
+    };
+
+    const getColorName = (colorVal?: string) => {
+      if (!colorVal) return 'Melamina Blanca';
+      if (colorVal.startsWith('#')) {
+        return DEFAULT_NAMES[colorVal.toUpperCase()] || `Color ${colorVal}`;
+      }
+      const found = state.customTextures?.find((t: any) => t.url === colorVal);
+      if (found) return found.name;
+      const parts = colorVal.split('/');
+      return parts[parts.length - 1].replace('.jpg', '').replace('.png', '').replace('.svg', '').replace(/[-_]/g, ' ');
+    };
+
+    // 0. CÁLCULO DE TABLEROS Y PLANCHAS (Melaminas, MDF 3mm, Laminados HPL)
+    const allParts = generateKitchenPartsList(cabinets);
+    const m2PorPlacaMDF = 2.44 * 1.83; // 4.465 m²
+    const m2PorPlacaHPL = 3.05 * 1.30; // 3.965 m²
+
+    let doorsM2 = 0;
+    let doorsColor = state.doorColor;
+    let structM2 = 0;
+    let structColor = state.structureColor;
+    let backsM2 = 0;
+    let hplDoorsM2 = 0;
+
+    let cantosFrontMeters = 0;
+    let cantosStructMeters = 0;
+
+    allParts.forEach(p => {
+      const pArea = (p.length * p.width * p.qty) / 1000000;
+      const isFront = p.name.includes('Puerta') || p.name.includes('Frente') || p.name.includes('Panel Ciego');
+      const isBack = p.thickness === 3 || p.name.includes('Fondo') || p.name.includes('Trasera');
+
+      if (isBack) {
+        backsM2 += pArea;
+      } else if (isFront) {
+        doorsColor = p.material || state.doorColor;
+        if (state.doorMaterial === 'hpl') {
+          hplDoorsM2 += pArea;
+        } else {
+          doorsM2 += pArea;
+        }
+      } else {
+        structColor = p.material || state.structureColor;
+        structM2 += pArea;
+      }
+
+      // Tapacantos
+      const cantosL = (p.edgeL1 ? 1 : 0) + (p.edgeL2 ? 1 : 0);
+      const cantosW = (p.edgeW1 ? 1 : 0) + (p.edgeW2 ? 1 : 0);
+      const meters = (((cantosL * p.length) + (cantosW * p.width)) * p.qty) / 1000;
+      if (isFront) {
+        cantosFrontMeters += meters;
+      } else {
+        cantosStructMeters += meters;
+      }
+    });
+
+    // 0.1 Tableros de Puertas / Frentes
+    if (doorsM2 > 0) {
+      const requiredDoorsBoards = Math.max(1, Math.ceil((doorsM2 * 1.18) / m2PorPlacaMDF));
+      const eff = ((doorsM2 / (requiredDoorsBoards * m2PorPlacaMDF)) * 100).toFixed(1);
+      hardware.push({
+        Categoria: 'Tableros',
+        Item: `Plancha Melamina Puertas y Frentes (${getColorName(doorsColor)})`,
+        Cantidad: requiredDoorsBoards,
+        Unidad: `Planchas (2440x1830x${thicknessMm}mm)`,
+        Detalles: `Área neta: ${doorsM2.toFixed(2)} m² | Aprovechamiento est.: ${eff}%`
+      });
+    }
+
+    // 0.2 Tableros HPL si aplica
+    if (hplDoorsM2 > 0) {
+      const reqHpl = Math.max(1, Math.ceil((hplDoorsM2 * 1.15) / m2PorPlacaHPL));
+      const effHpl = ((hplDoorsM2 / (reqHpl * m2PorPlacaHPL)) * 100).toFixed(1);
+      hardware.push({
+        Categoria: 'Tableros',
+        Item: `Plancha Laminado HPL Puertas (${getColorName(doorsColor)})`,
+        Cantidad: reqHpl,
+        Unidad: 'Planchas (3050x1300mm)',
+        Detalles: `Enchape decorativo alta resistencia. Área: ${hplDoorsM2.toFixed(2)} m² | Efic.: ${effHpl}%`
+      });
+      const reqMdfSustrato = Math.max(1, Math.ceil((hplDoorsM2 * 1.18) / m2PorPlacaMDF));
+      hardware.push({
+        Categoria: 'Tableros',
+        Item: `Plancha MDF Crudo / Sustrato p/ HPL (${thicknessMm}mm)`,
+        Cantidad: reqMdfSustrato,
+        Unidad: `Planchas (2440x1830x${thicknessMm}mm)`,
+        Detalles: `Alma base para prensado HPL. Área: ${hplDoorsM2.toFixed(2)} m²`
+      });
+    }
+
+    // 0.3 Tableros de Estructura y Cajas de Cajón
+    if (structM2 > 0) {
+      const requiredStructBoards = Math.max(1, Math.ceil((structM2 * 1.15) / m2PorPlacaMDF));
+      const effStruct = ((structM2 / (requiredStructBoards * m2PorPlacaMDF)) * 100).toFixed(1);
+      hardware.push({
+        Categoria: 'Tableros',
+        Item: `Plancha Melamina Estructura y Cajones (${getColorName(structColor)})`,
+        Cantidad: requiredStructBoards,
+        Unidad: `Planchas (2440x1830x${thicknessMm}mm)`,
+        Detalles: `Área neta: ${structM2.toFixed(2)} m² | Aprovechamiento est.: ${effStruct}%`
+      });
+    }
+
+    // 0.4 Tableros MDF 3mm (Fondos y Traseras)
+    if (backsM2 > 0) {
+      const requiredBackBoards = Math.max(1, Math.ceil((backsM2 * 1.12) / m2PorPlacaMDF));
+      const effBack = ((backsM2 / (requiredBackBoards * m2PorPlacaMDF)) * 100).toFixed(1);
+      hardware.push({
+        Categoria: 'Tableros',
+        Item: 'Plancha MDF / Durolac Traseras y Fondos 3mm',
+        Cantidad: requiredBackBoards,
+        Unidad: 'Planchas (2440x1830x3mm)',
+        Detalles: `Fondos ranurados y traseras de módulos. Área neta: ${backsM2.toFixed(2)} m² | Efic.: ${effBack}%`
+      });
+    }
+
+    // 0.5 Tapacantos (+10% merma)
+    if (cantosFrontMeters > 0) {
+      hardware.push({
+        Categoria: 'Insumos',
+        Item: `Tapacanto PVC Puertas y Frentes (22x${state.edgeBandingThicknessFronts.toFixed(2)}mm)`,
+        Cantidad: Math.ceil(cantosFrontMeters * 1.10),
+        Unidad: 'Metros Lineales',
+        Detalles: `Terminación perimetral frentes (${getColorName(doorsColor)})`
+      });
+    }
+    if (cantosStructMeters > 0) {
+      hardware.push({
+        Categoria: 'Insumos',
+        Item: `Tapacanto PVC Estructura (22x${state.edgeBandingThicknessCabinets.toFixed(2)}mm)`,
+        Cantidad: Math.ceil(cantosStructMeters * 1.10),
+        Unidad: 'Metros Lineales',
+        Detalles: `Cantos frontales e interiores de gabinetes (${getColorName(structColor)})`
+      });
+    }
 
     let totalHinges = 0;
     let totalDrawers = 0;
