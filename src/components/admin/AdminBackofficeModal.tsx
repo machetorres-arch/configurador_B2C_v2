@@ -14,7 +14,8 @@ import {
   HelpCircle,
   Building,
   Database,
-  Cloud
+  Cloud,
+  Users
 } from 'lucide-react';
 import { useAdminStore } from '../../store/adminStore';
 import { useSupabaseAuthStore } from '../../store/supabaseAuthStore';
@@ -23,6 +24,7 @@ import { isSupabaseConfigured } from '../../lib/supabase';
 import { ProjectsManagerTab } from './ProjectsManagerTab';
 import { SuppliesPriceTab } from './SuppliesPriceTab';
 import { TexturesManagerTab } from './TexturesManagerTab';
+import { UsersAndProvidersTab } from './UsersAndProvidersTab';
 
 interface AdminBackofficeModalProps {
   isOpen: boolean;
@@ -35,7 +37,7 @@ export function AdminBackofficeModal({
   onClose,
   onNavigateToModule,
 }: AdminBackofficeModalProps) {
-  const [activeTab, setActiveTab] = useState<'projects' | 'supplies' | 'textures'>('projects');
+  const [activeTab, setActiveTab] = useState<'projects' | 'supplies' | 'textures' | 'users'>('projects');
   const { adminEmail, logout: localLogout, projects, supplies, textures } = useAdminStore();
   const { user: supabaseUser, tenant: supabaseTenant, logout: supabaseLogout } = useSupabaseAuthStore();
   const { fetchTenantData, materials, hardware, projects: cloudProjects } = useTenantDataStore();
@@ -164,10 +166,10 @@ export function AdminBackofficeModal({
         </div>
 
         {/* Navigation Tabs */}
-        <div className="px-5 pt-3 bg-zinc-950 border-b border-zinc-800 flex items-center gap-2 shrink-0">
+        <div className="px-5 pt-3 bg-zinc-950 border-b border-zinc-800 flex items-center gap-2 shrink-0 overflow-x-auto">
           <button
             onClick={() => setActiveTab('projects')}
-            className={`px-4 py-2.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all ${
+            className={`px-4 py-2.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all shrink-0 cursor-pointer ${
               activeTab === 'projects'
                 ? 'border-orange-500 text-orange-400 bg-orange-500/5'
                 : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-zinc-900/50'
@@ -179,7 +181,7 @@ export function AdminBackofficeModal({
 
           <button
             onClick={() => setActiveTab('supplies')}
-            className={`px-4 py-2.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all ${
+            className={`px-4 py-2.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all shrink-0 cursor-pointer ${
               activeTab === 'supplies'
                 ? 'border-orange-500 text-orange-400 bg-orange-500/5'
                 : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-zinc-900/50'
@@ -191,7 +193,7 @@ export function AdminBackofficeModal({
 
           <button
             onClick={() => setActiveTab('textures')}
-            className={`px-4 py-2.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all ${
+            className={`px-4 py-2.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all shrink-0 cursor-pointer ${
               activeTab === 'textures'
                 ? 'border-orange-500 text-orange-400 bg-orange-500/5'
                 : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-zinc-900/50'
@@ -199,6 +201,18 @@ export function AdminBackofficeModal({
           >
             <Palette size={15} />
             Gestor de Texturas & Decorativos ({textures.length})
+          </button>
+
+          <button
+            onClick={() => setActiveTab('users')}
+            className={`px-4 py-2.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all shrink-0 cursor-pointer ${
+              activeTab === 'users'
+                ? 'border-orange-500 text-orange-400 bg-orange-500/5'
+                : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-zinc-900/50'
+            }`}
+          >
+            <Users size={15} />
+            Usuarios & Proveedores
           </button>
         </div>
 
@@ -209,6 +223,7 @@ export function AdminBackofficeModal({
           )}
           {activeTab === 'supplies' && <SuppliesPriceTab />}
           {activeTab === 'textures' && <TexturesManagerTab />}
+          {activeTab === 'users' && <UsersAndProvidersTab />}
         </div>
       </div>
     </div>

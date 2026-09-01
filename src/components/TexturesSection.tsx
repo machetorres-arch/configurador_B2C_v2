@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useStore } from '../store';
+import { useAdminStore } from '../store/adminStore';
 import { get, set } from 'idb-keyval';
 import { Upload, Trash2 } from 'lucide-react';
 
@@ -18,6 +19,7 @@ export const TexturesSection = ({
   badgeText?: string;
 }) => {
   const state = useStore();
+  const adminTextures = useAdminStore((s) => s.textures);
   const [uploading, setUploading] = useState(false);
   const [localTextures, setLocalTextures] = useState<any[]>([]);
 
@@ -100,17 +102,36 @@ export const TexturesSection = ({
     }
   };
 
-  // Clasificación dinámica de texturas
-  const allTextures = [...DEFAULT_TEXTURES, ...localTextures];
+  // Combinar texturas activas del AdminStore + locales + defaults
+  const activeAdminTextures = (adminTextures || [])
+    .filter(t => t.active)
+    .map(t => ({
+      id: t.id,
+      name: `${t.brand ? t.brand + ' ' : ''}${t.name}`,
+      url: t.url || t.previewUrl || '#CCCCCC',
+      category: t.category,
+      brand: t.brand
+    }));
+
+  // Combinación única por ID o nombre
+  const combinedMap = new Map<string, any>();
   
-  const masisaTextures = allTextures.filter(t => t.name.toLowerCase().includes('masisa'));
+  DEFAULT_TEXTURES.forEach(t => combinedMap.set(t.id, t));
+  activeAdminTextures.forEach(t => combinedMap.set(t.id, t));
+  localTextures.forEach(t => combinedMap.set(t.id, t));
+
+  const allTextures = Array.from(combinedMap.values());
+  
+  const masisaTextures = allTextures.filter(t => t.name.toLowerCase().includes('masisa') || t.brand?.toLowerCase() === 'masisa');
   const abetTextures = allTextures.filter(t => {
     const n = t.name.toLowerCase();
-    return n.includes('abet') || n.includes('laminati') || n.includes('hpl');
+    return n.includes('abet') || n.includes('laminati') || n.includes('hpl') || t.category === 'hpl_autor' || t.brand?.toLowerCase() === 'abet laminati';
   });
   const otherTextures = allTextures.filter(t => {
     const n = t.name.toLowerCase();
-    return !n.includes('masisa') && !n.includes('abet') && !n.includes('laminati') && !n.includes('hpl');
+    const isMasisa = n.includes('masisa') || t.brand?.toLowerCase() === 'masisa';
+    const isAbet = n.includes('abet') || n.includes('laminati') || n.includes('hpl') || t.category === 'hpl_autor' || t.brand?.toLowerCase() === 'abet laminati';
+    return !isMasisa && !isAbet;
   });
 
   const renderTextureButton = (tex: any, showDelete: boolean) => (
