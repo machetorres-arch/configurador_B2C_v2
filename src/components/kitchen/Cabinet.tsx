@@ -684,7 +684,11 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
    const cBack = backColor || color || '#f8fafc';
    const cSocle = socleColor || '#111';
 
-   const { activeCabinetId, setActiveCabinet, setDraggingCabinetId, setToolMode, showSocle, cabinets, viewMode } = useKitchenStore();
+   const { activeCabinetId, setActiveCabinet, setDraggingCabinetId, setToolMode, showSocle, cabinets, viewMode, golaSystem } = useKitchenStore();
+   const isGolaActive = (golaSystem === 'aluminum' || golaSystem === 'black') && (type === 'base' || type === 'island');
+   const golaColor = golaSystem === 'black' ? '#18181b' : '#d1d5db';
+   const golaMetalness = golaSystem === 'black' ? 0.85 : 0.92;
+   const golaRoughness = golaSystem === 'black' ? 0.35 : 0.20;
    const showDimensions = useStore((s) => s.showDimensions);
    const dimensionLevel = useStore((s) => s.dimensionLevel);
    const isActive = activeCabinetId === id;
@@ -753,6 +757,9 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
       return d1 < 5 || d2 < 5;
    });
 
+   const hasNeighborLeft = Boolean(leftNeighbor);
+   const hasNeighborRight = Boolean(rightNeighbor);
+
    // Cota de alto: Se dibuja únicamente en el extremo izquierdo libre, o en el extremo derecho si el izquierdo está tapado, o cuando está seleccionado
    const showHeightDimension = (!leftNeighbor) || isActive || (leftNeighbor && height > leftNeighbor.height + 5);
 
@@ -775,6 +782,14 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
    };
 
    const thickness = 1.5;
+
+   // Riel Gola Continuo (Provelcar 300cm):
+   // Pasa de lado a lado entre muebles contiguos gracias al ruteo/destaje CNC en los laterales intermedios.
+   // En costados exteriores terminales (sin mueble contiguo), el riel se ajusta al ras interior para eliminar puntas sobresalientes.
+   const golaStart = hasNeighborLeft ? -width / 2 : -width / 2 + thickness;
+   const golaEnd = hasNeighborRight ? width / 2 : width / 2 - thickness;
+   const golaSpan = Math.max(1, golaEnd - golaStart);
+   const golaCenterX = (golaStart + golaEnd) / 2;
 
    const isBaseOrTall = type === 'base' || type === 'tall' || type === 'island';
    const legsHeight = isBaseOrTall ? 10 : 0;
@@ -870,21 +885,82 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                <AssemblyJoint position={[innerW/2, yPos, 0]} length={depth - 2} axis="z" pointing="left" thickness={thickness} count={2} />
             </group>
          );
+
+         const renderGolaL = () => (
+            <group key="gola-l-profile">
+               {/* Perfil Gola L Provelcar x175 Superior */}
+               <mesh position={[golaCenterX, legsHeight + cabH - 1.75, depth / 2 - 2.5]}>
+                  <boxGeometry args={[golaSpan, 3.5, 0.2]} />
+                  <meshStandardMaterial color={golaColor} metalness={golaMetalness} roughness={golaRoughness} />
+               </mesh>
+               <mesh position={[golaCenterX, legsHeight + cabH - 3.5 + 0.1, depth / 2 - 1.25]}>
+                  <boxGeometry args={[golaSpan, 0.2, 2.5]} />
+                  <meshStandardMaterial color={golaColor} metalness={golaMetalness} roughness={golaRoughness} />
+               </mesh>
+               <mesh position={[golaCenterX, legsHeight + cabH - 0.2, depth / 2 - 0.1]}>
+                  <boxGeometry args={[golaSpan, 0.4, 0.2]} />
+                  <meshStandardMaterial color={golaColor} metalness={golaMetalness} roughness={golaRoughness} />
+               </mesh>
+               {/* Escuadras de fijación Provelcar a laterales */}
+               <mesh position={[-innerW / 2 + 0.2, legsHeight + cabH - 1.75, depth / 2 - 2.0]}>
+                  <boxGeometry args={[0.3, 2.5, 1.8]} />
+                  <meshStandardMaterial color="#94a3b8" metalness={0.7} roughness={0.3} />
+               </mesh>
+               <mesh position={[innerW / 2 - 0.2, legsHeight + cabH - 1.75, depth / 2 - 2.0]}>
+                  <boxGeometry args={[0.3, 2.5, 1.8]} />
+                  <meshStandardMaterial color="#94a3b8" metalness={0.7} roughness={0.3} />
+               </mesh>
+            </group>
+         );
+
+         const renderGolaC = (yPos: number) => (
+            <group key={`gola-c-profile-${yPos}`}>
+               {/* Perfil Gola C Provelcar x176 Intermedio */}
+               <mesh position={[golaCenterX, yPos, depth / 2 - 2.5]}>
+                  <boxGeometry args={[golaSpan, 4.0, 0.2]} />
+                  <meshStandardMaterial color={golaColor} metalness={golaMetalness} roughness={golaRoughness} />
+               </mesh>
+               <mesh position={[golaCenterX, yPos + 2.0 - 0.1, depth / 2 - 1.25]}>
+                  <boxGeometry args={[golaSpan, 0.2, 2.5]} />
+                  <meshStandardMaterial color={golaColor} metalness={golaMetalness} roughness={golaRoughness} />
+               </mesh>
+               <mesh position={[golaCenterX, yPos - 2.0 + 0.1, depth / 2 - 1.25]}>
+                  <boxGeometry args={[golaSpan, 0.2, 2.5]} />
+                  <meshStandardMaterial color={golaColor} metalness={golaMetalness} roughness={golaRoughness} />
+               </mesh>
+               <mesh position={[golaCenterX, yPos, depth / 2 - 0.1]}>
+                  <boxGeometry args={[golaSpan, 0.4, 0.2]} />
+                  <meshStandardMaterial color={golaColor} metalness={golaMetalness} roughness={golaRoughness} />
+               </mesh>
+               {/* Escuadras de fijación Provelcar a laterales */}
+               <mesh position={[-innerW / 2 + 0.2, yPos, depth / 2 - 2.0]}>
+                  <boxGeometry args={[0.3, 3.0, 1.8]} />
+                  <meshStandardMaterial color="#94a3b8" metalness={0.7} roughness={0.3} />
+               </mesh>
+               <mesh position={[innerW / 2 - 0.2, yPos, depth / 2 - 2.0]}>
+                  <boxGeometry args={[0.3, 3.0, 1.8]} />
+                  <meshStandardMaterial color="#94a3b8" metalness={0.7} roughness={0.3} />
+               </mesh>
+            </group>
+         );
          
          if (effectiveVariant === '1_door' || effectiveVariant === 'tall_1_door') {
             const doorW = width - gap*2;
-            const doorH = cabH - gap*2;
+            const topDeduct = isGolaActive ? 3.5 : 0;
+            const doorH = cabH - topDeduct - gap*2;
+            const doorY = isGolaActive ? (legsHeight + (cabH - topDeduct)/2) : (legsHeight + cabH/2);
             return (
                <>
+                  {isGolaActive && renderGolaL()}
                   <AnimatedDoor
-                     position={[0, legsHeight + cabH/2, frontZ]}
+                     position={[0, doorY, frontZ]}
                      doorW={doorW}
                      doorH={doorH}
                      thickness={thickness}
                      isRightHinge={false}
                      colorProps={parseColor(cDoors, doorMaterial, 'door-0')}
                      forceOpen={isElementOpen('door-0')}
-                     globalPosition={[position[0], position[1] + legsHeight + cabH/2, position[2] + frontZ]}
+                     globalPosition={[position[0], position[1] + doorY, position[2] + frontZ]}
                   />
                   {/* Repisas Interiores */}
                   {type === 'tall' ? (
@@ -1049,60 +1125,68 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
 
          if (effectiveVariant === 'spice_rack') {
             const slideLength = depth - 5;
-            const doorH = cabH - gap * 2;
+            const topDeduct = isGolaActive ? 3.5 : 0;
+            const doorH = cabH - topDeduct - gap * 2;
+            const doorY = isGolaActive ? (legsHeight + (cabH - topDeduct)/2) : (legsHeight + cabH / 2);
             return (
-               <AnimatedDrawer openZOffset={slideLength - 8} forceOpen={isElementOpen('drawer-0')}>
-                  <Board position={[0, legsHeight + cabH / 2, frontZ]} args={[width - gap * 2, doorH, thickness]} {...parseColor(cDoors, doorMaterial, 'drawer-0')} isFrontPanel={true} globalPosition={[position[0], position[1] + legsHeight + cabH / 2, position[2] + frontZ]} />
-                  {/* Cestas metálicas de especiero extraíble */}
-                  <mesh position={[0, legsHeight + 8, 0]}>
-                     <boxGeometry args={[Math.max(4, width - 4), 1.5, depth - 8]} />
-                     <meshStandardMaterial color="#cccccc" metalness={0.8} roughness={0.2} />
-                  </mesh>
-                  <mesh position={[0, legsHeight + cabH / 2, 0]}>
-                     <boxGeometry args={[Math.max(4, width - 4), 1.5, depth - 8]} />
-                     <meshStandardMaterial color="#cccccc" metalness={0.8} roughness={0.2} />
-                  </mesh>
-                  {/* Postes cromados */}
-                  <mesh position={[-width / 2 + 2.5, legsHeight + cabH / 2, -depth / 2 + 5]}>
-                     <cylinderGeometry args={[0.3, 0.3, cabH - 12, 8]} />
-                     <meshStandardMaterial color="#cccccc" metalness={0.9} roughness={0.1} />
-                  </mesh>
-                  <mesh position={[width / 2 - 2.5, legsHeight + cabH / 2, -depth / 2 + 5]}>
-                     <cylinderGeometry args={[0.3, 0.3, cabH - 12, 8]} />
-                     <meshStandardMaterial color="#cccccc" metalness={0.9} roughness={0.1} />
-                  </mesh>
-               </AnimatedDrawer>
+               <>
+                  {isGolaActive && renderGolaL()}
+                  <AnimatedDrawer openZOffset={slideLength - 8} forceOpen={isElementOpen('drawer-0')}>
+                     <Board position={[0, doorY, frontZ]} args={[width - gap * 2, doorH, thickness]} {...parseColor(cDoors, doorMaterial, 'drawer-0')} isFrontPanel={true} globalPosition={[position[0], position[1] + doorY, position[2] + frontZ]} />
+                     {/* Cestas metálicas de especiero extraíble */}
+                     <mesh position={[0, legsHeight + 8, 0]}>
+                        <boxGeometry args={[Math.max(4, width - 4), 1.5, depth - 8]} />
+                        <meshStandardMaterial color="#cccccc" metalness={0.8} roughness={0.2} />
+                     </mesh>
+                     <mesh position={[0, legsHeight + cabH / 2, 0]}>
+                        <boxGeometry args={[Math.max(4, width - 4), 1.5, depth - 8]} />
+                        <meshStandardMaterial color="#cccccc" metalness={0.8} roughness={0.2} />
+                     </mesh>
+                     {/* Postes cromados */}
+                     <mesh position={[-width / 2 + 2.5, legsHeight + cabH / 2, -depth / 2 + 5]}>
+                        <cylinderGeometry args={[0.3, 0.3, cabH - 12, 8]} />
+                        <meshStandardMaterial color="#cccccc" metalness={0.9} roughness={0.1} />
+                     </mesh>
+                     <mesh position={[width / 2 - 2.5, legsHeight + cabH / 2, -depth / 2 + 5]}>
+                        <cylinderGeometry args={[0.3, 0.3, cabH - 12, 8]} />
+                        <meshStandardMaterial color="#cccccc" metalness={0.9} roughness={0.1} />
+                     </mesh>
+                  </AnimatedDrawer>
+               </>
             );
          }
          
          if (effectiveVariant === '2_doors' || effectiveVariant === 'tall_2_doors') {
             const doorW = (width - gap*3) / 2;
-            const doorH = cabH - gap*2;
+            const topDeduct = isGolaActive ? 3.5 : 0;
+            const doorH = cabH - topDeduct - gap*2;
+            const doorY = isGolaActive ? (legsHeight + (cabH - topDeduct)/2) : (legsHeight + cabH/2);
             const leftDoorX = -width/2 + gap + doorW/2;
             const rightDoorX = width/2 - gap - doorW/2;
             return (
                <>
+                  {isGolaActive && renderGolaL()}
                   <AnimatedDoor
                      key="door-left"
-                     position={[leftDoorX, legsHeight + cabH/2, frontZ]}
+                     position={[leftDoorX, doorY, frontZ]}
                      doorW={doorW}
                      doorH={doorH}
                      thickness={thickness}
                      isRightHinge={false}
                      colorProps={parseColor(cDoors, doorMaterial, 'door-0')}
                      forceOpen={isElementOpen('door-0')}
-                     globalPosition={[position[0] + leftDoorX, position[1] + legsHeight + cabH/2, position[2] + frontZ]}
+                     globalPosition={[position[0] + leftDoorX, position[1] + doorY, position[2] + frontZ]}
                   />
                   <AnimatedDoor
                      key="door-right"
-                     position={[rightDoorX, legsHeight + cabH/2, frontZ]}
+                     position={[rightDoorX, doorY, frontZ]}
                      doorW={doorW}
                      doorH={doorH}
                      thickness={thickness}
                      isRightHinge={true}
                      colorProps={parseColor(cDoors, doorMaterial, 'door-1')}
                      forceOpen={isElementOpen('door-1')}
-                     globalPosition={[position[0] + rightDoorX, position[1] + legsHeight + cabH/2, position[2] + frontZ]}
+                     globalPosition={[position[0] + rightDoorX, position[1] + doorY, position[2] + frontZ]}
                   />
                   {/* Repisas Interiores */}
                   {type === 'tall' ? (
@@ -1120,6 +1204,34 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
          }
          
          if (effectiveVariant === '1_door_1_drawer') {
+            if (isGolaActive) {
+               const drawerH = 14.5;
+               const yBoxCenter = legsHeight + cabH - 3.5 - drawerH / 2;
+               const yGolaC = legsHeight + cabH - 3.5 - drawerH - 2.0;
+               const doorH = Math.max(15, cabH - 3.5 - drawerH - 4.0 - gap * 3);
+               const yDoorCenter = legsHeight + gap + doorH / 2;
+               return (
+                  <>
+                     {renderGolaL()}
+                     {renderGolaC(yGolaC)}
+                     <AnimatedDoor
+                        position={[0, yDoorCenter, frontZ]}
+                        doorW={width - gap*2}
+                        doorH={doorH}
+                        thickness={thickness}
+                        isRightHinge={false}
+                        colorProps={parseColor(cDoors, doorMaterial, 'door-0')}
+                        forceOpen={isElementOpen('door-0')}
+                        globalPosition={[position[0], position[1] + yDoorCenter, position[2] + frontZ]}
+                     />
+                     <Board position={[0, yGolaC, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(shelfColor || cStructure, shelfMaterial)} />
+                     {doorH > 40 && (
+                        <Board position={[0, legsHeight + gap + doorH / 2, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(shelfColor || cStructure, shelfMaterial)} />
+                     )}
+                     {renderUndermountDrawer('d1', yBoxCenter, drawerH, parseColor(cDrawers, drawerFrontMaterial, 'drawer-0'), 'drawer-0')}
+                  </>
+               );
+            }
             const drawerH = 15;
             const doorH = cabH - drawerH - gap*3;
             const yBoxCenter = legsHeight + gap*2 + doorH + drawerH/2;
@@ -1147,6 +1259,21 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
          }
          
          if (effectiveVariant === '4_drawers') {
+            if (isGolaActive) {
+               const availH = Math.max(20, cabH - 3.5 - 4.0 - gap * 5);
+               const drawerH = availH / 4;
+               const yGolaC = legsHeight + gap + (drawerH + gap) * 2 + 2.0;
+               return (
+                  <>
+                     {renderGolaL()}
+                     {renderGolaC(yGolaC)}
+                     {[0,1,2,3].map(i => {
+                       const yBoxCenter = legsHeight + gap + drawerH/2 + i*(drawerH + gap) + (i >= 2 ? 4.0 : 0);
+                       return renderUndermountDrawer('d' + i, yBoxCenter, drawerH, parseColor(cDrawers, drawerFrontMaterial, `drawer-${i}`), `drawer-${i}`);
+                     })}
+                  </>
+               );
+            }
             const drawerH = (cabH - gap*5) / 4;
             return (
                <>
@@ -1159,6 +1286,21 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
          }
          
          if (effectiveVariant === '2_pot_drawers') {
+            if (isGolaActive) {
+               const availH = Math.max(20, cabH - 3.5 - 4.0 - gap * 3);
+               const drawerH = availH / 2;
+               const yLower = legsHeight + gap + drawerH / 2;
+               const yGolaC = legsHeight + gap + drawerH + 2.0;
+               const yUpper = legsHeight + gap + drawerH + 4.0 + gap + drawerH / 2;
+               return (
+                  <>
+                     {renderGolaL()}
+                     {renderGolaC(yGolaC)}
+                     {renderUndermountDrawer('p0', yLower, drawerH, parseColor(cDrawers, drawerFrontMaterial, 'drawer-0'), 'drawer-0')}
+                     {renderUndermountDrawer('p1', yUpper, drawerH, parseColor(cDrawers, drawerFrontMaterial, 'drawer-1'), 'drawer-1')}
+                  </>
+               );
+            }
             const drawerH = (cabH - gap*3) / 2;
             return (
                <>
@@ -1174,7 +1316,9 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
             const isRight = effectiveVariant !== 'corner_blind_left';
             const blindW = Math.max(35, width / 2);
             const doorW = width - blindW - gap * 2;
-            const doorH = cabH - gap * 2;
+            const topDeduct = isGolaActive ? 3.5 : 0;
+            const doorH = cabH - topDeduct - gap * 2;
+            const doorY = isGolaActive ? (legsHeight + (cabH - topDeduct)/2) : (legsHeight + cabH / 2);
             
             const blindX = isRight ? (width / 2 - blindW / 2) : (-width / 2 + blindW / 2);
             const postX = isRight ? (width / 2 - blindW + thickness / 2) : (-width / 2 + blindW - thickness / 2);
@@ -1182,10 +1326,11 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
             
             return (
                <>
+                  {isGolaActive && renderGolaL()}
                   {/* Panel Ciego Frontal Fijo (Mismo decorativo de paredes/estructura) */}
                   <Board
                      position={[blindX, legsHeight + cabH / 2, frontZ]}
-                     args={[blindW, doorH, thickness]}
+                     args={[blindW, cabH - gap * 2, thickness]}
                      {...parseColor(cStructure, structureMaterial, 'blind')}
                      isFrontPanel={false}
                      globalPosition={[position[0] + blindX, position[1] + legsHeight + cabH / 2, position[2] + frontZ]}
@@ -1200,14 +1345,14 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
 
                   {/* Puerta Frontal Batiente Abrible con Bisagras de Cazoleta en el lado exterior */}
                   <AnimatedDoor
-                     position={[doorX, legsHeight + cabH / 2, frontZ]}
+                     position={[doorX, doorY, frontZ]}
                      doorW={doorW}
                      doorH={doorH}
                      thickness={thickness}
                      isRightHinge={!isRight}
                      colorProps={parseColor(cDoors, doorMaterial, 'door-0')}
                      forceOpen={isElementOpen('door-0')}
-                     globalPosition={[position[0] + doorX, position[1] + legsHeight + cabH / 2, position[2] + frontZ]}
+                     globalPosition={[position[0] + doorX, position[1] + doorY, position[2] + frontZ]}
                   />
 
                   {/* Repisa Interior Transversal */}
@@ -1346,8 +1491,105 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                </>
             )}
             
-            <Board position={[-width/2 + thickness/2, legsHeight + cabH/2, 0]} args={[thickness, cabH, depth]} {...parseColor(cStructure, structureMaterial, 'left')} />
-            <Board position={[width/2 - thickness/2, legsHeight + cabH/2, 0]} args={[thickness, cabH, depth]} {...parseColor(cStructure, structureMaterial, 'right')} />
+            {/* Renderizado de Laterales con Rebaje CNC para paso continuo de Riel Gola */}
+            {(() => {
+               const renderLateral = (isLeft: boolean) => {
+                  const xPos = isLeft ? -width/2 + thickness/2 : width/2 - thickness/2;
+                  const key = isLeft ? 'left' : 'right';
+                  const isTerminal = isLeft ? !hasNeighborLeft : !hasNeighborRight;
+
+                  // Si Gola no está activo o si es un costado exterior terminal (sin mueble contiguo),
+                  // el lateral se mantiene cerrado y completo al ras, evitando puntas o aberturas hacia la habitación.
+                  if (!isGolaActive || isTerminal) {
+                     return (
+                        <Board 
+                           key={`lat-${key}`}
+                           position={[xPos, legsHeight + cabH/2, 0]} 
+                           args={[thickness, cabH, depth]} 
+                           {...parseColor(cStructure, structureMaterial, key)} 
+                        />
+                     );
+                  }
+
+                  // Lateral Intermedio (con mueble contiguo): Destaje CNC para paso continuo del riel Gola
+                  const notchDepth = 2.6;
+                  const notchLHeight = 5.8;
+                  const backDepth = depth - notchDepth;
+                  const zBack = -depth/2 + backDepth/2;
+                  const zFront = depth/2 - notchDepth/2;
+
+                  let effVariant = variant;
+                  if (!effVariant) {
+                     effVariant = width > 60 ? '2_doors' : '1_door';
+                  }
+                  const hasGolaC = effVariant === '1_door_1_drawer' || effVariant === '2_pot_drawers' || effVariant === '4_drawers';
+
+                  let yGolaC = 0;
+                  if (effVariant === '1_door_1_drawer') {
+                     const drawerH = 14.5;
+                     yGolaC = legsHeight + cabH - 3.5 - drawerH - 2.0;
+                  } else if (effVariant === '2_pot_drawers') {
+                     const availH = Math.max(20, cabH - 3.5 - 4.0 - gap * 3);
+                     const drawerH = availH / 2;
+                     yGolaC = legsHeight + gap + drawerH + 2.0;
+                  } else if (effVariant === '4_drawers') {
+                     const availH = Math.max(20, cabH - 3.5 - 4.0 - gap * 5);
+                     const drawerH = availH / 4;
+                     yGolaC = legsHeight + gap + (drawerH + gap) * 2 + 2.0;
+                  }
+
+                  const notchCHeight = 6.8;
+
+                  return (
+                     <group key={`lateral-${key}`}>
+                        {/* Cuerpo trasero completo a toda la altura */}
+                        <Board 
+                           position={[xPos, legsHeight + cabH/2, zBack]} 
+                           args={[thickness, cabH, backDepth]} 
+                           {...parseColor(cStructure, structureMaterial, key)} 
+                        />
+
+                        {/* Cuerpo frontal con rebajes CNC para paso libre y continuo del perfil Gola */}
+                        {!hasGolaC ? (
+                           <Board 
+                              position={[xPos, legsHeight + (cabH - notchLHeight)/2, zFront]} 
+                              args={[thickness, cabH - notchLHeight, notchDepth]} 
+                              {...parseColor(cStructure, structureMaterial, key)} 
+                           />
+                        ) : (
+                           (() => {
+                              const yCBottom = yGolaC - notchCHeight/2;
+                              const yCTop = yGolaC + notchCHeight/2;
+                              const yLBottom = legsHeight + cabH - notchLHeight;
+                              const lowerH = Math.max(2, yCBottom - legsHeight);
+                              const middleH = Math.max(2, yLBottom - yCTop);
+                              return (
+                                 <>
+                                    <Board 
+                                       position={[xPos, legsHeight + lowerH/2, zFront]} 
+                                       args={[thickness, lowerH, notchDepth]} 
+                                       {...parseColor(cStructure, structureMaterial, key)} 
+                                    />
+                                    <Board 
+                                       position={[xPos, yCTop + middleH/2, zFront]} 
+                                       args={[thickness, middleH, notchDepth]} 
+                                       {...parseColor(cStructure, structureMaterial, key)} 
+                                    />
+                                 </>
+                              );
+                           })()
+                        )}
+                     </group>
+                  );
+               };
+
+               return (
+                  <>
+                     {renderLateral(true)}
+                     {renderLateral(false)}
+                  </>
+               );
+            })()}
             <Board position={[0, legsHeight + thickness/2, 0]} args={[innerW, thickness, depth]} {...parseColor(cStructure, structureMaterial, 'bottom')} />
             <Board position={[0, legsHeight + cabH/2, -depth/2 + thickness/2]} args={[innerW, cabH - thickness*2, thickness]} {...parseColor(cBack, backMaterial, 'back')} />
             
@@ -1357,11 +1599,21 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
 
             {type === 'base' || type === 'island' ? (
                <>
-                  <Board position={[0, height - thickness/2, depth/2 - 5]} args={[innerW, thickness, 10]} {...parseColor(cStructure, structureMaterial, 'top')} />
+                  <Board 
+                     position={[0, height - thickness/2, isGolaActive ? depth/2 - 2.6 - 5 : depth/2 - 5]} 
+                     args={[innerW, thickness, 10]} 
+                     {...parseColor(cStructure, structureMaterial, 'top')} 
+                  />
                   <Board position={[0, height - 5, -depth/2 + thickness * 1.5]} args={[innerW, 10, thickness]} {...parseColor(cStructure, structureMaterial, 'top')} />
                   {/* Amarres frontales y traseros a laterales */}
-                  <AssemblyJoint position={[-innerW/2, height - thickness/2, depth/2 - 5]} length={10} axis="z" pointing="right" thickness={thickness} count={1} />
-                  <AssemblyJoint position={[innerW/2, height - thickness/2, depth/2 - 5]} length={10} axis="z" pointing="left" thickness={thickness} count={1} />
+                  <AssemblyJoint 
+                     position={[-innerW/2, height - thickness/2, isGolaActive ? depth/2 - 2.6 - 5 : depth/2 - 5]} 
+                     length={10} axis="z" pointing="right" thickness={thickness} count={1} 
+                  />
+                  <AssemblyJoint 
+                     position={[innerW/2, height - thickness/2, isGolaActive ? depth/2 - 2.6 - 5 : depth/2 - 5]} 
+                     length={10} axis="z" pointing="left" thickness={thickness} count={1} 
+                  />
                   <AssemblyJoint position={[-innerW/2, height - 5, -depth/2 + thickness * 1.5]} length={10} axis="y" pointing="right" thickness={thickness} count={1} />
                   <AssemblyJoint position={[innerW/2, height - 5, -depth/2 + thickness * 1.5]} length={10} axis="y" pointing="left" thickness={thickness} count={1} />
                </>

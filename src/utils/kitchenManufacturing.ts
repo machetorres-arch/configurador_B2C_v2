@@ -3,6 +3,7 @@ import { useStore } from '../store';
 import { useKitchenStore } from '../store/kitchenStore';
 import { Part, generateEdgeBandingList } from './manufacturing';
 import { calculateSocleSystem } from './kitchenSocle';
+import { calculateGolaSystem } from './kitchenGola';
 
 // Parámetros técnicos de herrajes según marca (igualados con el configurador de closets)
 export const HARDWARE_SPECS = {
@@ -38,6 +39,7 @@ export function getNominalSlideLength(innerDepthMm: number): number {
 export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
   const parts: Part[] = [];
   const state = useStore.getState();
+  const kState = useKitchenStore.getState();
   const thickness = state.thickness; // thickness in cm
   const hwSpec = HARDWARE_SPECS[state.drawerHardware || 'Provelcar'] || HARDWARE_SPECS.Provelcar;
   
@@ -55,6 +57,12 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
     const innerH = cabH - thickness * ((cab.type === 'base' || cab.type === 'island') ? 1 : 2);
     
     // 1. Laterales (Sides)
+    const isBaseGola = (kState.golaSystem === 'aluminum' || kState.golaSystem === 'black') && (cab.type === 'base' || cab.type === 'island');
+    const hasGolaC = isBaseGola && (cab.variant === '1_door_1_drawer' || cab.variant === '2_pot_drawers' || cab.variant === '4_drawers');
+    const lateralNotes = isBaseGola
+      ? (hasGolaC ? 'Mecanizado CNC: Destaje Gola L Superior 58x26mm + Gola C Intermedio 68x26mm (Paso continuo)' : 'Mecanizado CNC: Destaje Gola L Superior 58x26mm (Paso continuo)')
+      : 'Laterales del gabinete';
+
     parts.push({
       name: `Lateral ${cabName}`,
       moduleId: cab.id,
@@ -65,7 +73,7 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
       thickness: thickness * 10,
       material: cab.structureColor || state.structureColor,
       edgeL1: true, edgeL2: false, edgeW1: true, edgeW2: true,
-      notes: 'Laterales del gabinete'
+      notes: lateralNotes
     });
 
     // 2. Base
@@ -566,13 +574,33 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
             notes: '2 repisas vistas interiores'
         });
     } else if (cab.variant === '4_drawers' || cab.variant === '2_pot_drawers' || cab.variant === '1_door_1_drawer') {
+        const isGola = (kState.golaSystem === 'aluminum' || kState.golaSystem === 'black') && (cab.type === 'base' || cab.type === 'island');
         let drawCount = 0;
         let drawerHeights: number[] = [];
         let isPotDrawer = cab.variant === '2_pot_drawers';
         
-        if (cab.variant === '4_drawers') { drawCount = 4; drawerHeights = [(cabH - gap*5)/4, (cabH - gap*5)/4, (cabH - gap*5)/4, (cabH - gap*5)/4]; }
-        if (cab.variant === '2_pot_drawers') { drawCount = 2; drawerHeights = [(cabH - gap*3)/2, (cabH - gap*3)/2]; }
-        if (cab.variant === '1_door_1_drawer') { drawCount = 1; drawerHeights = [18]; } // Just the drawer part
+        if (cab.variant === '4_drawers') {
+            drawCount = 4;
+            if (isGola) {
+                const availH = Math.max(20, cabH - 3.5 - 4.0 - gap * 5);
+                drawerHeights = [availH / 4, availH / 4, availH / 4, availH / 4];
+            } else {
+                drawerHeights = [(cabH - gap*5)/4, (cabH - gap*5)/4, (cabH - gap*5)/4, (cabH - gap*5)/4];
+            }
+        }
+        if (cab.variant === '2_pot_drawers') {
+            drawCount = 2;
+            if (isGola) {
+                const availH = Math.max(20, cabH - 3.5 - 4.0 - gap * 3);
+                drawerHeights = [availH / 2, availH / 2];
+            } else {
+                drawerHeights = [(cabH - gap*3)/2, (cabH - gap*3)/2];
+            }
+        }
+        if (cab.variant === '1_door_1_drawer') {
+            drawCount = 1;
+            drawerHeights = [isGola ? 14.5 : 18]; // 35mm top deduction if Gola L
+        }
         
         drawerHeights.forEach((dh, i) => {
             parts.push({
@@ -585,12 +613,12 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
                 thickness: thickness * 10,
                 material: cab.drawerFrontColor || frontMat,
                 edgeL1: true, edgeL2: true, edgeW1: true, edgeW2: true,
-                notes: 'Tapacanto perimetral'
+                notes: isGola ? 'Tapacanto perimetral (Alineado a Riel Gola Provelcar)' : 'Tapacanto perimetral'
             });
         });
 
         if (cab.variant === '1_door_1_drawer') {
-            const doorH = cabH - gap*3 - 18;
+            const doorH = isGola ? (cabH - gap*3 - 14.5 - 4.0) : (cabH - gap*3 - 18);
             parts.push({
                 name: `Puerta Frontal ${cabName}`,
                 moduleId: cab.id,
@@ -600,7 +628,8 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
                 width: doorH * 10,
                 thickness: thickness * 10,
                 material: frontMat,
-                edgeL1: true, edgeL2: true, edgeW1: true, edgeW2: true
+                edgeL1: true, edgeL2: true, edgeW1: true, edgeW2: true,
+                notes: isGola ? 'Puerta frontal (Descuento 40mm p/ Riel Gola C x176)' : undefined
             });
         }
         
@@ -641,20 +670,22 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
         }
     } else if (cab.variant !== 'wall_open' && cab.variant !== 'tall_open' && cab.variant !== 'open') {
         // Fallback estándar para puertas batientes en cualquier variante base, mural o torre
+        const isGola = (kState.golaSystem === 'aluminum' || kState.golaSystem === 'black') && (cab.type === 'base' || cab.type === 'island');
         const isDouble = w > 60;
         const doorQty = isDouble ? 2 : 1;
         const doorWidth = isDouble ? ((w - gap * 3) / 2) * 10 : (w - gap * 2) * 10;
+        const rawDoorH = isGola ? (cabH - 3.5 - gap * 2) : (cabH - gap * 2);
         parts.push({
             name: `Puerta Frontal ${cabName}`,
             moduleId: cab.id,
             moduleIndex: index,
             qty: doorQty,
-            length: (cabH - gap * 2) * 10,
+            length: rawDoorH * 10,
             width: doorWidth,
             thickness: thickness * 10,
             material: frontMat,
             edgeL1: true, edgeL2: true, edgeW1: true, edgeW2: true,
-            notes: isDouble ? 'Puertas batientes dobles' : 'Puerta batiente estándar'
+            notes: (isDouble ? 'Puertas batientes dobles' : 'Puerta batiente estándar') + (isGola ? ' (Descuento 35mm p/ Riel Gola L x175)' : '')
         });
     }
   });
@@ -1150,6 +1181,32 @@ export function generateKitchenHardwareList(cabinets: CabinetType[]) {
             Unidad: 'Unidades',
             Detalles: 'Enganche a presión sobre patas niveladoras'
         });
+    }
+
+    // 7. SISTEMA PERFIL GOLA (Provelcar x175 / x176) O TIRADORES CONVENCIONALES
+    if (kState.golaSystem && kState.golaSystem !== 'none') {
+        const golaRes = calculateGolaSystem(cabinets, kState.golaSystem);
+        if (golaRes.hardwareItems.length > 0) {
+            hardware.push(...golaRes.hardwareItems);
+        }
+    } else {
+        const totalHandles = Math.ceil(totalHinges / 2 + totalDrawers);
+        if (totalHandles > 0) {
+            hardware.push({
+                Categoria: 'Tiradores',
+                Item: 'Tirador / Manilla Perfil Estándar (160mm)',
+                Cantidad: totalHandles,
+                Unidad: 'Unidades',
+                Detalles: 'Fijación frontal estándar con tornillos M4'
+            });
+            hardware.push({
+                Categoria: 'Insumos',
+                Item: 'Tornillos M4 x 22mm para Tiradores',
+                Cantidad: totalHandles * 2,
+                Unidad: 'Unidades',
+                Detalles: 'Fijación posterior para frentes de 15/18mm'
+            });
+        }
     }
 
     return hardware;

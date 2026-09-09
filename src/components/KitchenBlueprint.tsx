@@ -477,6 +477,72 @@ export function KitchenBlueprint() {
                 <text x={64} y={halfThickness + fSizeSm * 0.38} fontSize={Math.round(fSizeSm * 0.9)} fill={COLOR_SPAX} stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision">Ø5</text>
               </g>
             )}
+
+            {/* Rebajes / Destajes CNC para Paso Continuo de Riel Gola (L Superior y C Intermedio) */}
+            {((kState.golaSystem === 'aluminum' || kState.golaSystem === 'black') && (cab.type === 'base' || cab.type === 'island')) && (
+              <g key="cnc-machining-gola">
+                {/* Rebaje Gola L Superior: 58mm alto x 26mm fondo en esquina frontal superior */}
+                <rect 
+                  x={0} 
+                  y={0} 
+                  width={26} 
+                  height={58} 
+                  fill="#fef3c7" 
+                  stroke="#d97706" 
+                  strokeWidth={strokeMed} 
+                  strokeDasharray="4,2" 
+                />
+                <line x1={0} y1={0} x2={26} y2={58} stroke="#d97706" strokeWidth={strokeThin * 0.7} strokeDasharray="2,2" />
+                <line x1={0} y1={58} x2={26} y2={0} stroke="#d97706" strokeWidth={strokeThin * 0.7} strokeDasharray="2,2" />
+
+                {/* Cota fondo de rebaje: 26mm */}
+                <line x1={0} y1={58 + 14} x2={26} y2={58 + 14} stroke="#d97706" strokeWidth={strokeThin} />
+                <line x1={0} y1={58 + 7} x2={0} y2={58 + 21} stroke="#d97706" strokeWidth={strokeThin} />
+                <line x1={26} y1={58 + 7} x2={26} y2={58 + 21} stroke="#d97706" strokeWidth={strokeThin} />
+                <text x={13} y={58 + 27} fontSize={Math.round(fSizeSm * 0.8)} fill="#d97706" stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" textAnchor="middle" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision">26</text>
+
+                {/* Cota alto de rebaje: 58mm */}
+                <line x1={26 + 14} y1={0} x2={26 + 14} y2={58} stroke="#d97706" strokeWidth={strokeThin} />
+                <line x1={26 + 7} y1={0} x2={26 + 21} y2={0} stroke="#d97706" strokeWidth={strokeThin} />
+                <line x1={26 + 7} y1={58} x2={26 + 21} y2={58} stroke="#d97706" strokeWidth={strokeThin} />
+                <text x={26 + 26} y={34} fontSize={Math.round(fSizeSm * 0.8)} fill="#d97706" stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" textAnchor="start" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision">58</text>
+
+                {/* Etiqueta CNC */}
+                <text x={38} y={20} fontSize={Math.round(fSizeSm * 0.7)} fill="#b45309" stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision">CNC: REBAJE GOLA L 58x26</text>
+
+                {/* Rebaje Gola C Intermedio si corresponde a cajoneras */}
+                {(cab.variant === '1_door_1_drawer' || cab.variant === '2_pot_drawers' || cab.variant === '4_drawers' || part.notes?.includes('Gola C')) && (
+                  (() => {
+                    const golaCY = Math.round(pl * 0.35);
+                    return (
+                      <g key="cnc-gola-c">
+                        <rect 
+                          x={0} 
+                          y={golaCY - 34} 
+                          width={26} 
+                          height={68} 
+                          fill="#fef3c7" 
+                          stroke="#d97706" 
+                          strokeWidth={strokeMed} 
+                          strokeDasharray="4,2" 
+                        />
+                        <line x1={0} y1={golaCY - 34} x2={26} y2={golaCY + 34} stroke="#d97706" strokeWidth={strokeThin * 0.7} strokeDasharray="2,2" />
+                        <line x1={0} y1={golaCY + 34} x2={26} y2={golaCY - 34} stroke="#d97706" strokeWidth={strokeThin * 0.7} strokeDasharray="2,2" />
+
+                        {/* Cota alto 68mm */}
+                        <line x1={26 + 14} y1={golaCY - 34} x2={26 + 14} y2={golaCY + 34} stroke="#d97706" strokeWidth={strokeThin} />
+                        <line x1={26 + 7} y1={golaCY - 34} x2={26 + 21} y2={golaCY - 34} stroke="#d97706" strokeWidth={strokeThin} />
+                        <line x1={26 + 7} y1={golaCY + 34} x2={26 + 21} y2={golaCY + 34} stroke="#d97706" strokeWidth={strokeThin} />
+                        <text x={26 + 26} y={golaCY + 6} fontSize={Math.round(fSizeSm * 0.8)} fill="#d97706" stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" textAnchor="start" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision">68</text>
+
+                        {/* Etiqueta CNC */}
+                        <text x={38} y={golaCY - 16} fontSize={Math.round(fSizeSm * 0.7)} fill="#b45309" stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision">CNC: REBAJE GOLA C 68x26</text>
+                      </g>
+                    );
+                  })()
+                )}
+              </g>
+            )}
           </g>
         )}
 
@@ -735,6 +801,11 @@ export function KitchenBlueprint() {
 
     const COLOR_MAGENTA = "#d946ef";
 
+    const isBaseGola = (kState.golaSystem === 'aluminum' || kState.golaSystem === 'black') && (cab.type === 'base' || cab.type === 'island');
+    const hasGolaC = isBaseGola && (cab.variant === '1_door_1_drawer' || cab.variant === '2_pot_drawers' || cab.variant === '4_drawers');
+    const golaCY_lat = Math.round(bodyH * 0.35);
+    const golaColorHex = kState.golaSystem === 'black' ? '#18181b' : '#94a3b8';
+
     return (
       <div className="flex flex-col justify-between items-center w-full h-full py-2 gap-4">
         {/* VISTA DE PLANTA */}
@@ -750,6 +821,14 @@ export function KitchenBlueprint() {
             <rect x={0} y={0} width={cabW} height={cabD} fill="#f8fafc" stroke="#0f172a" strokeWidth={strokeP * 1.5} />
             <line x1={0} y1={0} x2={cabW} y2={cabD} stroke="#94a3b8" strokeWidth={strokeP * 0.6} strokeDasharray="4,4" />
             <line x1={0} y1={cabD} x2={cabW} y2={0} stroke="#94a3b8" strokeWidth={strokeP * 0.6} strokeDasharray="4,4" />
+
+            {/* Riel Gola en Vista de Planta (Paso de lado a lado continuo) */}
+            {isBaseGola && (
+              <g>
+                <rect x={0} y={cabD - 26} width={cabW} height={26} fill={golaColorHex} opacity={0.65} stroke="#0f172a" strokeWidth={strokeP * 0.8} />
+                <text x={cabW / 2} y={cabD - 10} fontSize={Math.max(13, fSizeP * 0.4)} fill={kState.golaSystem === 'black' ? '#ffffff' : '#0f172a'} fontWeight="bold" textAnchor="middle" fontFamily="monospace">CANAL GOLA CONTINUO</text>
+              </g>
+            )}
             
             {/* Cota Ancho Superior */}
             <line x1={0} y1={-padTopP * 0.42} x2={cabW} y2={-padTopP * 0.42} stroke={COLOR_MAGENTA} strokeWidth={strokeP} />
@@ -813,6 +892,19 @@ export function KitchenBlueprint() {
               preserveAspectRatio="xMidYMid meet"
             >
               <rect x={0} y={0} width={cabW} height={bodyH} fill="#ffffff" stroke="#0f172a" strokeWidth={strokeF * 1.5} />
+              {/* Perfiles Gola L y Gola C en Vista Frontal */}
+              {isBaseGola && (
+                <g>
+                  <rect x={0} y={0} width={cabW} height={35} fill={golaColorHex} stroke="#0f172a" strokeWidth={strokeF * 0.8} />
+                  <text x={cabW / 2} y={23} fontSize={Math.max(14, fSizeF * 0.42)} fill={kState.golaSystem === 'black' ? '#ffffff' : '#0f172a'} fontWeight="bold" textAnchor="middle" fontFamily="monospace">RIEL GOLA L (CONTINUO)</text>
+                </g>
+              )}
+              {hasGolaC && (
+                <g>
+                  <rect x={0} y={golaCY_lat - 20} width={cabW} height={40} fill={golaColorHex} stroke="#0f172a" strokeWidth={strokeF * 0.8} />
+                  <text x={cabW / 2} y={golaCY_lat + 6} fontSize={Math.max(14, fSizeF * 0.42)} fill={kState.golaSystem === 'black' ? '#ffffff' : '#0f172a'} fontWeight="bold" textAnchor="middle" fontFamily="monospace">RIEL GOLA C (CONTINUO)</text>
+                </g>
+              )}
               {legsH > 0 && (
                 <g>
                   <rect x={15} y={bodyH} width={cabW - 30} height={legsH} fill="#e2e8f0" stroke="#475569" strokeWidth={strokeF} />
@@ -904,7 +996,42 @@ export function KitchenBlueprint() {
               <rect x={0} y={0} width={cabD} height={bodyH} fill="#ffffff" stroke="#0f172a" strokeWidth={strokeL * 1.5} />
               <rect x={15} y={0} width={4} height={bodyH} fill="#9333ea" />
               <text x={17} y={bodyH / 2} fontSize={Math.max(16, fSizeL * 0.5)} fill="#9333ea" fontWeight="bold" transform={`rotate(-90 17 ${bodyH / 2})`} textAnchor="middle">DUROLAC</text>
-              <rect x={cabD - 18} y={0} width={18} height={bodyH} fill="#f97316" stroke="#ea580c" strokeWidth={strokeL * 0.8} />
+
+              {/* Destaje CNC y Perfil Gola L Superior en Lateral */}
+              {isBaseGola && (
+                <g>
+                  {/* Rebaje CNC 58mm alto x 26mm fondo */}
+                  <rect x={cabD - 26} y={0} width={26} height={58} fill="#fef3c7" stroke="#d97706" strokeWidth={strokeL} strokeDasharray="3,2" />
+                  {/* Perfil Gola L Provelcar x175 en sección */}
+                  <path d={`M ${cabD - 26} 0 L ${cabD - 26} 35 L ${cabD - 2} 35 L ${cabD - 2} 0 Z`} fill={golaColorHex} stroke="#0f172a" strokeWidth={strokeL * 0.8} />
+                  
+                  {/* Cota fondo de rebaje 26mm */}
+                  <line x1={cabD - 26} y1={68} x2={cabD} y2={68} stroke="#d97706" strokeWidth={strokeL * 0.8} />
+                  <text x={cabD - 13} y={80} fontSize={Math.max(13, fSizeL * 0.42)} fill="#d97706" fontWeight="bold" textAnchor="middle" fontFamily="monospace">26</text>
+                  
+                  {/* Cota alto de rebaje 58mm */}
+                  <line x1={cabD - 36} y1={0} x2={cabD - 36} y2={58} stroke="#d97706" strokeWidth={strokeL * 0.8} />
+                  <text x={cabD - 40} y={34} fontSize={Math.max(13, fSizeL * 0.42)} fill="#d97706" fontWeight="bold" textAnchor="end" fontFamily="monospace">58</text>
+                  <text x={cabD - 13} y={22} fontSize={Math.max(11, fSizeL * 0.38)} fill={kState.golaSystem === 'black' ? '#ffffff' : '#0f172a'} fontWeight="900" textAnchor="middle">GOLA L</text>
+                </g>
+              )}
+
+              {/* Destaje CNC y Perfil Gola C Intermedio en Lateral */}
+              {hasGolaC && (
+                <g>
+                  {/* Rebaje CNC 68mm alto x 26mm fondo */}
+                  <rect x={cabD - 26} y={golaCY_lat - 34} width={26} height={68} fill="#fef3c7" stroke="#d97706" strokeWidth={strokeL} strokeDasharray="3,2" />
+                  {/* Perfil Gola C Provelcar x176 en sección */}
+                  <path d={`M ${cabD - 26} ${golaCY_lat - 20} L ${cabD - 26} ${golaCY_lat + 20} L ${cabD - 2} ${golaCY_lat + 20} L ${cabD - 2} ${golaCY_lat - 20} Z`} fill={golaColorHex} stroke="#0f172a" strokeWidth={strokeL * 0.8} />
+                  
+                  {/* Cota alto de rebaje C 68mm */}
+                  <line x1={cabD - 36} y1={golaCY_lat - 34} x2={cabD - 36} y2={golaCY_lat + 34} stroke="#d97706" strokeWidth={strokeL * 0.8} />
+                  <text x={cabD - 40} y={golaCY_lat + 5} fontSize={Math.max(13, fSizeL * 0.42)} fill="#d97706" fontWeight="bold" textAnchor="end" fontFamily="monospace">68</text>
+                  <text x={cabD - 13} y={golaCY_lat + 5} fontSize={Math.max(11, fSizeL * 0.38)} fill={kState.golaSystem === 'black' ? '#ffffff' : '#0f172a'} fontWeight="900" textAnchor="middle">GOLA C</text>
+                </g>
+              )}
+
+              <rect x={cabD - 18} y={isBaseGola ? 35 : 0} width={18} height={isBaseGola ? bodyH - 35 : bodyH} fill="#f97316" stroke="#ea580c" strokeWidth={strokeL * 0.8} />
               {legsH > 0 && (
                 <g>
                   <rect x={15} y={bodyH} width={cabD - 30} height={legsH} fill="#e2e8f0" stroke="#475569" strokeWidth={strokeL} />

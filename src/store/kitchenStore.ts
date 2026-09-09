@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import { RoomConfig, getPresetRoomVertices, generateWallsFromRoom } from '../utils/roomGeometry';
 import { constrainInsideRoomAndWalls, repositionCabinetsOnRoomChange } from '../utils/kitchenCollision';
 
+export type GolaSystem = 'none' | 'aluminum' | 'black';
+
 export type ViewMode = '2d' | '3d';
 export type ToolMode = 
   | 'select' 
@@ -98,6 +100,7 @@ interface KitchenState {
   cabinets: CabinetType[];
   activeCabinetId: string | null;
   showSocle: boolean;
+  golaSystem: GolaSystem;
   drawingStart: [number, number] | null;
   isRoomPlannerOpen: boolean;
   roomConfig: RoomConfig;
@@ -123,6 +126,7 @@ interface KitchenState {
   setDraggingCabinetId: (id: string | null) => void;
   setDrawingStart: (pos: [number, number] | null) => void;
   setShowSocle: (val: boolean) => void;
+  setGolaSystem: (system: GolaSystem) => void;
   updateCabinet: (id: string, updates: Partial<CabinetType>) => void;
   setRoomPlannerOpen: (open: boolean) => void;
   setRoomConfig: (config: RoomConfig) => void;
@@ -299,6 +303,7 @@ export const useKitchenStore = create<KitchenState>((set) => ({
   cabinets: [],
   activeCabinetId: null,
   showSocle: false,
+  golaSystem: 'none',
   drawingStart: null,
   isRoomPlannerOpen: false,
   roomConfig: initialRoomConfig,
@@ -348,6 +353,7 @@ export const useKitchenStore = create<KitchenState>((set) => ({
   setDraggingCabinetId: (id) => set({ draggingCabinetId: id }),
   setDrawingStart: (pos) => set({ drawingStart: pos }),
   setShowSocle: (val) => set({ showSocle: val }),
+  setGolaSystem: (system) => set({ golaSystem: system }),
   updateCabinet: (id, updates) =>
     set((state) => {
       const resolved = resolveCabinetsWithResize(state.cabinets, id, updates);
@@ -440,6 +446,7 @@ export const useKitchenStore = create<KitchenState>((set) => ({
       toolMode: 'select',
       viewMode: '3d',
       showSocle: false,
+      golaSystem: 'none',
       drawingStart: null,
     });
   },

@@ -109,7 +109,7 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
 
   const isLight = theme === 'light';
 
-  const { viewMode, setViewMode, toolMode, setToolMode, cabinets, activeCabinetId, updateCabinet, removeCabinet, setActiveCabinet, applyGlobalTexture, showSocle, setShowSocle, roomConfig, setRoomPlannerOpen, architecturalElements, activeArchElementId, addArchitecturalElement, updateArchitecturalElement, removeArchitecturalElement, setActiveArchElement } = useKitchenStore();
+  const { viewMode, setViewMode, toolMode, setToolMode, cabinets, activeCabinetId, updateCabinet, removeCabinet, setActiveCabinet, applyGlobalTexture, showSocle, setShowSocle, roomConfig, setRoomPlannerOpen, architecturalElements, activeArchElementId, addArchitecturalElement, updateArchitecturalElement, removeArchitecturalElement, setActiveArchElement, golaSystem, setGolaSystem } = useKitchenStore();
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
   const [leftTab, setLeftTab] = useState<'modules' | 'placed' | 'decorations'>('modules');
@@ -1041,6 +1041,47 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                       <ToggleBtn isLight={isLight} active={globalState.isTransparent} onClick={globalState.toggleTransparent} label="Transparente" />
                       <ToggleBtn isLight={isLight} active={showSocle} onClick={() => setShowSocle(!showSocle)} label="Zócalo" />
                     </div>
+                    <div className={`flex flex-col gap-1.5 pt-2 border-t ${isLight ? 'border-slate-200' : 'border-white/10'}`}>
+                      <label className={isLight ? "text-xs uppercase tracking-wider text-slate-700 font-bold" : labelClass}>Sistema Riel Gola (Provelcar)</label>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        <button
+                          onClick={() => setGolaSystem('none')}
+                          className={`py-1.5 px-1 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-colors cursor-pointer ${
+                            golaSystem === 'none'
+                              ? 'bg-orange-500 text-black shadow-sm'
+                              : isLight
+                                ? 'bg-white text-slate-800 border border-slate-300 hover:border-orange-500'
+                                : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50'
+                          }`}
+                        >
+                          Sin Gola
+                        </button>
+                        <button
+                          onClick={() => setGolaSystem('aluminum')}
+                          className={`py-1.5 px-1 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-colors cursor-pointer ${
+                            golaSystem === 'aluminum'
+                              ? 'bg-orange-500 text-black shadow-sm'
+                              : isLight
+                                ? 'bg-white text-slate-800 border border-slate-300 hover:border-orange-500'
+                                : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50'
+                          }`}
+                        >
+                          Aluminio
+                        </button>
+                        <button
+                          onClick={() => setGolaSystem('black')}
+                          className={`py-1.5 px-1 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-colors cursor-pointer ${
+                            golaSystem === 'black'
+                              ? 'bg-orange-500 text-black shadow-sm'
+                              : isLight
+                                ? 'bg-white text-slate-800 border border-slate-300 hover:border-orange-500'
+                                : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50'
+                          }`}
+                        >
+                          Negro Mate
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1064,6 +1105,38 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
 
         {rightTab === 'engineering' && (
           <div className="flex flex-col gap-5">
+            <div>
+              <h2 className={isLight ? "text-xs uppercase tracking-wider text-orange-600 font-bold mb-3 mt-1 first:mt-0" : sectionTitle}>Sistema de Apertura (Perfil Gola)</h2>
+              <div className="flex flex-col gap-2">
+                <div className="grid grid-cols-3 gap-1.5">
+                  {[
+                    { id: 'none', label: 'Sin Gola' },
+                    { id: 'aluminum', label: 'Aluminio' },
+                    { id: 'black', label: 'Negro Mate' },
+                  ].map((opt) => (
+                    <button
+                      key={opt.id}
+                      onClick={() => setGolaSystem(opt.id as any)}
+                      className={`py-2 px-1 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer text-center ${
+                        golaSystem === opt.id
+                          ? 'bg-orange-500 text-black shadow-[0_0_10px_rgba(249,115,22,0.25)]'
+                          : isLight
+                            ? 'bg-white text-slate-800 border border-slate-300 hover:border-orange-500 shadow-sm'
+                            : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+                <p className={`text-[11px] leading-relaxed mt-1 ${isLight ? 'text-slate-600 font-medium' : 'text-slate-400'}`}>
+                  {golaSystem === 'none'
+                    ? 'Los muebles se fabrican con tiradores tradicionales estándar y frentes a cota completa.'
+                    : `Perfil Provelcar x175 (L superior -35mm) y x176 (C intermedio 40mm) en acabado ${golaSystem === 'black' ? 'Negro Mate' : 'Aluminio Anodizado'}. Descuenta alturas de puertas y cajones automáticamente, suprimiendo tiradores en 3D y cubicación.`}
+                </p>
+              </div>
+            </div>
+
             <div>
               <h2 className={isLight ? "text-xs uppercase tracking-wider text-orange-600 font-bold mb-3 mt-4 first:mt-0" : sectionTitle}>Tapacantos Industriales</h2>
               <div className="flex flex-col gap-3">
