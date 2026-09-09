@@ -124,7 +124,8 @@ export function Board({ position, args, color, textureUrl, materialType, transpa
   const currentOpacity = isTransparentGlobal ? 0.3 : (opacity !== undefined ? opacity : 1);
 
   
-  const hplBalancer = hplBalancerOverride !== undefined ? hplBalancerOverride : useStore((state) => state.hplBalancer);
+  const storeHplBalancer = useStore((state) => state.hplBalancer);
+  const hplBalancer = hplBalancerOverride !== undefined ? hplBalancerOverride : storeHplBalancer;
   
   // Create array of 6 materials
   const baseMatProps = {
