@@ -21,6 +21,7 @@ import {
   Grid,
   Zap,
   Sparkles,
+  Save,
 } from 'lucide-react';
 import {
   useConcreteHouseStore,
@@ -43,11 +44,13 @@ import { exportConcreteHouseToPdf } from '../utils/concretePdfGenerator';
 import { ConcreteScene } from '../components/concrete/ConcreteScene';
 import { ConcreteBlueprint } from '../components/concrete/ConcreteBlueprint';
 import { ConcreteFloorPlannerModal } from '../components/concrete/ConcreteFloorPlannerModal';
+import { SaveProjectModal } from '../components/common/SaveProjectModal';
 
 export function ConcreteHouseConfigurator({ onNavigate }: { onNavigate: (route: 'home') => void }) {
   const store = useConcreteHouseStore();
   const [viewMode, setViewMode] = useState<'3d' | '2d'>('3d');
   const [activeTab, setActiveTab] = useState<'systems' | 'geometry' | 'ich_standards' | 'openings' | 'layers' | 'bom'>('systems');
+  const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
 
   // Formulario nuevo vano
   const [newOpType, setNewOpType] = useState<'door' | 'window'>('window');
@@ -245,6 +248,16 @@ export function ConcreteHouseConfigurator({ onNavigate }: { onNavigate: (route: 
               </option>
             ))}
           </select>
+
+          {/* Guardar Proyecto */}
+          <button
+            onClick={() => setIsSaveModalOpen(true)}
+            className="px-3.5 py-1.5 bg-orange-600 hover:bg-orange-500 text-white rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-md shadow-orange-600/20 cursor-pointer"
+            title="Guardar diseño de Casa de Hormigón en el Backoffice"
+          >
+            <Save size={14} />
+            <span className="hidden sm:inline">Guardar Proyecto</span>
+          </button>
 
           {/* Exportar Excel */}
           <button
@@ -1410,6 +1423,34 @@ export function ConcreteHouseConfigurator({ onNavigate }: { onNavigate: (route: 
       <ConcreteFloorPlannerModal
         isOpen={store.isFloorPlannerOpen}
         onClose={() => store.setFloorPlannerOpen(false)}
+      />
+
+      {/* Modal Guardar Proyecto */}
+      <SaveProjectModal
+        isOpen={isSaveModalOpen}
+        onClose={() => setIsSaveModalOpen(false)}
+        projectType="concrete-house"
+        defaultName="Proyecto Casa Hormigón Armado Arquify"
+        estimatedCost={metrics.totalCostClp}
+        projectData={{
+          dimensions: store.dimensions,
+          wallThicknessMm: store.wallThicknessMm,
+          meshType: store.meshType,
+          concreteGrade: store.concreteGrade,
+          concreteSlump: store.concreteSlump,
+          foundationType: store.foundationType,
+          slabType: store.slabType,
+          rebarSteelQuality: store.rebarSteelQuality,
+          meshDiameterMm: store.meshDiameterMm,
+          openings: store.openings,
+          interiorWalls: store.interiorWalls,
+          wallSystemType: store.wallSystemType,
+          mezzanineSystemType: store.mezzanineSystemType,
+          roofStructureType: store.roofStructureType,
+        }}
+        onSaved={(id) => {
+          console.log('Proyecto de Hormigón Armado guardado con ID:', id);
+        }}
       />
     </div>
   );

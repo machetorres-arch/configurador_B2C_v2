@@ -1,8 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   ArrowLeft,
+  ArrowRight,
   Download,
   Eye,
+  EyeOff,
   Layers,
   Sparkles,
   Maximize2,
@@ -33,6 +35,7 @@ import {
   Sparkle,
   ChevronDown,
   ChevronUp,
+  PenTool,
 } from 'lucide-react';
 import {
   useSipHouseStore,
@@ -50,18 +53,25 @@ import {
   InteriorLayoutPreset,
   BedroomPlacementStrategy,
   getWallLengthCm,
+  getAvailableWalls,
   getInteriorZones,
   getAvailablePresetsForDimensions,
-  LAYOUT_PRESETS_CATALOG
+  findOptimalOffsetForWall,
+  LAYOUT_PRESETS_CATALOG,
+  SIP_HOUSE_TEMPLATES,
 } from '../store/sipHouseStore';
 import { calculateSipHouseQuantities, exportSipHouseToExcel } from '../utils/sipExcelGenerator';
 import { SipScene } from '../components/sip/SipScene';
 import { SipBlueprint } from '../components/sip/SipBlueprint';
+import { SipHousePlannerModal } from '../components/sip/SipHousePlannerModal';
+import { SaveProjectModal } from '../components/common/SaveProjectModal';
+import { Save } from 'lucide-react';
 
 export function SipHouseConfigurator({ onNavigate }: { onNavigate: (route: 'home') => void }) {
   const state = useSipHouseStore();
   const [viewMode, setViewMode] = useState<'3d' | '2d'>('3d');
-  const [activeTab, setActiveTab] = useState<'dimensions' | 'layout' | 'openings' | 'materials' | 'mep' | 'layers' | 'bom'>('dimensions');
+  const [activeTab, setActiveTab] = useState<'templates' | 'dimensions' | 'layout' | 'openings' | 'materials' | 'mep' | 'layers' | 'bom'>('templates');
+  const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
 
   // Asegurar que inicie limpio en el modelo base rectangular armado
   useEffect(() => {
@@ -81,15 +91,31 @@ export function SipHouseConfigurator({ onNavigate }: { onNavigate: (route: 'home
   // Estado de edición interactiva de vano existente
   const [editingOpeningId, setEditingOpeningId] = useState<string | null>(null);
 
+  // Muros disponibles según geometría activa
+  const availableWalls = useMemo(() => getAvailableWalls(state.dimensions), [state.dimensions]);
+
+  useEffect(() => {
+    if (availableWalls.length > 0 && !availableWalls.some((w) => w.id === newOpeningWall)) {
+      setNewOpeningWall(availableWalls[0].id);
+    }
+  }, [availableWalls, newOpeningWall]);
+
   // Menú desplegable para navegación ordenada
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Cerrar dropdown al hacer clic afuera
+  // Selector de modelo en el header
+  const [isHeaderModelMenuOpen, setIsHeaderModelMenuOpen] = useState(false);
+  const headerModelRef = useRef<HTMLDivElement>(null);
+
+  // Cerrar dropdowns al hacer clic afuera
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setIsDropdownOpen(false);
+      }
+      if (headerModelRef.current && !headerModelRef.current.contains(event.target as Node)) {
+        setIsHeaderModelMenuOpen(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -104,20 +130,38 @@ export function SipHouseConfigurator({ onNavigate }: { onNavigate: (route: 'home
     }
   }, [state.selectedOpeningId]);
 
-  const metrics = calculateSipHouseQuantities(
-    state.dimensions,
-    state.foundationType,
-    state.exteriorCladding,
-    state.roofCladding,
-    state.interiorCeiling,
-    state.flooringType,
-    state.openings,
-    state.mepNetwork,
-    state.coreType,
-    state.wallThicknessMm,
-    state.roofThicknessMm,
-    state.floorThicknessMm,
-    state.interiorWalls
+  const metrics = useMemo(
+    () =>
+      calculateSipHouseQuantities(
+        state.dimensions,
+        state.foundationType,
+        state.exteriorCladding,
+        state.roofCladding,
+        state.interiorCeiling,
+        state.flooringType,
+        state.openings,
+        state.mepNetwork,
+        state.coreType,
+        state.wallThicknessMm,
+        state.roofThicknessMm,
+        state.floorThicknessMm,
+        state.interiorWalls
+      ),
+    [
+      state.dimensions,
+      state.foundationType,
+      state.exteriorCladding,
+      state.roofCladding,
+      state.interiorCeiling,
+      state.flooringType,
+      state.openings,
+      state.mepNetwork,
+      state.coreType,
+      state.wallThicknessMm,
+      state.roofThicknessMm,
+      state.floorThicknessMm,
+      state.interiorWalls,
+    ]
   );
 
   const handleExportExcel = () => {
@@ -138,10 +182,56 @@ export function SipHouseConfigurator({ onNavigate }: { onNavigate: (route: 'home
     );
   };
 
+  const handleAddCategorizedOpening = (config: {
+    type: 'door' | 'window';
+    name: string;
+    width: number;
+    height: number;
+    sillHeight: number;
+    frameMaterial?: 'pvc_negro' | 'pvc_folio_madera' | 'aluminio_rtt' | 'madera_lenga';
+    glazingType?: 'termopanel_dvp' | 'simple_vidrio';
+  }) => {
+    const isDoor = config.type === 'door';
+    const code = `${isDoor ? 'P' : 'V'}${state.openings.length + 1}`;
+    const targetWall: WallTarget = 'front';
+    const calculatedOffset = findOptimalOffsetForWall(
+      targetWall,
+      config.width,
+      state.openings,
+      state.dimensions
+    );
+    const newOpeningId = `op-${Date.now()}`;
+    state.addOpening({
+      id: newOpeningId,
+      type: config.type,
+      code,
+      name: `${config.name} (${config.width}×${config.height})`,
+      assignedWall: targetWall,
+      width: config.width,
+      height: config.height,
+      sillHeight: config.sillHeight,
+      offsetAlongWall: calculatedOffset,
+      glazingType: config.glazingType || 'termopanel_dvp',
+      frameMaterial: config.frameMaterial || 'pvc_negro',
+    });
+    setEditingOpeningId(newOpeningId);
+    state.setSelectedOpeningId(newOpeningId);
+    setActiveTab('openings');
+  };
+
   const handleAddOpening = () => {
     const isDoor = newOpeningType === 'door';
     const code = `${isDoor ? 'P' : 'V'}${state.openings.length + 1}`;
+    const calculatedOffset = findOptimalOffsetForWall(
+      newOpeningWall,
+      newOpeningWidth,
+      state.openings,
+      state.dimensions,
+      newOpeningOffset
+    );
+    const newOpeningId = `op-${Date.now()}`;
     state.addOpening({
+      id: newOpeningId,
       type: newOpeningType,
       code,
       name: `${isDoor ? 'Puerta' : 'Ventana'} ${code} (${newOpeningWidth}x${newOpeningHeight})`,
@@ -149,10 +239,12 @@ export function SipHouseConfigurator({ onNavigate }: { onNavigate: (route: 'home
       width: newOpeningWidth,
       height: newOpeningHeight,
       sillHeight: isDoor ? 0 : newOpeningSill,
-      offsetAlongWall: newOpeningOffset,
+      offsetAlongWall: calculatedOffset,
       glazingType: newOpeningGlazing,
       frameMaterial: newOpeningFrame,
     });
+    setEditingOpeningId(newOpeningId);
+    state.setSelectedOpeningId(newOpeningId);
   };
 
   const applyPreset = (preset: {
@@ -170,6 +262,13 @@ export function SipHouseConfigurator({ onNavigate }: { onNavigate: (route: 'home
     setNewOpeningSill(preset.sill);
     setNewOpeningFrame(preset.frame);
     setNewOpeningGlazing(preset.glazing);
+    const optOffset = findOptimalOffsetForWall(
+      newOpeningWall,
+      preset.width,
+      state.openings,
+      state.dimensions
+    );
+    setNewOpeningOffset(optOffset);
   };
 
   return (
@@ -193,19 +292,75 @@ export function SipHouseConfigurator({ onNavigate }: { onNavigate: (route: 'home
 
           <div className="h-5 w-px bg-white/10" />
 
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-sky-500/20 border border-sky-500/30 flex items-center justify-center text-sky-400">
-              <Home size={18} />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-bold text-white tracking-wide">Cabaña Modular Panel SIP</span>
-                <span className="text-[10px] bg-sky-500/20 text-sky-400 font-mono font-bold px-1.5 py-0.5 rounded border border-sky-500/30">
-                  PROSIP BIM 2 AGUAS
-                </span>
+          {/* Selector de Modelos Interactivo en Header */}
+          <div className="relative" ref={headerModelRef}>
+            <button
+              onClick={() => setIsHeaderModelMenuOpen(!isHeaderModelMenuOpen)}
+              className="flex items-center gap-2.5 p-1.5 pr-3 rounded-xl hover:bg-white/5 border border-transparent hover:border-white/10 transition-all text-left cursor-pointer group"
+              title="Clic para cambiar de modelo o tipología de casa SIP"
+            >
+              <div className="w-8 h-8 rounded-lg bg-sky-500/20 border border-sky-500/30 flex items-center justify-center text-sky-400 text-lg shrink-0 group-hover:scale-105 transition-transform">
+                {SIP_HOUSE_TEMPLATES.find((t) => t.id === state.currentTemplateId)?.icon || '🏡'}
               </div>
-              <p className="text-[10px] text-slate-400">Modelo Base Rectangular Paramétrico | {metrics.totalFloorM2} m²</p>
-            </div>
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs sm:text-sm font-bold text-white tracking-wide">
+                    {SIP_HOUSE_TEMPLATES.find((t) => t.id === state.currentTemplateId)?.name || 'Vivienda Panel SIP'}
+                  </span>
+                  <span className="text-[10px] bg-sky-500/20 text-sky-400 font-mono font-bold px-1.5 py-0.5 rounded border border-sky-500/30">
+                    {SIP_HOUSE_TEMPLATES.find((t) => t.id === state.currentTemplateId)?.badge || `${metrics.totalFloorM2} m²`}
+                  </span>
+                  <ChevronDown size={14} className={`text-slate-400 transition-transform ${isHeaderModelMenuOpen ? 'rotate-180 text-sky-400' : 'group-hover:text-white'}`} />
+                </div>
+                <p className="text-[10px] text-slate-400">
+                  {SIP_HOUSE_TEMPLATES.find((t) => t.id === state.currentTemplateId)?.subtitle || `Modelo Base Paramétrico | ${metrics.totalFloorM2} m²`}
+                </p>
+              </div>
+            </button>
+
+            {/* Dropdown de Modelos en Header */}
+            {isHeaderModelMenuOpen && (
+              <div className="absolute top-full left-0 mt-2 w-80 sm:w-96 bg-slate-950/98 border border-white/20 rounded-2xl shadow-2xl p-2.5 z-50 backdrop-blur-2xl animate-in fade-in slide-in-from-top-2 space-y-1.5">
+                <div className="px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-sky-400 flex items-center justify-between border-b border-white/10 pb-2 mb-1">
+                  <span>Catálogo de Modelos SIP</span>
+                  <span className="text-slate-400 font-normal text-[10px]">{SIP_HOUSE_TEMPLATES.length} modelos disponibles</span>
+                </div>
+                {SIP_HOUSE_TEMPLATES.map((tmpl) => {
+                  const isCurrent = state.currentTemplateId === tmpl.id;
+                  return (
+                    <button
+                      key={tmpl.id}
+                      onClick={() => {
+                        state.applyTemplate(tmpl.id);
+                        setIsHeaderModelMenuOpen(false);
+                      }}
+                      className={`w-full p-2.5 rounded-xl border text-left flex items-start gap-3 transition-all cursor-pointer ${
+                        isCurrent
+                          ? 'bg-sky-500/20 border-sky-400/60 shadow-md shadow-sky-500/10'
+                          : 'bg-slate-900/60 border-white/5 hover:border-white/20 hover:bg-slate-800/80'
+                      }`}
+                    >
+                      <span className="text-2xl mt-0.5 shrink-0">{tmpl.icon}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="text-xs font-bold text-white truncate">{tmpl.name}</span>
+                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-sky-400/20 text-sky-300 font-mono font-bold shrink-0">
+                            {tmpl.badge}
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-slate-300 mt-0.5 truncate">{tmpl.subtitle}</div>
+                        <div className="text-[9px] text-slate-400 mt-0.5 line-clamp-1">{tmpl.description}</div>
+                      </div>
+                      {isCurrent && (
+                        <div className="p-1 rounded-md bg-sky-500 text-slate-950 shrink-0 self-center">
+                          <Check size={12} strokeWidth={3} />
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
 
@@ -234,6 +389,16 @@ export function SipHouseConfigurator({ onNavigate }: { onNavigate: (route: 'home
             </button>
           </div>
 
+          {/* Botón Dibujar Planos 2D (CAD SIP a 3D) */}
+          <button
+            onClick={() => state.setSipPlannerOpen(true)}
+            className="px-3 py-1.5 bg-[#FACC15] hover:bg-amber-400 text-slate-950 text-xs font-black rounded-xl flex items-center gap-1.5 shadow-lg shadow-amber-500/20 transition-all transform hover:scale-105 active:scale-95 cursor-pointer ring-1 ring-amber-300"
+            title="Abrir Diseñador 2D de Planos SIP y Modulación CAD para traspasar a 3D"
+          >
+            <PenTool size={14} className="text-slate-950 shrink-0" />
+            <span className="hidden sm:inline font-extrabold uppercase">Dibujar Plano 2D</span>
+          </button>
+
           {/* Botón Cotas / Dimensiones de Volúmenes (Alto, Ancho, Largo) */}
           <button
             onClick={() => state.toggleDimensions()}
@@ -247,6 +412,22 @@ export function SipHouseConfigurator({ onNavigate }: { onNavigate: (route: 'home
             <Ruler size={15} className={state.showDimensions ? 'text-white' : 'text-slate-400'} />
             <span className="hidden sm:inline">
               {state.showDimensions ? 'Cotas: ON' : 'Cotas: OFF'}
+            </span>
+          </button>
+
+          {/* Botón Ver Interior (Sin Techo) */}
+          <button
+            onClick={() => state.toggleLayer('layerRoofSip')}
+            className={`px-3 py-1.5 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all border shadow-sm cursor-pointer ${
+              !state.layerRoofSip
+                ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md shadow-amber-500/30 ring-1 ring-amber-300 font-extrabold'
+                : 'bg-slate-950 text-slate-400 border-white/10 hover:text-white hover:bg-white/5'
+            }`}
+            title={!state.layerRoofSip ? 'Mostrar techo completo' : 'Eliminar/ocultar techo para ver distribución y recintos interiores'}
+          >
+            {!state.layerRoofSip ? <EyeOff size={15} className="text-slate-950 shrink-0" /> : <Layers size={15} className="text-slate-400 shrink-0" />}
+            <span className="hidden sm:inline">
+              {!state.layerRoofSip ? 'Interior: Sin Techo' : 'Ver Interior (Sin Techo)'}
             </span>
           </button>
 
@@ -270,6 +451,16 @@ export function SipHouseConfigurator({ onNavigate }: { onNavigate: (route: 'home
             title="Restablecer plantilla rectangular por defecto"
           >
             <RotateCcw size={16} />
+          </button>
+
+          {/* Guardar Proyecto */}
+          <button
+            onClick={() => setIsSaveModalOpen(true)}
+            className="px-3.5 py-1.5 bg-orange-600 hover:bg-orange-500 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-lg shadow-orange-600/20 transition-all cursor-pointer"
+            title="Guardar diseño de Casa SIP en el Backoffice"
+          >
+            <Save size={15} />
+            <span className="hidden sm:inline">Guardar Proyecto</span>
           </button>
 
           {/* Exportar Excel */}
@@ -332,6 +523,23 @@ export function SipHouseConfigurator({ onNavigate }: { onNavigate: (route: 'home
               {/* Botones Flotantes de Visualización en Viewport 3D */}
               <div className="absolute top-5 right-5 z-20 flex items-center gap-2">
                 <button
+                  onClick={() => state.toggleLayer('layerRoofSip')}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 backdrop-blur-md transition-all border shadow-xl cursor-pointer ${
+                    !state.layerRoofSip
+                      ? 'bg-amber-500/30 border-amber-400 text-amber-200 shadow-amber-500/30 ring-1 ring-amber-400'
+                      : 'bg-slate-900/80 border-white/10 text-slate-300 hover:text-white hover:bg-slate-800'
+                  }`}
+                  title={!state.layerRoofSip ? 'Mostrar techo completo' : 'Eliminar el techo para ver distribución interior de habitaciones y tabiques'}
+                >
+                  {!state.layerRoofSip ? (
+                    <EyeOff size={16} className="text-amber-400 animate-pulse" />
+                  ) : (
+                    <Layers size={16} className="text-slate-400" />
+                  )}
+                  <span>{!state.layerRoofSip ? 'Interior: Sin Techo (ON)' : 'Ver Interior (Sin Techo)'}</span>
+                </button>
+
+                <button
                   onClick={() => state.toggleDimensions()}
                   className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 backdrop-blur-md transition-all border shadow-xl ${
                     state.showDimensions
@@ -356,87 +564,6 @@ export function SipHouseConfigurator({ onNavigate }: { onNavigate: (route: 'home
                   <Eye size={16} className={state.isTransparent ? 'text-sky-400 animate-pulse' : 'text-slate-400'} />
                   <span>{state.isTransparent ? 'Modo Transparente: ON' : 'Transparentar Modelo'}</span>
                 </button>
-              </div>
-
-              {/* Barra Flotante de Inserción Rápida y Drag de Vanos */}
-              <div className="absolute bottom-5 right-5 z-20 flex flex-col items-end gap-2">
-                <div className="bg-slate-900/95 border border-white/15 rounded-2xl p-2.5 shadow-2xl backdrop-blur-md flex items-center gap-2">
-                  <span className="text-xs font-bold text-slate-200 px-1.5 flex items-center gap-1.5">
-                    <Sparkles size={15} className="text-sky-400" />
-                    <span>Insertar:</span>
-                  </span>
-                  <button
-                    onClick={() => {
-                      const isDoor = true;
-                      const code = `P${state.openings.length + 1}`;
-                      state.addOpening({
-                        type: 'door',
-                        code,
-                        name: `Puerta Acceso ${code} (90x210)`,
-                        assignedWall: 'front',
-                        width: 90,
-                        height: 210,
-                        sillHeight: 0,
-                        offsetAlongWall: 60,
-                        glazingType: 'termopanel_dvp',
-                        frameMaterial: 'pvc_negro',
-                      });
-                      setActiveTab('openings');
-                    }}
-                    className="px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm active:scale-95"
-                    title="Añadir Puerta estándar 90x210 cm"
-                  >
-                    <span>🚪 + Puerta (90x210)</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      const code = `V${state.openings.length + 1}`;
-                      state.addOpening({
-                        type: 'window',
-                        code,
-                        name: `Ventana ${code} (120x100)`,
-                        assignedWall: 'front',
-                        width: 120,
-                        height: 100,
-                        sillHeight: 100,
-                        offsetAlongWall: 180,
-                        glazingType: 'termopanel_dvp',
-                        frameMaterial: 'pvc_negro',
-                      });
-                      setActiveTab('openings');
-                    }}
-                    className="px-3 py-1.5 bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm active:scale-95"
-                    title="Añadir Ventana Termopanel 120x100 cm"
-                  >
-                    <span>🪟 + Ventana (120x100)</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      const code = `V${state.openings.length + 1}`;
-                      state.addOpening({
-                        type: 'door',
-                        code,
-                        name: `Ventanal Terraza ${code} (180x210)`,
-                        assignedWall: 'front',
-                        width: 180,
-                        height: 210,
-                        sillHeight: 0,
-                        offsetAlongWall: 80,
-                        glazingType: 'termopanel_dvp',
-                        frameMaterial: 'pvc_negro',
-                      });
-                      setActiveTab('openings');
-                    }}
-                    className="px-3 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm active:scale-95"
-                    title="Añadir Ventanal Corredero Terraza 180x210 cm"
-                  >
-                    <span>🪟 + Ventanal (180x210)</span>
-                  </button>
-                </div>
-                <div className="bg-slate-950/90 border border-white/10 px-3 py-1.5 rounded-xl text-xs text-slate-300 flex items-center gap-2 backdrop-blur-md shadow-lg">
-                  <span className="text-amber-400 font-bold">💡 Interacción 3D:</span>
-                  <span>Arrastra con el mouse sobre cualquier puerta o ventana en el modelo 3D para moverla, o haz clic para editar sus medidas.</span>
-                </div>
               </div>
             </>
           ) : (
@@ -472,6 +599,7 @@ export function SipHouseConfigurator({ onNavigate }: { onNavigate: (route: 'home
             >
               <div className="flex items-center gap-2.5 overflow-hidden">
                 <div className={`p-2 rounded-xl border ${
+                  activeTab === 'templates' ? 'bg-sky-500/20 text-sky-400 border-sky-500/40' :
                   activeTab === 'dimensions' ? 'bg-sky-500/20 text-sky-400 border-sky-500/40' :
                   activeTab === 'layout' ? 'bg-indigo-500/20 text-indigo-400 border-indigo-500/40' :
                   activeTab === 'openings' ? 'bg-amber-500/20 text-amber-400 border-amber-500/40' :
@@ -480,6 +608,7 @@ export function SipHouseConfigurator({ onNavigate }: { onNavigate: (route: 'home
                   activeTab === 'layers' ? 'bg-purple-500/20 text-purple-400 border-purple-500/40' :
                   'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
                 }`}>
+                  {activeTab === 'templates' && <Home size={18} />}
                   {activeTab === 'dimensions' && <SlidersHorizontal size={18} />}
                   {activeTab === 'layout' && <LayoutGrid size={18} />}
                   {activeTab === 'openings' && <Sparkles size={18} />}
@@ -491,16 +620,18 @@ export function SipHouseConfigurator({ onNavigate }: { onNavigate: (route: 'home
                 <div className="text-left">
                   <div className="text-xs sm:text-sm font-bold text-white leading-tight flex items-center gap-1.5">
                     <span>
-                      {activeTab === 'dimensions' && 'Dimensiones & Geometría'}
-                      {activeTab === 'layout' && 'Distribución Arquitectónica'}
-                      {activeTab === 'openings' && 'Puertas y Ventanas (Vanos)'}
-                      {activeTab === 'materials' && 'Especificaciones Técnicas (EETT)'}
-                      {activeTab === 'mep' && 'Instalaciones Técnicas (MEP)'}
-                      {activeTab === 'layers' && 'Capas & Visibilidad BIM'}
-                      {activeTab === 'bom' && 'Cómputos & Presupuesto (BoM)'}
+                      {activeTab === 'templates' && '0. Catálogo de Modelos SIP'}
+                      {activeTab === 'dimensions' && '1. Dimensiones & Geometría'}
+                      {activeTab === 'layout' && '2. Distribución Arquitectónica'}
+                      {activeTab === 'openings' && '3. Puertas y Ventanas (Vanos)'}
+                      {activeTab === 'materials' && '4. Especificaciones Técnicas (EETT)'}
+                      {activeTab === 'mep' && '5. Instalaciones Técnicas (MEP)'}
+                      {activeTab === 'layers' && '6. Capas & Visibilidad BIM'}
+                      {activeTab === 'bom' && '7. Cómputos & Presupuesto (BoM)'}
                     </span>
                   </div>
                   <div className="text-[11px] text-slate-400 truncate">
+                    {activeTab === 'templates' && `${SIP_HOUSE_TEMPLATES.length} modelos listos | Actual: ${SIP_HOUSE_TEMPLATES.find((t) => t.id === state.currentTemplateId)?.name || 'Vivienda SIP'}`}
                     {activeTab === 'dimensions' && `${(state.dimensions.width / 100).toFixed(1)}m × ${(state.dimensions.length / 100).toFixed(1)}m | ${state.dimensions.roofStyle === 'single_shed' ? '1 Agua' : state.dimensions.roofStyle === 'flat' ? 'Plano' : '2 Aguas'}`}
                     {activeTab === 'layout' && `${state.interiorWalls.length} tabiques | Preset: ${state.layoutPreset}`}
                     {activeTab === 'openings' && `${state.openings.length} vano(s) configurado(s)`}
@@ -524,6 +655,16 @@ export function SipHouseConfigurator({ onNavigate }: { onNavigate: (route: 'home
             {isDropdownOpen && (
               <div className="absolute top-full left-3 right-3 mt-1.5 bg-slate-950/98 border border-white/20 rounded-2xl shadow-2xl p-2 z-50 backdrop-blur-2xl animate-in fade-in slide-in-from-top-2 duration-150 space-y-1">
                 {[
+                  {
+                    id: 'templates' as const,
+                    name: '0. Modelos & Catálogo SIP',
+                    desc: 'Vivienda Social 60m² (3D 1B), Cabaña 24m², Casa en L',
+                    badge: `${SIP_HOUSE_TEMPLATES.length} Modelos`,
+                    icon: Home,
+                    color: 'text-sky-400',
+                    bg: 'hover:bg-sky-500/10',
+                    activeBg: 'bg-sky-500/20 border-sky-500/40 text-sky-200',
+                  },
                   {
                     id: 'dimensions' as const,
                     name: '1. Dimensiones & Geometría',
@@ -637,6 +778,7 @@ export function SipHouseConfigurator({ onNavigate }: { onNavigate: (route: 'home
             {/* Barra de accesos directos compacta */}
             <div className="flex items-center gap-1 mt-2.5 overflow-x-auto pb-0.5 scrollbar-none">
               {[
+                { id: 'templates' as const, label: 'Modelos', icon: Home },
                 { id: 'dimensions' as const, label: 'Medidas', icon: SlidersHorizontal },
                 { id: 'layout' as const, label: 'Diseño', icon: LayoutGrid },
                 { id: 'openings' as const, label: 'Vanos', icon: Sparkles },
@@ -668,9 +810,200 @@ export function SipHouseConfigurator({ onNavigate }: { onNavigate: (route: 'home
 
           {/* CONTENIDO DEL PANEL ACTIVO */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            {/* 0. TAB MODELOS & CATÁLOGO SIP */}
+            {activeTab === 'templates' && (
+              <div className="space-y-4">
+                <div className="bg-gradient-to-br from-sky-950/60 via-slate-900/80 to-slate-950 rounded-2xl p-4 border border-sky-500/40 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 rounded-lg bg-sky-500/20 text-sky-400 border border-sky-500/30">
+                        <Home size={16} />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+                          Catálogo de Modelos SIP
+                        </h3>
+                        <p className="text-[11px] text-slate-300">
+                          Selecciona un modelo base para cargar su arquitectura, recintos, vanos y cubicación BIM
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-[10px] bg-sky-400/20 text-sky-300 px-2 py-0.5 rounded-full font-mono font-bold border border-sky-400/30">
+                      {SIP_HOUSE_TEMPLATES.length} Tipologías
+                    </span>
+                  </div>
+                </div>
+
+                {/* Banner Destacado: Diseñador 2D a BIM 3D */}
+                <div
+                  onClick={() => state.setSipPlannerOpen(true)}
+                  className="bg-gradient-to-r from-amber-500/20 via-slate-900 to-slate-950 border-2 border-amber-400/60 hover:border-amber-400 p-4 rounded-2xl cursor-pointer transition-all flex items-center justify-between group shadow-xl hover:shadow-amber-500/10"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 rounded-xl bg-[#FACC15] text-slate-950 flex items-center justify-center font-black shadow-md group-hover:scale-110 transition-transform shrink-0">
+                      <PenTool size={22} />
+                    </div>
+                    <div>
+                      <h4 className="font-black text-sm text-white flex items-center gap-2">
+                        <span>Diseñador 2D CAD a BIM 3D</span>
+                        <span className="text-[10px] bg-[#FACC15] text-slate-950 px-2 py-0.5 rounded-full font-bold">NUEVO</span>
+                      </h4>
+                      <p className="text-xs text-slate-300 mt-0.5 leading-snug">
+                        Dibuja en planta con cotas milimétricas, modula a paneles SIP (1.22m), define tabiques y techumbre (1 Agua, 2 Aguas o Plano).
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-amber-300 font-bold text-xs group-hover:translate-x-1 transition-transform shrink-0 ml-2">
+                    <span className="hidden sm:inline">Diseñar en 2D</span>
+                    <ArrowRight size={16} />
+                  </div>
+                </div>
+
+                {/* Grid de Modelos SIP */}
+                <div className="space-y-3">
+                  {SIP_HOUSE_TEMPLATES.map((tmpl) => {
+                    const isSelected = state.currentTemplateId === tmpl.id;
+                    return (
+                      <div
+                        key={tmpl.id}
+                        className={`p-4 rounded-2xl border transition-all ${
+                          isSelected
+                            ? 'bg-gradient-to-br from-sky-950/50 via-slate-900 to-slate-950 border-sky-400 shadow-xl shadow-sky-500/10 ring-1 ring-sky-400/50'
+                            : 'bg-slate-900/60 border-white/10 hover:border-white/20 hover:bg-slate-900/80'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3 mb-2.5">
+                          <div className="flex items-center gap-3">
+                            <span className="text-3xl">{tmpl.icon}</span>
+                            <div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h4 className="font-bold text-sm sm:text-base text-white">{tmpl.name}</h4>
+                                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 border border-sky-500/30 font-bold">
+                                  {tmpl.badge}
+                                </span>
+                                {isSelected && (
+                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                    Activo en 3D
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-slate-300 mt-0.5 font-medium">{tmpl.subtitle}</p>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => state.applyTemplate(tmpl.id)}
+                            className={`shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all shadow-md cursor-pointer ${
+                              isSelected
+                                ? 'bg-sky-500 text-slate-950 hover:bg-sky-400 ring-2 ring-sky-300/60'
+                                : 'bg-slate-800 hover:bg-sky-500 hover:text-slate-950 text-white border border-white/10'
+                            }`}
+                          >
+                            <Check size={14} />
+                            <span>{isSelected ? 'Cargado' : 'Cargar Modelo'}</span>
+                          </button>
+                        </div>
+
+                        <p className="text-xs text-slate-400 mb-3 leading-relaxed">
+                          {tmpl.description}
+                        </p>
+
+                        {/* Ficha rápida de especificaciones */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2.5 border-t border-white/5 text-[11px]">
+                          <div className="p-2 rounded-lg bg-black/30 border border-white/5">
+                            <span className="text-slate-400 block text-[9px] uppercase font-bold">Dimensiones</span>
+                            <span className="text-white font-mono font-semibold">
+                              {(tmpl.dimensions.width / 100).toFixed(1)}m × {(tmpl.dimensions.length / 100).toFixed(1)}m
+                            </span>
+                          </div>
+                          <div className="p-2 rounded-lg bg-black/30 border border-white/5">
+                            <span className="text-slate-400 block text-[9px] uppercase font-bold">Techumbre</span>
+                            <span className="text-white font-semibold capitalize">
+                              {tmpl.dimensions.roofStyle === 'gable_valley' ? '2 Aguas / Cumbrera' : tmpl.dimensions.roofStyle === 'single_shed' ? '1 Agua' : '2 Aguas'}
+                            </span>
+                          </div>
+                          <div className="p-2 rounded-lg bg-black/30 border border-white/5">
+                            <span className="text-slate-400 block text-[9px] uppercase font-bold">Vanos</span>
+                            <span className="text-white font-semibold">
+                              {tmpl.openings.length} Puertas/Ventanas
+                            </span>
+                          </div>
+                          <div className="p-2 rounded-lg bg-black/30 border border-white/5">
+                            <span className="text-slate-400 block text-[9px] uppercase font-bold">Muro SIP</span>
+                            <span className="text-white font-mono font-semibold">
+                              {tmpl.wallThicknessMm} mm ({tmpl.wallThicknessMm === 114 ? 'PROSIP Ext' : 'Estándar'})
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             {/* 1. TAB DIMENSIONES */}
             {activeTab === 'dimensions' && (
               <div className="space-y-4">
+                {/* Catálogo de Modelos y Plantillas SIP Prediseñadas */}
+                <div className="bg-gradient-to-br from-sky-950/40 via-slate-900/60 to-slate-950/80 rounded-2xl p-4 border border-sky-500/30 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-sky-400" />
+                      <span className="text-xs sm:text-sm font-bold text-sky-300 uppercase tracking-wider">
+                        Modelos y Tipologías SIP
+                      </span>
+                    </div>
+                    <span className="text-[10px] bg-sky-500/20 text-sky-300 px-2 py-0.5 rounded-full font-bold border border-sky-500/30">
+                      Plantillas Rápidas
+                    </span>
+                  </div>
+
+                  <div className="space-y-2">
+                    {SIP_HOUSE_TEMPLATES.map((tmpl) => {
+                      const isSocial = tmpl.id === 'social_60m2';
+                      return (
+                        <div
+                          key={tmpl.id}
+                          className={`p-3 rounded-xl border transition-all ${
+                            isSocial
+                              ? 'bg-sky-500/15 border-sky-400/60 shadow-lg shadow-sky-500/10'
+                              : 'bg-slate-950/50 border-white/5 hover:border-white/20'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-start gap-2.5">
+                              <span className="text-2xl shrink-0 mt-0.5">{tmpl.icon}</span>
+                              <div>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="font-bold text-xs sm:text-sm text-white">{tmpl.name}</span>
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-400/20 text-sky-300 font-mono font-bold">
+                                    {tmpl.badge}
+                                  </span>
+                                </div>
+                                <div className="text-[11px] text-slate-300 mt-0.5 leading-snug">
+                                  {tmpl.subtitle}
+                                </div>
+                                <div className="text-[10px] text-slate-400 mt-1 leading-snug">
+                                  {tmpl.description}
+                                </div>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => state.applyTemplate(tmpl.id)}
+                              className="shrink-0 px-3 py-1.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs transition-all shadow-md flex items-center gap-1"
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                              <span>Cargar</span>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 {/* Selector de Modelo Arquitectónico */}
                 <div className="bg-white/5 rounded-2xl p-4 border border-white/10 space-y-3">
                   <span className="text-xs sm:text-sm font-bold text-sky-400 uppercase tracking-wider block">
@@ -1241,20 +1574,20 @@ export function SipHouseConfigurator({ onNavigate }: { onNavigate: (route: 'home
             {activeTab === 'openings' && (
               <div className="space-y-4">
                 {/* Resumen de Vanos */}
-                <div className="bg-white/5 border border-white/10 rounded-2xl p-3.5 grid grid-cols-3 gap-2.5 text-center text-xs">
-                  <div className="bg-slate-950/60 p-2.5 rounded-xl border border-white/5">
-                    <span className="text-xs text-slate-400 block font-medium">Total Vanos</span>
-                    <span className="font-mono font-bold text-sky-400 text-base">{state.openings.length} un</span>
+                <div className="bg-white/5 border border-white/10 rounded-2xl p-3 grid grid-cols-3 gap-2 text-center text-xs">
+                  <div className="bg-slate-950/60 p-2 rounded-xl border border-white/5">
+                    <span className="text-[11px] text-slate-400 block font-medium">Total Vanos</span>
+                    <span className="font-mono font-bold text-sky-400 text-sm sm:text-base">{state.openings.length} un</span>
                   </div>
-                  <div className="bg-slate-950/60 p-2.5 rounded-xl border border-white/5">
-                    <span className="text-xs text-slate-400 block font-medium">Ventanas</span>
-                    <span className="font-mono font-bold text-emerald-400 text-base">
-                      {state.openings.filter((o) => o.type === 'window').length} un
+                  <div className="bg-slate-950/60 p-2 rounded-xl border border-white/5">
+                    <span className="text-[11px] text-slate-400 block font-medium">Puertas / Ventanas</span>
+                    <span className="font-mono font-bold text-emerald-400 text-sm sm:text-base">
+                      {state.openings.filter((o) => o.type === 'door').length}P / {state.openings.filter((o) => o.type === 'window').length}V
                     </span>
                   </div>
-                  <div className="bg-slate-950/60 p-2.5 rounded-xl border border-white/5">
-                    <span className="text-xs text-slate-400 block font-medium">Superficie</span>
-                    <span className="font-mono font-bold text-amber-400 text-base">
+                  <div className="bg-slate-950/60 p-2 rounded-xl border border-white/5">
+                    <span className="text-[11px] text-slate-400 block font-medium">Superficie</span>
+                    <span className="font-mono font-bold text-amber-400 text-sm sm:text-base">
                       {(
                         state.openings.reduce((acc, o) => acc + (o.width * o.height) / 10000, 0)
                       ).toFixed(1)}{' '}
@@ -1263,29 +1596,536 @@ export function SipHouseConfigurator({ onNavigate }: { onNavigate: (route: 'home
                   </div>
                 </div>
 
-                {/* Lista de Vanos con Modo Edición */}
-                <div>
-                  <div className="flex items-center justify-between mb-2.5">
-                    <span className="text-xs sm:text-sm font-bold text-sky-400 uppercase tracking-wider">
-                      Vanos Configurados ({state.openings.length})
+                {/* 1.- MENÚ DE VANOS: PUERTAS Y VENTANAS */}
+                <div className="bg-white/5 border border-white/10 rounded-2xl p-3.5 space-y-3.5">
+                  <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                    <span className="text-xs font-bold text-sky-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <Plus size={15} />
+                      Catálogo de Vanos Modulares SIP
                     </span>
+                    <span className="text-[10px] text-slate-400 font-mono">Modulación 5cm</span>
                   </div>
 
-                  <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+                  {/* A.- PUERTAS */}
+                  <div className="space-y-1.5">
+                    <span className="text-[11px] font-bold text-amber-300 uppercase tracking-wide flex items-center gap-1">
+                      <span>🚪 A. Puertas</span>
+                    </span>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleAddCategorizedOpening({
+                            type: 'door',
+                            name: 'Puerta 1 Hoja',
+                            width: 90,
+                            height: 210,
+                            sillHeight: 0,
+                            frameMaterial: 'madera_lenga',
+                            glazingType: 'simple_vidrio',
+                          })
+                        }
+                        className="p-2.5 bg-slate-900/90 hover:bg-amber-500/20 hover:border-amber-400/60 border border-white/10 rounded-xl text-left transition-all group flex flex-col justify-between"
+                      >
+                        <div className="font-bold text-white text-xs group-hover:text-amber-300">1 Hoja</div>
+                        <div className="text-[10px] text-slate-400 font-mono mt-0.5">90 × 210 cm</div>
+                        <div className="text-[9px] text-amber-400/80 mt-1 font-semibold">+ Insertar</div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleAddCategorizedOpening({
+                            type: 'door',
+                            name: 'Puerta 2 Hojas',
+                            width: 160,
+                            height: 210,
+                            sillHeight: 0,
+                            frameMaterial: 'pvc_negro',
+                            glazingType: 'termopanel_dvp',
+                          })
+                        }
+                        className="p-2.5 bg-slate-900/90 hover:bg-amber-500/20 hover:border-amber-400/60 border border-white/10 rounded-xl text-left transition-all group flex flex-col justify-between"
+                      >
+                        <div className="font-bold text-white text-xs group-hover:text-amber-300">2 Hojas</div>
+                        <div className="text-[10px] text-slate-400 font-mono mt-0.5">160 × 210 cm</div>
+                        <div className="text-[9px] text-amber-400/80 mt-1 font-semibold">+ Insertar</div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleAddCategorizedOpening({
+                            type: 'door',
+                            name: 'Puerta Corredera',
+                            width: 200,
+                            height: 210,
+                            sillHeight: 0,
+                            frameMaterial: 'pvc_negro',
+                            glazingType: 'termopanel_dvp',
+                          })
+                        }
+                        className="p-2.5 bg-slate-900/90 hover:bg-amber-500/20 hover:border-amber-400/60 border border-white/10 rounded-xl text-left transition-all group flex flex-col justify-between"
+                      >
+                        <div className="font-bold text-white text-xs group-hover:text-amber-300">Corredera</div>
+                        <div className="text-[10px] text-slate-400 font-mono mt-0.5">200 × 210 cm</div>
+                        <div className="text-[9px] text-amber-400/80 mt-1 font-semibold">+ Insertar</div>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* B.- VENTANAS */}
+                  <div className="space-y-1.5 pt-1">
+                    <span className="text-[11px] font-bold text-sky-300 uppercase tracking-wide flex items-center gap-1">
+                      <span>🪟 B. Ventanas</span>
+                    </span>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleAddCategorizedOpening({
+                            type: 'window',
+                            name: 'Ventana 1 Hoja',
+                            width: 100,
+                            height: 120,
+                            sillHeight: 90,
+                            frameMaterial: 'pvc_negro',
+                            glazingType: 'termopanel_dvp',
+                          })
+                        }
+                        className="p-2.5 bg-slate-900/90 hover:bg-sky-500/20 hover:border-sky-400/60 border border-white/10 rounded-xl text-left transition-all group flex flex-col justify-between"
+                      >
+                        <div className="font-bold text-white text-xs group-hover:text-sky-300">1 Hoja</div>
+                        <div className="text-[10px] text-slate-400 font-mono mt-0.5">100 × 120 cm</div>
+                        <div className="text-[9px] text-slate-500 font-mono">Alt: 90 cm</div>
+                        <div className="text-[9px] text-sky-400/80 mt-1 font-semibold">+ Insertar</div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleAddCategorizedOpening({
+                            type: 'window',
+                            name: 'Ventana 2 Hojas',
+                            width: 150,
+                            height: 120,
+                            sillHeight: 90,
+                            frameMaterial: 'pvc_negro',
+                            glazingType: 'termopanel_dvp',
+                          })
+                        }
+                        className="p-2.5 bg-slate-900/90 hover:bg-sky-500/20 hover:border-sky-400/60 border border-white/10 rounded-xl text-left transition-all group flex flex-col justify-between"
+                      >
+                        <div className="font-bold text-white text-xs group-hover:text-sky-300">2 Hojas</div>
+                        <div className="text-[10px] text-slate-400 font-mono mt-0.5">150 × 120 cm</div>
+                        <div className="text-[9px] text-slate-500 font-mono">Alt: 90 cm</div>
+                        <div className="text-[9px] text-sky-400/80 mt-1 font-semibold">+ Insertar</div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleAddCategorizedOpening({
+                            type: 'window',
+                            name: 'Ventana Baño',
+                            width: 60,
+                            height: 60,
+                            sillHeight: 150,
+                            frameMaterial: 'pvc_negro',
+                            glazingType: 'termopanel_dvp',
+                          })
+                        }
+                        className="p-2.5 bg-slate-900/90 hover:bg-sky-500/20 hover:border-sky-400/60 border border-white/10 rounded-xl text-left transition-all group flex flex-col justify-between"
+                      >
+                        <div className="font-bold text-white text-xs group-hover:text-sky-300">De Baño</div>
+                        <div className="text-[10px] text-slate-400 font-mono mt-0.5">60 × 60 cm</div>
+                        <div className="text-[9px] text-slate-500 font-mono">Alt: 150 cm</div>
+                        <div className="text-[9px] text-sky-400/80 mt-1 font-semibold">+ Insertar</div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleAddCategorizedOpening({
+                            type: 'window',
+                            name: 'Ventanal Completo',
+                            width: 220,
+                            height: 210,
+                            sillHeight: 0,
+                            frameMaterial: 'pvc_negro',
+                            glazingType: 'termopanel_dvp',
+                          })
+                        }
+                        className="p-2.5 bg-slate-900/90 hover:bg-emerald-500/20 hover:border-emerald-400/60 border border-white/10 rounded-xl text-left transition-all group flex flex-col justify-between"
+                      >
+                        <div className="font-bold text-white text-xs group-hover:text-emerald-300">Ventanal Completo</div>
+                        <div className="text-[10px] text-slate-400 font-mono mt-0.5">220 × 210 cm</div>
+                        <div className="text-[9px] text-slate-500 font-mono">Alt: 0 cm</div>
+                        <div className="text-[9px] text-emerald-400/80 mt-1 font-semibold">+ Insertar</div>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* PANEL DE MODIFICACIÓN DE MEDIDAS DEL VANO ACTIVO / SELECCIONADO */}
+                {editingOpeningId && (() => {
+                  const activeOpening = state.openings.find((o) => o.id === editingOpeningId);
+                  if (!activeOpening) return null;
+
+                  const wallLen = getWallLengthCm(activeOpening.assignedWall, state.dimensions);
+                  const maxH = Math.max(40, state.dimensions.eaveHeight - (activeOpening.type === 'door' ? 0 : activeOpening.sillHeight) - 15);
+                  const maxW = Math.max(40, wallLen - 40);
+                  const maxSill = Math.max(0, state.dimensions.eaveHeight - activeOpening.height - 15);
+                  const maxPos = Math.max(20, wallLen - activeOpening.width - 20);
+
+                  return (
+                    <div className="bg-sky-950/40 border-2 border-sky-400/80 rounded-2xl p-4 space-y-3.5 shadow-xl shadow-sky-500/10 ring-1 ring-sky-400/50">
+                      <div className="flex items-center justify-between border-b border-sky-400/30 pb-2.5">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`px-2 py-0.5 rounded-lg font-mono font-bold text-xs ${
+                              activeOpening.type === 'door'
+                                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                                : 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
+                            }`}
+                          >
+                            {activeOpening.code}
+                          </span>
+                          <div>
+                            <div className="font-bold text-white text-xs sm:text-sm">
+                              Modificar Medidas: {activeOpening.name}
+                            </div>
+                            <div className="text-[11px] text-sky-300/80 font-mono">
+                              Seleccionado en 3D
+                            </div>
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => {
+                            setEditingOpeningId(null);
+                            state.setSelectedOpeningId(null);
+                          }}
+                          className="p-1.5 hover:bg-white/10 text-slate-400 hover:text-white rounded-lg transition-all"
+                          title="Cerrar panel de edición"
+                        >
+                          <Check size={16} className="text-sky-400" />
+                        </button>
+                      </div>
+
+                      {/* Selector Rápido de Cara de la Casa */}
+                      <div>
+                        <span className="text-[11px] text-slate-300 block mb-1.5 font-semibold">
+                          Cara de la Casa:
+                        </span>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                          {[
+                            { id: 'front', label: 'Fachada Frontal' },
+                            { id: 'right', label: 'Lateral Der.' },
+                            { id: 'back', label: 'Trasera' },
+                            { id: 'left', label: 'Lateral Izq.' },
+                          ].map((w) => {
+                            const isSelected = activeOpening.assignedWall === w.id;
+                            return (
+                              <button
+                                key={w.id}
+                                type="button"
+                                onClick={() =>
+                                  state.updateOpening(activeOpening.id, { assignedWall: w.id as any })
+                                }
+                                className={`px-2 py-1.5 rounded-xl text-xs font-bold transition-all border text-center ${
+                                  isSelected
+                                    ? 'bg-sky-500 text-white border-sky-400 shadow-md shadow-sky-500/30'
+                                    : 'bg-slate-900/80 text-slate-400 border-white/10 hover:border-white/20 hover:text-white'
+                                }`}
+                              >
+                                {w.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Dimensiones: Ancho y Alto */}
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="bg-slate-900/80 p-2.5 rounded-xl border border-white/10">
+                          <div className="flex justify-between text-xs text-slate-300 mb-1 font-medium">
+                            <span>Ancho:</span>
+                            <span className="font-mono text-sky-400 font-bold">{activeOpening.width} cm</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="40"
+                            max={maxW}
+                            step="5"
+                            value={activeOpening.width}
+                            onChange={(e) =>
+                              state.updateOpening(activeOpening.id, { width: parseInt(e.target.value) || 40 })
+                            }
+                            className="w-full accent-sky-500 cursor-pointer"
+                          />
+                          <div className="flex justify-between mt-1 text-[10px] text-slate-400">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                state.updateOpening(activeOpening.id, {
+                                  width: Math.max(40, activeOpening.width - 5),
+                                })
+                              }
+                              className="px-1.5 py-0.5 bg-white/5 hover:bg-white/10 rounded font-mono"
+                            >
+                              -5cm
+                            </button>
+                            <span className="font-mono">Paso 5cm</span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                state.updateOpening(activeOpening.id, {
+                                  width: Math.min(maxW, activeOpening.width + 5),
+                                })
+                              }
+                              className="px-1.5 py-0.5 bg-white/5 hover:bg-white/10 rounded font-mono"
+                            >
+                              +5cm
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="bg-slate-900/80 p-2.5 rounded-xl border border-white/10">
+                          <div className="flex justify-between text-xs text-slate-300 mb-1 font-medium">
+                            <span>Alto:</span>
+                            <span className="font-mono text-sky-400 font-bold">{activeOpening.height} cm</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="40"
+                            max={maxH}
+                            step="5"
+                            value={activeOpening.height}
+                            onChange={(e) =>
+                              state.updateOpening(activeOpening.id, { height: parseInt(e.target.value) || 40 })
+                            }
+                            className="w-full accent-sky-500 cursor-pointer"
+                          />
+                          <div className="flex justify-between mt-1 text-[10px] text-slate-400">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                state.updateOpening(activeOpening.id, {
+                                  height: Math.max(40, activeOpening.height - 5),
+                                })
+                              }
+                              className="px-1.5 py-0.5 bg-white/5 hover:bg-white/10 rounded font-mono"
+                            >
+                              -5cm
+                            </button>
+                            <span className="font-mono">Paso 5cm</span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                state.updateOpening(activeOpening.id, {
+                                  height: Math.min(maxH, activeOpening.height + 5),
+                                })
+                              }
+                              className="px-1.5 py-0.5 bg-white/5 hover:bg-white/10 rounded font-mono"
+                            >
+                              +5cm
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Altura donde se ubica (Antepecho) y Posición en Muro */}
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className={`bg-slate-900/80 p-2.5 rounded-xl border border-white/10 ${activeOpening.type === 'door' ? 'opacity-40' : ''}`}>
+                          <div className="flex justify-between text-xs text-slate-300 mb-1 font-medium">
+                            <span>Altura / Antepecho:</span>
+                            <span className="font-mono text-sky-400 font-bold">{activeOpening.sillHeight} cm</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="0"
+                            max={maxSill}
+                            step="5"
+                            disabled={activeOpening.type === 'door'}
+                            value={activeOpening.sillHeight}
+                            onChange={(e) =>
+                              state.updateOpening(activeOpening.id, { sillHeight: parseInt(e.target.value) || 0 })
+                            }
+                            className="w-full accent-sky-500 cursor-pointer"
+                          />
+                          <div className="flex justify-between mt-1 text-[10px] text-slate-400">
+                            <button
+                              type="button"
+                              disabled={activeOpening.type === 'door'}
+                              onClick={() =>
+                                state.updateOpening(activeOpening.id, {
+                                  sillHeight: Math.max(0, activeOpening.sillHeight - 5),
+                                })
+                              }
+                              className="px-1.5 py-0.5 bg-white/5 hover:bg-white/10 rounded font-mono disabled:opacity-30"
+                            >
+                              -5cm
+                            </button>
+                            <span className="font-mono">Desde el piso</span>
+                            <button
+                              type="button"
+                              disabled={activeOpening.type === 'door'}
+                              onClick={() =>
+                                state.updateOpening(activeOpening.id, {
+                                  sillHeight: Math.min(maxSill, activeOpening.sillHeight + 5),
+                                })
+                              }
+                              className="px-1.5 py-0.5 bg-white/5 hover:bg-white/10 rounded font-mono disabled:opacity-30"
+                            >
+                              +5cm
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="bg-slate-900/80 p-2.5 rounded-xl border border-white/10">
+                          <div className="flex justify-between text-xs text-slate-300 mb-1 font-medium">
+                            <span>Posición / Offset:</span>
+                            <span className="font-mono text-sky-400 font-bold">
+                              {activeOpening.offsetAlongWall || 20} cm
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min="20"
+                            max={maxPos}
+                            step="5"
+                            value={activeOpening.offsetAlongWall || 20}
+                            onChange={(e) =>
+                              state.updateOpening(activeOpening.id, {
+                                offsetAlongWall: parseInt(e.target.value) || 20,
+                              })
+                            }
+                            className="w-full accent-sky-500 cursor-pointer"
+                          />
+                          <div className="flex justify-between mt-1 text-[10px] text-slate-400">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                state.updateOpening(activeOpening.id, {
+                                  offsetAlongWall: Math.max(20, (activeOpening.offsetAlongWall || 20) - 5),
+                                })
+                              }
+                              className="px-1.5 py-0.5 bg-white/5 hover:bg-white/10 rounded font-mono"
+                            >
+                              -5cm
+                            </button>
+                            <span className="font-mono">Arrastrar en 3D</span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                state.updateOpening(activeOpening.id, {
+                                  offsetAlongWall: Math.min(maxPos, (activeOpening.offsetAlongWall || 20) + 5),
+                                })
+                              }
+                              className="px-1.5 py-0.5 bg-white/5 hover:bg-white/10 rounded font-mono"
+                            >
+                              +5cm
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Materiales y Botón de Confirmación */}
+                      <div className="grid grid-cols-2 gap-2.5">
+                        <div>
+                          <label className="text-[11px] text-slate-300 block mb-1 font-medium">Material Marco</label>
+                          <select
+                            value={activeOpening.frameMaterial || 'pvc_negro'}
+                            onChange={(e) =>
+                              state.updateOpening(activeOpening.id, { frameMaterial: e.target.value as any })
+                            }
+                            className="w-full bg-slate-900 border border-white/15 rounded-xl p-2 text-xs text-white font-medium"
+                          >
+                            <option value="pvc_negro">PVC Negro</option>
+                            <option value="pvc_folio_madera">PVC Madera</option>
+                            <option value="aluminio_rtt">Aluminio RPT</option>
+                            <option value="madera_lenga">Madera Lenga</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-[11px] text-slate-300 block mb-1 font-medium">Tipo Vidrio</label>
+                          <select
+                            value={activeOpening.glazingType || 'termopanel_dvp'}
+                            onChange={(e) =>
+                              state.updateOpening(activeOpening.id, { glazingType: e.target.value as any })
+                            }
+                            className="w-full bg-slate-900 border border-white/15 rounded-xl p-2 text-xs text-white font-medium"
+                          >
+                            <option value="termopanel_dvp">Termopanel DVP (Doble Vidrio)</option>
+                            <option value="simple_vidrio">Simple Vidrio 5mm</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 pt-1">
+                        <button
+                          onClick={() => {
+                            state.removeOpening(activeOpening.id);
+                            setEditingOpeningId(null);
+                            state.setSelectedOpeningId(null);
+                          }}
+                          className="px-3 py-2.5 bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5"
+                        >
+                          <Trash2 size={15} />
+                          <span>Eliminar</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setEditingOpeningId(null);
+                            state.setSelectedOpeningId(null);
+                          }}
+                          className="flex-1 py-2.5 bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-md shadow-sky-600/30"
+                        >
+                          <Check size={16} />
+                          <span>Guardar y Cerrar</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* LISTA DE VANOS INSTALADOS EN LA CASA */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
+                      Vanos Instalados en la Casa ({state.openings.length})
+                    </span>
+                    <span className="text-[10px] text-slate-400">Clic para modificar</span>
+                  </div>
+
+                  <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
                     {state.openings.length === 0 ? (
-                      <div className="text-xs sm:text-sm text-slate-400 text-center py-6 bg-white/5 rounded-2xl border border-white/5">
-                        No hay vanos en los muros. Agrega uno con los botones rápidos o el formulario.
+                      <div className="text-xs text-slate-400 text-center py-6 bg-white/5 rounded-2xl border border-white/5">
+                        No hay vanos en los muros. Selecciona una puerta o ventana del catálogo arriba.
                       </div>
                     ) : (
                       state.openings.map((op) => {
                         const isEditing = editingOpeningId === op.id;
+                        const wallNameMap: Record<string, string> = {
+                          front: 'Fachada Frontal',
+                          right: 'Lateral Derecho',
+                          back: 'Muro Trasero',
+                          left: 'Lateral Izquierdo',
+                        };
+                        const wallName = wallNameMap[op.assignedWall] || op.assignedWall;
+
                         return (
                           <div
                             key={op.id}
-                            className={`p-3.5 rounded-2xl border transition-all ${
+                            onClick={() => {
+                              setEditingOpeningId(op.id);
+                              state.setSelectedOpeningId(op.id);
+                            }}
+                            className={`p-3 rounded-xl border transition-all cursor-pointer ${
                               isEditing
-                                ? 'bg-sky-950/50 border-sky-400/80 shadow-lg shadow-sky-500/20 ring-1 ring-sky-400/50'
-                                : 'bg-white/5 border-white/10 hover:border-white/20'
+                                ? 'bg-sky-950/60 border-sky-400 shadow-md shadow-sky-500/20 ring-1 ring-sky-400/60'
+                                : 'bg-white/5 border-white/10 hover:border-white/20 hover:bg-white/10'
                             }`}
                           >
                             <div className="flex items-center justify-between gap-2">
@@ -1300,398 +2140,52 @@ export function SipHouseConfigurator({ onNavigate }: { onNavigate: (route: 'home
                                   {op.code}
                                 </span>
                                 <div>
-                                  <div className="font-bold text-white text-xs sm:text-sm leading-tight">{op.name}</div>
-                                  <div className="text-xs text-slate-300 mt-0.5">
-                                    {op.width}×{op.height} cm | Antepecho: {op.sillHeight} cm | Offset: {op.offsetAlongWall || 50} cm
+                                  <div className="font-bold text-white text-xs leading-tight">{op.name}</div>
+                                  <div className="text-[11px] text-slate-300 mt-0.5 font-mono">
+                                    {op.width}×{op.height} cm | Altura: {op.sillHeight} cm | Cara: {wallName}
                                   </div>
                                 </div>
                               </div>
-                              <div className="flex items-center gap-1.5 shrink-0">
+                              <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
                                 <button
-                                  onClick={() => setEditingOpeningId(isEditing ? null : op.id)}
-                                  className={`p-2 rounded-xl transition-all ${
+                                  onClick={() => {
+                                    if (editingOpeningId === op.id) {
+                                      setEditingOpeningId(null);
+                                      state.setSelectedOpeningId(null);
+                                    } else {
+                                      setEditingOpeningId(op.id);
+                                      state.setSelectedOpeningId(op.id);
+                                    }
+                                  }}
+                                  className={`p-1.5 rounded-lg transition-all ${
                                     isEditing
-                                      ? 'bg-sky-500 text-white shadow-sm'
+                                      ? 'bg-sky-500 text-white'
                                       : 'text-slate-300 hover:text-white hover:bg-white/10'
                                   }`}
-                                  title={isEditing ? 'Cerrar edición' : 'Editar vano'}
+                                  title="Modificar medidas"
                                 >
-                                  <Edit2 size={15} />
+                                  <Edit2 size={14} />
                                 </button>
                                 <button
                                   onClick={() => {
-                                    if (editingOpeningId === op.id) setEditingOpeningId(null);
+                                    if (editingOpeningId === op.id) {
+                                      setEditingOpeningId(null);
+                                      state.setSelectedOpeningId(null);
+                                    }
                                     state.removeOpening(op.id);
                                   }}
-                                  className="p-2 text-red-400 hover:text-red-300 hover:bg-red-500/20 rounded-xl transition-all"
+                                  className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-500/20 rounded-lg transition-all"
                                   title="Eliminar vano"
                                 >
-                                  <Trash2 size={15} />
+                                  <Trash2 size={14} />
                                 </button>
                               </div>
                             </div>
-
-                            {/* Panel Desplegable de Edición Inmediata */}
-                            {isEditing && (() => {
-                              const wallLen = getWallLengthCm(op.assignedWall, state.dimensions);
-                              const maxH = Math.max(40, state.dimensions.eaveHeight - (op.type === 'door' ? 0 : op.sillHeight) - 15);
-                              const maxW = Math.max(40, wallLen - 40);
-                              const maxSill = Math.max(0, state.dimensions.eaveHeight - op.height - 15);
-                              const maxPos = Math.max(20, wallLen - op.width - 20);
-
-                              return (
-                                <div className="mt-3.5 pt-3.5 border-t border-white/10 space-y-3 text-xs sm:text-sm">
-                                  <div>
-                                    <div className="flex justify-between text-xs text-slate-300 mb-1 font-medium">
-                                      <span>Muro Asignado:</span>
-                                      <span className="text-xs text-sky-400 font-mono">Largo Muro: {wallLen} cm</span>
-                                    </div>
-                                    <select
-                                      value={op.assignedWall}
-                                      onChange={(e) =>
-                                        state.updateOpening(op.id, { assignedWall: e.target.value as any })
-                                      }
-                                      className="w-full bg-slate-900 border border-white/15 rounded-xl p-2.5 text-xs sm:text-sm text-white font-medium focus:ring-2 focus:ring-sky-400"
-                                    >
-                                      <option value="front">Muro Frontal Principal (+Z)</option>
-                                      <option value="back">Muro Trasero (-Z)</option>
-                                      <option value="left">Muro Lateral Izquierdo (-X)</option>
-                                      <option value="right">Muro Lateral Derecho (+X)</option>
-                                      {state.dimensions.shape === 'l_shape' && (
-                                        <>
-                                          <option value="wing_front">Ala: Muro Frontal (+Z)</option>
-                                          <option value="wing_side">Ala: Muro Exterior (+X)</option>
-                                          <option value="wing_inner">Ala: Muro Interior Patio (-Z)</option>
-                                        </>
-                                      )}
-                                    </select>
-                                  </div>
-
-                                  <div className="grid grid-cols-2 gap-2.5">
-                                    <div>
-                                      <div className="flex justify-between text-xs text-slate-300 mb-1 font-medium">
-                                        <span>Ancho Vano:</span>
-                                        <span className="font-mono text-sky-400 font-bold">{op.width} cm</span>
-                                      </div>
-                                      <input
-                                        type="range"
-                                        min="40"
-                                        max={maxW}
-                                        step="5"
-                                        value={op.width}
-                                        onChange={(e) =>
-                                          state.updateOpening(op.id, { width: parseInt(e.target.value) || 40 })
-                                        }
-                                        className="w-full accent-sky-500 cursor-pointer"
-                                      />
-                                    </div>
-                                    <div>
-                                      <div className="flex justify-between text-xs text-slate-300 mb-1 font-medium">
-                                        <span>Alto Vano:</span>
-                                        <span className="font-mono text-sky-400 font-bold">{op.height} cm</span>
-                                      </div>
-                                      <input
-                                        type="range"
-                                        min="40"
-                                        max={maxH}
-                                        step="5"
-                                        value={op.height}
-                                        onChange={(e) =>
-                                          state.updateOpening(op.id, { height: parseInt(e.target.value) || 40 })
-                                        }
-                                        className="w-full accent-sky-500 cursor-pointer"
-                                      />
-                                    </div>
-                                  </div>
-
-                                  <div className="grid grid-cols-2 gap-2.5">
-                                    <div>
-                                      <div className="flex justify-between text-xs text-slate-300 mb-1 font-medium">
-                                        <span>Antepecho:</span>
-                                        <span className="font-mono text-sky-400 font-bold">{op.sillHeight} cm</span>
-                                      </div>
-                                      <input
-                                        type="range"
-                                        min="0"
-                                        max={maxSill}
-                                        step="5"
-                                        disabled={op.type === 'door'}
-                                        value={op.sillHeight}
-                                        onChange={(e) =>
-                                          state.updateOpening(op.id, { sillHeight: parseInt(e.target.value) || 0 })
-                                        }
-                                        className="w-full accent-sky-500 cursor-pointer disabled:opacity-30"
-                                      />
-                                    </div>
-                                    <div>
-                                      <div className="flex justify-between text-xs text-slate-300 mb-1 font-medium">
-                                        <span>Posición en Muro:</span>
-                                        <span className="font-mono text-sky-400 font-bold">
-                                          {op.offsetAlongWall || 20} cm
-                                        </span>
-                                      </div>
-                                      <input
-                                        type="range"
-                                        min="20"
-                                        max={maxPos}
-                                        step="5"
-                                        value={op.offsetAlongWall || 20}
-                                        onChange={(e) =>
-                                          state.updateOpening(op.id, {
-                                            offsetAlongWall: parseInt(e.target.value) || 20,
-                                          })
-                                        }
-                                        className="w-full accent-sky-500 cursor-pointer"
-                                      />
-                                    </div>
-                                  </div>
-
-                                  <div className="grid grid-cols-2 gap-2.5">
-                                    <div>
-                                      <label className="text-xs text-slate-300 block mb-1 font-medium">Material Marco</label>
-                                      <select
-                                        value={op.frameMaterial || 'pvc_negro'}
-                                        onChange={(e) =>
-                                          state.updateOpening(op.id, { frameMaterial: e.target.value as any })
-                                        }
-                                        className="w-full bg-slate-900 border border-white/15 rounded-xl p-2.5 text-xs sm:text-sm text-white font-medium"
-                                      >
-                                        <option value="pvc_negro">PVC Negro</option>
-                                        <option value="pvc_folio_madera">PVC Madera</option>
-                                        <option value="aluminio_rtt">Aluminio RPT</option>
-                                        <option value="madera_lenga">Madera Lenga</option>
-                                      </select>
-                                    </div>
-                                    <div>
-                                      <label className="text-xs text-slate-300 block mb-1 font-medium">Tipo Vidrio</label>
-                                      <select
-                                        value={op.glazingType || 'termopanel_dvp'}
-                                        onChange={(e) =>
-                                          state.updateOpening(op.id, { glazingType: e.target.value as any })
-                                        }
-                                        className="w-full bg-slate-900 border border-white/15 rounded-xl p-2.5 text-xs sm:text-sm text-white font-medium"
-                                      >
-                                        <option value="termopanel_dvp">Termopanel DVP (Traslúcido)</option>
-                                        <option value="simple_vidrio">Simple Vidrio 5mm</option>
-                                      </select>
-                                    </div>
-                                  </div>
-
-                                  <button
-                                    onClick={() => setEditingOpeningId(null)}
-                                    className="w-full py-2.5 bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs sm:text-sm rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-md shadow-sky-600/30 active:scale-98"
-                                  >
-                                    <Check size={16} />
-                                    <span>Listo / Guardar Ajustes</span>
-                                  </button>
-                                </div>
-                              );
-                            })()}
                           </div>
                         );
                       })
                     )}
                   </div>
-                </div>
-
-                {/* Formulario Agregar Vano con Presets */}
-                <div className="bg-sky-500/10 border border-sky-500/30 rounded-xl p-3.5 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-sky-300 uppercase tracking-wider flex items-center gap-1">
-                      <Plus size={14} />
-                      Insertar Nuevo Vano
-                    </span>
-                  </div>
-
-                  {/* Presets Rápidos */}
-                  <div>
-                    <span className="text-[10px] text-slate-400 block mb-1.5 font-semibold">
-                      Plantillas Rápidas:
-                    </span>
-                    <div className="flex flex-wrap gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          applyPreset({
-                            type: 'window',
-                            name: 'Ventana Termopanel 120x120',
-                            width: 120,
-                            height: 120,
-                            sill: 90,
-                            frame: 'pvc_negro',
-                            glazing: 'termopanel_dvp',
-                          })
-                        }
-                        className="px-2 py-1 bg-slate-900/80 hover:bg-sky-600 border border-white/10 rounded-lg text-[10px] text-slate-200 transition-all"
-                      >
-                        🪟 DVP 120x120
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          applyPreset({
-                            type: 'window',
-                            name: 'Ventana Corredera 200x200',
-                            width: 200,
-                            height: 200,
-                            sill: 40,
-                            frame: 'pvc_negro',
-                            glazing: 'termopanel_dvp',
-                          })
-                        }
-                        className="px-2 py-1 bg-slate-900/80 hover:bg-sky-600 border border-white/10 rounded-lg text-[10px] text-slate-200 transition-all"
-                      >
-                        🪟 Corredera 200x200
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          applyPreset({
-                            type: 'door',
-                            name: 'Puerta Principal Lenga 90x204',
-                            width: 90,
-                            height: 204,
-                            sill: 0,
-                            frame: 'madera_lenga',
-                            glazing: 'simple_vidrio',
-                          })
-                        }
-                        className="px-2 py-1 bg-slate-900/80 hover:bg-amber-600 border border-white/10 rounded-lg text-[10px] text-slate-200 transition-all"
-                      >
-                        🚪 Puerta Lenga 90x204
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          applyPreset({
-                            type: 'window',
-                            name: 'Ventana Baño Proyectante 60x60',
-                            width: 60,
-                            height: 60,
-                            sill: 150,
-                            frame: 'pvc_negro',
-                            glazing: 'termopanel_dvp',
-                          })
-                        }
-                        className="px-2 py-1 bg-slate-900/80 hover:bg-sky-600 border border-white/10 rounded-lg text-[10px] text-slate-200 transition-all"
-                      >
-                        🪟 Baño 60x60
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div>
-                      <label className="text-[10px] text-slate-400 block mb-1">Tipo</label>
-                      <select
-                        value={newOpeningType}
-                        onChange={(e) => {
-                          const val = e.target.value as 'door' | 'window';
-                          setNewOpeningType(val);
-                          if (val === 'door') setNewOpeningSill(0);
-                        }}
-                        className="w-full bg-slate-900 border border-white/10 rounded-lg p-1.5 text-xs text-white"
-                      >
-                        <option value="window">Ventana</option>
-                        <option value="door">Puerta</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-[10px] text-slate-400 block mb-1">Muro Asignado</label>
-                      <select
-                        value={newOpeningWall}
-                        onChange={(e) => setNewOpeningWall(e.target.value as any)}
-                        className="w-full bg-slate-900 border border-white/10 rounded-lg p-1.5 text-xs text-white"
-                      >
-                        <option value="front">Muro Frontal Principal (+Z)</option>
-                        <option value="back">Muro Trasero (-Z)</option>
-                        <option value="left">Muro Lateral Izquierdo (-X)</option>
-                        <option value="right">Muro Lateral Derecho (+X)</option>
-                        {state.dimensions.shape === 'l_shape' && (
-                          <>
-                            <option value="wing_front">Ala: Muro Frontal (+Z)</option>
-                            <option value="wing_side">Ala: Muro Exterior (+X)</option>
-                            <option value="wing_inner">Ala: Muro Interior Patio (-Z)</option>
-                          </>
-                        )}
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-2 text-xs">
-                    <div>
-                      <label className="text-[10px] text-slate-400 block mb-1">Ancho (cm)</label>
-                      <input
-                        type="number"
-                        value={newOpeningWidth}
-                        onChange={(e) => setNewOpeningWidth(parseInt(e.target.value) || 40)}
-                        className="w-full bg-slate-900 border border-white/10 rounded-lg p-1.5 text-xs text-white"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] text-slate-400 block mb-1">Alto (cm)</label>
-                      <input
-                        type="number"
-                        value={newOpeningHeight}
-                        onChange={(e) => setNewOpeningHeight(parseInt(e.target.value) || 40)}
-                        className="w-full bg-slate-900 border border-white/10 rounded-lg p-1.5 text-xs text-white"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] text-slate-400 block mb-1">Antepecho</label>
-                      <input
-                        type="number"
-                        disabled={newOpeningType === 'door'}
-                        value={newOpeningType === 'door' ? 0 : newOpeningSill}
-                        onChange={(e) => setNewOpeningSill(parseInt(e.target.value) || 0)}
-                        className="w-full bg-slate-900 border border-white/10 rounded-lg p-1.5 text-xs text-white disabled:opacity-40"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-2 text-xs">
-                    <div>
-                      <label className="text-[10px] text-slate-400 block mb-1">Offset (cm)</label>
-                      <input
-                        type="number"
-                        value={newOpeningOffset}
-                        onChange={(e) => setNewOpeningOffset(parseInt(e.target.value) || 10)}
-                        className="w-full bg-slate-900 border border-white/10 rounded-lg p-1.5 text-xs text-white"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] text-slate-400 block mb-1">Marco</label>
-                      <select
-                        value={newOpeningFrame}
-                        onChange={(e) => setNewOpeningFrame(e.target.value as any)}
-                        className="w-full bg-slate-900 border border-white/10 rounded-lg p-1.5 text-xs text-white"
-                      >
-                        <option value="pvc_negro">PVC Negro</option>
-                        <option value="pvc_folio_madera">PVC Madera</option>
-                        <option value="aluminio_rtt">Aluminio RPT</option>
-                        <option value="madera_lenga">Madera Lenga</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-[10px] text-slate-400 block mb-1">Vidriado</label>
-                      <select
-                        value={newOpeningGlazing}
-                        onChange={(e) => setNewOpeningGlazing(e.target.value as any)}
-                        className="w-full bg-slate-900 border border-white/10 rounded-lg p-1.5 text-xs text-white"
-                      >
-                        <option value="termopanel_dvp">DVP</option>
-                        <option value="simple_vidrio">Simple</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={handleAddOpening}
-                    className="w-full py-2.5 bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-sky-600/20 transition-all flex items-center justify-center gap-1.5"
-                  >
-                    <Plus size={15} />
-                    <span>Insertar Vano en Muro SIP</span>
-                  </button>
                 </div>
               </div>
             )}
@@ -2238,6 +2732,36 @@ export function SipHouseConfigurator({ onNavigate }: { onNavigate: (route: 'home
           </div>
         </aside>
       </div>
+
+      {/* Modal Diseñador 2D de Planos a BIM 3D */}
+      <SipHousePlannerModal />
+
+      {/* Modal Guardar Proyecto */}
+      <SaveProjectModal
+        isOpen={isSaveModalOpen}
+        onClose={() => setIsSaveModalOpen(false)}
+        projectType="sip-house"
+        defaultName="Proyecto Casa SIP PROSIP Arquify"
+        estimatedCost={metrics.totalPresupuestoClp}
+        projectData={{
+          dimensions: state.dimensions,
+          foundationType: state.foundationType,
+          exteriorCladding: state.exteriorCladding,
+          roofCladding: state.roofCladding,
+          interiorCeiling: state.interiorCeiling,
+          flooringType: state.flooringType,
+          openings: state.openings,
+          interiorWalls: state.interiorWalls,
+          coreType: state.coreType,
+          wallThicknessMm: state.wallThicknessMm,
+          roofThicknessMm: state.roofThicknessMm,
+          floorThicknessMm: state.floorThicknessMm,
+          mepNetwork: state.mepNetwork,
+        }}
+        onSaved={(id) => {
+          console.log('Proyecto de Casa SIP guardado con ID:', id);
+        }}
+      />
     </div>
   );
 }

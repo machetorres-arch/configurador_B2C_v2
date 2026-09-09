@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Html } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
@@ -140,26 +140,17 @@ export function SipDimensionAnnotations3D() {
     explodedProgress,
   } = useSipHouseStore();
 
-  const signXRef = useRef<1 | -1>(1);
-  const signZRef = useRef<1 | -1>(1);
-  const [signs, setSigns] = useState<{ signX: 1 | -1; signZ: 1 | -1 }>({ signX: 1, signZ: 1 });
+  // Orientación adaptativa hacia la cámara (evita que las cotas queden tapadas o por detrás)
+  const [signs, setSigns] = useState<{ signX: number; signZ: number }>({ signX: 1, signZ: 1 });
 
   useFrame(({ camera }) => {
-    const curX = signXRef.current;
-    const curZ = signZRef.current;
-    let newX = curX;
-    let newZ = curZ;
+    // La cámara apunta hacia el centro (0, 2, 0)
+    // Determinamos en qué cuadrante horizontal está la cámara respecto al modelo
+    const currentSignX = camera.position.x >= 0 ? 1 : -1;
+    const currentSignZ = camera.position.z >= 0 ? 1 : -1;
 
-    if (curX === 1 && camera.position.x < -0.1) newX = -1;
-    else if (curX === -1 && camera.position.x > 0.1) newX = 1;
-
-    if (curZ === 1 && camera.position.z < -0.1) newZ = -1;
-    else if (curZ === -1 && camera.position.z > 0.1) newZ = 1;
-
-    if (newX !== curX || newZ !== curZ) {
-      signXRef.current = newX;
-      signZRef.current = newZ;
-      setSigns({ signX: newX, signZ: newZ });
+    if (currentSignX !== signs.signX || currentSignZ !== signs.signZ) {
+      setSigns({ signX: currentSignX, signZ: currentSignZ });
     }
   });
 
@@ -195,7 +186,7 @@ export function SipDimensionAnnotations3D() {
       {/* VOLUMEN PRINCIPAL: ANCHO, LARGO Y ALTURAS (ALERO Y CUMBRERA)              */}
       {/* ========================================================================= */}
 
-      {/* 1. ANCHO NAVE PRINCIPAL (Eje X) */}
+      {/* 1. ANCHO NAVE PRINCIPAL (Eje X) - Siempre en la cara frontal visible a la cámara */}
       <VolumeCota3D
         start={[-widthM / 2, 0.05, cotaZ]}
         end={[widthM / 2, 0.05, cotaZ]}
@@ -206,7 +197,7 @@ export function SipDimensionAnnotations3D() {
         color="#38bdf8"
       />
 
-      {/* 2. LARGO NAVE PRINCIPAL (Eje Z) */}
+      {/* 2. LARGO NAVE PRINCIPAL (Eje Z) - Siempre en el costado visible a la cámara */}
       <VolumeCota3D
         start={[cotaX, 0.05, -lengthM / 2]}
         end={[cotaX, 0.05, lengthM / 2]}
@@ -217,7 +208,7 @@ export function SipDimensionAnnotations3D() {
         color="#38bdf8"
       />
 
-      {/* 3. ALTO ALERO MURO (Eje Y) */}
+      {/* 3. ALTO ALERO MURO (Eje Y) - Ubicada en la esquina más cercana a la cámara */}
       <VolumeCota3D
         start={[cotaX, floorThickM, cotaZ]}
         end={[cotaX, floorThickM + eaveHM, cotaZ]}
@@ -228,7 +219,7 @@ export function SipDimensionAnnotations3D() {
         color="#0ea5e9"
       />
 
-      {/* 4. ALTO CUMBRERA TOTAL (Eje Y) */}
+      {/* 4. ALTO CUMBRERA TOTAL (Eje Y) - Frente a la cara orientada a la cámara */}
       {dim.roofStyle !== 'flat' ? (
         <VolumeCota3D
           start={[0, 0, cotaZ]}
@@ -270,8 +261,8 @@ export function SipDimensionAnnotations3D() {
 
           {/* 6. LARGO ALA LATERAL (Eje Z) */}
           <VolumeCota3D
-            start={[widthM / 2 + wingWidthM + offsetD, 0.05, lengthM / 2 - wingLengthM]}
-            end={[widthM / 2 + wingWidthM + offsetD, 0.05, lengthM / 2]}
+            start={[widthM / 2 + wingWidthM + (signX >= 0 ? offsetD : -offsetD), 0.05, lengthM / 2 - wingLengthM]}
+            end={[widthM / 2 + wingWidthM + (signX >= 0 ? offsetD : -offsetD), 0.05, lengthM / 2]}
             extensionStart={[widthM / 2 + wingWidthM, 0.05, lengthM / 2 - wingLengthM]}
             extensionEnd={[widthM / 2 + wingWidthM, 0.05, lengthM / 2]}
             label="Largo Ala Lateral"

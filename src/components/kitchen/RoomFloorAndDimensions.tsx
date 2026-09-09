@@ -107,10 +107,11 @@ export function RoomFloorAndDimensions() {
           {/* Texto central de Superficie (Área m²) */}
           <group position={[center[0], 2, center[1]]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={1000}>
             <Text
-              fontSize={18}
-              color="#2563eb"
+              fontSize={22}
+              color="#38bdf8"
               anchorX="center"
               anchorY="middle"
+              material-toneMapped={false}
               renderOrder={1000}
             >
               {`${areaM2.toFixed(2)} m²`}
@@ -134,8 +135,8 @@ export function RoomFloorAndDimensions() {
             const midX = (p1[0] + p2[0]) / 2;
             const midZ = (p1[1] + p2[1]) / 2;
 
-            const cotaDist = (roomConfig?.wallThickness || 20) / 2 + 28;
-            const labelDist = cotaDist + 24;
+            const cotaDist = (roomConfig?.wallThickness || 20) / 2 + 32;
+            const labelDist = cotaDist + 28;
 
             const c1: [number, number, number] = [p1[0] + outX * cotaDist, 2, p1[1] + outZ * cotaDist];
             const c2: [number, number, number] = [p2[0] + outX * cotaDist, 2, p2[1] + outZ * cotaDist];
@@ -144,49 +145,53 @@ export function RoomFloorAndDimensions() {
 
             return (
               <group key={`dim_2d_${seg.index}`}>
-                {/* Línea de cota */}
-                <Line points={[c1, c2]} color="#2563eb" lineWidth={2} depthTest={false} renderOrder={999} />
+                {/* Línea de cota principal */}
+                <Line points={[c1, c2]} color="#f97316" lineWidth={2.5} depthTest={false} renderOrder={999} material-toneMapped={false} />
                 <Line
                   points={[
                     [p1[0] + outX * 4, 2, p1[1] + outZ * 4],
-                    [p1[0] + outX * (cotaDist + 6), 2, p1[1] + outZ * (cotaDist + 6)],
+                    [p1[0] + outX * (cotaDist + 8), 2, p1[1] + outZ * (cotaDist + 8)],
                   ]}
-                  color="#2563eb"
-                  lineWidth={1.5}
+                  color="#f97316"
+                  lineWidth={2}
                   depthTest={false}
                   renderOrder={999}
+                  material-toneMapped={false}
                 />
                 <Line
                   points={[
                     [p2[0] + outX * 4, 2, p2[1] + outZ * 4],
-                    [p2[0] + outX * (cotaDist + 6), 2, p2[1] + outZ * (cotaDist + 6)],
+                    [p2[0] + outX * (cotaDist + 8), 2, p2[1] + outZ * (cotaDist + 8)],
                   ]}
-                  color="#2563eb"
-                  lineWidth={1.5}
+                  color="#f97316"
+                  lineWidth={2}
                   depthTest={false}
                   renderOrder={999}
+                  material-toneMapped={false}
                 />
 
-                {/* Letra de pared (A, B, C...) */}
+                {/* Letra de pared (A, B, C...) en alto contraste */}
                 <group position={labelPos} rotation={[-Math.PI / 2, 0, 0]}>
                   <Text
-                    fontSize={14}
-                    color="#0f172a"
+                    fontSize={16}
+                    color="#ffffff"
                     anchorX="center"
                     anchorY="middle"
+                    material-toneMapped={false}
                     renderOrder={1000}
                   >
                     {seg.label}
                   </Text>
                 </group>
 
-                {/* Longitud numérica */}
+                {/* Longitud numérica en color brillante */}
                 <group position={textPos} rotation={[-Math.PI / 2, 0, 0]}>
                   <Text
-                    fontSize={9}
-                    color="#2563eb"
+                    fontSize={12}
+                    color="#38bdf8"
                     anchorX="center"
                     anchorY="middle"
+                    material-toneMapped={false}
                     renderOrder={1000}
                   >
                     {`${seg.length.toFixed(1)} cm`}

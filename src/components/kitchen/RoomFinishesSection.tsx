@@ -5,7 +5,7 @@ import { Palette, Check, Layers } from 'lucide-react';
 
 const sectionTitle = "text-[11px] uppercase tracking-widest text-orange-500 font-bold mb-3 mt-6 first:mt-0";
 
-export function RoomFinishesSection() {
+export function RoomFinishesSection({ isLight = false }: { isLight?: boolean }) {
   const { wallColor, setWallColor, floorType, setFloorType } = useKitchenStore();
   const [activeTab, setActiveTab] = useState<'walls' | 'floors'>('walls');
 
@@ -13,14 +13,22 @@ export function RoomFinishesSection() {
   const currentFloor = FLOOR_TYPE_OPTIONS.find((f) => f.id === floorType) || FLOOR_TYPE_OPTIONS[0];
 
   return (
-    <div className="mb-6 pb-6 border-b border-white/10">
+    <div className={`mb-6 pb-6 border-b ${isLight ? 'border-slate-200' : 'border-white/10'}`}>
       <div className="flex items-center justify-between mb-3">
-        <h2 className={sectionTitle}>Acabados de Estancia</h2>
-        <div className="flex bg-black/40 p-0.5 rounded-lg border border-white/10">
+        <h2 className={`text-[11px] uppercase tracking-widest font-bold mb-3 mt-6 first:mt-0 ${
+          isLight ? 'text-orange-600' : 'text-orange-500'
+        }`}>Acabados de Estancia</h2>
+        <div className={`flex p-0.5 rounded-lg border ${
+          isLight ? 'bg-slate-200/90 border-slate-300' : 'bg-black/40 border-white/10'
+        }`}>
           <button
             onClick={() => setActiveTab('walls')}
-            className={`px-2.5 py-1 rounded text-[10px] uppercase tracking-wider font-bold transition-colors flex items-center gap-1 ${
-              activeTab === 'walls' ? 'bg-orange-500 text-black' : 'text-slate-400 hover:text-white'
+            className={`px-2.5 py-1 rounded text-[10px] uppercase tracking-wider font-bold transition-colors flex items-center gap-1 cursor-pointer ${
+              activeTab === 'walls' 
+                ? 'bg-orange-500 text-black shadow-sm' 
+                : isLight 
+                  ? 'text-slate-700 hover:text-slate-900 font-bold' 
+                  : 'text-slate-400 hover:text-white'
             }`}
           >
             <Palette size={11} />
@@ -28,8 +36,12 @@ export function RoomFinishesSection() {
           </button>
           <button
             onClick={() => setActiveTab('floors')}
-            className={`px-2.5 py-1 rounded text-[10px] uppercase tracking-wider font-bold transition-colors flex items-center gap-1 ${
-              activeTab === 'floors' ? 'bg-orange-500 text-black' : 'text-slate-400 hover:text-white'
+            className={`px-2.5 py-1 rounded text-[10px] uppercase tracking-wider font-bold transition-colors flex items-center gap-1 cursor-pointer ${
+              activeTab === 'floors' 
+                ? 'bg-orange-500 text-black shadow-sm' 
+                : isLight 
+                  ? 'text-slate-700 hover:text-slate-900 font-bold' 
+                  : 'text-slate-400 hover:text-white'
             }`}
           >
             <Layers size={11} />
@@ -40,15 +52,23 @@ export function RoomFinishesSection() {
 
       {activeTab === 'walls' && (
         <div className="flex flex-col gap-3">
-          <div className="p-2.5 bg-white/5 border border-white/10 rounded-lg flex items-center justify-between">
+          <div className={`p-2.5 rounded-lg flex items-center justify-between border ${
+            isLight ? 'bg-slate-50 border-slate-200 shadow-sm' : 'bg-white/5 border-white/10'
+          }`}>
             <div className="flex items-center gap-2.5">
               <span
-                className="w-5 h-5 rounded-full border border-white/30 shadow-inner shrink-0"
+                className={`w-5 h-5 rounded-full border shadow-inner shrink-0 ${
+                  isLight ? 'border-slate-400' : 'border-white/30'
+                }`}
                 style={{ backgroundColor: wallColor || '#E2E8F0' }}
               />
               <div className="flex flex-col">
-                <span className="text-[11px] font-bold text-white leading-none">{currentWall.name}</span>
-                <span className="text-[9px] text-slate-400 font-mono mt-0.5">{currentWall.category} • {currentWall.description}</span>
+                <span className={`text-[11px] font-bold leading-none ${
+                  isLight ? 'text-slate-900' : 'text-white'
+                }`}>{currentWall.name}</span>
+                <span className={`text-[9px] font-mono mt-0.5 ${
+                  isLight ? 'text-slate-600 font-semibold' : 'text-slate-400'
+                }`}>{currentWall.category} • {currentWall.description}</span>
               </div>
             </div>
           </div>
@@ -61,10 +81,12 @@ export function RoomFinishesSection() {
                   key={opt.id}
                   onClick={() => setWallColor(opt.hex)}
                   title={`${opt.name} (${opt.category}): ${opt.description}`}
-                  className={`group relative flex flex-col items-center p-2 rounded-lg border transition-all ${
+                  className={`group relative flex flex-col items-center p-2 rounded-lg border transition-all cursor-pointer ${
                     isSelected
                       ? 'border-orange-500 bg-orange-500/15 shadow-[0_0_12px_rgba(249,115,22,0.25)]'
-                      : 'border-white/10 bg-black/40 hover:border-white/30 hover:bg-white/5'
+                      : isLight
+                        ? 'border-slate-300 bg-white hover:border-orange-500 hover:bg-slate-50 shadow-sm'
+                        : 'border-white/10 bg-black/40 hover:border-white/30 hover:bg-white/5'
                   }`}
                 >
                   <span
@@ -82,7 +104,9 @@ export function RoomFinishesSection() {
                       />
                     )}
                   </span>
-                  <span className="text-[8px] uppercase tracking-tight text-slate-400 mt-1.5 font-bold truncate max-w-full text-center leading-tight">
+                  <span className={`text-[8px] uppercase tracking-tight mt-1.5 font-bold truncate max-w-full text-center leading-tight ${
+                    isLight ? 'text-slate-800' : 'text-slate-400'
+                  }`}>
                     {opt.name.split(' ')[0]}
                   </span>
                 </button>
@@ -94,15 +118,23 @@ export function RoomFinishesSection() {
 
       {activeTab === 'floors' && (
         <div className="flex flex-col gap-2.5">
-          <div className="p-2.5 bg-white/5 border border-white/10 rounded-lg flex items-center justify-between">
+          <div className={`p-2.5 rounded-lg flex items-center justify-between border ${
+            isLight ? 'bg-slate-50 border-slate-200 shadow-sm' : 'bg-white/5 border-white/10'
+          }`}>
             <div className="flex items-center gap-2.5">
               <span
-                className="w-5 h-5 rounded border border-white/30 shadow-inner shrink-0"
+                className={`w-5 h-5 rounded border shadow-inner shrink-0 ${
+                  isLight ? 'border-slate-400' : 'border-white/30'
+                }`}
                 style={{ backgroundColor: currentFloor.primaryColor }}
               />
               <div className="flex flex-col">
-                <span className="text-[11px] font-bold text-white leading-none">{currentFloor.name}</span>
-                <span className="text-[9px] text-slate-400 mt-0.5">{currentFloor.description}</span>
+                <span className={`text-[11px] font-bold leading-none ${
+                  isLight ? 'text-slate-900' : 'text-white'
+                }`}>{currentFloor.name}</span>
+                <span className={`text-[9px] mt-0.5 ${
+                  isLight ? 'text-slate-600 font-semibold' : 'text-slate-400'
+                }`}>{currentFloor.description}</span>
               </div>
             </div>
           </div>
@@ -114,25 +146,33 @@ export function RoomFinishesSection() {
                 <button
                   key={opt.id}
                   onClick={() => setFloorType(opt.id)}
-                  className={`flex items-start gap-2.5 p-2 rounded-lg border text-left transition-all ${
+                  className={`flex items-start gap-2.5 p-2 rounded-lg border text-left transition-all cursor-pointer ${
                     isSelected
                       ? 'border-orange-500 bg-orange-500/15 shadow-[0_0_12px_rgba(249,115,22,0.2)]'
-                      : 'border-white/10 bg-black/40 hover:border-white/30 hover:bg-white/5'
+                      : isLight
+                        ? 'border-slate-300 bg-white hover:border-orange-500 hover:bg-slate-50 shadow-sm'
+                        : 'border-white/10 bg-black/40 hover:border-white/30 hover:bg-white/5'
                   }`}
                 >
                   <div
-                    className="w-8 h-8 rounded border border-white/20 shrink-0 shadow-sm relative overflow-hidden flex items-center justify-center"
+                    className={`w-8 h-8 rounded border shrink-0 shadow-sm relative overflow-hidden flex items-center justify-center ${
+                      isLight ? 'border-slate-300' : 'border-white/20'
+                    }`}
                     style={{ backgroundColor: opt.primaryColor }}
                   >
                     <div
                       className="absolute inset-x-0 bottom-0 h-1/2 opacity-30"
                       style={{ backgroundColor: opt.accentColor }}
                     />
-                    {isSelected && <Check size={14} className="relative z-10 text-orange-400 drop-shadow" />}
+                    {isSelected && <Check size={14} className="relative z-10 text-orange-500 drop-shadow" />}
                   </div>
                   <div className="flex flex-col min-w-0">
-                    <span className="text-[10px] font-bold text-white truncate leading-tight">{opt.name}</span>
-                    <span className="text-[8px] uppercase tracking-wider text-orange-400 font-semibold">{opt.category}</span>
+                    <span className={`text-[10px] font-bold truncate leading-tight ${
+                      isLight ? 'text-slate-900' : 'text-white'
+                    }`}>{opt.name}</span>
+                    <span className={`text-[8px] uppercase tracking-wider font-bold ${
+                      isLight ? 'text-orange-600' : 'text-orange-400'
+                    }`}>{opt.category}</span>
                   </div>
                 </button>
               );

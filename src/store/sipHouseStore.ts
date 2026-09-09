@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { RoomVertex, analyzeRoomWalls } from '../utils/roomGeometry';
 
 // --- 1. ENUMS Y TIPOS BASE ---
 export type FoundationType = 'pilotes_madera' | 'radier_sobrecimiento' | 'platea_fundacion' | 'radier_hormigon';
@@ -123,7 +124,8 @@ export type WallTarget =
   | 'wing_front'
   | 'wing_back'
   | 'wing_side'
-  | 'wing_inner';
+  | 'wing_inner'
+  | string;
 
 export interface SipOpening {
   id: string;
@@ -171,7 +173,7 @@ export interface SipFinishesQuantities {
 }
 
 // --- 5. TIPOLOGÍAS Y DIMENSIONES VOLUMÉTRICAS GLOBALES ---
-export type HouseShape = 'rectangular' | 'l_shape';
+export type HouseShape = 'rectangular' | 'l_shape' | 'custom_polygon';
 export type RoofStyle = 'gable_valley' | 'single_shed' | 'flat';
 export type WingCorner = 'front_left' | 'front_right' | 'back_left' | 'back_right';
 
@@ -182,11 +184,12 @@ export interface SipHouseDimensions {
   ridgeHeight: number;  // cm (Altura a cumbrera techo 2 aguas, ej. 360 cm / 3.6m)
   overhang: number;     // cm (Alero de cubierta, ej. 25 cm)
   // Parámetros Casa en L:
-  shape: HouseShape;    // 'rectangular' | 'l_shape'
+  shape: HouseShape;    // 'rectangular' | 'l_shape' | 'custom_polygon'
   wingLength: number;   // cm (Largo ala lateral L2, ej. 420 cm / 4.2m)
   wingWidth: number;    // cm (Ancho crujía ala W2, ej. 360 cm / 3.6m)
   wingCorner: WingCorner;// 'front_left' | 'front_right' | 'back_left' | 'back_right'
   roofStyle: RoofStyle; // 'gable_valley' (2 Aguas con limahoya) | 'single_shed' | 'flat'
+  customVertices?: RoomVertex[];
 }
 
 // --- 6. ESTADO ZUSTAND INTEGRAL ---
@@ -265,7 +268,7 @@ export interface SipHouseState {
   removeInteriorOpening: (wallId: string, openingId: string) => void;
 
   // Acciones de Vanos
-  addOpening: (opening: Omit<SipOpening, 'id'>) => void;
+  addOpening: (opening: Omit<SipOpening, 'id'> & { id?: string }) => string;
   removeOpening: (id: string) => void;
   updateOpening: (id: string, updates: Partial<SipOpening>) => void;
   
@@ -274,7 +277,23 @@ export interface SipHouseState {
 
   toggleLayer: (layer: keyof SipHouseState) => void;
   setExplodedProgress: (val: number) => void;
+  currentTemplateId: string | null;
+  setCurrentTemplateId: (id: string | null) => void;
+  applyTemplate: (templateId: string) => void;
   resetToDefaultTemplate: () => void;
+
+  // Diseñador 2D de Planos a BIM 3D
+  isSipPlannerOpen: boolean;
+  setSipPlannerOpen: (open: boolean) => void;
+  applyCustom2DPlan: (plan: {
+    dimensions: SipHouseDimensions;
+    wallThicknessMm?: SipWallThickness;
+    layoutPreset?: InteriorLayoutPreset;
+    presetParams?: PresetParams;
+    interiorWalls?: InteriorWall[];
+    openings?: SipOpening[];
+    templateId?: string | null;
+  }) => void;
 }
 
 export const DEFAULT_SIP_DIMENSIONS: SipHouseDimensions = {
@@ -314,6 +333,327 @@ export interface LayoutPresetOption {
   category: 'compact' | 'medium' | 'large';
   features: string[];
 }
+
+export interface SipHouseTemplate {
+  id: string;
+  name: string;
+  subtitle: string;
+  badge: string;
+  m2: number;
+  icon: string;
+  description: string;
+  dimensions: SipHouseDimensions;
+  layoutPreset: InteriorLayoutPreset;
+  presetParams: PresetParams;
+  foundationType: FoundationType;
+  exteriorCladding: ExteriorCladding;
+  roofCladding: RoofCladding;
+  interiorCeiling: InteriorCeiling;
+  flooringType: FlooringType;
+  wallThicknessMm: SipWallThickness;
+  roofThicknessMm: SipRoofThickness;
+  floorThicknessMm: SipFloorThickness;
+  openings: SipOpening[];
+}
+
+export const SIP_HOUSE_TEMPLATES: SipHouseTemplate[] = [
+  {
+    id: 'social_60m2',
+    name: 'Vivienda Social SIP 60 m²',
+    subtitle: '3 Dormitorios + 1 Baño + Logia Exterior (D.S.49 / MINVU)',
+    badge: '60 m² | 3D 1B',
+    m2: 59.8,
+    icon: '🏡',
+    description: 'Vivienda social paramétrica optimizada para subsidio habitacional MINVU. Incorpora porche de acceso universal, rampa de accesibilidad, logia/servicio posterior y 3 dormitorios independientes.',
+    dimensions: {
+      length: 880.0,      // 8.80 m
+      width: 680.0,       // 6.80 m
+      eaveHeight: 260.0,  // 2.60 m
+      ridgeHeight: 360.0, // 3.60 m
+      overhang: 30.0,     // 0.30 m
+      shape: 'rectangular',
+      wingLength: 420.0,
+      wingWidth: 360.0,
+      wingCorner: 'front_right',
+      roofStyle: 'gable_valley',
+    },
+    layoutPreset: '3bed_1bath',
+    presetParams: {
+      ...DEFAULT_PRESET_PARAMS,
+      bedroomDepthPercent: 52,
+      bathWidthPercent: 38,
+      secondaryBedWidthPercent: 50,
+      placementStrategy: 'side',
+    },
+    foundationType: 'radier_sobrecimiento',
+    exteriorCladding: 'panel_sip_visto',
+    roofCladding: 'panel_sip_visto',
+    interiorCeiling: 'entablado_pino',
+    flooringType: 'vinilico_spc',
+    wallThicknessMm: 114,
+    roofThicknessMm: 210,
+    floorThicknessMm: 162,
+    openings: [
+      {
+        id: 'p1-soc',
+        type: 'door',
+        code: 'P1',
+        name: 'Puerta Principal Acceso 90x210',
+        assignedWall: 'front',
+        width: 90,
+        height: 210,
+        sillHeight: 0,
+        offsetAlongWall: 70,
+        frameMaterial: 'pvc_negro',
+      },
+      {
+        id: 'v1-soc',
+        type: 'window',
+        code: 'V1',
+        name: 'Ventana Dormitorio 3 (120x120)',
+        assignedWall: 'front',
+        width: 120,
+        height: 120,
+        sillHeight: 90,
+        offsetAlongWall: 340,
+        glazingType: 'termopanel_dvp',
+        frameMaterial: 'pvc_negro',
+      },
+      {
+        id: 'v2-soc',
+        type: 'window',
+        code: 'V2',
+        name: 'Ventana Dormitorio Principal (120x120)',
+        assignedWall: 'front',
+        width: 120,
+        height: 120,
+        sillHeight: 90,
+        offsetAlongWall: 520,
+        glazingType: 'termopanel_dvp',
+        frameMaterial: 'pvc_negro',
+      },
+      {
+        id: 'v3-soc',
+        type: 'window',
+        code: 'V3',
+        name: 'Ventana Living - Comedor (150x120)',
+        assignedWall: 'left',
+        width: 150,
+        height: 120,
+        sillHeight: 90,
+        offsetAlongWall: 320,
+        glazingType: 'termopanel_dvp',
+        frameMaterial: 'pvc_negro',
+      },
+      {
+        id: 'v4-soc',
+        type: 'window',
+        code: 'V4',
+        name: 'Ventana Cocina (100x100)',
+        assignedWall: 'left',
+        width: 100,
+        height: 100,
+        sillHeight: 110,
+        offsetAlongWall: 650,
+        glazingType: 'termopanel_dvp',
+        frameMaterial: 'pvc_negro',
+      },
+      {
+        id: 'p2-soc',
+        type: 'door',
+        code: 'P2',
+        name: 'Puerta Salida Logia / Servicio (80x200)',
+        assignedWall: 'back',
+        width: 80,
+        height: 200,
+        sillHeight: 0,
+        offsetAlongWall: 120,
+        frameMaterial: 'pvc_negro',
+      },
+      {
+        id: 'v5-soc',
+        type: 'window',
+        code: 'V5',
+        name: 'Ventana Baño Proyectante (60x60)',
+        assignedWall: 'back',
+        width: 60,
+        height: 60,
+        sillHeight: 150,
+        offsetAlongWall: 280,
+        glazingType: 'termopanel_dvp',
+        frameMaterial: 'pvc_negro',
+      },
+      {
+        id: 'v6-soc',
+        type: 'window',
+        code: 'V6',
+        name: 'Ventana Dormitorio 2 Posterior (120x120)',
+        assignedWall: 'back',
+        width: 120,
+        height: 120,
+        sillHeight: 90,
+        offsetAlongWall: 510,
+        glazingType: 'termopanel_dvp',
+        frameMaterial: 'pvc_negro',
+      },
+      {
+        id: 'v7-soc',
+        type: 'window',
+        code: 'V7',
+        name: 'Ventana Lateral Dormitorio Principal (120x120)',
+        assignedWall: 'right',
+        width: 120,
+        height: 120,
+        sillHeight: 90,
+        offsetAlongWall: 180,
+        glazingType: 'termopanel_dvp',
+        frameMaterial: 'pvc_negro',
+      },
+      {
+        id: 'v8-soc',
+        type: 'window',
+        code: 'V8',
+        name: 'Ventana Lateral Dormitorio 2 (120x120)',
+        assignedWall: 'right',
+        width: 120,
+        height: 120,
+        sillHeight: 90,
+        offsetAlongWall: 680,
+        glazingType: 'termopanel_dvp',
+        frameMaterial: 'pvc_negro',
+      },
+    ],
+  },
+  {
+    id: 'cabana_24m2',
+    name: 'Cabaña Modular 24 m²',
+    subtitle: 'Monoambiente / 1 Dormitorio + 1 Baño',
+    badge: '24 m² | 1D 1B',
+    m2: 24.0,
+    icon: '🌲',
+    description: 'Modelo compacto y eficiente para parcelas, cabañas turísticas o ampliaciones habitacionales.',
+    dimensions: {
+      length: 600.0,
+      width: 400.0,
+      eaveHeight: 260.0,
+      ridgeHeight: 360.0,
+      overhang: 25.0,
+      shape: 'rectangular',
+      wingLength: 420.0,
+      wingWidth: 360.0,
+      wingCorner: 'front_right',
+      roofStyle: 'gable_valley',
+    },
+    layoutPreset: '1bed_1bath',
+    presetParams: { ...DEFAULT_PRESET_PARAMS },
+    foundationType: 'pilotes_madera',
+    exteriorCladding: 'panel_sip_visto',
+    roofCladding: 'panel_sip_visto',
+    interiorCeiling: 'entablado_pino',
+    flooringType: 'vinilico_spc',
+    wallThicknessMm: 114,
+    roofThicknessMm: 210,
+    floorThicknessMm: 162,
+    openings: [
+      {
+        id: 'p1-cab',
+        type: 'door',
+        code: 'P1',
+        name: 'Puerta Principal Lenga 90x210',
+        assignedWall: 'front',
+        width: 90,
+        height: 210,
+        sillHeight: 0,
+        offsetAlongWall: 60,
+        frameMaterial: 'madera_lenga',
+      },
+      {
+        id: 'v1-cab',
+        type: 'window',
+        code: 'V1',
+        name: 'Ventana Living Termopanel 140x120',
+        assignedWall: 'front',
+        width: 140,
+        height: 120,
+        sillHeight: 90,
+        offsetAlongWall: 200,
+        glazingType: 'termopanel_dvp',
+        frameMaterial: 'pvc_negro',
+      },
+      {
+        id: 'v2-cab',
+        type: 'window',
+        code: 'V2',
+        name: 'Ventana Lateral 120x100',
+        assignedWall: 'left',
+        width: 120,
+        height: 100,
+        sillHeight: 100,
+        offsetAlongWall: 240,
+        glazingType: 'termopanel_dvp',
+        frameMaterial: 'pvc_negro',
+      },
+    ],
+  },
+  {
+    id: 'casa_l_68m2',
+    name: 'Casa en L 68 m²',
+    subtitle: '2 Dormitorios en Suite + Patio Interior',
+    badge: '68 m² | 2D 2B',
+    m2: 68.4,
+    icon: '✨',
+    description: 'Arquitectura moderna con encuentro de techos a dos aguas y limahoya estructural.',
+    dimensions: {
+      length: 750.0,
+      width: 480.0,
+      eaveHeight: 260.0,
+      ridgeHeight: 380.0,
+      overhang: 30.0,
+      shape: 'l_shape',
+      wingLength: 450.0,
+      wingWidth: 380.0,
+      wingCorner: 'front_right',
+      roofStyle: 'gable_valley',
+    },
+    layoutPreset: '2bed_2bath',
+    presetParams: { ...DEFAULT_PRESET_PARAMS },
+    foundationType: 'radier_sobrecimiento',
+    exteriorCladding: 'panel_sip_visto',
+    roofCladding: 'panel_sip_visto',
+    interiorCeiling: 'entablado_pino',
+    flooringType: 'vinilico_spc',
+    wallThicknessMm: 114,
+    roofThicknessMm: 210,
+    floorThicknessMm: 162,
+    openings: [
+      {
+        id: 'p1-l',
+        type: 'door',
+        code: 'P1',
+        name: 'Puerta Principal Lenga 90x210',
+        assignedWall: 'front',
+        width: 90,
+        height: 210,
+        sillHeight: 0,
+        offsetAlongWall: 60,
+        frameMaterial: 'madera_lenga',
+      },
+      {
+        id: 'v1-l',
+        type: 'window',
+        code: 'V1',
+        name: 'Ventanal Living 200x200',
+        assignedWall: 'front',
+        width: 200,
+        height: 200,
+        sillHeight: 20,
+        offsetAlongWall: 200,
+        glazingType: 'termopanel_dvp',
+        frameMaterial: 'pvc_negro',
+      },
+    ],
+  },
+];
 
 export const LAYOUT_PRESETS_CATALOG: LayoutPresetOption[] = [
   {
@@ -969,70 +1309,130 @@ export function generateInteriorWallsForPreset(
         ],
       });
     } else if (preset === '3bed_1bath') {
-      const splitZ = minZ + usableLength * Math.max(0.45, params.bedroomDepthPercent / 100);
-      const splitX1 = minX + usableWidth * 0.33;
-      const splitX2 = minX + usableWidth * 0.66;
-      const bathZ = minZ + (splitZ - minZ) * 0.45;
+      // Distribución Vivienda Social 3D + 1B + Logia (Referencia Plano MINVU / D.S.49 / 60m²)
+      // Eje X: Zona Social (Izquierda) vs Zona Noche (Derecha)
+      // Eje Z: Fondo (Norte / minZ) vs Frente (Sur / maxZ)
+      const splitX = minX + usableWidth * 0.44; // Muro longitudinal central separando Estar/Cocina de Dormitorios
+      const splitZ_mid = minZ + usableLength * 0.48; // Línea divisoria Dormitorio 2 (Fondo) vs Dormitorios 1 y 3 (Frente)
+      const splitZ_bath = minZ + usableLength * 0.38; // Fondo de Baño
+      const bedDividerX = splitX + (maxX - splitX) * 0.46; // Divisorio entre Dormitorio 3 y Dormitorio 1 Principal
 
+      // 1. Muro Longitudinal Divisorio Social / Privado
       rawWalls.push({
-        id: 'iw-3b1b-main',
-        name: 'Muro Divisorio Principal',
+        id: 'iw-3b1b-longitudinal',
+        name: 'Muro Longitudinal Social / Privado',
         zone: 'hallway',
-        startX: minX,
-        startZ: splitZ,
-        endX: maxX,
-        endZ: splitZ,
+        startX: splitX,
+        startZ: splitZ_bath,
+        endX: splitX,
+        endZ: maxZ,
         thicknessMm: 90,
         heightCm: eaveH,
         visible: true,
         openings: [
-          { id: 'id-31-d1', type: 'door', name: 'Puerta Dormitorio 1', width: 80, height: 200, offsetAlongWall: 20 },
-          { id: 'id-31-d2', type: 'door', name: 'Puerta Dormitorio 2', width: 80, height: 200, offsetAlongWall: Math.max(20, splitX1 - minX + 20) },
-          { id: 'id-31-d3', type: 'door', name: 'Puerta Dormitorio 3', width: 80, height: 200, offsetAlongWall: Math.max(20, splitX2 - minX + 20) },
+          {
+            id: 'id-31-d-hall',
+            type: 'opening',
+            name: 'Paso Pasillo Distribución',
+            width: 90,
+            height: 200,
+            offsetAlongWall: Math.max(15, (maxZ - splitZ_bath) * 0.2),
+          },
         ],
       });
 
+      // 2. Muro Baño / Zona Social (Fondo Izquierdo)
       rawWalls.push({
-        id: 'iw-3b1b-div1',
-        name: 'Muro Divisorio D1/D2',
-        zone: 'bedroom',
-        startX: splitX1,
-        startZ: minZ,
-        endX: splitX1,
-        endZ: splitZ,
-        thicknessMm: 90,
-        heightCm: eaveH,
-        visible: true,
-        openings: [],
-      });
-
-      rawWalls.push({
-        id: 'iw-3b1b-div2',
-        name: 'Muro Divisorio D2/D3',
-        zone: 'bedroom',
-        startX: splitX2,
-        startZ: minZ,
-        endX: splitX2,
-        endZ: splitZ,
-        thicknessMm: 90,
-        heightCm: eaveH,
-        visible: true,
-        openings: [],
-      });
-
-      rawWalls.push({
-        id: 'iw-3b1b-bath',
-        name: 'Muro Baño Familiar Central',
+        id: 'iw-3b1b-bath-social',
+        name: 'Muro Baño / Cocina',
         zone: 'bathroom',
-        startX: splitX1,
-        startZ: bathZ,
-        endX: splitX2,
-        endZ: bathZ,
+        startX: minX,
+        startZ: splitZ_bath,
+        endX: splitX,
+        endZ: splitZ_bath,
         thicknessMm: 90,
         heightCm: eaveH,
         visible: true,
         openings: [
-          { id: 'id-31-bath', type: 'door', name: 'Puerta Baño', width: 70, height: 200, offsetAlongWall: 15 },
+          {
+            id: 'id-31-d-bath',
+            type: 'door',
+            name: 'Puerta Baño',
+            width: 70,
+            height: 200,
+            offsetAlongWall: Math.max(15, (splitX - minX) - 85),
+          },
+        ],
+      });
+
+      // 3. Muro Baño / Dormitorio 2 (Fondo Central)
+      rawWalls.push({
+        id: 'iw-3b1b-bath-bed2',
+        name: 'Muro Baño / Dormitorio 2',
+        zone: 'bathroom',
+        startX: splitX,
+        startZ: minZ,
+        endX: splitX,
+        endZ: splitZ_bath,
+        thicknessMm: 90,
+        heightCm: eaveH,
+        visible: true,
+        openings: [],
+      });
+
+      // 4. Muro Divisorio Transversal (Dormitorio 2 vs Dormitorio 3 y Principal)
+      rawWalls.push({
+        id: 'iw-3b1b-transversal-bed2',
+        name: 'Muro Divisorio Dormitorio 2 / Noche',
+        zone: 'bedroom',
+        startX: splitX,
+        startZ: splitZ_mid,
+        endX: maxX,
+        endZ: splitZ_mid,
+        thicknessMm: 90,
+        heightCm: eaveH,
+        visible: true,
+        openings: [
+          {
+            id: 'id-31-d-bed2',
+            type: 'door',
+            name: 'Puerta Dormitorio 2',
+            width: 75,
+            height: 200,
+            offsetAlongWall: 15,
+          },
+        ],
+      });
+
+      // 5. Muro Divisorio Longitudinal entre Dormitorio 3 y Dormitorio Principal
+      rawWalls.push({
+        id: 'iw-3b1b-div-bed1-bed3',
+        name: 'Muro Divisorio Dormitorio 3 / Dormitorio Principal',
+        zone: 'bedroom',
+        startX: bedDividerX,
+        startZ: splitZ_mid,
+        endX: bedDividerX,
+        endZ: maxZ,
+        thicknessMm: 90,
+        heightCm: eaveH,
+        visible: true,
+        openings: [
+          {
+            id: 'id-31-d-bed1',
+            type: 'door',
+            name: 'Puerta Dormitorio Principal',
+            width: 80,
+            height: 200,
+            offsetAlongWall: 15,
+          },
+          {
+            id: 'id-31-d-bed3',
+            type: 'door',
+            name: 'Puerta Dormitorio 3',
+            width: 75,
+            height: 200,
+            offsetAlongWall: Math.max(15, (maxZ - splitZ_mid) - 90),
+          },
         ],
       });
     } else if (preset === '3bed_2bath') {
@@ -1702,7 +2102,66 @@ export function getInteriorZones(
             color: '#2dd4bf',
           },
         ];
-      } else if (preset === '3bed_1bath' || preset === '3bed_2bath') {
+      } else if (preset === '3bed_1bath') {
+        const splitX = minX + width * 0.44;
+        const splitZ_mid = minZ + length * 0.48;
+        const splitZ_bath = minZ + length * 0.38;
+        const bedDividerX = splitX + (maxX - splitX) * 0.46;
+
+        const livingArea = Math.round(((splitX - minX) * (maxZ - splitZ_bath)) / 100) / 100;
+        const bathArea = Math.round(((splitX - minX) * (splitZ_bath - minZ)) / 100) / 100;
+        const bed2Area = Math.round(((maxX - splitX) * (splitZ_mid - minZ)) / 100) / 100;
+        const bed3Area = Math.round(((bedDividerX - splitX) * (maxZ - splitZ_mid)) / 100) / 100;
+        const bed1Area = Math.round(((maxX - bedDividerX) * (maxZ - splitZ_mid)) / 100) / 100;
+
+        rawZones = [
+          {
+            id: 'z-social-living',
+            name: 'Living - Comedor - Cocina Integrada',
+            type: 'living',
+            areaM2: Math.round(livingArea * 10) / 10,
+            labelPosition: { x: minX + (splitX - minX) / 2, z: splitZ_bath + (maxZ - splitZ_bath) / 2 },
+            bounds: { minX, maxX: splitX, minZ: splitZ_bath, maxZ },
+            color: '#38bdf8',
+          },
+          {
+            id: 'z-bath-social',
+            name: 'Baño Completo Familiar',
+            type: 'bathroom',
+            areaM2: Math.round(bathArea * 10) / 10,
+            labelPosition: { x: minX + (splitX - minX) / 2, z: minZ + (splitZ_bath - minZ) / 2 },
+            bounds: { minX, maxX: splitX, minZ, maxZ: splitZ_bath },
+            color: '#34d399',
+          },
+          {
+            id: 'z-bed2-north',
+            name: 'Dormitorio 2 (2 Camas)',
+            type: 'bedroom',
+            areaM2: Math.round(bed2Area * 10) / 10,
+            labelPosition: { x: splitX + (maxX - splitX) / 2, z: minZ + (splitZ_mid - minZ) / 2 },
+            bounds: { minX: splitX, maxX, minZ, maxZ: splitZ_mid },
+            color: '#a78bfa',
+          },
+          {
+            id: 'z-bed3-center',
+            name: 'Dormitorio 3 (2 Camas)',
+            type: 'bedroom',
+            areaM2: Math.round(bed3Area * 10) / 10,
+            labelPosition: { x: splitX + (bedDividerX - splitX) / 2, z: splitZ_mid + (maxZ - splitZ_mid) / 2 },
+            bounds: { minX: splitX, maxX: bedDividerX, minZ: splitZ_mid, maxZ },
+            color: '#c084fc',
+          },
+          {
+            id: 'z-bed1-master',
+            name: 'Dormitorio Principal (Matrimonial)',
+            type: 'bedroom',
+            areaM2: Math.round(bed1Area * 10) / 10,
+            labelPosition: { x: bedDividerX + (maxX - bedDividerX) / 2, z: splitZ_mid + (maxZ - splitZ_mid) / 2 },
+            bounds: { minX: bedDividerX, maxX, minZ: splitZ_mid, maxZ },
+            color: '#f472b6',
+          },
+        ];
+      } else if (preset === '3bed_2bath') {
         const suiteSplitX = minX + width * 0.40;
         const rightSplitX = suiteSplitX + (width - (suiteSplitX - minX)) * 0.5;
         const subZ = minZ + (splitZ - minZ) * 0.45;
@@ -1907,17 +2366,74 @@ export const DEFAULT_MEP_NETWORK: SipMepNetwork = {
   tdaPanelCapacityAmps: 25,
 };
 
+export interface AvailableWallOption {
+  id: WallTarget;
+  name: string;
+  lengthCm: number;
+  orientation?: string;
+}
+
+/**
+ * Retorna todos los muros disponibles según la geometría activa (Polígono Personalizado, Casa en L o Rectangular)
+ */
+export function getAvailableWalls(dimensions: SipHouseDimensions): AvailableWallOption[] {
+  if (dimensions.customVertices && dimensions.customVertices.length >= 3) {
+    const segments = analyzeRoomWalls(dimensions.customVertices);
+    return segments.map((seg) => {
+      const dx = seg.end.x - seg.start.x;
+      const dz = seg.end.y - seg.start.y;
+      let orient = '';
+      if (Math.abs(dx) > Math.abs(dz)) {
+        orient = dx > 0 ? 'Este / +X' : 'Oeste / -X';
+      } else {
+        orient = dz > 0 ? 'Frente / +Z' : 'Fondo / -Z';
+      }
+      return {
+        id: seg.label,
+        name: `Muro ${seg.label} (${(seg.length / 100).toFixed(2)}m - ${orient})`,
+        lengthCm: Math.round(seg.length),
+        orientation: orient,
+      };
+    });
+  }
+
+  if (dimensions.shape === 'l_shape') {
+    return [
+      { id: 'front', name: `Muro Frontal Principal (+Z) (${(dimensions.width / 100).toFixed(2)}m)`, lengthCm: Math.round(dimensions.width) },
+      { id: 'back', name: `Muro Trasero (-Z) (${(dimensions.width / 100).toFixed(2)}m)`, lengthCm: Math.round(dimensions.width) },
+      { id: 'left', name: `Muro Lateral Izquierdo (-X) (${(dimensions.length / 100).toFixed(2)}m)`, lengthCm: Math.round(dimensions.length) },
+      { id: 'right', name: `Muro Lateral Derecho (+X) (${(dimensions.length / 100).toFixed(2)}m)`, lengthCm: Math.round(dimensions.length) },
+      { id: 'wing_front', name: `Ala: Muro Frontal (+Z) (${(dimensions.wingWidth / 100).toFixed(2)}m)`, lengthCm: Math.round(dimensions.wingWidth) },
+      { id: 'wing_side', name: `Ala: Muro Exterior (+X) (${(dimensions.wingLength / 100).toFixed(2)}m)`, lengthCm: Math.round(dimensions.wingLength) },
+      { id: 'wing_inner', name: `Ala: Muro Interior Patio (-Z) (${(dimensions.wingLength / 100).toFixed(2)}m)`, lengthCm: Math.round(dimensions.wingLength) },
+    ];
+  }
+
+  return [
+    { id: 'front', name: `Muro Frontal Principal (+Z) (${(dimensions.width / 100).toFixed(2)}m)`, lengthCm: Math.round(dimensions.width) },
+    { id: 'back', name: `Muro Trasero (-Z) (${(dimensions.width / 100).toFixed(2)}m)`, lengthCm: Math.round(dimensions.width) },
+    { id: 'left', name: `Muro Lateral Izquierdo (-X) (${(dimensions.length / 100).toFixed(2)}m)`, lengthCm: Math.round(dimensions.length) },
+    { id: 'right', name: `Muro Lateral Derecho (+X) (${(dimensions.length / 100).toFixed(2)}m)`, lengthCm: Math.round(dimensions.length) },
+  ];
+}
+
 /**
  * Retorna el largo útil en cm para el muro seleccionado
  */
 export function getWallLengthCm(wall: WallTarget, dimensions: SipHouseDimensions): number {
+  if (dimensions.customVertices && dimensions.customVertices.length >= 3) {
+    const segments = analyzeRoomWalls(dimensions.customVertices);
+    const found = segments.find((s) => s.label === wall || s.index.toString() === wall);
+    if (found) return Math.max(50, Math.round(found.length));
+    if (segments.length > 0) return Math.max(50, Math.round(segments[0].length));
+  }
+
   if (dimensions.shape === 'l_shape') {
     if (wall === 'front') return dimensions.width;
     if (wall === 'back') return dimensions.width;
     if (wall === 'left' || wall === 'right') return Math.max(100, Math.round(dimensions.length - 22.8));
-    if (wall === 'wing_front' || wall === 'wing_back') return dimensions.wingWidth;
-    if (wall === 'wing_side') return dimensions.wingLength;
-    if (wall === 'wing_inner') return dimensions.wingLength;
+    if (wall === 'wing_front' || wall === 'wing_back') return dimensions.wingWidth || 360;
+    if (wall === 'wing_side' || wall === 'wing_inner') return dimensions.wingLength || 420;
   }
   if (wall === 'front' || wall === 'back') {
     return dimensions.width;
@@ -1925,11 +2441,82 @@ export function getWallLengthCm(wall: WallTarget, dimensions: SipHouseDimensions
   return Math.max(100, Math.round(dimensions.length - 22.8));
 }
 
+export function findOptimalOffsetForWall(
+  wall: WallTarget,
+  requestedWidth: number,
+  openings: SipOpening[],
+  dimensions: SipHouseDimensions,
+  preferredOffset?: number
+): number {
+  const wallLength = getWallLengthCm(wall, dimensions);
+  const CORNER_MARGIN = 30;
+  const MIN_BETWEEN = 20;
+  const w = Math.min(requestedWidth, wallLength - CORNER_MARGIN * 2);
+
+  const existing = openings
+    .filter((o) => o.assignedWall === wall)
+    .sort((a, b) => a.offsetAlongWall - b.offsetAlongWall);
+
+  if (existing.length === 0) {
+    if (preferredOffset !== undefined) {
+      return Math.min(Math.max(CORNER_MARGIN, preferredOffset), Math.max(CORNER_MARGIN, wallLength - CORNER_MARGIN - w));
+    }
+    return CORNER_MARGIN + 30;
+  }
+
+  // If preferredOffset is specified and fits without collision, use it
+  if (preferredOffset !== undefined) {
+    const prefStart = Math.min(Math.max(CORNER_MARGIN, preferredOffset), Math.max(CORNER_MARGIN, wallLength - CORNER_MARGIN - w));
+    const prefEnd = prefStart + w;
+    const hasCollision = existing.some((o) => {
+      const oStart = o.offsetAlongWall;
+      const oEnd = o.offsetAlongWall + o.width;
+      return !(prefEnd + MIN_BETWEEN <= oStart || prefStart >= oEnd + MIN_BETWEEN);
+    });
+    if (!hasCollision) {
+      return prefStart;
+    }
+  }
+
+  // Find free intervals between existing openings
+  let candidateStart = CORNER_MARGIN;
+  for (const o of existing) {
+    if (o.offsetAlongWall - MIN_BETWEEN - candidateStart >= w) {
+      return candidateStart;
+    }
+    candidateStart = Math.max(candidateStart, o.offsetAlongWall + o.width + MIN_BETWEEN);
+  }
+
+  if (wallLength - CORNER_MARGIN - candidateStart >= w) {
+    return candidateStart;
+  }
+
+  // If wall is crowded, position in the largest gap
+  let maxGap = 0;
+  let bestStart = CORNER_MARGIN;
+  let prevEnd = CORNER_MARGIN;
+
+  for (const o of existing) {
+    const gap = o.offsetAlongWall - prevEnd;
+    if (gap > maxGap) {
+      maxGap = gap;
+      bestStart = prevEnd;
+    }
+    prevEnd = o.offsetAlongWall + o.width + MIN_BETWEEN;
+  }
+  const endGap = (wallLength - CORNER_MARGIN) - prevEnd;
+  if (endGap > maxGap) {
+    bestStart = prevEnd;
+  }
+
+  return Math.max(CORNER_MARGIN, Math.min(bestStart, Math.max(CORNER_MARGIN, wallLength - CORNER_MARGIN - w)));
+}
+
 /**
  * Valida y restringe un vano para evitar colisiones con esquinas y otros vanos del mismo muro
  * Siguiendo normativas técnicas SIP (LP PanelSip / Foard Panel / NTA NER-1038):
  * - Distancia mínima a esquina sólida: 30 cm
- * - Altura mínima de dintel portante sobre vano: 30 cm
+ * - Altura mínima de dintel portante sobre vano: 15 cm
  * - Longitud máxima de vano estándar sin viga compuesta especial: 244 cm (2.44 m)
  * - Separación mínima entre vanos adyacentes para dobles jambas: 20 cm
  */
@@ -1945,54 +2532,61 @@ export function validateAndConstrainOpening(
   const MIN_W = 40;
   const MAX_W_STANDARD = 244; // 2.44 m largo máximo estándar sin viga compuesta
   const MIN_H = 40;
-  const MIN_HEAD = 30;      // 30 cm mínimo de dintel SIP portante sobre el vano
+  const MIN_HEAD = 15;      // 15 cm dintel SIP portante sobre el vano
 
   // 1. Restricción vertical
-  let sillHeight = opening.type === 'door' ? 0 : Math.max(15, opening.sillHeight || 15);
+  let sillHeight = opening.type === 'door' ? 0 : Math.max(0, opening.sillHeight ?? 90);
   let maxHeight = wallHeight - sillHeight - MIN_HEAD;
-  if (maxHeight < MIN_H) {
-    if (opening.type === 'door') {
-      sillHeight = 0;
-      maxHeight = Math.max(MIN_H, wallHeight - MIN_HEAD);
-    } else {
-      sillHeight = Math.max(15, wallHeight - MIN_H - MIN_HEAD);
-      maxHeight = MIN_H;
-    }
+  if (opening.type === 'door') {
+    sillHeight = 0;
+    maxHeight = Math.max(MIN_H, wallHeight - 10);
+  } else if (maxHeight < MIN_H) {
+    sillHeight = Math.max(0, wallHeight - MIN_H - MIN_HEAD);
+    maxHeight = MIN_H;
   }
-  const height = Math.min(Math.max(MIN_H, opening.height), maxHeight);
+  const height = Math.min(Math.max(MIN_H, opening.height || 100), maxHeight);
 
   // 2. Restricción horizontal y detección de colisiones con otros vanos en el mismo muro
   const otherOpenings = allOpenings
     .filter((o) => o.id !== opening.id && o.assignedWall === opening.assignedWall)
     .sort((a, b) => a.offsetAlongWall - b.offsetAlongWall);
 
-  let leftLimit = CORNER_MARGIN;
-  let rightLimit = wallLength - CORNER_MARGIN;
+  const maxPossibleW = Math.max(MIN_W, Math.min(MAX_W_STANDARD, wallLength - CORNER_MARGIN * 2));
+  const rawWidth = Math.min(Math.max(MIN_W, opening.width || 100), maxPossibleW);
 
-  // Determinar los límites izquierdo y derecho según la posición relativa del vano
+  // Verificar colisión con otros vanos
+  let offsetAlongWall = opening.offsetAlongWall ?? CORNER_MARGIN;
+  let collides = false;
+
   for (const other of otherOpenings) {
-    const otherStart = other.offsetAlongWall;
-    const otherEnd = other.offsetAlongWall + other.width;
+    const oStart = other.offsetAlongWall;
+    const oEnd = other.offsetAlongWall + other.width;
+    const myStart = offsetAlongWall;
+    const myEnd = offsetAlongWall + rawWidth;
 
-    if (opening.offsetAlongWall >= otherEnd - 5) {
-      leftLimit = Math.max(leftLimit, otherEnd + MIN_BETWEEN);
-    } else if (opening.offsetAlongWall + (opening.width || MIN_W) <= otherStart + 5) {
-      rightLimit = Math.min(rightLimit, otherStart - MIN_BETWEEN);
+    if (!(myEnd + MIN_BETWEEN <= oStart || myStart >= oEnd + MIN_BETWEEN)) {
+      collides = true;
       break;
     }
   }
 
-  // Ancho máximo admisible en el tramo libre disponible
-  const maxAvailableW = Math.min(MAX_W_STANDARD, Math.max(MIN_W, rightLimit - leftLimit));
-  const width = Math.min(Math.max(MIN_W, opening.width), maxAvailableW);
+  if (collides && otherOpenings.length > 0) {
+    offsetAlongWall = findOptimalOffsetForWall(
+      opening.assignedWall,
+      rawWidth,
+      otherOpenings,
+      dimensions,
+      opening.offsetAlongWall
+    );
+  }
 
-  // Offset acotado para garantizar no sobreposición ni salida del muro
-  const maxOffset = Math.max(leftLimit, rightLimit - width);
-  const offsetAlongWall = Math.min(Math.max(leftLimit, opening.offsetAlongWall), maxOffset);
+  // Clamp offset to stay within wall boundaries
+  const maxOffset = Math.max(CORNER_MARGIN, wallLength - CORNER_MARGIN - rawWidth);
+  offsetAlongWall = Math.min(Math.max(CORNER_MARGIN, offsetAlongWall), maxOffset);
 
   return {
     ...opening,
-    width,
+    width: rawWidth,
     height,
     sillHeight,
     offsetAlongWall,
@@ -2004,17 +2598,32 @@ export function validateAndConstrainOpening(
  */
 export function validateAllOpenings(openings: SipOpening[], dimensions: SipHouseDimensions): SipOpening[] {
   const result: SipOpening[] = [];
-  const walls: WallTarget[] =
-    dimensions.shape === 'l_shape'
-      ? ['front', 'back', 'left', 'right', 'wing_front', 'wing_back', 'wing_side', 'wing_inner']
-      : ['front', 'back', 'left', 'right'];
+  const availableWalls = getAvailableWalls(dimensions);
+  const validWallIds = availableWalls.map((w) => w.id);
 
-  for (const wall of walls) {
-    const wallOps = openings
-      .filter((o) => o.assignedWall === wall)
-      .sort((a, b) => a.offsetAlongWall - b.offsetAlongWall);
+  // Agrupar por muro asignado, remapeando si un muro ya no existe
+  const assignedGroups = new Map<string, SipOpening[]>();
+  for (const op of openings) {
+    let targetWall = op.assignedWall;
+    if (!validWallIds.includes(targetWall)) {
+      if (validWallIds.length > 0) {
+        if (targetWall === 'front' && validWallIds.includes('A')) targetWall = 'A';
+        else if (targetWall === 'left' && validWallIds.includes('B')) targetWall = 'B';
+        else if (targetWall === 'back' && validWallIds.includes('C')) targetWall = 'C';
+        else if (targetWall === 'right' && validWallIds.includes('D')) targetWall = 'D';
+        else targetWall = validWallIds[0];
+      }
+    }
+    const adjustedOp: SipOpening = { ...op, assignedWall: targetWall };
+    if (!assignedGroups.has(targetWall)) {
+      assignedGroups.set(targetWall, []);
+    }
+    assignedGroups.get(targetWall)!.push(adjustedOp);
+  }
 
-    for (const op of wallOps) {
+  for (const [wall, wallOps] of assignedGroups.entries()) {
+    const sorted = wallOps.sort((a, b) => a.offsetAlongWall - b.offsetAlongWall);
+    for (const op of sorted) {
       const validated = validateAndConstrainOpening(op, result, dimensions);
       result.push(validated);
     }
@@ -2039,9 +2648,9 @@ export const useSipHouseStore = create<SipHouseState>((set) => ({
   openings: validateAllOpenings(DEFAULT_SIP_OPENINGS, DEFAULT_SIP_DIMENSIONS),
   mepNetwork: { ...DEFAULT_MEP_NETWORK },
 
-  layoutPreset: '1bed_1bath',
+  layoutPreset: 'open_loft',
   presetParams: { ...DEFAULT_PRESET_PARAMS },
-  interiorWalls: generateInteriorWallsForPreset('1bed_1bath', DEFAULT_SIP_DIMENSIONS, DEFAULT_PRESET_PARAMS, 114),
+  interiorWalls: [],
 
   layerFoundations: true,
   layerFloorSip: true,
@@ -2057,6 +2666,52 @@ export const useSipHouseStore = create<SipHouseState>((set) => ({
 
   isTransparent: false,
   explodedProgress: 0, // Cerrada y armada por defecto
+
+  currentTemplateId: 'social_60m2',
+  setCurrentTemplateId: (id) => set({ currentTemplateId: id }),
+
+  // Diseñador 2D a 3D BIM
+  isSipPlannerOpen: false,
+  setSipPlannerOpen: (open) => set({ isSipPlannerOpen: open }),
+  applyCustom2DPlan: ({
+    dimensions,
+    wallThicknessMm,
+    layoutPreset,
+    presetParams,
+    interiorWalls,
+    openings,
+    templateId,
+  }) =>
+    set((state) => {
+      const activeWallThickness = wallThicknessMm || state.wallThicknessMm;
+      const activePreset = layoutPreset || state.layoutPreset;
+      const activeParams = presetParams || state.presetParams;
+
+      const updatedWalls =
+        interiorWalls ||
+        (activePreset !== 'custom'
+          ? generateInteriorWallsForPreset(activePreset, dimensions, activeParams, activeWallThickness)
+          : state.interiorWalls);
+
+      const validatedOpenings = openings
+        ? validateAllOpenings(openings, dimensions)
+        : validateAllOpenings(state.openings, dimensions);
+
+      return {
+        dimensions: { ...dimensions },
+        wallThicknessMm: activeWallThickness,
+        layoutPreset: activePreset,
+        presetParams: { ...activeParams },
+        interiorWalls: updatedWalls,
+        openings: validatedOpenings,
+        exteriorCladding: 'panel_sip_visto',
+        roofCladding: 'panel_sip_visto',
+        currentTemplateId: templateId !== undefined ? templateId : null,
+        isSipPlannerOpen: false,
+        explodedProgress: 0,
+        showDimensions: true,
+      };
+    }),
 
   showDimensions: true,
   dimensionDetailLevel: 1, // 1: Generales, 2: Interiores/Ejes, 3: Vanos, 4: BIM/Paneles SIP
@@ -2156,15 +2811,17 @@ export const useSipHouseStore = create<SipHouseState>((set) => ({
       }),
     })),
 
-  addOpening: (opening) =>
+  addOpening: (opening) => {
+    const tempId = opening.id || `op-${Date.now()}`;
+    const unvalidated: SipOpening = { ...opening, id: tempId };
     set((state) => {
-      const tempId = `op-${Date.now()}`;
-      const unvalidated: SipOpening = { ...opening, id: tempId };
       const validated = validateAndConstrainOpening(unvalidated, state.openings, state.dimensions);
       return {
         openings: [...state.openings, validated],
       };
-    }),
+    });
+    return tempId;
+  },
 
   removeOpening: (id) =>
     set((state) => ({
@@ -2204,23 +2861,108 @@ export const useSipHouseStore = create<SipHouseState>((set) => ({
 
   setExplodedProgress: (explodedProgress) => set({ explodedProgress }),
 
+  applyTemplate: (templateId) => {
+    const tmpl = SIP_HOUSE_TEMPLATES.find((t) => t.id === templateId);
+    if (!tmpl) return;
+
+    set({
+      currentTemplateId: templateId,
+      dimensions: { ...tmpl.dimensions },
+      layoutPreset: tmpl.layoutPreset,
+      presetParams: { ...tmpl.presetParams },
+      foundationType: tmpl.foundationType,
+      exteriorCladding: tmpl.exteriorCladding,
+      roofCladding: tmpl.roofCladding,
+      interiorCeiling: tmpl.interiorCeiling,
+      flooringType: tmpl.flooringType,
+      wallThicknessMm: tmpl.wallThicknessMm,
+      roofThicknessMm: tmpl.roofThicknessMm,
+      floorThicknessMm: tmpl.floorThicknessMm,
+      openings: validateAllOpenings(tmpl.openings, tmpl.dimensions),
+      interiorWalls: generateInteriorWallsForPreset(
+        tmpl.layoutPreset,
+        tmpl.dimensions,
+        tmpl.presetParams,
+        tmpl.wallThicknessMm
+      ),
+      mepNetwork: { ...DEFAULT_MEP_NETWORK },
+      explodedProgress: 0,
+      showDimensions: true,
+      dimensionDetailLevel: 1,
+    });
+  },
+
   resetToDefaultTemplate: () =>
     set({
-      dimensions: { ...DEFAULT_SIP_DIMENSIONS },
+      currentTemplateId: 'social_60m2',
+      dimensions: {
+        length: 880.0,
+        width: 680.0,
+        eaveHeight: 260.0,
+        ridgeHeight: 360.0,
+        overhang: 30.0,
+        shape: 'rectangular',
+        wingLength: 420.0,
+        wingWidth: 360.0,
+        wingCorner: 'front_right',
+        roofStyle: 'gable_valley',
+      },
       coreType: 'eps_15kg',
       wallThicknessMm: 114,
       roofThicknessMm: 210,
       floorThicknessMm: 162,
-      foundationType: 'pilotes_madera',
+      foundationType: 'radier_sobrecimiento',
       exteriorCladding: 'panel_sip_visto',
       roofCladding: 'panel_sip_visto',
       interiorCeiling: 'entablado_pino',
       flooringType: 'vinilico_spc',
-      openings: validateAllOpenings(DEFAULT_SIP_OPENINGS, DEFAULT_SIP_DIMENSIONS),
+      openings: validateAllOpenings(
+        SIP_HOUSE_TEMPLATES.find((t) => t.id === 'social_60m2')?.openings || DEFAULT_SIP_OPENINGS,
+        {
+          length: 880.0,
+          width: 680.0,
+          eaveHeight: 260.0,
+          ridgeHeight: 360.0,
+          overhang: 30.0,
+          shape: 'rectangular',
+          wingLength: 420.0,
+          wingWidth: 360.0,
+          wingCorner: 'front_right',
+          roofStyle: 'gable_valley',
+        }
+      ),
       mepNetwork: { ...DEFAULT_MEP_NETWORK },
-      layoutPreset: '1bed_1bath',
-      presetParams: { ...DEFAULT_PRESET_PARAMS },
-      interiorWalls: generateInteriorWallsForPreset('1bed_1bath', DEFAULT_SIP_DIMENSIONS, DEFAULT_PRESET_PARAMS, 114),
+      layoutPreset: '3bed_1bath',
+      presetParams: {
+        ...DEFAULT_PRESET_PARAMS,
+        bedroomDepthPercent: 52,
+        bathWidthPercent: 38,
+        secondaryBedWidthPercent: 50,
+        placementStrategy: 'side',
+      },
+      interiorWalls: generateInteriorWallsForPreset(
+        '3bed_1bath',
+        {
+          length: 880.0,
+          width: 680.0,
+          eaveHeight: 260.0,
+          ridgeHeight: 360.0,
+          overhang: 30.0,
+          shape: 'rectangular',
+          wingLength: 420.0,
+          wingWidth: 360.0,
+          wingCorner: 'front_right',
+          roofStyle: 'gable_valley',
+        },
+        {
+          ...DEFAULT_PRESET_PARAMS,
+          bedroomDepthPercent: 52,
+          bathWidthPercent: 38,
+          secondaryBedWidthPercent: 50,
+          placementStrategy: 'side',
+        },
+        114
+      ),
       layerFoundations: true,
       layerFloorSip: true,
       layerWallsSip: true,

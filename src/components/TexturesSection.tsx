@@ -1,8 +1,5 @@
-import { useState, useEffect } from 'react';
 import { useStore } from '../store';
 import { useAdminStore } from '../store/adminStore';
-import { get, set } from 'idb-keyval';
-import { Upload, Trash2 } from 'lucide-react';
 
 const DEFAULT_TEXTURES = [
   { id: 'def_mas_blanco', name: 'Masisa Blanco', url: '#FFFFFF' },
@@ -12,72 +9,16 @@ const DEFAULT_TEXTURES = [
 export const TexturesSection = ({ 
   onSelectTexture,
   title = "Catálogo de Materiales",
-  badgeText
+  badgeText,
+  isLight = false,
 }: { 
   onSelectTexture?: (url: string, mat: 'hpl' | 'melamina') => void;
   title?: string;
   badgeText?: string;
+  isLight?: boolean;
 }) => {
   const state = useStore();
   const adminTextures = useAdminStore((s) => s.textures);
-  const [uploading, setUploading] = useState(false);
-  const [localTextures, setLocalTextures] = useState<any[]>([]);
-
-  useEffect(() => {
-    loadLocalTextures();
-  }, []);
-
-  const loadLocalTextures = async () => {
-    try {
-      const stored = await get('custom_textures');
-      if (stored) {
-        setLocalTextures(stored);
-        state.setCustomTextures(stored);
-      }
-    } catch (e) {
-      console.error('Error loading textures from IndexedDB', e);
-    }
-  };
-
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files || e.target.files.length === 0) return;
-    const file = e.target.files[0];
-    
-    setUploading(true);
-    
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const base64Url = event.target?.result as string;
-      
-      const newTexture = {
-        id: Date.now().toString(),
-        name: file.name,
-        url: base64Url,
-      };
-      
-      const updatedTextures = [newTexture, ...localTextures];
-      setLocalTextures(updatedTextures);
-      state.setCustomTextures(updatedTextures);
-      
-      await set('custom_textures', updatedTextures);
-      setUploading(false);
-      e.target.value = ''; // clear input
-    };
-    reader.onerror = () => {
-      alert("Error al leer el archivo");
-      setUploading(false);
-    };
-    
-    reader.readAsDataURL(file);
-  };
-  
-  const handleDelete = async (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const updatedTextures = localTextures.filter(t => t.id !== id);
-    setLocalTextures(updatedTextures);
-    state.setCustomTextures(updatedTextures);
-    await set('custom_textures', updatedTextures);
-  };
 
   const applyTexture = (url: string, name: string) => {
     const nameLower = name.toLowerCase();
@@ -102,23 +43,22 @@ export const TexturesSection = ({
     }
   };
 
-  // Combinar texturas activas del AdminStore + locales + defaults
-  const activeAdminTextures = (adminTextures || [])
-    .filter(t => t.active)
+  // Filtrar exclusivamente terminaciones aprobadas por el Superadministrador (VB) y activas
+  const activeApprovedAdminTextures = (adminTextures || [])
+    .filter(t => t.active && (t.approvalStatus === 'approved' || !t.approvalStatus))
     .map(t => ({
       id: t.id,
       name: `${t.brand ? t.brand + ' ' : ''}${t.name}`,
+      code: t.code,
       url: t.url || t.previewUrl || '#CCCCCC',
       category: t.category,
-      brand: t.brand
+      brand: t.brand || t.providerName
     }));
 
-  // Combinación única por ID o nombre
+  // Combinación única con defaults
   const combinedMap = new Map<string, any>();
-  
   DEFAULT_TEXTURES.forEach(t => combinedMap.set(t.id, t));
-  activeAdminTextures.forEach(t => combinedMap.set(t.id, t));
-  localTextures.forEach(t => combinedMap.set(t.id, t));
+  activeApprovedAdminTextures.forEach(t => combinedMap.set(t.id, t));
 
   const allTextures = Array.from(combinedMap.values());
   
@@ -134,45 +74,57 @@ export const TexturesSection = ({
     return !isMasisa && !isAbet;
   });
 
-  const renderTextureButton = (tex: any, showDelete: boolean) => (
+  const renderTextureButton = (tex: any) => (
     <div key={tex.id} className="relative group">
       <button 
         onClick={() => applyTexture(tex.url, tex.name)}
-        className="flex flex-col items-center gap-1 p-1 bg-white/5 border border-white/10 rounded hover:border-orange-500/50 transition-colors w-full"
-        title={tex.name}
+        className={`flex flex-col items-center gap-1 p-1 rounded transition-colors w-full cursor-pointer ${
+          isLight 
+            ? 'bg-white border border-slate-300 hover:border-orange-500 shadow-sm' 
+            : 'bg-white/5 border border-white/10 hover:border-orange-500/50'
+        }`}
+        title={`${tex.name} ${tex.code ? `(${tex.code})` : ''}`}
       >
         <div 
-          className="w-full aspect-square rounded border border-white/20 group-hover:shadow-[0_0_10px_rgba(249,115,22,0.3)] bg-cover bg-center"
+          className={`w-full aspect-square rounded border group-hover:shadow-[0_0_10px_rgba(249,115,22,0.3)] bg-cover bg-center ${
+            isLight ? 'border-slate-200' : 'border-white/20'
+          }`}
           style={tex.url.startsWith('#') ? { backgroundColor: tex.url } : { backgroundImage: `url('${tex.url}')` }}
         />
-        <span className="text-[8px] uppercase tracking-wider text-slate-400 truncate w-full text-center">
+        <span className={`text-[8px] uppercase tracking-wider font-bold truncate w-full text-center ${
+          isLight ? 'text-slate-800' : 'text-slate-400'
+        }`}>
           {tex.name.length > 15 ? tex.name.substring(0, 15) + '...' : tex.name}
         </span>
       </button>
-      {showDelete && !tex.id.startsWith('def_') && (
-        <button 
-          onClick={(e) => handleDelete(tex.id, e)}
-          className="absolute -top-1 -right-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-        >
-          <Trash2 size={10} />
-        </button>
-      )}
     </div>
   );
 
   return (
-    <div className="mb-8 p-3 border border-orange-500/30 rounded-lg bg-orange-500/5">
+    <div className={`mb-8 p-3 rounded-lg border ${
+      isLight 
+        ? 'bg-orange-50/40 border-orange-300 shadow-sm' 
+        : 'bg-orange-500/5 border-orange-500/30'
+    }`}>
       <div className="flex justify-between items-center mb-3">
-        <h2 className="text-[11px] uppercase tracking-widest text-orange-500 font-bold">{title}</h2>
+        <h2 className={`text-[11px] uppercase tracking-widest font-bold ${
+          isLight ? 'text-orange-600' : 'text-orange-500'
+        }`}>{title}</h2>
         {badgeText && (
-          <span className="text-[8px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-orange-500/20 text-orange-400 border border-orange-500/30">
+          <span className={`text-[8px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${
+            isLight 
+              ? 'bg-orange-100 text-orange-800 border-orange-300' 
+              : 'bg-orange-500/20 text-orange-400 border-orange-500/30'
+          }`}>
             {badgeText}
           </span>
         )}
       </div>
       
       <div className="flex flex-col gap-2 mb-4">
-        <label className="text-[10px] uppercase tracking-widest text-slate-400">1. Selecciona la zona a modificar:</label>
+        <label className={`text-[10px] uppercase tracking-widest font-bold ${
+          isLight ? 'text-slate-700' : 'text-slate-400'
+        }`}>1. Selecciona la zona a modificar:</label>
         <div className="grid grid-cols-2 gap-2 mb-2">
           {[
             { id: 'all', label: 'Todo el Mueble' },
@@ -187,7 +139,13 @@ export const TexturesSection = ({
             <button 
               key={part.id}
               onClick={() => state.setTargetPart(part.id as any)}
-              className={`p-1.5 rounded-md text-[9px] uppercase tracking-widest font-bold transition-all ${state.targetPart === part.id ? 'bg-orange-500 text-black shadow-[0_0_10px_rgba(249,115,22,0.3)] border border-orange-400' : 'bg-white/10 text-slate-300 border border-transparent hover:bg-white/20'}`}
+              className={`p-1.5 rounded-md text-[9px] uppercase tracking-widest font-bold transition-all cursor-pointer ${
+                state.targetPart === part.id 
+                  ? 'bg-orange-500 text-black shadow-[0_0_10px_rgba(249,115,22,0.3)] border border-orange-500' 
+                  : isLight 
+                    ? 'bg-white text-slate-800 border border-slate-300 hover:border-orange-500 hover:text-black shadow-sm' 
+                    : 'bg-white/10 text-slate-300 border border-transparent hover:bg-white/20'
+              }`}
             >
               {part.label}
             </button>
@@ -197,38 +155,36 @@ export const TexturesSection = ({
 
       {masisaTextures.length > 0 && (
         <div className="mb-4">
-          <label className="text-[10px] uppercase tracking-widest text-slate-400 block mb-2">2. Masisa (Melaminas)</label>
+          <label className={`text-[10px] uppercase tracking-widest font-bold block mb-2 ${
+            isLight ? 'text-slate-700' : 'text-slate-400'
+          }`}>2. Masisa (Melaminas)</label>
           <div className="grid grid-cols-3 gap-2">
-            {masisaTextures.map(t => renderTextureButton(t, true))}
+            {masisaTextures.map(t => renderTextureButton(t))}
           </div>
         </div>
       )}
 
       {abetTextures.length > 0 && (
-        <div className="mb-6">
-          <label className="text-[10px] uppercase tracking-widest text-slate-400 block mb-2">3. Abet Laminati (HPL)</label>
+        <div className="mb-4">
+          <label className={`text-[10px] uppercase tracking-widest font-bold block mb-2 ${
+            isLight ? 'text-slate-700' : 'text-slate-400'
+          }`}>3. Abet Laminati (HPL)</label>
           <div className="grid grid-cols-3 gap-2">
-            {abetTextures.map(t => renderTextureButton(t, true))}
+            {abetTextures.map(t => renderTextureButton(t))}
           </div>
         </div>
       )}
 
-      <div className="pt-4 border-t border-orange-500/20">
-        <label className="text-[10px] uppercase tracking-widest text-slate-400 block mb-2">4. Otras Texturas / Subir Archivos</label>
-        <label className="flex items-center justify-center gap-2 w-full p-3 border border-orange-500/50 border-dashed rounded-lg text-orange-500 hover:bg-orange-500/10 cursor-pointer transition-colors mb-2">
-          <Upload size={16} />
-          <span className="text-[10px] uppercase font-bold tracking-widest">
-            {uploading ? 'Procesando...' : 'Subir Imagen'}
-          </span>
-          <input type="file" accept="image/*" className="hidden" onChange={handleUpload} disabled={uploading} />
-        </label>
-
-        {otherTextures.length > 0 && (
-          <div className="grid grid-cols-3 gap-2 mt-3">
-            {otherTextures.map(t => renderTextureButton(t, true))}
+      {otherTextures.length > 0 && (
+        <div className="mb-2">
+          <label className={`text-[10px] uppercase tracking-widest font-bold block mb-2 ${
+            isLight ? 'text-slate-700' : 'text-slate-400'
+          }`}>4. Terminaciones Proveedores Oficiales</label>
+          <div className="grid grid-cols-3 gap-2">
+            {otherTextures.map(t => renderTextureButton(t))}
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -8,14 +8,17 @@ import { Configurator } from '../components/Configurator';
 import { Scene } from '../components/Scene';
 import { Blueprint } from '../components/Blueprint';
 import { ModuleContextMenu } from '../components/ModuleContextMenu';
+import { SaveProjectModal } from '../components/common/SaveProjectModal';
 import { useStore } from '../store';
 import { QRCodeSVG } from 'qrcode.react';
 import { ARView } from '../components/ARView';
+import { Save } from 'lucide-react';
 
 export function ClosetConfigurator({ onNavigate }: { onNavigate: () => void }) {
   const [showQR, setShowQR] = useState(false);
   const [qrUrl, setQrUrl] = useState('');
   const [isAR, setIsAR] = useState(false);
+  const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
   const loadDesign = useStore(state => state.loadDesign);
   const state = useStore();
 
@@ -93,17 +96,21 @@ export function ClosetConfigurator({ onNavigate }: { onNavigate: () => void }) {
           <span className="font-bellota text-2xl font-bold lowercase text-orange-500 tracking-tight select-none">arquify</span>
           <span className="text-xs text-slate-500 uppercase tracking-widest border-l border-white/10 pl-3 hidden sm:inline">Clóset Modular</span>
         </div>
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-4">
           <button 
             onClick={handleShowQR}
-            className="px-4 py-2 bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 rounded text-xs font-semibold uppercase tracking-wider transition-colors border border-orange-500/50"
+            className="px-3.5 py-1.5 bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 rounded-lg text-xs font-semibold uppercase tracking-wider transition-colors border border-orange-500/50"
           >
             Ver en AR (Móvil)
           </button>
-          <div className="flex flex-col items-end">
-            <span className="text-[10px] uppercase tracking-widest text-slate-500">Proyecto Actual</span>
-            <span className="text-sm font-medium">Closet Personalizado</span>
-          </div>
+          <button
+            onClick={() => setIsSaveModalOpen(true)}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-orange-600 hover:bg-orange-500 text-white rounded-lg transition-all text-xs font-bold uppercase tracking-wider shadow-md shadow-orange-600/20 cursor-pointer"
+            title="Guardar diseño actual en el Backoffice"
+          >
+            <Save size={14} />
+            <span>Guardar Proyecto</span>
+          </button>
         </div>
       </nav>
 
@@ -145,6 +152,29 @@ export function ClosetConfigurator({ onNavigate }: { onNavigate: () => void }) {
           <span className="cursor-pointer hover:text-white transition-colors">Atajos</span>
         </div>
       </footer>
+
+      {/* Modal Guardar Proyecto */}
+      <SaveProjectModal
+        isOpen={isSaveModalOpen}
+        onClose={() => setIsSaveModalOpen(false)}
+        projectType="closet"
+        defaultName="Proyecto Clóset Arquify"
+        estimatedCost={1800000}
+        projectData={{
+          height: state.height,
+          depth: state.depth,
+          thickness: state.thickness,
+          structureColor: state.structureColor,
+          doorColor: state.doorColor,
+          backColor: state.backColor,
+          modules: state.modules,
+          showSocle: state.showSocle,
+          showLegs: state.showLegs,
+        }}
+        onSaved={(id) => {
+          console.log('Proyecto de clóset guardado con ID:', id);
+        }}
+      />
     </div>
   );
 }

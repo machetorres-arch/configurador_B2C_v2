@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { Edges, OrthographicCamera, PerspectiveCamera, OrbitControls, Environment, Grid, Line, Text } from '@react-three/drei';
 import * as THREE from 'three';
@@ -9,10 +9,11 @@ import { Cabinet } from './Cabinet';
 import { KitchenSocle } from './KitchenSocle';
 import { KitchenRunDimensions } from './KitchenRunDimensions';
 import { RoomFloorAndDimensions } from './RoomFloorAndDimensions';
+import { ArchitecturalElementsRenderer } from './ArchitecturalElementsRenderer';
 import { resolvePlacement } from '../../utils/kitchenCollision';
 
-function SceneContent() {
-  const { viewMode, toolMode, walls, cabinets, addWall, drawingStart, setDrawingStart, addCabinet, setToolMode, setActiveCabinet, roomConfig, activeCabinetId } = useKitchenStore();
+function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
+  const { viewMode, toolMode, walls, cabinets, addWall, drawingStart, setDrawingStart, addCabinet, setToolMode, setActiveCabinet, roomConfig, activeCabinetId, addArchitecturalElement, draggingArchElementId } = useKitchenStore();
   const [currentMousePos, setCurrentMousePos] = useState<[number, number] | null>(null);
   const [ghostCabinet, setGhostCabinet] = useState<{pos: [number,number,number], rot: number, isColliding?: boolean} | null>(null);
   const { camera, raycaster, pointer, scene } = useThree();
@@ -23,19 +24,120 @@ function SceneContent() {
 
   // Al activar la herramienta "Mover", situar de inmediato el ghost y la flecha sobre el mueble activo
   useEffect(() => {
+    const handleGlobalPointerUp = () => {
+      const store = useKitchenStore.getState();
+      if (store.draggingArchElementId) {
+        store.setDraggingArchElementId(null);
+      }
+    };
+    window.addEventListener('pointerup', handleGlobalPointerUp);
+    return () => window.removeEventListener('pointerup', handleGlobalPointerUp);
+  }, []);
+
+  useEffect(() => {
     if (toolMode === 'move_active' && activeCabinetId) {
       const activeCab = useKitchenStore.getState().cabinets.find(c => c.id === activeCabinetId);
-      if (activeCab) {
+      if (activeCab && Array.isArray(activeCab.position)) {
         setGhostCabinet({
-          pos: [activeCab.position[0], activeCab.position[1], activeCab.position[2]],
-          rot: activeCab.rotation || 0,
+          pos: [Number(activeCab.position[0]) || 0, Number(activeCab.position[1]) || 40, Number(activeCab.position[2]) || 0],
+          rot: Number(activeCab.rotation) || 0,
+          isColliding: false,
+        });
+      } else {
+        setGhostCabinet({
+          pos: [0, 40, 0],
+          rot: 0,
           isColliding: false,
         });
       }
+    } else if (!toolMode.startsWith('place_')) {
+      setGhostCabinet(null);
     }
   }, [toolMode, activeCabinetId]);
 
+  const dragInfoRef = useRef<{ id: string; startPointerX: number; startOffset: number } | null>(null);
+
   useFrame(() => {
+    const draggingArchElementId = useKitchenStore.getState().draggingArchElementId;
+    if (draggingArchElementId) {
+       const architecturalElements = useKitchenStore.getState().architecturalElements;
+       const updateArchitecturalElement = useKitchenStore.getState().updateArchitecturalElement;
+       const el = architecturalElements.find(e => e.id === draggingArchElementId);
+       if (el) {
+          const effectiveWalls = walls && walls.length > 0 ? walls : (roomConfig?.vertices && roomConfig.vertices.length >= 3 ? roomConfig.vertices.map((v, i, arr) => {
+             const next = arr[(i + 1) % arr.length];
+             return { id: `wall_v_${i}`, start: [v.x, v.y], end: [next.x, next.y], thickness: 20, height: 240 };
+          }) : []);
+
+          const wall = effectiveWalls.find(w => w.id === el.wallId) || effectiveWalls[0];
+          if (wall) {
+             const [x1, z1] = wall.start;
+             const [x2, z2] = wall.end;
+             const wLen = Math.hypot(x2 - x1, z2 - z1);
+             if (wLen >= 10) {
+                const uX = (x2 - x1) / wLen;
+                const uZ = (z2 - z1) / wLen;
+
+                if (!dragInfoRef.current || dragInfoRef.current.id !== draggingArchElementId) {
+                   dragInfoRef.current = {
+                      id: draggingArchElementId,
+                      startPointerX: pointer.x,
+                      startOffset: el.offset || 0,
+                   };
+                }
+
+                const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+                const dot = uX * camRight.x + uZ * camRight.z;
+                const sign = dot >= 0 ? 1 : -1;
+
+                const deltaX = -(pointer.x - dragInfoRef.current.startPointerX);
+                const sensitivity = wLen * 1.2;
+                const rawNewOffset = dragInfoRef.current.startOffset + deltaX * sensitivity * sign;
+
+                const minS = -wLen / 2 + el.width / 2 + 2;
+                const maxS = wLen / 2 - el.width / 2 - 2;
+                let clampedOffset = Math.max(minS, Math.min(maxS, rawNewOffset));
+
+                // Overlap prevention with other elements on the same wall
+                const otherElements = architecturalElements.filter(other => other.id !== el.id && (other.wallId === wall.id || (!other.wallId && Math.abs(other.position[0] - (x1+x2)/2) < wLen)));
+                for (const other of otherElements) {
+                   const otherOffset = other.offset || 0;
+                   const otherHalf = other.width / 2 + 2;
+                   const myHalf = el.width / 2;
+
+                   if (clampedOffset > otherOffset && dragInfoRef.current.startOffset <= otherOffset) {
+                      const limit = otherOffset - otherHalf - myHalf;
+                      if (clampedOffset > limit) clampedOffset = limit;
+                   } else if (clampedOffset < otherOffset && dragInfoRef.current.startOffset >= otherOffset) {
+                      const limit = otherOffset + otherHalf + myHalf;
+                      if (clampedOffset < limit) clampedOffset = limit;
+                   }
+                }
+
+                clampedOffset = Math.max(minS, Math.min(maxS, clampedOffset));
+
+                const sClamped = clampedOffset + wLen / 2;
+                const pX = x1 + sClamped * uX;
+                const pZ = z1 + sClamped * uZ;
+                const bestPos: [number, number, number] = [pX, el.elevation + el.height / 2, pZ];
+                const bestRot = Math.atan2(x1 - x2, z1 - z2);
+
+                updateArchitecturalElement(draggingArchElementId, {
+                  wallId: wall.id || el.wallId,
+                  offset: clampedOffset,
+                  position: bestPos,
+                  rotation: bestRot,
+                });
+             }
+          }
+       }
+       return;
+    } else {
+       if (dragInfoRef.current) {
+          dragInfoRef.current = null;
+       }
+    }
+
     raycaster.setFromCamera(pointer, camera);
     const hit = raycaster.ray.intersectPlane(groundPlaneMath, intersectPoint);
     if (!hit) return;
@@ -60,14 +162,75 @@ function SceneContent() {
       if (toolMode === 'move_active') {
          const activeCab = cabinets.find(c => c.id === activeCabId) || null;
          if (activeCab) {
-            cabWidth = activeCab.width;
-            cabDepth = activeCab.depth;
-            cabHeight = activeCab.height;
-            cabType = activeCab.type;
+            cabWidth = Number(activeCab.width) || 60;
+            cabDepth = Number(activeCab.depth) || 60;
+            cabHeight = Number(activeCab.height) || 80;
+            cabType = activeCab.type || 'base';
             cabVariant = activeCab.variant || '1_door';
-            cabRot = activeCab.rotation || 0;
-            customY = activeCab.position[1];
+            cabRot = Number(activeCab.rotation) || 0;
+            customY = Array.isArray(activeCab.position) ? Number(activeCab.position[1]) || 40 : undefined;
          }
+
+         const result = resolvePlacement({
+           mouseX: rawX,
+           mouseZ: rawZ,
+           cabWidth,
+           cabHeight,
+           cabDepth,
+           cabType,
+           variant: cabVariant,
+           customY,
+           preferredRot: cabRot,
+           cabinets,
+           ignoreId: activeCabId,
+           walls,
+           roomVertices: roomConfig?.vertices,
+         });
+
+         setGhostCabinet({ pos: result.position, rot: result.rotation, isColliding: result.isColliding });
+         return;
+      } else if (toolMode.startsWith('place_arch_')) {
+         const archType = toolMode === 'place_arch_door' ? 'door' : toolMode === 'place_arch_window' ? 'window' : 'pillar';
+         const archWidth = archType === 'door' ? 90 : archType === 'window' ? 120 : 40;
+         const archHeight = archType === 'door' ? 205 : archType === 'window' ? 100 : 240;
+         const archElevation = archType === 'window' ? 90 : 0;
+         const defaultY = archElevation + archHeight / 2;
+
+         let bestPos: [number, number, number] = [rawX, defaultY, rawZ];
+         let bestRot = 0;
+
+         const effectiveWalls = walls && walls.length > 0 ? walls : (roomConfig?.vertices && roomConfig.vertices.length >= 3 ? roomConfig.vertices.map((v, i, arr) => {
+            const next = arr[(i + 1) % arr.length];
+            return { start: [v.x, v.y], end: [next.x, next.y], thickness: 20, height: 240 };
+         }) : []);
+
+         let minDist = Infinity;
+         if (effectiveWalls.length > 0) {
+            for (const w of effectiveWalls) {
+               const [x1, z1] = w.start;
+               const [x2, z2] = w.end;
+               const wLen = Math.hypot(x2 - x1, z2 - z1);
+               if (wLen < 10) continue;
+               const uX = (x2 - x1) / wLen;
+               const uZ = (z2 - z1) / wLen;
+
+               const s = (rawX - x1) * uX + (rawZ - z1) * uZ;
+               const sClamped = Math.max(archWidth / 2 + 2, Math.min(wLen - archWidth / 2 - 2, s));
+
+               const pX = x1 + sClamped * uX;
+               const pZ = z1 + sClamped * uZ;
+               const dist = Math.hypot(rawX - pX, rawZ - pZ);
+
+               if (dist < minDist) {
+                  minDist = dist;
+                  bestRot = Math.atan2(x1 - x2, z1 - z2);
+                  bestPos = [pX, defaultY, pZ];
+               }
+            }
+         }
+
+         setGhostCabinet({ pos: bestPos, rot: bestRot, isColliding: false });
+         return;
       } else {
          const isBase = toolMode.startsWith('place_base_');
          const isTall = toolMode.startsWith('place_tall_') || toolMode === 'place_tall';
@@ -156,7 +319,7 @@ function SceneContent() {
         customY,
         preferredRot: cabRot,
         cabinets,
-        ignoreId: toolMode === 'move_active' ? activeCabId : null,
+        ignoreId: null,
         walls,
         roomVertices: roomConfig?.vertices,
       });
@@ -186,12 +349,72 @@ function SceneContent() {
         });
         setDrawingStart(pt); 
       }
-    } else if (toolMode === 'move_active' && ghostCabinet) {
+    } else if (toolMode.startsWith('place_arch_')) {
+      const type = toolMode === 'place_arch_door' ? 'door' : toolMode === 'place_arch_window' ? 'window' : 'pillar';
+      const name = type === 'door' ? 'Puerta' : type === 'window' ? 'Ventana' : 'Pilar / Muro Corto';
+      const width = type === 'door' ? 90 : type === 'window' ? 120 : 40;
+      const height = type === 'door' ? 205 : type === 'window' ? 100 : 240;
+      const elevation = type === 'window' ? 90 : 0;
+      const depth = 20;
+
+      const targetPos = ghostCabinet ? ghostCabinet.pos : [e.point.x, elevation + height / 2, e.point.z];
+      const effectiveWalls = walls && walls.length > 0 ? walls : (roomConfig?.vertices && roomConfig.vertices.length >= 3 ? roomConfig.vertices.map((v, i, arr) => {
+         const next = arr[(i + 1) % arr.length];
+         return { id: `wall_v_${i}`, start: [v.x, v.y], end: [next.x, next.y], thickness: 20, height: 240 };
+      }) : []);
+
+      let bestWallId = effectiveWalls[0]?.id || 'wall_0';
+      let bestOffset = 0;
+      let bestPos: [number, number, number] = targetPos as [number, number, number];
+      let bestRot = ghostCabinet ? ghostCabinet.rot : 0;
+      let minDist = Infinity;
+
+      for (const w of effectiveWalls) {
+         const [x1, z1] = w.start;
+         const [x2, z2] = w.end;
+         const wLen = Math.hypot(x2 - x1, z2 - z1);
+         if (wLen < 10) continue;
+         const uX = (x2 - x1) / wLen;
+         const uZ = (z2 - z1) / wLen;
+         const s = (targetPos[0] - x1) * uX + (targetPos[2] - z1) * uZ;
+         const sClamped = Math.max(width / 2 + 2, Math.min(wLen - width / 2 - 2, s));
+         const pX = x1 + sClamped * uX;
+         const pZ = z1 + sClamped * uZ;
+         const dist = Math.hypot(targetPos[0] - pX, targetPos[2] - pZ);
+
+         if (dist < minDist) {
+            minDist = dist;
+            bestWallId = w.id || `wall_${Math.random()}`;
+            bestOffset = sClamped - wLen / 2;
+            bestPos = [pX, elevation + height / 2, pZ];
+            bestRot = Math.atan2(x1 - x2, z1 - z2);
+         }
+      }
+
+      addArchitecturalElement({
+        id: crypto.randomUUID(),
+        wallId: bestWallId,
+        offset: bestOffset,
+        type,
+        name,
+        width,
+        height,
+        elevation,
+        depth,
+        position: bestPos,
+        rotation: bestRot,
+      });
+      setToolMode('select');
+    } else if (toolMode === 'move_active' && ghostCabinet && ghostCabinet.pos) {
         const activeCabId = useKitchenStore.getState().activeCabinetId;
         if (activeCabId) {
+           const safePosX = Number(ghostCabinet.pos[0]) || 0;
+           const safePosY = Number(ghostCabinet.pos[1]) || 40;
+           const safePosZ = Number(ghostCabinet.pos[2]) || 0;
+           const safeRot = Number(ghostCabinet.rot) || 0;
            useKitchenStore.getState().updateCabinet(activeCabId, {
-             position: ghostCabinet.pos,
-             rotation: ghostCabinet.rot,
+             position: [safePosX, safePosY, safePosZ],
+             rotation: safeRot,
            });
         }
         setToolMode('select');
@@ -347,10 +570,12 @@ function SceneContent() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [setDrawingStart, setToolMode]);
 
+  const isLight = theme === 'light';
+
   return (
     <>
-      <color attach="background" args={['#1a1a1a']} />
-      <ambientLight intensity={0.7} />
+      <color attach="background" args={[isLight ? '#e2e8f0' : '#1a1a1a']} />
+      <ambientLight intensity={isLight ? 0.85 : 0.7} />
       <directionalLight
         position={[200, 350, 250]}
         castShadow
@@ -374,7 +599,9 @@ function SceneContent() {
       )}
       
       <OrbitControls 
-        enableRotate={!is2D} 
+        enableRotate={!is2D && !draggingArchElementId} 
+        enableZoom={!draggingArchElementId}
+        enablePan={!draggingArchElementId}
         minPolarAngle={0} 
         maxPolarAngle={is2D ? 0 : Math.PI / 2 - 0.05} 
         target={[0, 0, 0]}
@@ -384,11 +611,11 @@ function SceneContent() {
         {/* Ground Plane (fondo exterior separado verticalmente para evitar z-fighting) */}
         <mesh name="groundPlane" rotation={[-Math.PI/2, 0, 0]} position={[0, -1, 0]} receiveShadow onPointerDown={handlePointerDown}>
           <planeGeometry args={[3000, 3000]} />
-          <meshStandardMaterial color="#1e2022" roughness={0.9} />
+          <meshStandardMaterial color={isLight ? '#cbd5e1' : '#1e2022'} roughness={0.9} />
         </mesh>
         
         {is2D && (
-          <Grid position={[0, 0.1, 0]} args={[2000, 2000]} infiniteGrid fadeDistance={1500} sectionColor="#666" cellColor="#333" />
+          <Grid position={[0, 0.1, 0]} args={[2000, 2000]} infiniteGrid fadeDistance={1500} sectionColor={isLight ? '#94a3b8' : '#666'} cellColor={isLight ? '#cbd5e1' : '#333'} />
         )}
 
         <RoomFloorAndDimensions />
@@ -399,6 +626,7 @@ function SceneContent() {
         })}
         <KitchenSocle />
         <KitchenRunDimensions />
+        <ArchitecturalElementsRenderer />
 
         {/* Drawing Preview */}
         {toolMode === 'draw_wall' && drawingStart && currentMousePos && (
@@ -407,14 +635,24 @@ function SceneContent() {
 
         {/* Cabinet Preview */}
         {(toolMode.startsWith('place_') || toolMode === 'move_active') && ghostCabinet && !is2D && (() => {
+           if (!ghostCabinet || !ghostCabinet.pos) return null;
            let previewW = 60;
            let previewH = 80;
            let previewD = 60;
+           let isArch = false;
+           let archType = '';
+
            const activeCab = useKitchenStore.getState().cabinets.find(c => c.id === useKitchenStore.getState().activeCabinetId);
            if (toolMode === 'move_active' && activeCab) {
               previewW = activeCab.width;
               previewH = activeCab.height;
               previewD = activeCab.depth;
+           } else if (toolMode.startsWith('place_arch_')) {
+              isArch = true;
+              archType = toolMode === 'place_arch_door' ? 'door' : toolMode === 'place_arch_window' ? 'window' : 'pillar';
+              previewW = archType === 'door' ? 90 : archType === 'window' ? 120 : 40;
+              previewH = archType === 'door' ? 205 : archType === 'window' ? 100 : 240;
+              previewD = archType === 'pillar' ? 20 : 16;
            } else if (toolMode.startsWith('place_base_')) {
               const v = toolMode.replace('place_base_', '');
               if (v === 'spice_rack') previewW = 15;
@@ -450,13 +688,55 @@ function SceneContent() {
               previewD = 40;
            }
 
+           const posX = ghostCabinet.pos[0];
+           const posY = isArch ? (archType === 'window' ? 90 + previewH / 2 : previewH / 2) : ghostCabinet.pos[1];
+           const posZ = ghostCabinet.pos[2];
+
            return (
-             <group position={ghostCabinet.pos} rotation={[0, ghostCabinet.rot, 0]}>
-               <mesh>
-                 <boxGeometry args={[previewW, previewH, previewD]} />
-                 <meshStandardMaterial color={ghostCabinet.isColliding ? '#ef4444' : '#f97316'} transparent opacity={0.45} />
-                 <Edges scale={1.0} color={ghostCabinet.isColliding ? '#ef4444' : '#f97316'} />
-               </mesh>
+             <group position={[posX, posY, posZ]} rotation={[0, ghostCabinet.rot, 0]}>
+               {isArch ? (
+                 <group>
+                   {archType === 'door' && (
+                     <group>
+                       <mesh position={[0, 0, 0]}>
+                         <boxGeometry args={[previewW, previewH, 16]} />
+                         <meshStandardMaterial color="#38bdf8" transparent opacity={0.6} />
+                         <Edges scale={1.0} color="#0284c7" />
+                       </mesh>
+                       <mesh position={[0, 0, 0]}>
+                         <boxGeometry args={[previewW - 6, previewH - 4, 4]} />
+                         <meshStandardMaterial color="#cbd5e1" transparent opacity={0.7} />
+                       </mesh>
+                     </group>
+                   )}
+                   {archType === 'window' && (
+                     <group>
+                       <mesh position={[0, 0, 0]}>
+                         <boxGeometry args={[previewW, previewH, 16]} />
+                         <meshStandardMaterial color="#38bdf8" transparent opacity={0.6} />
+                         <Edges scale={1.0} color="#0284c7" />
+                       </mesh>
+                       <mesh position={[0, 0, 2]}>
+                         <boxGeometry args={[previewW - 12, previewH - 12, 2]} />
+                         <meshStandardMaterial color="#e0f2fe" transparent opacity={0.4} />
+                       </mesh>
+                     </group>
+                   )}
+                   {archType === 'pillar' && (
+                     <mesh position={[0, 0, 0]}>
+                       <boxGeometry args={[previewW, previewH, previewD]} />
+                       <meshStandardMaterial color="#38bdf8" transparent opacity={0.6} />
+                       <Edges scale={1.0} color="#0284c7" />
+                     </mesh>
+                   )}
+                 </group>
+               ) : (
+                 <mesh>
+                   <boxGeometry args={[previewW, previewH, previewD]} />
+                   <meshStandardMaterial color={ghostCabinet.isColliding ? '#ef4444' : '#f97316'} transparent opacity={0.45} />
+                   <Edges scale={1.0} color={ghostCabinet.isColliding ? '#ef4444' : '#f97316'} />
+                 </mesh>
+               )}
                {toolMode === 'move_active' && (
                  <MoveArrowGizmo height={previewH} width={previewW} depth={previewD} isColliding={ghostCabinet.isColliding} />
                )}
@@ -468,7 +748,7 @@ function SceneContent() {
   )
 }
 
-export function KitchenScene() {
+export function KitchenScene({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
   return (
     <Canvas 
       shadows={{ type: THREE.PCFSoftShadowMap }}
@@ -477,7 +757,7 @@ export function KitchenScene() {
         powerPreference: 'high-performance',
       }}
     >
-      <SceneContent />
+      <SceneContent theme={theme} />
     </Canvas>
   )
 }
@@ -548,7 +828,6 @@ function MoveArrowGizmo({ height, width, depth, isColliding }: { height: number;
             color={color}
             anchorX="center"
             anchorY="bottom"
-            font="bold"
             material-depthTest={false}
             material-toneMapped={false}
             renderOrder={1002}

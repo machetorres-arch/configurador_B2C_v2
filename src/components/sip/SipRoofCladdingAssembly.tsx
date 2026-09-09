@@ -155,6 +155,21 @@ export function SipRoofCladdingAssembly({
   // Orientación del faldón: 'x' (normal) o 'z' (ala transversal)
   const isAlongX = axisAlongSlope === 'x';
 
+  // Precompute geometries for performance
+  const standardSheetGeom = useMemo(() => {
+    const geom = new THREE.BoxGeometry(
+      isAlongX ? rafterLength : sheetModule - 0.001,
+      0.012,
+      isAlongX ? sheetModule - 0.001 : rafterLength
+    );
+    const edges = new THREE.EdgesGeometry(geom);
+    return { geom, edges };
+  }, [isAlongX, rafterLength, sheetModule]);
+
+  const screwGeom = useMemo(() => {
+    return new THREE.CylinderGeometry(0.005, 0.005, 0.006, 6);
+  }, []);
+
   return (
     <group position={[0, 0, 0]}>
       {/* ========================================================================= */}
@@ -242,30 +257,10 @@ export function SipRoofCladdingAssembly({
               }
             >
               {/* Cuerpo principal de la plancha de cubierta */}
-              <mesh castShadow receiveShadow>
-                <boxGeometry
-                  args={
-                    isAlongX
-                      ? [rafterLength, 0.012, sheet.width - 0.001]
-                      : [sheet.width - 0.001, 0.012, rafterLength]
-                  }
-                />
-                <primitive object={roofMat} attach="material" />
-              </mesh>
+              <mesh geometry={standardSheetGeom.geom} material={roofMat} castShadow receiveShadow />
 
               {/* Aristas técnicas de junta y corte */}
-              <lineSegments>
-                <edgesGeometry
-                  args={[
-                    new THREE.BoxGeometry(
-                      isAlongX ? rafterLength : sheet.width - 0.001,
-                      0.012,
-                      isAlongX ? sheet.width - 0.001 : rafterLength
-                    ),
-                  ]}
-                />
-                <primitive object={sheetEdgeMat} attach="material" />
-              </lineSegments>
+              <lineSegments geometry={standardSheetGeom.edges} material={sheetEdgeMat} />
 
               {/* Nervio longitudinal de machihembrado / cresta trapezoidal de zinc */}
               {claddingType !== 'teja_asfaltica_negra' && (
@@ -289,29 +284,20 @@ export function SipRoofCladdingAssembly({
                 </group>
               )}
 
-              {/* Fijaciones: Tornillos autoperforantes con golilla EPDM en cada cruce con costanera */}
+              {/* Fijaciones: Tornillos autoperforantes optimizados */}
               <group position={[0, expScrewsY - expCladdingY, 0]}>
                 {purlinPositions.map((pPos, pIdx) => {
                   return (
-                    <group
+                    <mesh
                       key={`screw-${sIdx}-${pIdx}`}
                       position={
                         isAlongX
                           ? [pPos, 0.012, 0]
                           : [0, 0.012, pPos]
                       }
-                    >
-                      {/* Golilla de Neopreno / EPDM Negro */}
-                      <mesh position={[0, 0.001, 0]}>
-                        <cylinderGeometry args={[0.006, 0.006, 0.002, 8]} />
-                        <primitive object={washerMat} attach="material" />
-                      </mesh>
-                      {/* Cabeza Hexagonal del Tornillo Autoperforante */}
-                      <mesh position={[0, 0.005, 0]}>
-                        <cylinderGeometry args={[0.0045, 0.0045, 0.006, 6]} />
-                        <primitive object={screwMetalMat} attach="material" />
-                      </mesh>
-                    </group>
+                      geometry={screwGeom}
+                      material={screwMetalMat}
+                    />
                   );
                 })}
               </group>

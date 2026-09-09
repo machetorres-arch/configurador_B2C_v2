@@ -9,7 +9,12 @@ export function SipScene() {
 
   return (
     <div className="w-full h-full relative bg-slate-900 overflow-hidden select-none">
-      <Canvas shadows gl={{ antialias: true, alpha: false }}>
+      <Canvas
+        shadows
+        dpr={[1, 1.5]}
+        performance={{ min: 0.6 }}
+        gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }}
+      >
         <PerspectiveCamera makeDefault position={[18, 12, 18]} fov={45} />
         <OrbitControls
           makeDefault
@@ -27,8 +32,8 @@ export function SipScene() {
           position={[25, 35, 20]}
           intensity={1.4}
           castShadow
-          shadow-mapSize-width={2048}
-          shadow-mapSize-height={2048}
+          shadow-mapSize-width={1024}
+          shadow-mapSize-height={1024}
           shadow-camera-near={0.5}
           shadow-camera-far={80}
           shadow-camera-left={-20}
@@ -55,11 +60,11 @@ export function SipScene() {
 
         <ContactShadows
           position={[0, -0.65, 0]}
-          opacity={0.7}
+          opacity={0.6}
           scale={50}
-          blur={1.8}
+          blur={2.0}
           far={10}
-          resolution={1024}
+          resolution={512}
           color="#000000"
         />
 

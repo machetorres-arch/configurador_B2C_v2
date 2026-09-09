@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import {
   Sparkles,
   Upload,
@@ -6,50 +6,133 @@ import {
   Trash2,
   Check,
   X,
-  Eye,
   RotateCcw,
-  Image as ImageIcon,
-  Tag,
   Palette,
-  Layers,
-  CheckCircle2,
   Search,
-  ExternalLink
+  CheckCircle2,
+  Clock,
+  AlertTriangle,
+  Building,
+  DollarSign,
+  Percent,
+  Filter,
+  Eye,
+  Info
 } from 'lucide-react';
-import { useAdminStore, CustomTextureItem } from '../../store/adminStore';
+import { useAdminStore, CustomTextureItem, ProviderItem } from '../../store/adminStore';
 import { useStore as useClosetStore } from '../../store';
 
-export function TexturesManagerTab() {
-  const { textures, addTexture, toggleTextureActive, deleteTexture, resetTexturesToDefault } = useAdminStore();
+interface TexturesManagerTabProps {
+  currentProviderId?: string; // Si se encuentra en sesión de proveedor
+  isSuperAdmin?: boolean;
+}
+
+export function TexturesManagerTab({ currentProviderId, isSuperAdmin = true }: TexturesManagerTabProps) {
+  const {
+    textures,
+    providers,
+    addTexture,
+    updateTexture,
+    toggleTextureActive,
+    approveTexture,
+    rejectTexture,
+    deleteTexture,
+    resetTexturesToDefault
+  } = useAdminStore();
+
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCat, setSelectedCat] = useState<'all' | 'maderas' | 'solidos' | 'hpl_autor' | 'piedras_marmoles'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
+  const [selectedProviderFilter, setSelectedProviderFilter] = useState<string>(currentProviderId || 'all');
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [toastMsg, setToastMsg] = useState<{ type: 'success' | 'warning' | 'info'; text: string } | null>(null);
 
-  // Form State
+  // Form State para nueva terminación
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
-  const [brand, setBrand] = useState('Masisa');
+  const [selectedProviderId, setSelectedProviderId] = useState<string>(
+    currentProviderId || (providers[0]?.id ?? 'prov-masisa')
+  );
   const [category, setCategory] = useState<'maderas' | 'solidos' | 'hpl_autor' | 'piedras_marmoles'>('maderas');
   const [finish, setFinish] = useState('Poro Sincronizado');
   const [sheetFormat, setSheetFormat] = useState('1.83 x 2.50 m');
-  const [priceSheetClp, setPriceSheetClp] = useState(45000);
+  const [priceSheetClp, setPriceSheetClp] = useState(48000); // Valor de venta final
   const [previewUrl, setPreviewUrl] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Obtener proveedor activo del formulario
+  const currentSelectedProvider = useMemo(() => {
+    return providers.find((p) => p.id === selectedProviderId) || providers[0] || {
+      id: 'prov-default',
+      name: 'Proveedor General',
+      commissionPercentage: 15
+    };
+  }, [providers, selectedProviderId]);
+
+  const commissionPct = currentSelectedProvider.commissionPercentage ?? 15;
+  const arquifyRetainedClp = Math.round((priceSheetClp * commissionPct) / 100);
+  const providerNetPayoutClp = priceSheetClp - arquifyRetainedClp;
+
+  // Formato m² según plancha
+  const calculatedM2 = useMemo(() => {
+    if (sheetFormat.includes('1.83')) return 4.575;
+    if (sheetFormat.includes('1.30')) return 3.965;
+    if (sheetFormat.includes('1.22')) return 2.976;
+    return 4.0;
+  }, [sheetFormat]);
+
+  const priceM2Clp = Math.round(priceSheetClp / calculatedM2);
+
+  // Conteo de pendientes de VB
+  const pendingCount = useMemo(() => {
+    return textures.filter((t) => t.approvalStatus === 'pending').length;
+  }, [textures]);
+
+  const approvedCount = useMemo(() => {
+    return textures.filter((t) => t.approvalStatus === 'approved' || !t.approvalStatus).length;
+  }, [textures]);
+
+  // Filtrado de texturas
   const filteredTextures = textures.filter((t) => {
-    const matchesCat = selectedCat === 'all' || t.category === selectedCat;
-    const matchesSearch =
-      t.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      t.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      t.brand.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      t.finish.toLowerCase().includes(searchTerm.toLowerCase());
-    return matchesCat && matchesSearch;
+    // Filtro por proveedor si aplica
+    if (selectedProviderFilter !== 'all') {
+      const p = providers.find((pr) => pr.id === selectedProviderFilter);
+      const matchesProvider =
+        t.providerId === selectedProviderFilter ||
+        (p && t.providerName?.toLowerCase().includes(p.name.toLowerCase())) ||
+        (p && t.brand.toLowerCase().includes(p.name.toLowerCase()));
+      if (!matchesProvider) return false;
+    }
+
+    // Filtro por estado de aprobación
+    const currentApproval = t.approvalStatus || 'approved';
+    if (statusFilter !== 'all' && currentApproval !== statusFilter) {
+      return false;
+    }
+
+    // Filtro por categoría
+    if (selectedCat !== 'all' && t.category !== selectedCat) {
+      return false;
+    }
+
+    // Filtro por texto
+    if (searchTerm.trim()) {
+      const st = searchTerm.toLowerCase();
+      const match =
+        t.name.toLowerCase().includes(st) ||
+        t.code.toLowerCase().includes(st) ||
+        t.brand.toLowerCase().includes(st) ||
+        (t.providerName && t.providerName.toLowerCase().includes(st)) ||
+        t.finish.toLowerCase().includes(st);
+      if (!match) return false;
+    }
+
+    return true;
   });
 
-  const showToast = (msg: string) => {
-    setToastMsg(msg);
-    setTimeout(() => setToastMsg(null), 3000);
+  const showToast = (text: string, type: 'success' | 'warning' | 'info' = 'success') => {
+    setToastMsg({ text, type });
+    setTimeout(() => setToastMsg(null), 4000);
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -75,96 +158,225 @@ export function TexturesManagerTab() {
       return;
     }
 
-    const calculatedM2 = sheetFormat.includes('1.83') ? 4.575 : sheetFormat.includes('1.22') ? 2.976 : 3.965;
-    const priceM2 = Math.round(priceSheetClp / calculatedM2);
+    // Si quien crea es un proveedor o superadmin especificando flujo de aprobación:
+    // El requerimiento dice: "al hacer los cambios, antes de introducirse en el configurador, debe tener el VB del super administrador, por lo que debiera aparecer pendiente hasta que el super administrador dé el VB"
+    const initialApprovalStatus = isSuperAdmin ? 'approved' : 'pending';
 
     const newId = addTexture({
       name: name.trim(),
-      code: code.trim() || `DEC-${Math.floor(Math.random() * 9000 + 1000)}`,
-      brand,
+      code: code.trim() || `PRV-${Math.floor(Math.random() * 9000 + 1000)}`,
+      brand: currentSelectedProvider.name,
       category,
       finish,
       sheetFormat,
       priceSheetClp: Number(priceSheetClp),
-      priceM2Clp: priceM2,
+      priceM2Clp,
       url: previewUrl,
       previewUrl: previewUrl,
-      active: true,
+      active: initialApprovalStatus === 'approved',
+      providerId: currentSelectedProvider.id,
+      providerName: currentSelectedProvider.name,
+      commissionPercentage: commissionPct,
+      providerNetPriceClp: providerNetPayoutClp,
+      approvalStatus: initialApprovalStatus
     });
 
-    // Inyectar en el store de Clóset / TexturesSection para renderizado 3D inmediato
-    const closetStore = useClosetStore.getState();
-    if (closetStore.customTextures) {
-      closetStore.setCustomTextures([
-        ...closetStore.customTextures,
-        { id: newId, name: name.trim(), url: previewUrl },
-      ]);
+    // Inyectar en el store de Clóset / TexturesSection sólo si está aprobado
+    if (initialApprovalStatus === 'approved') {
+      const closetStore = useClosetStore.getState();
+      if (closetStore.customTextures) {
+        closetStore.setCustomTextures([
+          ...closetStore.customTextures,
+          { id: newId, name: name.trim(), url: previewUrl },
+        ]);
+      }
+      showToast(`Terminación "${name}" creada y aprobada de inmediato.`, 'success');
+    } else {
+      showToast(`Terminación "${name}" enviada a revisión. Queda PENDIENTE de VB del Superadministrador.`, 'warning');
     }
 
     setIsFormOpen(false);
     setName('');
     setCode('');
     setPreviewUrl('');
-    showToast(`Decorativo "${name}" cargado y habilitado para renderizado 3D.`);
   };
 
-  const handleToggle = (id: string, name: string) => {
+  const handleApprove = (id: string, texName: string) => {
+    approveTexture(id);
+    // Inyectar al catálogo 3D activo
+    const target = textures.find((t) => t.id === id);
+    if (target) {
+      const closetStore = useClosetStore.getState();
+      if (closetStore.customTextures) {
+        closetStore.setCustomTextures([
+          ...closetStore.customTextures,
+          { id: target.id, name: target.name, url: target.url },
+        ]);
+      }
+    }
+    showToast(`¡VB otorgado! "${texName}" ahora se mostrará en el configurador 3D.`, 'success');
+  };
+
+  const handleReject = (id: string, texName: string) => {
+    const reason = window.prompt(`Indique motivo de rechazo para "${texName}" (opcional):`, 'Ajustar resolución de textura o valor final');
+    rejectTexture(id, reason || 'No cumple con las especificaciones técnicas requeridas.');
+    showToast(`Terminación "${texName}" rechazada.`, 'warning');
+  };
+
+  const handleToggle = (id: string, texName: string) => {
     toggleTextureActive(id);
-    showToast(`Estado de "${name}" actualizado.`);
+    showToast(`Visibilidad de "${texName}" actualizada.`);
   };
 
-  const handleDelete = (id: string, name: string) => {
-    if (window.confirm(`¿Eliminar la textura "${name}" del catálogo?`)) {
+  const handleDelete = (id: string, texName: string) => {
+    if (window.confirm(`¿Eliminar la textura "${texName}" del catálogo?`)) {
       deleteTexture(id);
-      showToast(`Textura eliminada del catálogo.`);
+      showToast(`Textura eliminada del catálogo.`, 'info');
     }
   };
 
   const handleReset = () => {
     if (window.confirm('¿Restaurar catálogo de texturas y decorativos de fábrica?')) {
       resetTexturesToDefault();
-      showToast('Catálogo de texturas restaurado.');
+      showToast('Catálogo de texturas restaurado de fábrica.', 'info');
     }
   };
 
   return (
     <div className="space-y-6">
-      {/* Toast */}
+      {/* Toast Feedback */}
       {toastMsg && (
-        <div className="p-3 bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 rounded-xl text-xs font-semibold flex items-center gap-2 animate-in fade-in duration-200">
-          <CheckCircle2 size={16} />
-          {toastMsg}
+        <div
+          className={`p-3.5 rounded-xl text-xs font-semibold flex items-center justify-between border animate-in fade-in duration-200 ${
+            toastMsg.type === 'success'
+              ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
+              : toastMsg.type === 'warning'
+              ? 'bg-amber-500/20 border-amber-500/40 text-amber-300'
+              : 'bg-blue-500/20 border-blue-500/40 text-blue-300'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {toastMsg.type === 'success' ? (
+              <CheckCircle2 size={16} />
+            ) : toastMsg.type === 'warning' ? (
+              <Clock size={16} />
+            ) : (
+              <Info size={16} />
+            )}
+            <span>{toastMsg.text}</span>
+          </div>
+          <button onClick={() => setToastMsg(null)} className="text-xs opacity-70 hover:opacity-100">
+            ✕
+          </button>
         </div>
       )}
 
-      {/* Header and Controls */}
-      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 bg-zinc-900/80 p-4 rounded-xl border border-zinc-800">
-        <div className="relative flex-1">
-          <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Buscar textura por nombre, código SAP, marca o acabado..."
-            className="w-full pl-10 pr-4 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-orange-500"
-          />
+      {/* Banner Informativo del Flujo de Proveedores */}
+      <div className="p-4 bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-transparent border border-amber-500/30 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-start gap-3">
+          <div className="p-2 bg-amber-500/20 text-amber-400 rounded-xl mt-0.5 border border-amber-500/40">
+            <Building size={20} />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              Gestión de Catálogo y Terminaciones por Proveedor
+              {pendingCount > 0 && (
+                <span className="px-2 py-0.5 bg-amber-500 text-black font-extrabold text-[10px] rounded-full animate-pulse">
+                  {pendingCount} Pendiente{pendingCount > 1 ? 's' : ''} de VB
+                </span>
+              )}
+            </h3>
+            <p className="text-xs text-zinc-400 mt-1 max-w-2xl leading-relaxed">
+              Los proveedores cargan sus valores de venta final y formatos. Todo nuevo diseño o cambio de precio queda{' '}
+              <strong className="text-amber-300">Pendiente de VB</strong> del Superadministrador antes de publicarse en los configuradores 3D.
+            </p>
+          </div>
         </div>
 
-        {/* Category Filters */}
-        <div className="flex items-center gap-1 bg-zinc-950 p-1 rounded-lg border border-zinc-800 overflow-x-auto">
+        {/* Botones de Estado de Aprobación */}
+        <div className="flex items-center gap-2 bg-zinc-950/80 p-1.5 rounded-xl border border-zinc-800 shrink-0">
+          <button
+            onClick={() => setStatusFilter('all')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              statusFilter === 'all'
+                ? 'bg-zinc-800 text-white shadow'
+                : 'text-zinc-400 hover:text-white'
+            }`}
+          >
+            Todos ({textures.length})
+          </button>
+          <button
+            onClick={() => setStatusFilter('pending')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+              statusFilter === 'pending'
+                ? 'bg-amber-500 text-black shadow font-extrabold'
+                : 'text-amber-400 hover:bg-amber-500/10'
+            }`}
+          >
+            <Clock size={13} />
+            Pendientes VB ({pendingCount})
+          </button>
+          <button
+            onClick={() => setStatusFilter('approved')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+              statusFilter === 'approved'
+                ? 'bg-emerald-600 text-white shadow'
+                : 'text-emerald-400 hover:bg-emerald-500/10'
+            }`}
+          >
+            <CheckCircle2 size={13} />
+            Aprobados ({approvedCount})
+          </button>
+        </div>
+      </div>
+
+      {/* Barra de Filtros y Búsqueda */}
+      <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4 bg-zinc-900/80 p-4 rounded-xl border border-zinc-800">
+        <div className="flex flex-col sm:flex-row items-center gap-3 flex-1">
+          {/* Búsqueda */}
+          <div className="relative w-full sm:w-64">
+            <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Buscar terminación o código..."
+              className="w-full pl-9 pr-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-orange-500"
+            />
+          </div>
+
+          {/* Filtro por Proveedor */}
+          <div className="w-full sm:w-56">
+            <select
+              value={selectedProviderFilter}
+              onChange={(e) => setSelectedProviderFilter(e.target.value)}
+              className="w-full py-2 px-3 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-orange-500"
+            >
+              <option value="all">Todos los Proveedores</option>
+              {providers.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} ({p.commissionPercentage}% Com.)
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Filtro por Categorías */}
+        <div className="flex items-center gap-1 bg-zinc-950 p-1 rounded-xl border border-zinc-800 overflow-x-auto">
           {[
             { id: 'all', label: 'Todas' },
-            { id: 'maderas', label: 'Maderas' },
+            { id: 'maderas', label: 'Melaminas Madera' },
             { id: 'solidos', label: 'Sólidos & Soft' },
-            { id: 'hpl_autor', label: 'HPL De Autor' },
-            { id: 'piedras_marmoles', label: 'Piedras/Mármol' },
+            { id: 'hpl_autor', label: 'HPL Abet Laminati' },
+            { id: 'piedras_marmoles', label: 'Piedras & Mármol' },
           ].map((tab) => (
             <button
               key={tab.id}
               onClick={() => setSelectedCat(tab.id as any)}
-              className={`px-3 py-1.5 rounded-md text-[11px] font-semibold transition-all whitespace-nowrap ${
+              className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all whitespace-nowrap ${
                 selectedCat === tab.id
-                  ? 'bg-orange-500 text-white shadow'
+                  ? 'bg-orange-500 text-white shadow font-bold'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-zinc-900'
               }`}
             >
@@ -176,137 +388,169 @@ export function TexturesManagerTab() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setIsFormOpen(!isFormOpen)}
-            className="px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-400 hover:to-amber-500 text-white rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 shadow-md shadow-orange-500/20 shrink-0 transition-all cursor-pointer"
+            className="px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-400 hover:to-amber-500 text-white rounded-xl text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 shadow-md shadow-orange-500/20 shrink-0 transition-all cursor-pointer"
           >
-            <Plus size={16} /> Cargar Nuevo Decorativo
+            <Plus size={16} /> Cargar Terminación
           </button>
           <button
             onClick={handleReset}
-            className="p-2 bg-zinc-800 hover:bg-zinc-700 text-slate-400 hover:text-white rounded-lg transition-colors"
-            title="Restaurar catálogo inicial"
+            className="p-2 bg-zinc-800 hover:bg-zinc-700 text-slate-400 hover:text-white rounded-xl transition-colors cursor-pointer"
+            title="Restaurar catálogo de fábrica"
           >
             <RotateCcw size={16} />
           </button>
         </div>
       </div>
 
-      {/* Add Texture Form */}
+      {/* Modal / Formulario de Carga de Terminación */}
       {isFormOpen && (
         <form
           onSubmit={handleCreateTexture}
-          className="p-5 bg-zinc-900/90 border border-orange-500/40 rounded-xl space-y-4 animate-in fade-in duration-200"
+          className="p-5 bg-zinc-900 border border-orange-500/40 rounded-2xl space-y-4 shadow-xl animate-in fade-in duration-200"
         >
           <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
-            <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
-              <Palette size={18} className="text-orange-500" />
-              Cargar Nuevo Decorativo / Textura para Render 3D
-            </h3>
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-orange-500/20 text-orange-400 rounded-lg">
+                <Palette size={18} />
+              </div>
+              <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+                Cargar Nueva Terminación / Producto de Proveedor
+              </h3>
+            </div>
             <button type="button" onClick={() => setIsFormOpen(false)} className="text-slate-400 hover:text-white">
               <X size={16} />
             </button>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Left: Inputs */}
+            {/* Campos de texto e información comercial */}
             <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Nombre del Decorativo</label>
+                <label className="block text-[11px] uppercase font-bold text-zinc-400 mb-1">Proveedor *</label>
+                <select
+                  value={selectedProviderId}
+                  onChange={(e) => setSelectedProviderId(e.target.value)}
+                  className="w-full p-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-xs text-white focus:border-orange-500 focus:outline-none"
+                >
+                  {providers.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} (Comisión Arquify: {p.commissionPercentage}%)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] uppercase font-bold text-zinc-400 mb-1">Nombre del Diseño / Terminación *</label>
                 <input
                   type="text"
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="Ej. Nogal Ceniza Catedral"
-                  className="w-full p-2 bg-zinc-950 border border-zinc-700 rounded-lg text-xs text-white placeholder:text-zinc-600 focus:border-orange-500 focus:outline-none"
+                  placeholder="Ej. Roble Cava Seda"
+                  className="w-full p-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-xs text-white placeholder:text-zinc-600 focus:border-orange-500 focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Código de Catálogo / SAP</label>
+                <label className="block text-[11px] uppercase font-bold text-zinc-400 mb-1">Código de Catálogo / SKU / SAP</label>
                 <input
                   type="text"
                   value={code}
                   onChange={(e) => setCode(e.target.value)}
-                  placeholder="Ej. SAP 2831 / MAS-102"
-                  className="w-full p-2 bg-zinc-950 border border-zinc-700 rounded-lg text-xs text-white placeholder:text-zinc-600 focus:border-orange-500 focus:outline-none"
+                  placeholder="Ej. SAP-2831 / MAS-401"
+                  className="w-full p-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-xs text-white placeholder:text-zinc-600 focus:border-orange-500 focus:outline-none font-mono"
                 />
               </div>
 
               <div>
-                <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Fabricante / Marca</label>
-                <select
-                  value={brand}
-                  onChange={(e) => setBrand(e.target.value)}
-                  className="w-full p-2 bg-zinc-950 border border-zinc-700 rounded-lg text-xs text-white focus:border-orange-500 focus:outline-none"
-                >
-                  <option value="Abet Laminati">Abet Laminati (Italia)</option>
-                  <option value="Masisa">Masisa</option>
-                  <option value="Arauco">Arauco / Melamina Vesto</option>
-                  <option value="Egger">Egger</option>
-                  <option value="Finsa">Finsa</option>
-                  <option value="Personalizado">Personalizado / Autor</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Categoría</label>
+                <label className="block text-[11px] uppercase font-bold text-zinc-400 mb-1">Categoría</label>
                 <select
                   value={category}
                   onChange={(e) => setCategory(e.target.value as any)}
-                  className="w-full p-2 bg-zinc-950 border border-zinc-700 rounded-lg text-xs text-white focus:border-orange-500 focus:outline-none"
+                  className="w-full p-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-xs text-white focus:border-orange-500 focus:outline-none"
                 >
-                  <option value="maderas">Maderas & Enchapados</option>
+                  <option value="maderas">Melaminas & Maderas</option>
                   <option value="solidos">Sólidos & Soft Unicolores</option>
-                  <option value="hpl_autor">HPL De Autor / Diseños Exclusivos</option>
-                  <option value="piedras_marmoles">Piedras, Mármoles & Cementicios</option>
+                  <option value="hpl_autor">HPL De Autor / Abet Laminati</option>
+                  <option value="piedras_marmoles">Piedras, Mármol & Cementos</option>
                 </select>
               </div>
 
               <div>
-                <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Formato de Plancha</label>
+                <label className="block text-[11px] uppercase font-bold text-zinc-400 mb-1">Formato de Plancha</label>
                 <select
                   value={sheetFormat}
                   onChange={(e) => setSheetFormat(e.target.value)}
-                  className="w-full p-2 bg-zinc-950 border border-zinc-700 rounded-lg text-xs text-white focus:border-orange-500 focus:outline-none"
+                  className="w-full p-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-xs text-white focus:border-orange-500 focus:outline-none"
                 >
-                  <option value="1.83 x 2.50 m">1.83 x 2.50 m (4.57 m² - Melamina Estándar)</option>
+                  <option value="1.83 x 2.50 m">1.83 x 2.50 m (4.58 m² - Melamina Estándar)</option>
                   <option value="1.30 x 3.05 m">1.30 x 3.05 m (3.96 m² - HPL Abet Laminati)</option>
-                  <option value="1.22 x 2.44 m">1.22 x 2.44 m (2.97 m² - Formato 4x8)</option>
+                  <option value="1.22 x 2.44 m">1.22 x 2.44 m (2.98 m² - Tablero 4x8)</option>
                 </select>
               </div>
 
               <div>
-                <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Precio por Plancha (CLP)</label>
-                <input
-                  type="number"
-                  min="1000"
-                  step="500"
-                  value={priceSheetClp}
-                  onChange={(e) => setPriceSheetClp(Number(e.target.value))}
-                  className="w-full p-2 bg-zinc-950 border border-zinc-700 rounded-lg text-xs text-white focus:border-orange-500 focus:outline-none font-mono font-bold text-orange-400"
-                />
-              </div>
-
-              <div className="sm:col-span-2">
-                <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Tipo de Acabado / Textura Superficial</label>
+                <label className="block text-[11px] uppercase font-bold text-zinc-400 mb-1">Acabado / Textura Superficial</label>
                 <input
                   type="text"
                   value={finish}
                   onChange={(e) => setFinish(e.target.value)}
-                  placeholder="Ej. Longline Mate, Soft Touch, Poro Sincronizado, Silk"
-                  className="w-full p-2 bg-zinc-950 border border-zinc-700 rounded-lg text-xs text-white placeholder:text-zinc-600 focus:border-orange-500 focus:outline-none"
+                  placeholder="Ej. Longline Mate, Silk, Poro Sincronizado"
+                  className="w-full p-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-xs text-white placeholder:text-zinc-600 focus:border-orange-500 focus:outline-none"
                 />
+              </div>
+
+              {/* Valor de Venta Final y Desglose de Comisión Arquify */}
+              <div className="sm:col-span-2 p-4 bg-zinc-950/80 border border-amber-500/30 rounded-xl space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <label className="block text-xs uppercase font-bold text-amber-300">
+                      Valor de Venta Final Publicado en Configurador (CLP) *
+                    </label>
+                    <p className="text-[11px] text-zinc-400">
+                      Precio de venta al público por plancha entera.
+                    </p>
+                  </div>
+                  <div className="relative w-48">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 font-mono">$</span>
+                    <input
+                      type="number"
+                      min="1000"
+                      step="500"
+                      value={priceSheetClp}
+                      onChange={(e) => setPriceSheetClp(Number(e.target.value))}
+                      className="w-full pl-7 pr-3 py-2 bg-zinc-900 border border-amber-500/50 rounded-xl text-sm text-amber-400 font-mono font-bold focus:outline-none focus:border-amber-400"
+                    />
+                  </div>
+                </div>
+
+                {/* Desglose de Liquidación */}
+                <div className="grid grid-cols-3 gap-2 pt-2 border-t border-zinc-800 text-center">
+                  <div className="p-2 bg-zinc-900/60 rounded-lg">
+                    <span className="text-[10px] text-zinc-500 uppercase block font-semibold">Precio / m²</span>
+                    <strong className="text-white font-mono text-xs">${priceM2Clp.toLocaleString('es-CL')}</strong>
+                  </div>
+                  <div className="p-2 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+                    <span className="text-[10px] text-amber-400 uppercase block font-semibold">Comisión Arquify ({commissionPct}%)</span>
+                    <strong className="text-amber-300 font-mono text-xs">-${arquifyRetainedClp.toLocaleString('es-CL')}</strong>
+                  </div>
+                  <div className="p-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
+                    <span className="text-[10px] text-emerald-400 uppercase block font-semibold">Liquidación Neta Proveedor</span>
+                    <strong className="text-emerald-300 font-mono text-xs">${providerNetPayoutClp.toLocaleString('es-CL')}</strong>
+                  </div>
+                </div>
               </div>
             </div>
 
-            {/* Right: Image Upload & Preview */}
-            <div className="flex flex-col items-center justify-center p-4 bg-zinc-950/80 border border-zinc-800 rounded-xl">
-              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-2 text-center">
-                Mapeo de Textura / Preview 3D
+            {/* Carga de Imagen y Previsualización */}
+            <div className="flex flex-col items-center justify-center p-4 bg-zinc-950/80 border border-zinc-800 rounded-2xl">
+              <label className="block text-[11px] uppercase font-bold text-zinc-400 mb-2 text-center">
+                Muestrario / Imagen de Textura 3D *
               </label>
 
               {previewUrl ? (
-                <div className="w-full aspect-square rounded-lg overflow-hidden border border-orange-500/40 relative group mb-3">
+                <div className="w-full aspect-square rounded-xl overflow-hidden border border-orange-500/40 relative group mb-3">
                   {previewUrl.startsWith('#') ? (
                     <div className="w-full h-full" style={{ backgroundColor: previewUrl }} />
                   ) : (
@@ -316,20 +560,20 @@ export function TexturesManagerTab() {
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
-                      className="px-3 py-1 bg-orange-500 text-white rounded text-xs font-bold"
+                      className="px-3 py-1.5 bg-orange-500 text-white rounded-lg text-xs font-bold"
                     >
-                      Cambiar
+                      Cambiar Imagen
                     </button>
                   </div>
                 </div>
               ) : (
                 <div
                   onClick={() => fileInputRef.current?.click()}
-                  className="w-full aspect-square border-2 border-dashed border-zinc-700 hover:border-orange-500 rounded-lg flex flex-col items-center justify-center cursor-pointer p-4 text-center mb-3 transition-colors bg-zinc-900/40"
+                  className="w-full aspect-square border-2 border-dashed border-zinc-700 hover:border-orange-500 rounded-xl flex flex-col items-center justify-center cursor-pointer p-4 text-center mb-3 transition-colors bg-zinc-900/40"
                 >
-                  <Upload size={24} className="text-zinc-500 mb-2" />
-                  <p className="text-xs font-semibold text-slate-300">Cargar Archivo de Imagen</p>
-                  <p className="text-[10px] text-zinc-500 mt-1">PNG, JPG, SVG o WebP (seamless texture)</p>
+                  <Upload size={28} className="text-zinc-500 mb-2" />
+                  <p className="text-xs font-bold text-slate-200">Cargar Imagen de Terminación</p>
+                  <p className="text-[10px] text-zinc-500 mt-1">Formatos JPG, PNG, SVG o WebP de alta resolución</p>
                 </div>
               )}
 
@@ -341,15 +585,15 @@ export function TexturesManagerTab() {
                 className="hidden"
               />
 
-              {/* Color Presets quick pick */}
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] text-zinc-500">O color sólido:</span>
-                {['#FFFFFF', '#373E44', '#1C1C1C', '#D4A373', '#7AAFA6', '#C85A48'].map((c) => (
+              {/* Colores Sólidos de Ejemplo */}
+              <div className="w-full pt-2 border-t border-zinc-800 flex items-center justify-center gap-1.5">
+                <span className="text-[10px] text-zinc-500">Color liso:</span>
+                {['#FFFFFF', '#373E44', '#1C1C1C', '#D4A373', '#7AAFA6', '#C85A48', '#2C3E50'].map((c) => (
                   <button
                     key={c}
                     type="button"
                     onClick={() => setPreviewUrl(c)}
-                    className="w-5 h-5 rounded-full border border-white/20 hover:scale-110 transition-transform"
+                    className="w-5 h-5 rounded-full border border-white/20 hover:scale-110 transition-transform cursor-pointer"
                     style={{ backgroundColor: c }}
                   />
                 ))}
@@ -357,37 +601,58 @@ export function TexturesManagerTab() {
             </div>
           </div>
 
-          <div className="flex justify-end gap-2 pt-2 border-t border-zinc-800">
-            <button
-              type="button"
-              onClick={() => setIsFormOpen(false)}
-              className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-slate-300 text-xs font-semibold rounded-lg"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              className="px-5 py-2 bg-orange-500 hover:bg-orange-400 text-white text-xs font-bold uppercase tracking-wider rounded-lg shadow"
-            >
-              Guardar y Habilitar en 3D
-            </button>
+          <div className="flex items-center justify-between gap-3 pt-3 border-t border-zinc-800">
+            <span className="text-xs text-zinc-400">
+              {isSuperAdmin
+                ? 'Como Superadministrador, esta terminación quedará aprobada inmediatamente.'
+                : 'Esta terminación quedará pendiente de VB del Superadministrador antes de publicarse.'}
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsFormOpen(false)}
+                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-slate-300 text-xs font-semibold rounded-xl"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-2 bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-400 hover:to-amber-500 text-white text-xs font-bold uppercase tracking-wider rounded-xl shadow-lg shadow-orange-500/20 cursor-pointer"
+              >
+                {isSuperAdmin ? 'Guardar y Publicar en 3D' : 'Enviar a Revisión (VB)'}
+              </button>
+            </div>
           </div>
         </form>
       )}
 
-      {/* Textures Grid */}
+      {/* Grid de Diseños y Terminaciones */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {filteredTextures.map((tex) => {
           const isColor = tex.url.startsWith('#');
+          const isPending = tex.approvalStatus === 'pending';
+          const isRejected = tex.approvalStatus === 'rejected';
+          const isApproved = tex.approvalStatus === 'approved' || !tex.approvalStatus;
+
+          const prov = providers.find((p) => p.id === tex.providerId || p.name === tex.brand || p.name === tex.providerName);
+          const comm = tex.commissionPercentage ?? prov?.commissionPercentage ?? 15;
+          const net = tex.providerNetPriceClp ?? Math.round(tex.priceSheetClp * (1 - comm / 100));
+
           return (
             <div
               key={tex.id}
-              className={`group bg-zinc-900/90 border rounded-xl overflow-hidden transition-all shadow-sm flex flex-col ${
-                tex.active ? 'border-zinc-800 hover:border-orange-500/50' : 'border-zinc-800/40 opacity-60'
+              className={`group bg-zinc-900/90 border rounded-2xl overflow-hidden transition-all shadow-sm flex flex-col ${
+                isPending
+                  ? 'border-amber-500/60 ring-1 ring-amber-500/20'
+                  : isRejected
+                  ? 'border-red-500/40 opacity-70'
+                  : tex.active
+                  ? 'border-zinc-800 hover:border-orange-500/50'
+                  : 'border-zinc-800/40 opacity-60'
               }`}
             >
-              {/* Texture Swatch / Preview */}
-              <div className="h-36 w-full relative overflow-hidden bg-zinc-950 flex items-center justify-center">
+              {/* Preview 3D / Swatch */}
+              <div className="h-40 w-full relative overflow-hidden bg-zinc-950 flex items-center justify-center">
                 {isColor ? (
                   <div className="w-full h-full" style={{ backgroundColor: tex.url }} />
                 ) : (
@@ -397,58 +662,129 @@ export function TexturesManagerTab() {
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                   />
                 )}
-                {/* Brand Badge */}
-                <div className="absolute top-2 left-2 px-2 py-0.5 bg-black/70 backdrop-blur-sm border border-white/10 rounded text-[9px] font-bold text-white uppercase tracking-wider">
-                  {tex.brand}
+
+                {/* Badge de Marca / Proveedor */}
+                <div className="absolute top-2.5 left-2.5 px-2.5 py-1 bg-black/80 backdrop-blur-sm border border-white/10 rounded-lg text-[10px] font-bold text-white uppercase tracking-wider">
+                  {tex.providerName || tex.brand}
                 </div>
 
-                {/* Status Badge */}
-                <div className="absolute top-2 right-2">
-                  <button
-                    onClick={() => handleToggle(tex.id, tex.name)}
-                    className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider transition-colors ${
-                      tex.active
-                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                        : 'bg-zinc-800 text-zinc-400 border border-zinc-700'
-                    }`}
-                  >
-                    {tex.active ? 'Activo en 3D' : 'Inactivo'}
-                  </button>
+                {/* Badge de Estado VB */}
+                <div className="absolute top-2.5 right-2.5">
+                  {isPending ? (
+                    <span className="px-2.5 py-1 bg-amber-500 text-black font-extrabold text-[10px] uppercase tracking-wider rounded-lg shadow-lg flex items-center gap-1">
+                      <Clock size={12} />
+                      Pendiente VB
+                    </span>
+                  ) : isRejected ? (
+                    <span className="px-2.5 py-1 bg-red-500/80 text-white font-extrabold text-[10px] uppercase tracking-wider rounded-lg shadow-lg">
+                      Rechazado
+                    </span>
+                  ) : (
+                    <span className="px-2.5 py-1 bg-emerald-500/90 text-white font-bold text-[10px] uppercase tracking-wider rounded-lg shadow-lg flex items-center gap-1">
+                      <CheckCircle2 size={12} />
+                      {tex.active ? 'Aprobado 3D' : 'Inactivo'}
+                    </span>
+                  )}
                 </div>
               </div>
 
-              {/* Texture Details */}
+              {/* Detalles y Precios */}
               <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
                 <div>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-mono text-[10px] text-orange-400 font-bold">{tex.code}</span>
-                    <span className="text-[10px] text-zinc-500">{tex.sheetFormat}</span>
+                  <div className="flex items-center justify-between gap-2 text-[10px]">
+                    <span className="font-mono text-orange-400 font-bold">{tex.code}</span>
+                    <span className="text-zinc-400">{tex.sheetFormat}</span>
                   </div>
                   <h4 className="text-sm font-bold text-white tracking-tight mt-0.5">{tex.name}</h4>
-                  <p className="text-xs text-zinc-400 mt-1">{tex.finish}</p>
+                  <p className="text-xs text-zinc-400 mt-0.5">{tex.finish}</p>
                 </div>
 
-                <div className="pt-2 border-t border-zinc-800 flex items-center justify-between">
-                  <div>
-                    <div className="text-[9px] text-zinc-500 uppercase font-semibold">Costo Plancha</div>
-                    <div className="text-xs font-mono font-bold text-white">
-                      ${tex.priceSheetClp.toLocaleString('es-CL')} CLP
-                    </div>
+                {/* Tarifa y Liquidación */}
+                <div className="p-2.5 bg-zinc-950/60 rounded-xl space-y-1.5 border border-zinc-800/80 text-[11px]">
+                  <div className="flex items-center justify-between">
+                    <span className="text-zinc-400">Valor Final Venta:</span>
+                    <strong className="text-white font-mono">${tex.priceSheetClp.toLocaleString('es-CL')}</strong>
                   </div>
+                  <div className="flex items-center justify-between text-zinc-400">
+                    <span>Comisión Arquify ({comm}%):</span>
+                    <span className="text-amber-400 font-mono">-${Math.round((tex.priceSheetClp * comm) / 100).toLocaleString('es-CL')}</span>
+                  </div>
+                  <div className="pt-1 border-t border-zinc-800/80 flex items-center justify-between font-bold">
+                    <span className="text-emerald-400">Neto Proveedor:</span>
+                    <span className="text-emerald-300 font-mono">${net.toLocaleString('es-CL')}</span>
+                  </div>
+                </div>
 
-                  <button
-                    onClick={() => handleDelete(tex.id, tex.name)}
-                    className="p-1.5 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
-                    title="Eliminar decorativo"
-                  >
-                    <Trash2 size={14} />
-                  </button>
+                {/* Barra de Acciones y Superadmin VB */}
+                <div className="pt-2 border-t border-zinc-800 flex items-center justify-between gap-2">
+                  {isPending && isSuperAdmin ? (
+                    <div className="flex items-center gap-2 w-full">
+                      <button
+                        onClick={() => handleApprove(tex.id, tex.name)}
+                        className="flex-1 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1 cursor-pointer transition-colors shadow"
+                        title="Aprobar y publicar en configurador"
+                      >
+                        <Check size={14} /> Dar VB
+                      </button>
+                      <button
+                        onClick={() => handleReject(tex.id, tex.name)}
+                        className="py-1.5 px-2.5 bg-zinc-800 hover:bg-red-500/20 text-zinc-300 hover:text-red-400 rounded-lg text-xs font-semibold cursor-pointer transition-colors"
+                        title="Rechazar terminación"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => handleToggle(tex.id, tex.name)}
+                        className={`text-[11px] font-semibold transition-colors ${
+                          tex.active ? 'text-zinc-400 hover:text-white' : 'text-emerald-400 hover:underline'
+                        }`}
+                      >
+                        {tex.active ? 'Pausar' : 'Activar'}
+                      </button>
+
+                      <div className="flex items-center gap-1">
+                        {isSuperAdmin && !isPending && (
+                          <button
+                            onClick={() => {
+                              const newStatus = isApproved ? 'pending' : 'approved';
+                              updateTexture(tex.id, { approvalStatus: newStatus });
+                              showToast(`Estado de aprobación cambiado.`);
+                            }}
+                            className="p-1.5 text-zinc-400 hover:text-amber-300 rounded-lg"
+                            title="Cambiar estado de VB"
+                          >
+                            <Clock size={13} />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleDelete(tex.id, tex.name)}
+                          className="p-1.5 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                          title="Eliminar decorativo"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
           );
         })}
       </div>
+
+      {filteredTextures.length === 0 && (
+        <div className="p-12 text-center bg-zinc-900/40 rounded-2xl border border-zinc-800/60 space-y-2">
+          <Palette size={32} className="mx-auto text-zinc-600 mb-2" />
+          <h4 className="text-sm font-bold text-white">No se encontraron terminaciones</h4>
+          <p className="text-xs text-zinc-500">
+            Intente cambiando los filtros de búsqueda, categoría o estado de aprobación.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

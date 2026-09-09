@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useKitchenStore, CabinetType } from '../../store/kitchenStore';
 import { useStore, PartType } from '../../store';
-import { SlidersHorizontal, X, RefreshCw, ArrowUpDown, ArrowLeftRight, Upload, Trash2, RotateCw, Move3D, DoorOpen, DoorClosed, Layers } from 'lucide-react';
-import { get, set } from 'idb-keyval';
+import { useAdminStore } from '../../store/adminStore';
+import { SlidersHorizontal, X, RefreshCw, ArrowUpDown, ArrowLeftRight, RotateCw, Move3D, DoorOpen, DoorClosed, Layers, Trash2 } from 'lucide-react';
 
 const DEFAULT_TEXTURES = [
   { id: 'def_mas_blanco', name: 'Masisa Blanco', url: '#FFFFFF' },
@@ -15,64 +15,9 @@ const DEFAULT_TEXTURES = [
 export function KitchenModuleContextMenu() {
   const { activeCabinetId, cabinets, updateCabinet, removeCabinet, setActiveCabinet, setToolMode, setViewMode } = useKitchenStore();
   const globalStore = useStore();
+  const adminTextures = useAdminStore((s) => s.textures);
   const [showCatalog, setShowCatalog] = useState(false);
   const [targetZone, setTargetZone] = useState<PartType>('doors');
-  const [uploading, setUploading] = useState(false);
-  const [localTextures, setLocalTextures] = useState<any[]>([]);
-
-  useEffect(() => {
-    loadLocalTextures();
-  }, []);
-
-  const loadLocalTextures = async () => {
-    try {
-      const stored = await get('custom_textures');
-      if (stored) {
-        setLocalTextures(stored);
-        globalStore.setCustomTextures(stored);
-      }
-    } catch (e) {
-      console.error('Error loading textures from IndexedDB', e);
-    }
-  };
-
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files || e.target.files.length === 0) return;
-    const file = e.target.files[0];
-    setUploading(true);
-
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const base64Url = event.target?.result as string;
-      const newTexture = {
-        id: Date.now().toString(),
-        name: file.name,
-        url: base64Url,
-      };
-
-      const updatedTextures = [newTexture, ...localTextures];
-      setLocalTextures(updatedTextures);
-      globalStore.setCustomTextures(updatedTextures);
-
-      await set('custom_textures', updatedTextures);
-      setUploading(false);
-      e.target.value = '';
-    };
-    reader.onerror = () => {
-      alert("Error al leer el archivo");
-      setUploading(false);
-    };
-
-    reader.readAsDataURL(file);
-  };
-
-  const handleDeleteTexture = async (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const updatedTextures = localTextures.filter(t => t.id !== id);
-    setLocalTextures(updatedTextures);
-    globalStore.setCustomTextures(updatedTextures);
-    await set('custom_textures', updatedTextures);
-  };
 
   if (!activeCabinetId) return null;
   const activeCabinet = cabinets.find(c => c.id === activeCabinetId);
@@ -129,7 +74,8 @@ export function KitchenModuleContextMenu() {
           {/* Acciones principales: Mover y Girar */}
           <div className="grid grid-cols-2 gap-2">
             <button
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation();
                 setToolMode('move_active');
                 setViewMode('3d');
               }}
@@ -139,7 +85,8 @@ export function KitchenModuleContextMenu() {
               Mover
             </button>
             <button
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation();
                 const currentRot = activeCabinet.rotation || 0;
                 const nextRot = (currentRot + Math.PI / 2) % (Math.PI * 2);
                 updateCabinet(activeCabinet.id, { rotation: nextRot });
@@ -287,7 +234,15 @@ export function KitchenModuleContextMenu() {
     }
   };
 
-  const allTextures = [...DEFAULT_TEXTURES, ...localTextures];
+  const approvedBackofficeTextures = (adminTextures || [])
+    .filter((t) => t.active && (t.approvalStatus === 'approved' || !t.approvalStatus))
+    .map((t) => ({
+      id: t.id,
+      name: `${t.brand ? t.brand + ' ' : ''}${t.name}`,
+      url: t.url || t.previewUrl || '#CCCCCC',
+    }));
+
+  const allTextures = [...DEFAULT_TEXTURES, ...approvedBackofficeTextures];
   const masisaTextures = allTextures.filter(t => t.name.toLowerCase().includes('masisa'));
   const abetTextures = allTextures.filter(t => {
     const n = t.name.toLowerCase();
@@ -353,7 +308,7 @@ export function KitchenModuleContextMenu() {
   const hasInteractiveElements = !isDecoration && interactiveElements.length > 0;
   const anyElementOpen = interactiveElements.some(el => isElementOpen(el.id));
 
-  const renderTextureButton = (tex: any, showDelete: boolean) => (
+  const renderTextureButton = (tex: any) => (
     <div key={tex.id} className="relative group">
       <button 
         onClick={() => handleApplyTexture(tex.url, tex.name)}
@@ -368,14 +323,6 @@ export function KitchenModuleContextMenu() {
           {tex.name.length > 14 ? tex.name.substring(0, 14) + '...' : tex.name}
         </span>
       </button>
-      {showDelete && !tex.id.startsWith('def_') && (
-        <button 
-          onClick={(e) => handleDeleteTexture(tex.id, e)}
-          className="absolute -top-1 -right-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-        >
-          <Trash2 size={10} />
-        </button>
-      )}
     </div>
   );
 
@@ -400,13 +347,6 @@ export function KitchenModuleContextMenu() {
             className="text-zinc-400 hover:text-cyan-400 transition-colors p-1 rounded hover:bg-white/5"
           >
             <RotateCw size={15} />
-          </button>
-          <button 
-            onClick={() => { setToolMode('move_active'); setViewMode('3d'); }}
-            title="Mover Módulo"
-            className="text-zinc-400 hover:text-orange-400 transition-colors p-1 rounded hover:bg-white/5"
-          >
-            <Move3D size={15} />
           </button>
           <button 
             onClick={() => removeCabinet(activeCabinet.id)} 
@@ -577,7 +517,7 @@ export function KitchenModuleContextMenu() {
                   2. Masisa (Melaminas)
                 </div>
                 <div className="grid grid-cols-3 gap-2">
-                  {masisaTextures.map(t => renderTextureButton(t, true))}
+                  {masisaTextures.map(t => renderTextureButton(t))}
                 </div>
               </div>
             )}
@@ -589,30 +529,22 @@ export function KitchenModuleContextMenu() {
                   3. Abet Laminati (HPL)
                 </div>
                 <div className="grid grid-cols-3 gap-2">
-                  {abetTextures.map(t => renderTextureButton(t, true))}
+                  {abetTextures.map(t => renderTextureButton(t))}
                 </div>
               </div>
             )}
 
-            {/* Otras Texturas / Subir Archivos */}
-            <div className="pt-3 border-t border-white/10 flex flex-col gap-2">
-              <div className="text-[10px] uppercase tracking-wider font-semibold text-zinc-400">
-                4. Otras Texturas / Subir Archivos
-              </div>
-              <label className="flex items-center justify-center gap-2 w-full p-2.5 border border-orange-500/50 border-dashed rounded-xl text-orange-500 hover:bg-orange-500/10 cursor-pointer transition-colors">
-                <Upload size={14} />
-                <span className="text-[10px] uppercase font-bold tracking-wider">
-                  {uploading ? 'Procesando...' : 'Subir Imagen'}
-                </span>
-                <input type="file" accept="image/*" className="hidden" onChange={handleUpload} disabled={uploading} />
-              </label>
-
-              {otherTextures.length > 0 && (
-                <div className="grid grid-cols-3 gap-2 mt-1">
-                  {otherTextures.map(t => renderTextureButton(t, true))}
+            {/* Otras Texturas Oficiales de Proveedor */}
+            {otherTextures.length > 0 && (
+              <div className="pt-3 border-t border-white/10 flex flex-col gap-2">
+                <div className="text-[10px] uppercase tracking-wider font-semibold text-zinc-400">
+                  4. Otras Terminaciones de Proveedor
                 </div>
-              )}
-            </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {otherTextures.map(t => renderTextureButton(t))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 

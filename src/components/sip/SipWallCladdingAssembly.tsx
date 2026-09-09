@@ -38,6 +38,8 @@ interface ModularSheet {
     y1: number;
     height: number;
     shape: THREE.Shape;
+    extrudeGeom: THREE.BufferGeometry;
+    edgesGeom: THREE.BufferGeometry;
   }[];
 }
 
@@ -277,7 +279,27 @@ export function SipWallCladdingAssembly({
       // Detectar si esta plancha se cruza con algún vano
       const overlappingOps = wallOpenings.filter((op) => op.xMin < x1 - 0.005 && op.xMax > x0 + 0.005);
 
-      const subParts: { y0: number; y1: number; height: number; shape: THREE.Shape }[] = [];
+      const subParts: {
+        y0: number;
+        y1: number;
+        height: number;
+        shape: THREE.Shape;
+        extrudeGeom: THREE.BufferGeometry;
+        edgesGeom: THREE.BufferGeometry;
+      }[] = [];
+
+      const makeGeom = (s: THREE.Shape) => {
+        const extrudeGeom = new THREE.ExtrudeGeometry(s, {
+          depth: 0.012,
+          bevelEnabled: true,
+          bevelSegments: 1,
+          steps: 1,
+          bevelSize: 0.0015,
+          bevelThickness: 0.0015,
+        });
+        const edgesGeom = new THREE.EdgesGeometry(extrudeGeom);
+        return { extrudeGeom, edgesGeom };
+      };
 
       if (overlappingOps.length === 0) {
         // Plancha completa vertical continua
@@ -288,11 +310,14 @@ export function SipWallCladdingAssembly({
         shape.lineTo(-w / 2, wallHeight);
         shape.closePath();
 
+        const { extrudeGeom, edgesGeom } = makeGeom(shape);
         subParts.push({
           y0: 0,
           y1: wallHeight,
           height: wallHeight,
           shape,
+          extrudeGeom,
+          edgesGeom,
         });
       } else {
         // La plancha cruza vanos: segmentar en antepecho y/o dintel
@@ -309,11 +334,14 @@ export function SipWallCladdingAssembly({
             shape.lineTo(-w / 2, op.yMin);
             shape.closePath();
 
+            const { extrudeGeom, edgesGeom } = makeGeom(shape);
             subParts.push({
               y0: currentY,
               y1: op.yMin,
               height: h,
               shape,
+              extrudeGeom,
+              edgesGeom,
             });
           }
           currentY = Math.max(currentY, op.yMax);
@@ -328,11 +356,14 @@ export function SipWallCladdingAssembly({
           shape.lineTo(-w / 2, wallHeight);
           shape.closePath();
 
+          const { extrudeGeom, edgesGeom } = makeGeom(shape);
           subParts.push({
             y0: currentY,
             y1: wallHeight,
             height: h,
             shape,
+            extrudeGeom,
+            edgesGeom,
           });
         }
       }
@@ -411,20 +442,10 @@ export function SipWallCladdingAssembly({
               position={[sheet.centerX + spreadX, 0, currentSheetZ]}
             >
               {sheet.subParts.map((sub, sIdx) => {
-                const extrudeGeom = new THREE.ExtrudeGeometry(sub.shape, {
-                  depth: 0.012,
-                  bevelEnabled: true,
-                  bevelSegments: 1,
-                  steps: 1,
-                  bevelSize: 0.0015,
-                  bevelThickness: 0.0015,
-                });
-                const edgesGeom = new THREE.EdgesGeometry(extrudeGeom);
-
                 return (
                   <group key={`subpart-${sIdx}`}>
                     {/* Cuerpo de la plancha unitaria de zinc */}
-                    <mesh geometry={extrudeGeom} material={cladMat} castShadow receiveShadow />
+                    <mesh geometry={sub.extrudeGeom} material={cladMat} castShadow receiveShadow />
 
                     {/* Nervio / Pestaña machihembrada de unión vertical de plancha de zinc */}
                     <mesh position={[sheet.width / 2 - 0.003, (sub.y0 + sub.y1) / 2, 0.014]} castShadow>
@@ -433,7 +454,7 @@ export function SipWallCladdingAssembly({
                     </mesh>
 
                     {/* Líneas de aristas para delimitar claramente cada plancha en el despiece */}
-                    <lineSegments geometry={edgesGeom} material={sheetEdgeMat} />
+                    <lineSegments geometry={sub.edgesGeom} material={sheetEdgeMat} />
                   </group>
                 );
               })}

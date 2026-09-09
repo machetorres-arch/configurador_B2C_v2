@@ -5,8 +5,9 @@ import { TimberPiece } from './TimberPiece';
 interface SipGableAssemblyProps {
   width: number;             // Ancho base del frontón en metros (widthM)
   height: number;            // Altura de cumbrera del frontón (gableRoofHeightM)
-  startHeight?: number;      // Altura inicial en x = -width/2 (para trapezoides en L a 1 agua)
-  endHeight?: number;        // Altura final en x = +width/2 (para trapezoides en L a 1 agua)
+  startHeight?: number;      // Altura inicial en x = -width/2 (para trapezoides a 1 agua o quiebres)
+  endHeight?: number;        // Altura final en x = +width/2 (para trapezoides a 1 agua o quiebres)
+  ridgeX?: number;           // Posición local X del vértice cumbrera para 2 aguas (por defecto 0)
   roofStyle?: 'gable_valley' | 'single_shed' | 'flat' | 'split_shed';
   slopeDirection?: 'left_to_right' | 'right_to_left'; // Para 1 agua
   totalThickness?: number;   // Espesor total SIP (ej. 0.114 m = 114 mm)
@@ -39,6 +40,10 @@ interface GableSegment {
   yEnd: number;
   centerX: number;
   shape: THREE.Shape;
+  osbFrontGeom: THREE.BufferGeometry;
+  epsGeom: THREE.BufferGeometry;
+  osbRearGeom: THREE.BufferGeometry;
+  edgesGeom: THREE.BufferGeometry;
 }
 
 interface GableCladdingSheet {
@@ -48,6 +53,8 @@ interface GableCladdingSheet {
   width: number;
   centerX: number;
   shape: THREE.Shape;
+  cladGeom: THREE.BufferGeometry;
+  edgesGeom: THREE.BufferGeometry;
 }
 
 /**
@@ -62,6 +69,7 @@ export function SipGableAssembly({
   height,
   startHeight,
   endHeight,
+  ridgeX,
   roofStyle = 'gable_valley',
   slopeDirection = 'left_to_right',
   totalThickness = 0.114,
@@ -74,8 +82,8 @@ export function SipGableAssembly({
   isExploded = false,
   explodedProgress = 0,
 }: SipGableAssemblyProps) {
-  const maxEffHeight = Math.max(height, startHeight || 0, endHeight || 0);
-  if (roofStyle === 'flat' || maxEffHeight <= 0.03) return null;
+  const maxEffHeight = Math.max(height, startHeight ?? 0, endHeight ?? 0);
+  if (roofStyle === 'flat' || maxEffHeight <= 0.01) return null;
 
   const isSingleShed = roofStyle === 'single_shed';
   const osbThick = 0.0111; // 11.1 mm tablero OSB estructural
@@ -87,15 +95,19 @@ export function SipGableAssembly({
   const epsMat = materials.epsCore;
   const hasCladdingLayer = useCladdingOnFront && claddingMaterial && claddingMaterial !== materials.osbSip;
 
-  // Alturas efectivas inicial y final para 1 agua
+  // Alturas efectivas inicial y final
   const hStart = startHeight !== undefined
     ? startHeight
-    : slopeDirection === 'right_to_left' ? height : 0;
+    : (isSingleShed && slopeDirection === 'right_to_left' ? height : 0);
   const hEnd = endHeight !== undefined
     ? endHeight
-    : slopeDirection === 'right_to_left' ? 0 : height;
+    : (isSingleShed && slopeDirection === 'left_to_right' ? height : 0);
 
   const deltaH = hEnd - hStart;
+  const xPeak = ridgeX !== undefined ? Math.max(-width / 2, Math.min(width / 2, ridgeX)) : 0;
+  const leftSpan = Math.max(0.001, xPeak - (-width / 2));
+  const rightSpan = Math.max(0.001, width / 2 - xPeak);
+
   const slopeAngle = isSingleShed
     ? Math.atan2(Math.abs(deltaH), width)
     : Math.atan2(height, width / 2);
@@ -119,8 +131,13 @@ export function SipGableAssembly({
       const t = Math.max(0, Math.min(1, (x + width / 2) / width));
       return Math.max(0, hStart + deltaH * t);
     } else {
-      // 2 Aguas simétrico
-      return Math.max(0, height * (1 - Math.abs(x) / (width / 2)));
+      if (x <= xPeak) {
+        const t = Math.max(0, Math.min(1, (x - (-width / 2)) / leftSpan));
+        return Math.max(0, hStart + (height - hStart) * t);
+      } else {
+        const t = Math.max(0, Math.min(1, (width / 2 - x) / rightSpan));
+        return Math.max(0, hEnd + (height - hEnd) * t);
+      }
     }
   };
 
@@ -128,8 +145,8 @@ export function SipGableAssembly({
   const segments = useMemo(() => {
     const segs: GableSegment[] = [];
     const panelWidth = 1.22;
-
     const cuts: number[] = [];
+
     if (isSingleShed) {
       const numPanels = Math.max(1, Math.ceil(width / panelWidth));
       const step = width / numPanels;
@@ -137,23 +154,30 @@ export function SipGableAssembly({
         cuts.push(-width / 2 + i * step);
       }
     } else {
-      const halfPanelsCount = Math.max(1, Math.ceil((width / 2) / panelWidth));
-      for (let i = halfPanelsCount; i >= 1; i--) {
-        cuts.push(Math.max(-width / 2, -i * panelWidth));
+      cuts.push(-width / 2);
+      if (leftSpan > 0.05) {
+        const leftCount = Math.max(1, Math.ceil(leftSpan / panelWidth));
+        for (let i = 1; i < leftCount; i++) {
+          cuts.push(-width / 2 + (i * leftSpan) / leftCount);
+        }
       }
-      cuts.push(0);
-      for (let i = 1; i <= halfPanelsCount; i++) {
-        cuts.push(Math.min(width / 2, i * panelWidth));
+      cuts.push(xPeak);
+      if (rightSpan > 0.05) {
+        const rightCount = Math.max(1, Math.ceil(rightSpan / panelWidth));
+        for (let i = 1; i < rightCount; i++) {
+          cuts.push(xPeak + (i * rightSpan) / rightCount);
+        }
       }
+      cuts.push(width / 2);
     }
 
-    const allCuts = Array.from(new Set(cuts)).sort((a, b) => a - b);
+    const allCuts = Array.from(new Set(cuts.map((c) => Math.round(c * 10000) / 10000))).sort((a, b) => a - b);
 
     for (let i = 0; i < allCuts.length - 1; i++) {
       const x0 = allCuts[i];
       const x1 = allCuts[i + 1];
       const w = x1 - x0;
-      if (w < 0.04) continue;
+      if (w < 0.02) continue;
 
       const y0 = getYAtX(x0);
       const y1 = getYAtX(x1);
@@ -162,11 +186,16 @@ export function SipGableAssembly({
       shape.moveTo(x0, 0);
       shape.lineTo(x1, 0);
       shape.lineTo(x1, Math.max(0.01, y1));
-      if (!isSingleShed && x0 < 0 && x1 > 0) {
-        shape.lineTo(0, height);
+      if (!isSingleShed && x0 < xPeak && x1 > xPeak) {
+        shape.lineTo(xPeak, Math.max(0.01, height));
       }
       shape.lineTo(x0, Math.max(0.01, y0));
       shape.closePath();
+
+      const osbFrontGeom = new THREE.ExtrudeGeometry(shape, { depth: osbThick, bevelEnabled: false });
+      const epsGeom = new THREE.ExtrudeGeometry(shape, { depth: epsThick, bevelEnabled: false });
+      const osbRearGeom = new THREE.ExtrudeGeometry(shape, { depth: osbThick, bevelEnabled: false });
+      const edgesGeom = new THREE.EdgesGeometry(osbFrontGeom);
 
       segs.push({
         idx: i,
@@ -177,11 +206,15 @@ export function SipGableAssembly({
         yEnd: y1,
         centerX: (x0 + x1) / 2,
         shape,
+        osbFrontGeom,
+        epsGeom,
+        osbRearGeom,
+        edgesGeom,
       });
     }
 
     return segs;
-  }, [width, height, isSingleShed, hStart, hEnd, deltaH]);
+  }, [width, height, isSingleShed, hStart, hEnd, deltaH, xPeak, leftSpan, rightSpan, osbThick, epsThick]);
 
   // 2. MODULACIÓN DE PLANCHAS INDIVIDUALES DE REVESTIMIENTO EXTERIOR (Formato estándar 0.275m / 0.38m de ancho)
   const claddingSheets = useMemo(() => {
@@ -204,11 +237,21 @@ export function SipGableAssembly({
       shape.moveTo(x0, 0);
       shape.lineTo(x1, 0);
       shape.lineTo(x1, Math.max(0.005, y1));
-      if (!isSingleShed && x0 < 0 && x1 > 0) {
-        shape.lineTo(0, height);
+      if (!isSingleShed && x0 < xPeak && x1 > xPeak) {
+        shape.lineTo(xPeak, Math.max(0.005, height));
       }
       shape.lineTo(x0, Math.max(0.005, y0));
       shape.closePath();
+
+      const cladGeom = new THREE.ExtrudeGeometry(shape, {
+        depth: 0.012,
+        bevelEnabled: true,
+        bevelSegments: 1,
+        steps: 1,
+        bevelSize: 0.0015,
+        bevelThickness: 0.0015,
+      });
+      const edgesGeom = new THREE.EdgesGeometry(cladGeom);
 
       sheets.push({
         idx: sheetIdx,
@@ -217,6 +260,8 @@ export function SipGableAssembly({
         width: w,
         centerX: (x0 + x1) / 2,
         shape,
+        cladGeom,
+        edgesGeom,
       });
 
       currentX += w;
@@ -224,7 +269,7 @@ export function SipGableAssembly({
     }
 
     return sheets;
-  }, [hasCladdingLayer, width, height, isSingleShed, hStart, hEnd, deltaH]);
+  }, [hasCladdingLayer, width, height, isSingleShed, hStart, hEnd, deltaH, xPeak, leftSpan, rightSpan]);
 
   // Juntas modulares de unión
   const verticalSeamXList = useMemo(() => {
@@ -237,10 +282,21 @@ export function SipGableAssembly({
       }
     });
     return list;
-  }, [segments, width, height, isSingleShed, hStart, hEnd, deltaH]);
+  }, [segments, isSingleShed, hStart, deltaH, xPeak, leftSpan, rightSpan, height]);
 
   const rakeMidY = isSingleShed ? (hStart + hEnd) / 2 : height / 2;
-  const singleRakeRotationZ = deltaH >= 0 ? slopeAngle : -slopeAngle;
+  const singleRakeRotationZ = Math.atan2(deltaH, width);
+
+  // Pendientes individuales para 2 aguas asimétricas
+  const leftSlope = Math.atan2(height - hStart, leftSpan);
+  const leftRakeLength = Math.hypot(leftSpan, height - hStart);
+  const leftRakeMidX = (-width / 2 + xPeak) / 2;
+  const leftRakeMidY = (hStart + height) / 2;
+
+  const rightSlope = Math.atan2(height - hEnd, rightSpan);
+  const rightRakeLength = Math.hypot(rightSpan, height - hEnd);
+  const rightRakeMidX = (xPeak + width / 2) / 2;
+  const rightRakeMidY = (height + hEnd) / 2;
 
   return (
     <group>
@@ -280,14 +336,14 @@ export function SipGableAssembly({
               />
             </group>
           ) : (
-            /* 2 Aguas simétrico */
+            /* 2 Aguas (simétrico o con cumbrera desplazada) */
             <group>
               <group
-                position={[-width / 4, height / 2 + (isExploded ? explodedProgress * 0.15 : 0), 0]}
-                rotation={[0, 0, slopeAngle]}
+                position={[leftRakeMidX, leftRakeMidY + (isExploded ? explodedProgress * 0.15 : 0), 0]}
+                rotation={[0, 0, leftSlope]}
               >
                 <TimberPiece
-                  args={[rakeLength, timberThick, timberWidth]}
+                  args={[leftRakeLength, timberThick, timberWidth]}
                   position={[0, 0, 0]}
                   orientation="horizontal"
                   materials={materials}
@@ -296,11 +352,11 @@ export function SipGableAssembly({
                 />
               </group>
               <group
-                position={[width / 4, height / 2 + (isExploded ? explodedProgress * 0.15 : 0), 0]}
-                rotation={[0, 0, -slopeAngle]}
+                position={[rightRakeMidX, rightRakeMidY + (isExploded ? explodedProgress * 0.15 : 0), 0]}
+                rotation={[0, 0, -rightSlope]}
               >
                 <TimberPiece
-                  args={[rakeLength, timberThick, timberWidth]}
+                  args={[rightRakeLength, timberThick, timberWidth]}
                   position={[0, 0, 0]}
                   orientation="horizontal"
                   materials={materials}
@@ -328,7 +384,7 @@ export function SipGableAssembly({
           ) : (
             <TimberPiece
               args={[timberThick, Math.max(0.1, height - timberThick), timberWidth]}
-              position={[0, height / 2, 0]}
+              position={[xPeak, height / 2, 0]}
               orientation="vertical"
               materials={materials}
               isExploded={isExploded}
@@ -360,11 +416,6 @@ export function SipGableAssembly({
       {(layerWallsSip || isExploded) && (
         <group>
           {segments.map((seg, sIdx) => {
-            const osbFrontGeom = new THREE.ExtrudeGeometry(seg.shape, { depth: osbThick, bevelEnabled: false });
-            const epsGeom = new THREE.ExtrudeGeometry(seg.shape, { depth: epsThick, bevelEnabled: false });
-            const osbRearGeom = new THREE.ExtrudeGeometry(seg.shape, { depth: osbThick, bevelEnabled: false });
-            const edgesGeom = new THREE.EdgesGeometry(osbFrontGeom);
-
             const explodeDirX = seg.centerX >= 0 ? 1 : -1;
             const panelOffsetX = isExploded ? explodeDirX * (Math.abs(seg.centerX) * 0.15 + 0.08) * explodedProgress : 0;
             const frontZ = epsThick / 2 + (isExploded ? explodedProgress * 0.22 : 0);
@@ -374,15 +425,15 @@ export function SipGableAssembly({
             return (
               <group key={`gable-panel-seg-${sIdx}`} position={[panelOffsetX, 0, 0]}>
                 <group position={[0, 0, frontZ]}>
-                  <mesh geometry={osbFrontGeom} material={frontMat} castShadow receiveShadow />
-                  <lineSegments geometry={edgesGeom} material={edgeLineMat} />
+                  <mesh geometry={seg.osbFrontGeom} material={frontMat} castShadow receiveShadow />
+                  <lineSegments geometry={seg.edgesGeom} material={edgeLineMat} />
                 </group>
                 <group position={[0, 0, epsZ]}>
-                  <mesh geometry={epsGeom} material={epsMat} castShadow receiveShadow />
+                  <mesh geometry={seg.epsGeom} material={epsMat} castShadow receiveShadow />
                 </group>
                 <group position={[0, 0, rearZ]}>
-                  <mesh geometry={osbRearGeom} material={rearMat} castShadow receiveShadow />
-                  <lineSegments geometry={edgesGeom} material={edgeLineMat} />
+                  <mesh geometry={seg.osbRearGeom} material={rearMat} castShadow receiveShadow />
+                  <lineSegments geometry={seg.edgesGeom} material={edgeLineMat} />
                 </group>
               </group>
             );
@@ -396,15 +447,6 @@ export function SipGableAssembly({
       {hasCladdingLayer && (
         <group position={[0, 0, epsThick / 2 + osbThick + 0.02 + (isExploded ? explodedProgress * 0.38 : 0)]}>
           {claddingSheets.map((sheet, sIdx) => {
-            const cladGeom = new THREE.ExtrudeGeometry(sheet.shape, {
-              depth: 0.012,
-              bevelEnabled: true,
-              bevelSegments: 1,
-              steps: 1,
-              bevelSize: 0.0015,
-              bevelThickness: 0.0015,
-            });
-            const edgesGeom = new THREE.EdgesGeometry(cladGeom);
             const totalCount = claddingSheets.length;
             const spreadX = isExploded ? (sheet.idx - (totalCount - 1) / 2) * (explodedProgress * 0.14) : 0;
             const staggerZ = isExploded ? (sIdx % 2 === 0 ? 0.035 : -0.025) * explodedProgress : 0;
@@ -414,7 +456,7 @@ export function SipGableAssembly({
             return (
               <group key={`gable-clad-sheet-${sIdx}`} position={[spreadX, 0, staggerZ]}>
                 {/* Plancha unitaria cortada a la pendiente */}
-                <mesh geometry={cladGeom} material={claddingMaterial!} castShadow receiveShadow />
+                <mesh geometry={sheet.cladGeom} material={claddingMaterial!} castShadow receiveShadow />
 
                 {/* Nervio vertical de machihembrado de zinc */}
                 <mesh position={[sheet.xEnd - 0.003, sheetMidY / 2, 0.014]} castShadow>
@@ -423,7 +465,7 @@ export function SipGableAssembly({
                 </mesh>
 
                 {/* Aristas técnicas para despiece unitario */}
-                <lineSegments geometry={edgesGeom} material={edgeLineMat} />
+                <lineSegments geometry={sheet.edgesGeom} material={edgeLineMat} />
               </group>
             );
           })}

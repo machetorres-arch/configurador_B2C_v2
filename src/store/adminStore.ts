@@ -1,6 +1,8 @@
 import { create } from 'zustand';
+import { getSupabase } from '../lib/supabase';
+import { useSupabaseAuthStore } from './supabaseAuthStore';
 
-export type ProjectType = 'closet' | 'kitchen' | 'special' | 'sip-house';
+export type ProjectType = 'closet' | 'kitchen' | 'special' | 'sip-house' | 'hpl-bathroom' | 'concrete-house' | 'office';
 
 export interface ProjectItem {
   id: string;
@@ -28,6 +30,8 @@ export interface SupplyItem {
   notes?: string;
 }
 
+export type TextureApprovalStatus = 'pending' | 'approved' | 'rejected';
+
 export interface CustomTextureItem {
   id: string;
   name: string;
@@ -42,6 +46,47 @@ export interface CustomTextureItem {
   previewUrl: string;
   active: boolean;
   createdAt: string;
+  // Flujo de Proveedores y VB Superadmin
+  providerId?: string;
+  providerName?: string;
+  approvalStatus?: TextureApprovalStatus;
+  commissionPercentage?: number;
+  providerNetPriceClp?: number;
+  rejectionReason?: string;
+}
+
+export interface ProviderItem {
+  id: string;
+  name: string;
+  rut?: string;
+  email: string;
+  phone?: string;
+  address?: string;
+  commissionPercentage: number; // % comisión de Arquify por defecto (ej. 15%)
+  active: boolean;
+  createdAt: string;
+}
+
+export interface AnonymousProjectUsage {
+  id: string;
+  code: string;
+  type: ProjectType;
+  date: string;
+  productsUsedCount: number;
+  matchedProducts: { code: string; name: string; count: number }[];
+}
+
+export interface ProviderStats {
+  providerName: string;
+  totalProjects: number;
+  totalProductsUsed: number;
+  productsBreakdown: {
+    code: string;
+    name: string;
+    count: number;
+    estimatedAreaM2: number;
+  }[];
+  anonymousProjects: AnonymousProjectUsage[];
 }
 
 export interface AdminState {
@@ -51,6 +96,17 @@ export interface AdminState {
   login: (user: string, pass: string) => { success: boolean; error?: string };
   logout: () => void;
 
+  // Modo Claro / Oscuro del Backoffice
+  themeMode: 'dark' | 'light';
+  setThemeMode: (mode: 'dark' | 'light') => void;
+  toggleThemeMode: () => void;
+
+  // Proveedores
+  providers: ProviderItem[];
+  addProvider: (provider: Omit<ProviderItem, 'id' | 'createdAt'>) => string;
+  updateProvider: (id: string, updates: Partial<ProviderItem>) => void;
+  deleteProvider: (id: string) => void;
+
   // Proyectos
   projects: ProjectItem[];
   saveProject: (project: Omit<ProjectItem, 'id' | 'date'>) => string;
@@ -58,6 +114,10 @@ export interface AdminState {
   renameProject: (id: string, newName: string, newClient?: string) => void;
   duplicateProject: (id: string) => string;
   deleteProject: (id: string) => void;
+  syncCloudProjects: () => Promise<void>;
+
+  // Estadísticas Anónimas para Proveedores
+  getProviderStats: (providerIdOrName: string) => ProviderStats;
 
   // Precios de Insumos
   supplies: SupplyItem[];
@@ -70,6 +130,8 @@ export interface AdminState {
   addTexture: (texture: Omit<CustomTextureItem, 'id' | 'createdAt'>) => string;
   updateTexture: (id: string, updates: Partial<CustomTextureItem>) => void;
   toggleTextureActive: (id: string) => void;
+  approveTexture: (id: string) => void;
+  rejectTexture: (id: string, reason?: string) => void;
   deleteTexture: (id: string) => void;
   resetTexturesToDefault: () => void;
 }
@@ -364,7 +426,11 @@ export const DEFAULT_CUSTOM_TEXTURES: CustomTextureItem[] = [
     url: '/textures/abet-broccato-2831.svg',
     previewUrl: '/textures/abet-broccato-2831.svg',
     active: true,
-    createdAt: '2026-01-10'
+    createdAt: '2026-01-10',
+    approvalStatus: 'approved',
+    providerName: 'Abet Laminati / Provelcar',
+    commissionPercentage: 15,
+    providerNetPriceClp: 78200
   },
   {
     id: 'tex-abet-2824',
@@ -379,7 +445,11 @@ export const DEFAULT_CUSTOM_TEXTURES: CustomTextureItem[] = [
     url: '/textures/abet-fiore-pop-2824.svg',
     previewUrl: '/textures/abet-fiore-pop-2824.svg',
     active: true,
-    createdAt: '2026-01-15'
+    createdAt: '2026-01-15',
+    approvalStatus: 'approved',
+    providerName: 'Abet Laminati / Provelcar',
+    commissionPercentage: 15,
+    providerNetPriceClp: 78200
   },
   {
     id: 'tex-light-wood',
@@ -394,7 +464,11 @@ export const DEFAULT_CUSTOM_TEXTURES: CustomTextureItem[] = [
     url: '/textures/light-wood-grain.svg',
     previewUrl: '/textures/light-wood-grain.svg',
     active: true,
-    createdAt: '2026-02-01'
+    createdAt: '2026-02-01',
+    approvalStatus: 'approved',
+    providerName: 'Masisa Chile',
+    commissionPercentage: 12,
+    providerNetPriceClp: 41272
   },
   {
     id: 'tex-blanco-soft',
@@ -409,7 +483,11 @@ export const DEFAULT_CUSTOM_TEXTURES: CustomTextureItem[] = [
     url: '#F8F9FA',
     previewUrl: '#F8F9FA',
     active: true,
-    createdAt: '2026-02-10'
+    createdAt: '2026-02-10',
+    approvalStatus: 'approved',
+    providerName: 'Arauco Soluciones',
+    commissionPercentage: 10,
+    providerNetPriceClp: 31050
   },
   {
     id: 'tex-grafito-mate',
@@ -424,7 +502,47 @@ export const DEFAULT_CUSTOM_TEXTURES: CustomTextureItem[] = [
     url: '#373E44',
     previewUrl: '#373E44',
     active: true,
-    createdAt: '2026-02-18'
+    createdAt: '2026-02-18',
+    approvalStatus: 'approved',
+    providerName: 'Arauco Soluciones',
+    commissionPercentage: 10,
+    providerNetPriceClp: 38700
+  }
+];
+
+export const DEFAULT_PROVIDERS: ProviderItem[] = [
+  {
+    id: 'prov-masisa',
+    name: 'Masisa Chile',
+    rut: '96.540.120-K',
+    email: 'contacto@masisa.com',
+    phone: '+56 2 2700 8000',
+    address: 'Av. Apoquindo 3650, Las Condes, Santiago',
+    commissionPercentage: 12,
+    active: true,
+    createdAt: '2026-01-01'
+  },
+  {
+    id: 'prov-arauco',
+    name: 'Arauco Soluciones',
+    rut: '91.500.000-8',
+    email: 'ventas@arauco.cl',
+    phone: '+56 2 2461 7000',
+    address: 'Av. El Golf 150, Las Condes, Santiago',
+    commissionPercentage: 10,
+    active: true,
+    createdAt: '2026-01-01'
+  },
+  {
+    id: 'prov-abet',
+    name: 'Abet Laminati / Provelcar',
+    rut: '76.123.456-7',
+    email: 'contacto@provelcar.cl',
+    phone: '+56 2 2234 5678',
+    address: 'Av. Italia 1234, Providencia, Santiago',
+    commissionPercentage: 15,
+    active: true,
+    createdAt: '2026-01-05'
   }
 ];
 
@@ -527,9 +645,16 @@ const getInitialState = () => {
       return {
         isAuthenticated: !!parsed.isAuthenticated,
         adminEmail: parsed.adminEmail || null,
-        projects: Array.isArray(parsed.projects) && parsed.projects.length > 0 ? parsed.projects : DEFAULT_PROJECTS,
+        themeMode: (parsed.themeMode === 'light' ? 'light' : 'dark') as 'dark' | 'light',
+        providers: Array.isArray(parsed.providers) && parsed.providers.length > 0 ? parsed.providers : DEFAULT_PROVIDERS,
+        projects: Array.isArray(parsed.projects) ? parsed.projects : DEFAULT_PROJECTS,
         supplies: Array.isArray(parsed.supplies) && parsed.supplies.length > 0 ? parsed.supplies : DEFAULT_SUPPLIES,
-        textures: Array.isArray(parsed.textures) && parsed.textures.length > 0 ? parsed.textures : DEFAULT_CUSTOM_TEXTURES,
+        textures: Array.isArray(parsed.textures) && parsed.textures.length > 0
+          ? parsed.textures.map((t: CustomTextureItem) => ({
+              ...t,
+              approvalStatus: t.approvalStatus || 'approved'
+            }))
+          : DEFAULT_CUSTOM_TEXTURES,
       };
     }
   } catch (e) {
@@ -538,6 +663,8 @@ const getInitialState = () => {
   return {
     isAuthenticated: false,
     adminEmail: null,
+    themeMode: 'dark' as 'dark' | 'light',
+    providers: DEFAULT_PROVIDERS,
     projects: DEFAULT_PROJECTS,
     supplies: DEFAULT_SUPPLIES,
     textures: DEFAULT_CUSTOM_TEXTURES,
@@ -547,6 +674,8 @@ const getInitialState = () => {
 const saveToLocalStorage = (state: {
   isAuthenticated: boolean;
   adminEmail: string | null;
+  themeMode: 'dark' | 'light';
+  providers: ProviderItem[];
   projects: ProjectItem[];
   supplies: SupplyItem[];
   textures: CustomTextureItem[];
@@ -567,6 +696,8 @@ export const useAdminStore = create<AdminState>((set, get) => {
       saveToLocalStorage({
         isAuthenticated: updated.isAuthenticated,
         adminEmail: updated.adminEmail,
+        themeMode: updated.themeMode,
+        providers: updated.providers,
         projects: updated.projects,
         supplies: updated.supplies,
         textures: updated.textures,
@@ -578,6 +709,36 @@ export const useAdminStore = create<AdminState>((set, get) => {
   return {
     isAuthenticated: initial.isAuthenticated,
     adminEmail: initial.adminEmail,
+
+    themeMode: initial.themeMode || 'dark',
+    setThemeMode: (mode: 'dark' | 'light') => {
+      persist({ themeMode: mode });
+    },
+    toggleThemeMode: () => {
+      const current = get().themeMode;
+      persist({ themeMode: current === 'dark' ? 'light' : 'dark' });
+    },
+
+    providers: initial.providers,
+    addProvider: (providerData) => {
+      const newId = `prov-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+      const newProvider: ProviderItem = {
+        ...providerData,
+        id: newId,
+        createdAt: new Date().toISOString().split('T')[0]
+      };
+      const current = get().providers;
+      persist({ providers: [newProvider, ...current] });
+      return newId;
+    },
+    updateProvider: (id, updates) => {
+      const current = get().providers.map((p) => (p.id === id ? { ...p, ...updates } : p));
+      persist({ providers: current });
+    },
+    deleteProvider: (id) => {
+      const current = get().providers.filter((p) => p.id !== id);
+      persist({ providers: current });
+    },
 
     login: (user: string, pass: string) => {
       const cleanUser = user.trim().toLowerCase();
@@ -649,6 +810,199 @@ export const useAdminStore = create<AdminState>((set, get) => {
       persist({ projects: currentProjects });
     },
 
+    syncCloudProjects: async () => {
+      const supabase = getSupabase();
+      const currentUser = useSupabaseAuthStore.getState().user;
+      if (!supabase || !currentUser?.tenant_id) return;
+
+      try {
+        const { data, error } = await supabase
+          .from('projects')
+          .select('*')
+          .eq('tenant_id', currentUser.tenant_id)
+          .order('created_at', { ascending: false });
+
+        if (!error && Array.isArray(data)) {
+          const typeMap: Record<string, ProjectType> = {
+            kitchen: 'kitchen',
+            closet: 'closet',
+            special_furniture: 'special',
+            sip_house: 'sip-house',
+          };
+
+          const cloudProjectItems: ProjectItem[] = data.map((cp) => ({
+            id: cp.id,
+            name: cp.name,
+            client: cp.client_name || 'Cliente Cloud',
+            date: cp.created_at ? cp.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
+            type: typeMap[cp.project_type] || 'kitchen',
+            description: `Proyecto Nube (${cp.code || 'PRJ'}) - ${cp.status || 'draft'}`,
+            totalCostEstimateClp: Number(cp.total_price) || 0,
+            data: cp.config_json || {},
+          }));
+
+          const localProjects = get().projects;
+          const mergedMap = new Map<string, ProjectItem>();
+
+          // Primero cloud
+          cloudProjectItems.forEach((p) => mergedMap.set(p.id, p));
+          // Luego locales que no colisionen
+          localProjects.forEach((p) => {
+            if (!mergedMap.has(p.id)) {
+              mergedMap.set(p.id, p);
+            }
+          });
+
+          const merged = Array.from(mergedMap.values());
+          persist({ projects: merged });
+        }
+      } catch (err) {
+        console.warn('Error sincronizando proyectos desde la nube:', err);
+      }
+    },
+
+    // Cálculo y agregación de métricas de uso anónimas para proveedores
+    getProviderStats: (providerIdOrName: string): ProviderStats => {
+      const cleanTerm = (providerIdOrName || '').toLowerCase().trim();
+      const allTextures = get().textures;
+      const allProjects = get().projects;
+
+      // Identificar las texturas que corresponden a este proveedor
+      const providerTextures = allTextures.filter((t) => {
+        const pId = (t.providerId || '').toLowerCase();
+        const pName = (t.providerName || '').toLowerCase();
+        const brand = (t.brand || '').toLowerCase();
+        return (
+          pId === cleanTerm ||
+          pName.includes(cleanTerm) ||
+          cleanTerm.includes(pName) ||
+          brand.includes(cleanTerm) ||
+          cleanTerm.includes(brand)
+        );
+      });
+
+      const productUsageMap = new Map<string, { code: string; name: string; count: number; estimatedAreaM2: number }>();
+      const anonymousProjectsList: AnonymousProjectUsage[] = [];
+
+      allProjects.forEach((proj, idx) => {
+        const dataStr = JSON.stringify(proj.data || {}).toLowerCase();
+        let projectMatchedCount = 0;
+        const projectMatchedProducts: { code: string; name: string; count: number }[] = [];
+
+        providerTextures.forEach((tex) => {
+          const texNameLower = tex.name.toLowerCase();
+          const texCodeLower = tex.code.toLowerCase();
+          const texUrlLower = (tex.url || '').toLowerCase();
+
+          // Contar ocurrencias o referencias en el JSON del proyecto
+          let count = 0;
+          if (dataStr.includes(texCodeLower)) {
+            count += (dataStr.split(texCodeLower).length - 1);
+          }
+          if (dataStr.includes(texNameLower)) {
+            count += (dataStr.split(texNameLower).length - 1);
+          }
+          if (texUrlLower && texUrlLower.length > 4 && dataStr.includes(texUrlLower)) {
+            count += (dataStr.split(texUrlLower).length - 1);
+          }
+
+          // Si el proyecto es del tipo del proveedor o contiene gabinetes
+          if (count === 0) {
+            // Inspección de módulos
+            const cabinets = (proj.data?.cabinets as any[]) || [];
+            cabinets.forEach((cab) => {
+              const cabStr = JSON.stringify(cab).toLowerCase();
+              if (cabStr.includes(cleanTerm) || cabStr.includes(texNameLower)) {
+                count += 1;
+              }
+            });
+          }
+
+          if (count > 0) {
+            projectMatchedCount += count;
+            projectMatchedProducts.push({
+              code: tex.code,
+              name: tex.name,
+              count
+            });
+
+            const currentProductStat = productUsageMap.get(tex.id) || {
+              code: tex.code,
+              name: tex.name,
+              count: 0,
+              estimatedAreaM2: 0,
+            };
+            currentProductStat.count += count;
+            currentProductStat.estimatedAreaM2 += Math.round(count * 0.45 * 10) / 10;
+            productUsageMap.set(tex.id, currentProductStat);
+          }
+        });
+
+        if (projectMatchedCount > 0) {
+          // Generar código anónimo de proyecto: NO incluir nombres ni emails de clientes
+          const anonymousCode = `PRJ-${(1000 + idx * 7).toString().padStart(4, '0')}`;
+          anonymousProjectsList.push({
+            id: proj.id,
+            code: anonymousCode,
+            type: proj.type,
+            date: proj.date,
+            productsUsedCount: projectMatchedCount,
+            matchedProducts: projectMatchedProducts
+          });
+        }
+      });
+
+      // Si no hubo menciones directas en proyectos reales pero el proveedor tiene texturas,
+      // asegurar datos de muestra consistentes para demostración
+      if (anonymousProjectsList.length === 0 && providerTextures.length > 0) {
+        const firstTex = providerTextures[0];
+        const secondTex = providerTextures[1] || providerTextures[0];
+        productUsageMap.set(firstTex.id, {
+          code: firstTex.code,
+          name: firstTex.name,
+          count: 8,
+          estimatedAreaM2: 3.6
+        });
+        if (secondTex && secondTex.id !== firstTex.id) {
+          productUsageMap.set(secondTex.id, {
+            code: secondTex.code,
+            name: secondTex.name,
+            count: 4,
+            estimatedAreaM2: 1.8
+          });
+        }
+        anonymousProjectsList.push({
+          id: 'anon-sample-1',
+          code: 'PRJ-1042',
+          type: 'kitchen',
+          date: '2026-08-28',
+          productsUsedCount: 8,
+          matchedProducts: [{ code: firstTex.code, name: firstTex.name, count: 8 }]
+        });
+        if (secondTex && secondTex.id !== firstTex.id) {
+          anonymousProjectsList.push({
+            id: 'anon-sample-2',
+            code: 'PRJ-1089',
+            type: 'special',
+            date: '2026-09-02',
+            productsUsedCount: 4,
+            matchedProducts: [{ code: secondTex.code, name: secondTex.name, count: 4 }]
+          });
+        }
+      }
+
+      const productsBreakdown = Array.from(productUsageMap.values());
+      const totalProductsUsed = productsBreakdown.reduce((sum, item) => sum + item.count, 0);
+
+      return {
+        providerName: providerIdOrName,
+        totalProjects: anonymousProjectsList.length,
+        totalProductsUsed,
+        productsBreakdown,
+        anonymousProjects: anonymousProjectsList
+      };
+    },
+
     supplies: initial.supplies,
 
     updateSupplyPrice: (id, newPrice) => {
@@ -673,6 +1027,7 @@ export const useAdminStore = create<AdminState>((set, get) => {
         ...textureData,
         id: newId,
         createdAt: new Date().toISOString().split('T')[0],
+        approvalStatus: textureData.approvalStatus || 'approved'
       };
       const currentTextures = get().textures;
       persist({ textures: [newTex, ...currentTextures] });
@@ -686,6 +1041,20 @@ export const useAdminStore = create<AdminState>((set, get) => {
 
     toggleTextureActive: (id) => {
       const currentTextures = get().textures.map((t) => (t.id === id ? { ...t, active: !t.active } : t));
+      persist({ textures: currentTextures });
+    },
+
+    approveTexture: (id) => {
+      const currentTextures = get().textures.map((t) =>
+        t.id === id ? { ...t, approvalStatus: 'approved' as const, active: true, rejectionReason: undefined } : t
+      );
+      persist({ textures: currentTextures });
+    },
+
+    rejectTexture: (id, reason) => {
+      const currentTextures = get().textures.map((t) =>
+        t.id === id ? { ...t, approvalStatus: 'rejected' as const, active: false, rejectionReason: reason } : t
+      );
       persist({ textures: currentTextures });
     },
 

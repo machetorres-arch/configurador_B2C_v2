@@ -2,6 +2,7 @@ import React, { useMemo, Suspense } from 'react';
 import * as THREE from 'three';
 import { useSipHouseStore } from '../../store/sipHouseStore';
 import { getSipTextures } from '../../utils/sipTextures';
+import { analyzeRoomWalls, RoomVertex } from '../../utils/roomGeometry';
 import { SipIndividualPanel } from './SipIndividualPanel';
 import { SipWallAssembly } from './SipWallAssembly';
 import { SipInteriorWallAssembly } from './SipInteriorWallAssembly';
@@ -111,6 +112,88 @@ function getModular2DPanels(spanX: number, spanZ: number, maxW = 2.44, maxL = 1.
       });
     }
   }
+  return panels;
+}
+
+/**
+ * Modula una losa o cubierta de forma libre / polígono en paneles SIP industriales estándar (1.22m x 2.44m)
+ */
+function generateModularPolygonSipPanels(
+  polyPointsM: { x: number; z: number }[],
+  bounds: { minX: number; maxX: number; minZ: number; maxZ: number; widthM: number; lengthM: number },
+  panelStandardW: number = 1.22,
+  panelStandardL: number = 2.44,
+  extraOverhang: number = 0
+): Grid2DPanel[] {
+  const minX = bounds.minX - extraOverhang;
+  const maxX = bounds.maxX + extraOverhang;
+  const minZ = bounds.minZ - extraOverhang;
+  const maxZ = bounds.maxZ + extraOverhang;
+
+  const totalW = Math.max(0.5, maxX - minX);
+  const totalL = Math.max(0.5, maxZ - minZ);
+
+  const countX = Math.max(1, Math.ceil(totalW / panelStandardW));
+  const countZ = Math.max(1, Math.ceil(totalL / panelStandardL));
+
+  const actualW = totalW / countX;
+  const actualL = totalL / countZ;
+
+  const panels: Grid2DPanel[] = [];
+
+  const isInside = (px: number, pz: number) => {
+    if (polyPointsM.length < 3) return true;
+    let inside = false;
+    for (let i = 0, j = polyPointsM.length - 1; i < polyPointsM.length; j = i++) {
+      const xi = polyPointsM[i].x, zi = polyPointsM[i].z;
+      const xj = polyPointsM[j].x, zj = polyPointsM[j].z;
+      const intersect = ((zi > pz) !== (zj > pz)) && (px < ((xj - xi) * (pz - zi)) / (zj - zi + 1e-9) + xi);
+      if (intersect) inside = !inside;
+    }
+    return inside;
+  };
+
+  for (let xi = 0; xi < countX; xi++) {
+    const xStart = minX + xi * actualW;
+    const xEnd = xStart + actualW;
+    const cx = (xStart + xEnd) / 2;
+
+    for (let zi = 0; zi < countZ; zi++) {
+      const zStart = minZ + zi * actualL;
+      const zEnd = zStart + actualL;
+      const cz = (zStart + zEnd) / 2;
+
+      const testPoints = [
+        [cx, cz],
+        [xStart + 0.05, zStart + 0.05],
+        [xEnd - 0.05, zStart + 0.05],
+        [xStart + 0.05, zEnd - 0.05],
+        [xEnd - 0.05, zEnd - 0.05],
+      ];
+
+      const hits = testPoints.filter(([tx, tz]) => isInside(tx, tz)).length;
+      const keepPanel =
+        polyPointsM.length < 3
+          ? true
+          : extraOverhang === 0
+          ? isInside(cx, cz) && hits >= 3
+          : isInside(cx, cz) || hits >= 2;
+
+      if (keepPanel) {
+        panels.push({
+          xi,
+          zi,
+          cx,
+          cz,
+          w: actualW,
+          l: actualL,
+          countX,
+          countZ,
+        });
+      }
+    }
+  }
+
   return panels;
 }
 
@@ -496,12 +579,15 @@ export function SipHouse3D() {
     () => getRoofModularPanels(roofRafterLength, totalRoofLengthM),
     [roofRafterLength, totalRoofLengthM]
   );
+  const roofPitch = widthM > 0 ? gableRoofHeightM / (widthM / 2) : 0;
+  const wingGableHeightM = isGableRoof ? roofPitch * (wingLengthM / 2) : 0;
+  const wingSlopeAngle = isGableRoof ? Math.atan(roofPitch) : 0;
   const wingHalfSpanM = wingLengthM / 2 + overhangM;
-  const wingSlopeAngle = isGableRoof ? Math.atan2(gableRoofHeightM, wingLengthM / 2) : 0;
   const wingRafterLength = isGableRoof ? wingHalfSpanM / Math.cos(wingSlopeAngle) : wingHalfSpanM;
-  // Techumbre de ala adosada a 2 aguas: desde la fachada de unión (X = widthM/2) hasta el alero exterior
-  const totalWingRoofLengthM = wingWidthM + overhangM;
-  const wingRoofCenterX = widthM / 2 + totalWingRoofLengthM / 2;
+  // Encuentro limahoya: posición X donde la cumbrera del ala empalma exactamente con el faldón de la nave principal
+  const xValleyM = Math.max(0, (widthM - wingLengthM) / 2);
+  const totalWingRoofLengthM = Math.max(0.6, (widthM / 2 + wingWidthM + overhangM) - xValleyM);
+  const wingRoofCenterX = xValleyM + totalWingRoofLengthM / 2;
   const wingRoofPanels2D = useMemo(
     () => (isWingExtended ? getRoofModularPanels(wingRafterLength, totalWingRoofLengthM) : []),
     [isWingExtended, wingRafterLength, totalWingRoofLengthM]
@@ -511,7 +597,7 @@ export function SipHouse3D() {
     [isWingExtended, isSingleShed, wingSingleRafterLength, wingLengthM, overhangM]
   );
   const wingRoofMidY = isGableRoof
-    ? (gableRoofHeightM - overhangM * Math.tan(wingSlopeAngle)) / 2 + (roofThickM / 2) * Math.cos(wingSlopeAngle)
+    ? (wingGableHeightM - overhangM * Math.tan(wingSlopeAngle)) / 2 + (roofThickM / 2) * Math.cos(wingSlopeAngle)
     : roofThickM / 2;
   const wingRoofMidZ = wingHalfSpanM / 2 + (roofThickM / 2) * Math.sin(wingSlopeAngle);
   const wingPanelsCountX = Math.max(1, Math.ceil(totalWingRoofLengthM / 1.22));
@@ -528,6 +614,209 @@ export function SipHouse3D() {
     return shape;
   }, [widthM, gableRoofHeightM, isGableRoof]);
 
+  // --- DETECCIÓN Y PROCESAMIENTO DE POLÍGONO PERSONALIZADO 2D -> 3D ---
+  const isCustomPolygon = Boolean(dim.customVertices && dim.customVertices.length >= 3);
+  const customVertices = dim.customVertices || [];
+
+  // 1. Polígono 2D Three.Shape (centrado y mapeado a X, Z)
+  const polyShape = useMemo(() => {
+    if (!isCustomPolygon || customVertices.length < 3) return null;
+    const shape = new THREE.Shape();
+    // En 2D: x (cm) -> X (m), y (cm) -> -y (m) para que con rotación [-PI/2, 0, 0] quede en (x, z)
+    shape.moveTo(customVertices[0].x / 100, -customVertices[0].y / 100);
+    for (let i = 1; i < customVertices.length; i++) {
+      shape.lineTo(customVertices[i].x / 100, -customVertices[i].y / 100);
+    }
+    shape.closePath();
+    return shape;
+  }, [isCustomPolygon, customVertices]);
+
+  // 2. Bounding box y centroide del polígono
+  const polyBounds = useMemo(() => {
+    if (!isCustomPolygon || customVertices.length < 3) {
+      return { minX: -widthM / 2, maxX: widthM / 2, minZ: -lengthM / 2, maxZ: lengthM / 2, widthM, lengthM, midX: 0, midZ: 0, cx: 0, cz: 0 };
+    }
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minZ = Infinity;
+    let maxZ = -Infinity;
+    let sumX = 0;
+    let sumZ = 0;
+    customVertices.forEach((v) => {
+      const vx = v.x / 100;
+      const vz = v.y / 100;
+      if (vx < minX) minX = vx;
+      if (vx > maxX) maxX = vx;
+      if (vz < minZ) minZ = vz;
+      if (vz > maxZ) maxZ = vz;
+      sumX += vx;
+      sumZ += vz;
+    });
+    return {
+      minX,
+      maxX,
+      minZ,
+      maxZ,
+      widthM: Math.max(0.1, maxX - minX),
+      lengthM: Math.max(0.1, maxZ - minZ),
+      midX: (minX + maxX) / 2,
+      midZ: (minZ + maxZ) / 2,
+      cx: sumX / customVertices.length,
+      cz: sumZ / customVertices.length,
+    };
+  }, [isCustomPolygon, customVertices, widthM, lengthM]);
+
+  // 3. Segmentos de Muro Paramétricos con normales de explosión y pendientes de cubierta
+  const customWallSegments = useMemo(() => {
+    if (!isCustomPolygon || customVertices.length < 3) return [];
+    const rawSegments = analyzeRoomWalls(customVertices);
+    const { minX, widthM: bWidth, cx, cz } = polyBounds;
+    const totalSpanX = bWidth + 2 * overhangM;
+
+    return rawSegments.map((seg, idx) => {
+      const p1 = { x: seg.start.x / 100, z: seg.start.y / 100 };
+      const p2 = { x: seg.end.x / 100, z: seg.end.y / 100 };
+      const dx = p2.x - p1.x;
+      const dz = p2.z - p1.z;
+      const L = Math.hypot(dx, dz);
+      const mx = (p1.x + p2.x) / 2;
+      const mz = (p1.z + p2.z) / 2;
+      const rotY = -Math.atan2(dz, dx);
+
+      // Normal hacia el exterior (alejándose del centroide)
+      let nx = L > 0.0001 ? dz / L : 0;
+      let nz = L > 0.0001 ? -dx / L : 0;
+      const dot = (mx - cx) * nx + (mz - cz) * nz;
+      if (dot < 0) {
+        nx = -nx;
+        nz = -nz;
+      }
+
+      // Criterio técnico constructivo: Todos los muros llegan de tope a cielo (eaveHM)
+      const isShed = roofStyle === 'single_shed';
+      const isGable = roofStyle === 'gable_valley' || roofStyle === undefined;
+      let hasGable = false;
+      let gableH = 0;
+      let startH: number | undefined = undefined;
+      let endH: number | undefined = undefined;
+      let ridgeLocalX: number | undefined = undefined;
+      let slopeDirection: 'left_to_right' | 'right_to_left' = 'left_to_right';
+      let gableRoofStyle: 'gable_valley' | 'single_shed' | 'flat' = 'single_shed';
+
+      if (isShed && gableRoofHeightM > 0.01) {
+        // En techo a 1 agua, la altura de cubierta en coordenada X mundial es:
+        // roofExtraH(x) = ((x - (minX - overhangM)) / totalSpanX) * gableRoofHeightM
+        const h1 = Math.max(0, ((p1.x - (minX - overhangM)) / totalSpanX) * gableRoofHeightM);
+        const h2 = Math.max(0, ((p2.x - (minX - overhangM)) / totalSpanX) * gableRoofHeightM);
+        const maxH = Math.max(h1, h2);
+
+        if (maxH > 0.01) {
+          hasGable = true;
+          startH = h1;
+          endH = h2;
+          gableH = maxH;
+          slopeDirection = h2 >= h1 ? 'left_to_right' : 'right_to_left';
+          gableRoofStyle = 'single_shed';
+        }
+      } else if (isGable && gableRoofHeightM > 0.01) {
+        const halfSpan = bWidth / 2 + overhangM;
+        const getH = (x: number) => {
+          const ratio = halfSpan > 0 ? Math.max(0, 1 - Math.abs(x - polyBounds.midX) / halfSpan) : 0;
+          return ratio * gableRoofHeightM;
+        };
+        const h1 = getH(p1.x);
+        const h2 = getH(p2.x);
+        const minXSeg = Math.min(p1.x, p2.x);
+        const maxXSeg = Math.max(p1.x, p2.x);
+        const crossesRidge = minXSeg < polyBounds.midX - 0.04 && maxXSeg > polyBounds.midX + 0.04;
+        const maxH = Math.max(h1, h2, crossesRidge ? gableRoofHeightM : 0);
+
+        if (maxH > 0.01) {
+          hasGable = true;
+          if (crossesRidge && Math.abs(dx) > 0.05) {
+            gableH = gableRoofHeightM;
+            gableRoofStyle = 'gable_valley';
+            startH = h1;
+            endH = h2;
+            const tRidge = (polyBounds.midX - p1.x) / (p2.x - p1.x);
+            ridgeLocalX = -L / 2 + tRidge * L;
+          } else {
+            startH = h1;
+            endH = h2;
+            gableH = maxH;
+            slopeDirection = h2 >= h1 ? 'left_to_right' : 'right_to_left';
+            gableRoofStyle = 'single_shed';
+          }
+        }
+      }
+
+      const baseH = eaveHM;
+
+      return {
+        index: idx,
+        label: seg.label,
+        p1,
+        p2,
+        dx,
+        dz,
+        L,
+        mx,
+        mz,
+        rotY,
+        nx,
+        nz,
+        baseH,
+        hasGable,
+        gableH,
+        startH,
+        endH,
+        ridgeLocalX,
+        slopeDirection,
+        gableRoofStyle,
+      };
+    });
+  }, [isCustomPolygon, customVertices, polyBounds, eaveHM, gableRoofHeightM, overhangM, roofStyle]);
+
+  // 4. Pilotes de fundación distribuidos sobre el perímetro y vértices
+  const customPiles = useMemo(() => {
+    if (!isCustomPolygon || customWallSegments.length === 0) return [];
+    const piles: { x: number; z: number }[] = [];
+    customWallSegments.forEach((seg) => {
+      piles.push({ x: seg.p1.x, z: seg.p1.z });
+      const steps = Math.max(1, Math.ceil(seg.L / 1.5));
+      for (let k = 1; k < steps; k++) {
+        piles.push({
+          x: seg.p1.x + (seg.dx * k) / steps,
+          z: seg.p1.z + (seg.dz * k) / steps,
+        });
+      }
+    });
+    return piles;
+  }, [isCustomPolygon, customWallSegments]);
+
+  // Paneles SIP Modulares Industriales para Losa y Cubierta de Polígono Personalizado (1.22m x 2.44m)
+  const customPolygonFloorPanels = useMemo(() => {
+    if (!isCustomPolygon || customVertices.length < 3) return [];
+    return generateModularPolygonSipPanels(
+      customVertices.map((v) => ({ x: v.x / 100, z: v.y / 100 })),
+      polyBounds,
+      1.22,
+      2.44,
+      0
+    );
+  }, [isCustomPolygon, customVertices, polyBounds]);
+
+  const customPolygonRoofPanels = useMemo(() => {
+    if (!isCustomPolygon || customVertices.length < 3) return [];
+    return generateModularPolygonSipPanels(
+      customVertices.map((v) => ({ x: v.x / 100, z: v.y / 100 })),
+      polyBounds,
+      1.22,
+      2.44,
+      overhangM
+    );
+  }, [isCustomPolygon, customVertices, polyBounds, overhangM]);
+
   // Ejes estructurales y pilotes según dimensiones paramétricas (NCh 1198 / Manual SIP: max 1.50m entre apoyos)
   const numAxesX = Math.max(2, Math.ceil(widthM / 1.5) + 1);
   const numPilesZ = Math.max(2, Math.ceil(lengthM / 1.5) + 1);
@@ -537,7 +826,59 @@ export function SipHouse3D() {
       {/* 1. FUNDACIONES (PILOTES, RADIER SOBRECIMIENTO O PLATEA ARMADA) */}
       {layerFoundations && (
         <group position={[0, expFoundY, 0]}>
-          {foundationType === 'pilotes_madera' ? (
+          {isCustomPolygon ? (
+            <group>
+              {foundationType === 'pilotes_madera' ? (
+                <group>
+                  {/* Pilotes perimetrales y en vértices */}
+                  {customPiles.map((pile, pIdx) => (
+                    <group key={`c-pile-${pIdx}`} position={[pile.x, -0.45, pile.z]}>
+                      <mesh position={[0, -0.25, 0]} material={materials.concreteG20} castShadow>
+                        <boxGeometry args={[0.45, 0.5, 0.45]} />
+                      </mesh>
+                      <mesh position={[0, 0.25, 0]} material={materials.timberCCA} castShadow>
+                        <boxGeometry args={[0.13, 0.5, 0.13]} />
+                      </mesh>
+                    </group>
+                  ))}
+                  {/* Vigas maestras bajo cada segmento */}
+                  {customWallSegments.map((seg, sIdx) => (
+                    <group key={`c-beam-${sIdx}`} position={[seg.mx, -0.09, seg.mz]} rotation={[0, seg.rotY, 0]}>
+                      <TimberPiece
+                        args={[seg.L, 0.18, 0.1]}
+                        position={[0, 0, 0]}
+                        orientation="horizontal"
+                        materials={materials}
+                        isExploded={isExploded}
+                        explodedProgress={explodedProgress}
+                      />
+                    </group>
+                  ))}
+                </group>
+              ) : (
+                /* Radier / Platea de Hormigón Armado para polígono */
+                <group>
+                  {/* Losa de Hormigón armada extruida según polígono */}
+                  {polyShape && (
+                    <group position={[0, -0.06, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+                      <mesh material={materials.concreteG20} receiveShadow castShadow>
+                        <extrudeGeometry args={[polyShape, { depth: 0.18, bevelEnabled: false }]} />
+                      </mesh>
+                    </group>
+                  )}
+                  {/* Sobrecimiento corrido bajo cada segmento */}
+                  {customWallSegments.map((seg, sIdx) => (
+                    <group key={`c-sc-${sIdx}`} position={[seg.mx, -0.08, seg.mz]} rotation={[0, seg.rotY, 0]}>
+                      <mesh material={materials.concreteG20} receiveShadow castShadow>
+                        <boxGeometry args={[seg.L, 0.28, 0.2]} />
+                      </mesh>
+                    </group>
+                  ))}
+                </group>
+              )}
+            </group>
+          ) : (
+            foundationType === 'pilotes_madera' ? (
             <group>
               {/* Pilotes de Madera Pino CCA y Dados de Hormigón Paramétricos */}
               {Array.from({ length: numAxesX }).map((_, xi) =>
@@ -869,101 +1210,25 @@ export function SipHouse3D() {
                 </group>
               )}
             </group>
-          )}
-        </group>
+          )
+        )}
+      </group>
       )}
 
       {/* 2. LOSA DE PISO SIP 162 mm MODULADA EN PANELES ESTÁNDAR 1.22x2.44m CON MADERAS DE BORDE Y SPLINES */}
       {layerFloorSip && (
         <group position={[0, floorThickM / 2 - (isExploded ? explodedProgress * 0.15 : 0), 0]}>
-          {floorPanels2D.map((fp, fIdx) => {
-            const spreadZ = (fp.zi - (fp.countZ - 1) / 2) * (explodedProgress * 0.35);
-            const spreadX = (fp.xi - (fp.countX - 1) / 2) * (explodedProgress * 0.35);
-            const staggerY = (fIdx % 2 === 0 ? 0.04 : -0.04) * explodedProgress;
-
-            return (
-              <group
-                key={`floor-sip-p-${fp.xi}-${fp.zi}`}
-                position={[fp.cx + spreadX, staggerY, fp.cz + spreadZ]}
-                rotation={[Math.PI / 2, 0, 0]}
-              >
-                <SipIndividualPanel
-                  width={fp.w}
-                  height={fp.l}
-                  totalThickness={floorThickM}
-                  recess={0.035}
-                  osbMaterial={materials.osbSip}
-                  epsMaterial={materials.epsCore}
-                  osbEdgeMaterial={materials.osbEdge}
-                  tag={`Losa-SIP-${fIdx + 1}`}
-                  isExploded={isExploded}
-                />
-              </group>
-            );
-          })}
-
-          {/* Vigas de Remate Perimetral de Losa (Rim Joists en madera estructural <= 3.20m) */}
-          {(layerTimberStructure || isExploded) && (
+          {isCustomPolygon ? (
             <group>
-              <TimberPiece
-                args={[widthM, floorThickM - 0.022, timberThickM]}
-                position={[0, 0, lengthM / 2 - timberThickM / 2]}
-                orientation="horizontal"
-                materials={materials}
-                isExploded={isExploded}
-                explodedProgress={explodedProgress}
-              />
-              <TimberPiece
-                args={[widthM, floorThickM - 0.022, timberThickM]}
-                position={[0, 0, -lengthM / 2 + timberThickM / 2]}
-                orientation="horizontal"
-                materials={materials}
-                isExploded={isExploded}
-                explodedProgress={explodedProgress}
-              />
-              <TimberPiece
-                args={[timberThickM, floorThickM - 0.022, lengthM - 2 * timberThickM]}
-                position={[-widthM / 2 + timberThickM / 2, 0, 0]}
-                orientation="horizontal"
-                materials={materials}
-                isExploded={isExploded}
-                explodedProgress={explodedProgress}
-              />
-              <TimberPiece
-                args={[timberThickM, floorThickM - 0.022, lengthM - 2 * timberThickM]}
-                position={[widthM / 2 - timberThickM / 2, 0, 0]}
-                orientation="horizontal"
-                materials={materials}
-                isExploded={isExploded}
-                explodedProgress={explodedProgress}
-              />
-            </group>
-          )}
-
-          {/* Pavimento Interior (si la capa de revestimiento está activa) */}
-          {layerCladding && (
-            <mesh position={[0, floorThickM / 2 + 0.005, 0]} material={materials.floorInterior} receiveShadow>
-              <boxGeometry args={[widthM - 2 * wallThickM, 0.008, lengthM - 2 * wallThickM]} />
-            </mesh>
-          )}
-
-          {/* Losa de Piso de Ala Lateral en L o Multivolumen */}
-          {isWingExtended && (
-            <group
-              position={[
-                widthM / 2 + wingWidthM / 2,
-                0,
-                lengthM / 2 - wingLengthM / 2,
-              ]}
-            >
-              {wingFloorPanels2D.map((fp, fIdx) => {
+              {/* Paneles SIP individuales modulados para losa de piso según criterios PROSIP */}
+              {customPolygonFloorPanels.map((fp, fIdx) => {
                 const spreadZ = (fp.zi - (fp.countZ - 1) / 2) * (explodedProgress * 0.35);
                 const spreadX = (fp.xi - (fp.countX - 1) / 2) * (explodedProgress * 0.35);
                 const staggerY = (fIdx % 2 === 0 ? 0.04 : -0.04) * explodedProgress;
 
                 return (
                   <group
-                    key={`wing-floor-sip-${fp.xi}-${fp.zi}`}
+                    key={`c-floor-sip-p-${fp.xi}-${fp.zi}`}
                     position={[fp.cx + spreadX, staggerY, fp.cz + spreadZ]}
                     rotation={[Math.PI / 2, 0, 0]}
                   >
@@ -975,35 +1240,109 @@ export function SipHouse3D() {
                       osbMaterial={materials.osbSip}
                       epsMaterial={materials.epsCore}
                       osbEdgeMaterial={materials.osbEdge}
-                      tag={`Losa-Ala-${fIdx + 1}`}
+                      tag={`Losa-SIP-P${fIdx + 1}`}
+                      isExploded={isExploded}
+                    />
+
+                    {/* Spline / Madera de unión estructural entre paneles */}
+                    {layerTimberStructure && fp.xi < fp.countX - 1 && (
+                      <group position={[fp.w / 2, 0, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+                        <TimberPiece
+                          args={[timberThickM, floorThickM - 0.022, fp.l]}
+                          position={[0, 0, 0]}
+                          orientation="horizontal"
+                          materials={materials}
+                          isExploded={isExploded}
+                          explodedProgress={explodedProgress}
+                        />
+                      </group>
+                    )}
+                  </group>
+                );
+              })}
+
+              {/* Rim joists en maderas de borde por cada segmento de muro perimetral */}
+              {(layerTimberStructure || isExploded) &&
+                customWallSegments.map((seg, sIdx) => (
+                  <group key={`c-rim-${sIdx}`} position={[seg.mx, 0, seg.mz]} rotation={[0, seg.rotY, 0]}>
+                    <TimberPiece
+                      args={[seg.L, floorThickM - 0.022, timberThickM]}
+                      position={[0, 0, 0]}
+                      orientation="horizontal"
+                      materials={materials}
+                      isExploded={isExploded}
+                      explodedProgress={explodedProgress}
+                    />
+                  </group>
+                ))}
+
+              {/* Pavimento Interior */}
+              {layerCladding && polyShape && (
+                <group position={[0, floorThickM / 2 + 0.005, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+                  <mesh material={materials.floorInterior} receiveShadow>
+                    <shapeGeometry args={[polyShape]} />
+                  </mesh>
+                </group>
+              )}
+            </group>
+          ) : (
+            <>
+              {floorPanels2D.map((fp, fIdx) => {
+                const spreadZ = (fp.zi - (fp.countZ - 1) / 2) * (explodedProgress * 0.35);
+                const spreadX = (fp.xi - (fp.countX - 1) / 2) * (explodedProgress * 0.35);
+                const staggerY = (fIdx % 2 === 0 ? 0.04 : -0.04) * explodedProgress;
+
+                return (
+                  <group
+                    key={`floor-sip-p-${fp.xi}-${fp.zi}`}
+                    position={[fp.cx + spreadX, staggerY, fp.cz + spreadZ]}
+                    rotation={[Math.PI / 2, 0, 0]}
+                  >
+                    <SipIndividualPanel
+                      width={fp.w}
+                      height={fp.l}
+                      totalThickness={floorThickM}
+                      recess={0.035}
+                      osbMaterial={materials.osbSip}
+                      epsMaterial={materials.epsCore}
+                      osbEdgeMaterial={materials.osbEdge}
+                      tag={`Losa-SIP-${fIdx + 1}`}
                       isExploded={isExploded}
                     />
                   </group>
                 );
               })}
 
-              {/* Vigas de Remate Perimetral de Ala */}
+              {/* Vigas de Remate Perimetral de Losa (Rim Joists en madera estructural <= 3.20m) */}
               {(layerTimberStructure || isExploded) && (
                 <group>
                   <TimberPiece
-                    args={[wingWidthM, floorThickM - 0.022, timberThickM]}
-                    position={[0, 0, wingLengthM / 2 - timberThickM / 2]}
+                    args={[widthM, floorThickM - 0.022, timberThickM]}
+                    position={[0, 0, lengthM / 2 - timberThickM / 2]}
                     orientation="horizontal"
                     materials={materials}
                     isExploded={isExploded}
                     explodedProgress={explodedProgress}
                   />
                   <TimberPiece
-                    args={[wingWidthM, floorThickM - 0.022, timberThickM]}
-                    position={[0, 0, -wingLengthM / 2 + timberThickM / 2]}
+                    args={[widthM, floorThickM - 0.022, timberThickM]}
+                    position={[0, 0, -lengthM / 2 + timberThickM / 2]}
                     orientation="horizontal"
                     materials={materials}
                     isExploded={isExploded}
                     explodedProgress={explodedProgress}
                   />
                   <TimberPiece
-                    args={[timberThickM, floorThickM - 0.022, wingLengthM - 2 * timberThickM]}
-                    position={[wingWidthM / 2 - timberThickM / 2, 0, 0]}
+                    args={[timberThickM, floorThickM - 0.022, lengthM - 2 * timberThickM]}
+                    position={[-widthM / 2 + timberThickM / 2, 0, 0]}
+                    orientation="horizontal"
+                    materials={materials}
+                    isExploded={isExploded}
+                    explodedProgress={explodedProgress}
+                  />
+                  <TimberPiece
+                    args={[timberThickM, floorThickM - 0.022, lengthM - 2 * timberThickM]}
+                    position={[widthM / 2 - timberThickM / 2, 0, 0]}
                     orientation="horizontal"
                     materials={materials}
                     isExploded={isExploded}
@@ -1012,13 +1351,87 @@ export function SipHouse3D() {
                 </group>
               )}
 
-              {/* Pavimento Interior Ala */}
+              {/* Pavimento Interior (si la capa de revestimiento está activa) */}
               {layerCladding && (
                 <mesh position={[0, floorThickM / 2 + 0.005, 0]} material={materials.floorInterior} receiveShadow>
-                  <boxGeometry args={[wingWidthM - wallThickM, 0.008, wingLengthM - 2 * wallThickM]} />
+                  <boxGeometry args={[widthM - 2 * wallThickM, 0.008, lengthM - 2 * wallThickM]} />
                 </mesh>
               )}
-            </group>
+
+              {/* Losa de Piso de Ala Lateral en L o Multivolumen */}
+              {isWingExtended && (
+                <group
+                  position={[
+                    widthM / 2 + wingWidthM / 2,
+                    0,
+                    lengthM / 2 - wingLengthM / 2,
+                  ]}
+                >
+                  {wingFloorPanels2D.map((fp, fIdx) => {
+                    const spreadZ = (fp.zi - (fp.countZ - 1) / 2) * (explodedProgress * 0.35);
+                    const spreadX = (fp.xi - (fp.countX - 1) / 2) * (explodedProgress * 0.35);
+                    const staggerY = (fIdx % 2 === 0 ? 0.04 : -0.04) * explodedProgress;
+
+                    return (
+                      <group
+                        key={`wing-floor-sip-${fp.xi}-${fp.zi}`}
+                        position={[fp.cx + spreadX, staggerY, fp.cz + spreadZ]}
+                        rotation={[Math.PI / 2, 0, 0]}
+                      >
+                        <SipIndividualPanel
+                          width={fp.w}
+                          height={fp.l}
+                          totalThickness={floorThickM}
+                          recess={0.035}
+                          osbMaterial={materials.osbSip}
+                          epsMaterial={materials.epsCore}
+                          osbEdgeMaterial={materials.osbEdge}
+                          tag={`Losa-Ala-${fIdx + 1}`}
+                          isExploded={isExploded}
+                        />
+                      </group>
+                    );
+                  })}
+
+                  {/* Vigas de Remate Perimetral de Ala */}
+                  {(layerTimberStructure || isExploded) && (
+                    <group>
+                      <TimberPiece
+                        args={[wingWidthM, floorThickM - 0.022, timberThickM]}
+                        position={[0, 0, wingLengthM / 2 - timberThickM / 2]}
+                        orientation="horizontal"
+                        materials={materials}
+                        isExploded={isExploded}
+                        explodedProgress={explodedProgress}
+                      />
+                      <TimberPiece
+                        args={[wingWidthM, floorThickM - 0.022, timberThickM]}
+                        position={[0, 0, -wingLengthM / 2 + timberThickM / 2]}
+                        orientation="horizontal"
+                        materials={materials}
+                        isExploded={isExploded}
+                        explodedProgress={explodedProgress}
+                      />
+                      <TimberPiece
+                        args={[timberThickM, floorThickM - 0.022, wingLengthM - 2 * timberThickM]}
+                        position={[wingWidthM / 2 - timberThickM / 2, 0, 0]}
+                        orientation="horizontal"
+                        materials={materials}
+                        isExploded={isExploded}
+                        explodedProgress={explodedProgress}
+                      />
+                    </group>
+                  )}
+
+                  {/* Pavimento Interior Ala */}
+                  {layerCladding && (
+                    <mesh position={[0, floorThickM / 2 + 0.005, 0]} material={materials.floorInterior} receiveShadow>
+                      <boxGeometry args={[wingWidthM - wallThickM, 0.008, wingLengthM - 2 * wallThickM]} />
+                    </mesh>
+                  )}
+                </group>
+              )}
+            </>
           )}
         </group>
       )}
@@ -1026,54 +1439,118 @@ export function SipHouse3D() {
       {/* 3. MUROS PERIMETRALES INTEGRALES CON VANO RECORTADO Y ESTRUCTURA DE MADERA */}
       {(layerWallsSip || layerTimberStructure || layerWindowsDoors) && (
         <group position={[0, floorThickM, 0]}>
-          {/* 3.1 Muro Frontal Principal (+Z) */}
-          <group
-            position={[0, 0, lengthM / 2 - wallThickM / 2 + expOutZ]}
-            rotation={[0, 0, 0]}
-          >
-            <SipWallAssembly
-              wallId="front"
-              wallLength={widthM}
-              wallHeight={eaveHM}
-              wallThickness={wallThickM}
-              openings={openings}
-              layerWallsSip={layerWallsSip}
-              layerTimberStructure={layerTimberStructure}
-              layerCladding={layerCladding}
-              claddingType={exteriorCladding}
-              layerWindowsDoors={layerWindowsDoors}
-              isExploded={isExploded}
-              explodedProgress={explodedProgress}
-              materials={{
-                ...materials,
-                cladding: wallExteriorMat,
-              }}
-            />
+          {isCustomPolygon ? (
+            <group>
+              {customWallSegments.map((seg) => (
+                <group
+                  key={`c-wall-${seg.label}-${seg.index}`}
+                  position={[
+                    seg.mx + seg.nx * expOutX,
+                    0,
+                    seg.mz + seg.nz * expOutZ,
+                  ]}
+                  rotation={[0, seg.rotY, 0]}
+                >
+                  <SipWallAssembly
+                    wallId={seg.label}
+                    wallLength={seg.L}
+                    wallHeight={seg.baseH}
+                    wallThickness={wallThickM}
+                    openings={openings}
+                    layerWallsSip={layerWallsSip}
+                    layerTimberStructure={layerTimberStructure}
+                    layerCladding={layerCladding}
+                    claddingType={exteriorCladding}
+                    layerWindowsDoors={layerWindowsDoors}
+                    isExploded={isExploded}
+                    explodedProgress={explodedProgress}
+                    materials={{
+                      ...materials,
+                      cladding: wallExteriorMat,
+                    }}
+                  />
 
-            {/* Frontón Frontal (2 Aguas o 1 Agua) SIP */}
-            {(isGableRoof || isSingleShed) && (layerWallsSip || layerTimberStructure || isExploded) && (
+                  {/* Frontón triangular o trapezoidal si hay pendiente de techo */}
+                  {seg.hasGable && (layerWallsSip || layerTimberStructure || isExploded) && (
+                    <group
+                      position={[
+                        0,
+                        seg.baseH + (isExploded ? expY * 0.2 : 0),
+                        0,
+                      ]}
+                    >
+                      <SipGableAssembly
+                        width={seg.L}
+                        height={seg.gableH}
+                        startHeight={seg.startH}
+                        endHeight={seg.endH}
+                        ridgeX={seg.ridgeLocalX}
+                        roofStyle={seg.gableRoofStyle}
+                        slopeDirection={seg.slopeDirection}
+                        totalThickness={wallThickM}
+                        timberThick={timberThickM}
+                        materials={materials}
+                        useCladdingOnFront={layerCladding}
+                        claddingMaterial={wallExteriorMat}
+                        layerTimberStructure={layerTimberStructure}
+                        isExploded={isExploded}
+                        explodedProgress={explodedProgress}
+                      />
+                    </group>
+                  )}
+                </group>
+              ))}
+            </group>
+          ) : (
+            <>
+              {/* 3.1 Muro Frontal Principal (+Z) */}
               <group
-                position={[0, eaveHM + (isExploded ? expY * 0.2 : 0), isExploded ? expOutZ * 0.15 : 0]}
+                position={[0, 0, lengthM / 2 - wallThickM / 2 + expOutZ]}
+                rotation={[0, 0, 0]}
               >
-                <SipGableAssembly
-                  width={widthM}
-                  height={isSingleShed && isLShape ? hTransitionSingle : gableRoofHeightM}
-                  startHeight={isSingleShed ? 0 : undefined}
-                  endHeight={isSingleShed ? (isLShape ? hTransitionSingle : gableRoofHeightM) : undefined}
-                  roofStyle={isSingleShed ? 'single_shed' : 'gable_valley'}
-                  slopeDirection="left_to_right"
-                  totalThickness={wallThickM}
-                  timberThick={timberThickM}
-                  materials={materials}
-                  useCladdingOnFront={layerCladding}
-                  claddingMaterial={wallExteriorMat}
+                <SipWallAssembly
+                  wallId="front"
+                  wallLength={widthM}
+                  wallHeight={eaveHM}
+                  wallThickness={wallThickM}
+                  openings={openings}
+                  layerWallsSip={layerWallsSip}
                   layerTimberStructure={layerTimberStructure}
+                  layerCladding={layerCladding}
+                  claddingType={exteriorCladding}
+                  layerWindowsDoors={layerWindowsDoors}
                   isExploded={isExploded}
                   explodedProgress={explodedProgress}
+                  materials={{
+                    ...materials,
+                    cladding: wallExteriorMat,
+                  }}
                 />
+
+                {/* Frontón Frontal (2 Aguas o 1 Agua) SIP */}
+                {(isGableRoof || isSingleShed) && (layerWallsSip || layerTimberStructure || isExploded) && (
+                  <group
+                    position={[0, eaveHM + (isExploded ? expY * 0.2 : 0), isExploded ? expOutZ * 0.15 : 0]}
+                  >
+                    <SipGableAssembly
+                      width={widthM}
+                      height={isSingleShed && isLShape ? hTransitionSingle : gableRoofHeightM}
+                      startHeight={isSingleShed ? 0 : undefined}
+                      endHeight={isSingleShed ? (isLShape ? hTransitionSingle : gableRoofHeightM) : undefined}
+                      roofStyle={isSingleShed ? 'single_shed' : 'gable_valley'}
+                      slopeDirection="left_to_right"
+                      totalThickness={wallThickM}
+                      timberThick={timberThickM}
+                      materials={materials}
+                      useCladdingOnFront={layerCladding}
+                      claddingMaterial={wallExteriorMat}
+                      layerTimberStructure={layerTimberStructure}
+                      isExploded={isExploded}
+                      explodedProgress={explodedProgress}
+                    />
+                  </group>
+                )}
               </group>
-            )}
-          </group>
 
           {/* 3.2 Muro Trasero (-Z) */}
           <group
@@ -1237,26 +1714,6 @@ export function SipHouse3D() {
                     cladding: wallExteriorMat,
                   }}
                 />
-
-                {/* Frontón Exterior de Ala a 2 Aguas (+X) */}
-                {isGableRoof && (layerWallsSip || layerTimberStructure || isExploded) && (
-                  <group
-                    position={[0, eaveHM + (isExploded ? expY * 0.2 : 0), 0]}
-                  >
-                    <SipGableAssembly
-                      width={wingLengthM}
-                      height={gableRoofHeightM}
-                      totalThickness={wallThickM}
-                      timberThick={timberThickM}
-                      materials={materials}
-                      useCladdingOnFront={layerCladding}
-                      claddingMaterial={wallExteriorMat}
-                      layerTimberStructure={layerTimberStructure}
-                      isExploded={isExploded}
-                      explodedProgress={explodedProgress}
-                    />
-                  </group>
-                )}
               </group>
 
               {/* 3.7 Muro Interior Patio de Ala (-Z de ala) */}
@@ -1351,28 +1808,10 @@ export function SipHouse3D() {
                     />
                   </>
                 )}
-
-                {/* Frontón Triangular de Cierre SIP sobre Viga de Encuentro de Ala */}
-                {isGableRoof && (layerWallsSip || layerTimberStructure || isExploded) && (
-                  <group
-                    position={[0, eaveHM + (isExploded ? expY * 0.2 : 0), 0]}
-                  >
-                    <SipGableAssembly
-                      width={wingLengthM}
-                      height={gableRoofHeightM}
-                      totalThickness={wallThickM}
-                      timberThick={timberThickM}
-                      materials={materials}
-                      useCladdingOnFront={false}
-                      claddingMaterial={wallExteriorMat}
-                      layerTimberStructure={layerTimberStructure}
-                      isExploded={isExploded}
-                      explodedProgress={explodedProgress}
-                    />
-                  </group>
-                )}
               </group>
             </group>
+          )}
+          </>
           )}
 
           {/* 3.5 Muros Interiores / Tabiquería SIP */}
@@ -1396,7 +1835,257 @@ export function SipHouse3D() {
       )}
 
       {/* 4. TECHUMBRE EN PANEL SIP Y ESTRUCTURA DE MADERA INTEGRAL */}
-      <group position={[0, floorThickM + eaveHM + timberThickM + expY, 0]}>
+      {layerRoofSip && (
+        <group position={[0, floorThickM + eaveHM + timberThickM + expY, 0]}>
+          {isCustomPolygon ? (
+            <group>
+              {roofStyle === 'single_shed' ? (
+                /* Cubierta a 1 agua sobre el polígono modulada en paneles SIP 1.22x2.44m */
+                (() => {
+                  const slopeAng = Math.atan2(gableRoofHeightM, polyBounds.widthM + 2 * overhangM);
+                  const yGroup = -(polyBounds.minX - overhangM) * Math.tan(slopeAng) + (roofThickM / 2) * Math.cos(slopeAng) + (isExploded ? expY * 0.2 : 0);
+                  return (
+                    <group
+                      position={[0, yGroup, 0]}
+                      rotation={[0, 0, slopeAng]}
+                    >
+                      {customPolygonRoofPanels.map((rp, rIdx) => {
+                        const spreadZ = (rp.zi - (rp.countZ - 1) / 2) * (explodedProgress * 0.35);
+                        const spreadX = (rp.xi - (rp.countX - 1) / 2) * (explodedProgress * 0.35);
+                        const staggerY = (rIdx % 2 === 0 ? 0.04 : -0.04) * explodedProgress;
+
+                        return (
+                          <group
+                            key={`c-roof-single-sip-${rp.xi}-${rp.zi}`}
+                            position={[rp.cx + spreadX, staggerY, rp.cz + spreadZ]}
+                            rotation={[Math.PI / 2, 0, 0]}
+                          >
+                            <SipIndividualPanel
+                              width={rp.w}
+                              height={rp.l}
+                              totalThickness={roofThickM}
+                              recess={0.035}
+                              osbMaterial={materials.osbRoofSip || materials.osbSip}
+                              epsMaterial={materials.epsCore}
+                              osbEdgeMaterial={materials.osbEdge}
+                              tag={`Techo-SIP-1A-${rIdx + 1}`}
+                              isExploded={isExploded}
+                            />
+
+                            {/* Splines de unión longitudinal */}
+                            {layerTimberStructure && rp.xi < rp.countX - 1 && (
+                              <group position={[rp.w / 2, 0, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+                                <TimberPiece
+                                  args={[timberThickM, roofThickM - 0.022, rp.l]}
+                                  position={[0, 0, 0]}
+                                  orientation="horizontal"
+                                  materials={materials}
+                                  isExploded={isExploded}
+                                  explodedProgress={explodedProgress}
+                                />
+                              </group>
+                            )}
+                          </group>
+                        );
+                      })}
+
+                      {/* Revestimiento Exterior de Techo */}
+                      {layerCladding && (
+                        <group position={[0, roofThickM / 2 + 0.006, 0]}>
+                          {customPolygonRoofPanels.map((rp) => (
+                            <mesh key={`c-clad-single-${rp.xi}-${rp.zi}`} position={[rp.cx, 0, rp.cz]} material={roofExteriorMat} castShadow>
+                              <boxGeometry args={[rp.w - 0.005, 0.012, rp.l - 0.005]} />
+                            </mesh>
+                          ))}
+                        </group>
+                      )}
+                    </group>
+                  );
+                })()
+              ) : roofStyle === 'flat' ? (
+                /* Cubierta plana sobre el polígono modulada en paneles SIP */
+                <group position={[0, (isExploded ? expY * 0.2 : 0), 0]}>
+                  {customPolygonRoofPanels.map((rp, rIdx) => {
+                    const spreadZ = (rp.zi - (rp.countZ - 1) / 2) * (explodedProgress * 0.35);
+                    const spreadX = (rp.xi - (rp.countX - 1) / 2) * (explodedProgress * 0.35);
+                    const staggerY = (rIdx % 2 === 0 ? 0.04 : -0.04) * explodedProgress;
+
+                    return (
+                      <group
+                        key={`c-roof-flat-sip-${rp.xi}-${rp.zi}`}
+                        position={[rp.cx + spreadX, staggerY, rp.cz + spreadZ]}
+                        rotation={[Math.PI / 2, 0, 0]}
+                      >
+                        <SipIndividualPanel
+                          width={rp.w}
+                          height={rp.l}
+                          totalThickness={roofThickM}
+                          recess={0.035}
+                          osbMaterial={materials.osbRoofSip || materials.osbSip}
+                          epsMaterial={materials.epsCore}
+                          osbEdgeMaterial={materials.osbEdge}
+                          tag={`Techo-SIP-Plano-${rIdx + 1}`}
+                          isExploded={isExploded}
+                        />
+
+                        {/* Splines de unión */}
+                        {layerTimberStructure && rp.xi < rp.countX - 1 && (
+                          <group position={[rp.w / 2, 0, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+                            <TimberPiece
+                              args={[timberThickM, roofThickM - 0.022, rp.l]}
+                              position={[0, 0, 0]}
+                              orientation="horizontal"
+                              materials={materials}
+                              isExploded={isExploded}
+                              explodedProgress={explodedProgress}
+                            />
+                          </group>
+                        )}
+                      </group>
+                    );
+                  })}
+
+                  {/* Revestimiento Exterior */}
+                  {layerCladding && (
+                    <group position={[0, roofThickM / 2 + 0.006, 0]}>
+                      {customPolygonRoofPanels.map((rp) => (
+                        <mesh key={`c-clad-flat-${rp.xi}-${rp.zi}`} position={[rp.cx, 0, rp.cz]} material={roofExteriorMat} castShadow>
+                          <boxGeometry args={[rp.w - 0.005, 0.012, rp.l - 0.005]} />
+                        </mesh>
+                      ))}
+                    </group>
+                  )}
+                </group>
+              ) : (
+                /* Cubierta a 2 aguas sobre el polígono modulada en paneles SIP */
+                (() => {
+                  const halfSpan = polyBounds.widthM / 2 + overhangM;
+                  const slopeAng = Math.atan2(gableRoofHeightM, polyBounds.widthM / 2);
+                  const rafterLen = halfSpan / Math.cos(slopeAng);
+                  const roofLen = polyBounds.lengthM + 2 * overhangM;
+                  const panelsLeft = getRoofModularPanels(rafterLen, roofLen);
+                  const panelsRight = getRoofModularPanels(rafterLen, roofLen);
+                  const midXPos = halfSpan / 2 + (roofThickM / 2) * Math.sin(slopeAng);
+                  const midYPos = (gableRoofHeightM - overhangM * Math.tan(slopeAng)) / 2 + (roofThickM / 2) * Math.cos(slopeAng);
+
+                  return (
+                    <group position={[polyBounds.midX, 0, polyBounds.midZ]}>
+                      {/* Viga Cumbrera Maestra de Madera */}
+                      {(layerTimberStructure || isExploded) && (
+                        <TimberPiece
+                          args={[timberThickM, 0.185, roofLen]}
+                          position={[0, gableRoofHeightM - 0.0925 + (isExploded ? explodedProgress * 0.15 : 0), 0]}
+                          orientation="horizontal"
+                          materials={materials}
+                          isExploded={isExploded}
+                          explodedProgress={explodedProgress}
+                        />
+                      )}
+
+                      {/* Faldón Izquierdo (-X) */}
+                      <group
+                        position={[-midXPos - (isExploded ? expOutX * 0.45 : 0), midYPos, 0]}
+                        rotation={[0, 0, slopeAng]}
+                      >
+                        {layerRoofSip &&
+                          panelsLeft.map((rp, rIdx) => {
+                            const pOffsetZ = (rp.zi - (rp.countZ - 1) / 2) * (explodedProgress * 0.35);
+                            const pOffsetX = (rp.xi - (rp.countX - 1) / 2) * (explodedProgress * 0.25);
+                            const stagger = (rIdx % 2 === 0 ? 0.04 : -0.02) * explodedProgress;
+
+                            return (
+                              <group
+                                key={`c-roof-g-left-${rp.xi}-${rp.zi}`}
+                                position={[rp.cx + pOffsetX, stagger, rp.cz + pOffsetZ]}
+                                rotation={[-Math.PI / 2, 0, 0]}
+                              >
+                                <SipIndividualPanel
+                                  width={rp.w}
+                                  height={rp.l}
+                                  totalThickness={roofThickM}
+                                  recess={0.035}
+                                  osbMaterial={materials.osbRoofSip || materials.osbSip}
+                                  epsMaterial={materials.epsCore}
+                                  osbEdgeMaterial={materials.osbEdge}
+                                  claddingMaterial={roofExteriorMat}
+                                  useCladdingOnFront={layerCladding}
+                                  tag={`Techo-SIP-G-Izq-${rIdx + 1}`}
+                                  isExploded={isExploded}
+                                />
+                              </group>
+                            );
+                          })}
+
+                        {/* Estructura de Pares / Splines y Tapacán */}
+                        {(layerTimberStructure || isExploded) && (
+                          <group>
+                            <TimberPiece
+                              args={[timberThickM, roofThickM, roofLen]}
+                              position={[-rafterLen / 2 + timberThickM / 2, 0, 0]}
+                              orientation="horizontal"
+                              materials={materials}
+                              isExploded={isExploded}
+                              explodedProgress={explodedProgress}
+                            />
+                          </group>
+                        )}
+                      </group>
+
+                      {/* Faldón Derecho (+X) */}
+                      <group
+                        position={[midXPos + (isExploded ? expOutX * 0.45 : 0), midYPos, 0]}
+                        rotation={[0, 0, -slopeAng]}
+                      >
+                        {layerRoofSip &&
+                          panelsRight.map((rp, rIdx) => {
+                            const pOffsetZ = (rp.zi - (rp.countZ - 1) / 2) * (explodedProgress * 0.35);
+                            const pOffsetX = (rp.xi - (rp.countX - 1) / 2) * (explodedProgress * 0.25);
+                            const stagger = (rIdx % 2 === 0 ? 0.04 : -0.02) * explodedProgress;
+
+                            return (
+                              <group
+                                key={`c-roof-g-right-${rp.xi}-${rp.zi}`}
+                                position={[rp.cx + pOffsetX, stagger, rp.cz + pOffsetZ]}
+                                rotation={[-Math.PI / 2, 0, 0]}
+                              >
+                                <SipIndividualPanel
+                                  width={rp.w}
+                                  height={rp.l}
+                                  totalThickness={roofThickM}
+                                  recess={0.035}
+                                  osbMaterial={materials.osbRoofSip || materials.osbSip}
+                                  epsMaterial={materials.epsCore}
+                                  osbEdgeMaterial={materials.osbEdge}
+                                  claddingMaterial={roofExteriorMat}
+                                  useCladdingOnFront={layerCladding}
+                                  tag={`Techo-SIP-G-Der-${rIdx + 1}`}
+                                  isExploded={isExploded}
+                                />
+                              </group>
+                            );
+                          })}
+
+                        {/* Estructura de Pares / Splines y Tapacán */}
+                        {(layerTimberStructure || isExploded) && (
+                          <group>
+                            <TimberPiece
+                              args={[timberThickM, roofThickM, roofLen]}
+                              position={[rafterLen / 2 - timberThickM / 2, 0, 0]}
+                              orientation="horizontal"
+                              materials={materials}
+                              isExploded={isExploded}
+                              explodedProgress={explodedProgress}
+                            />
+                          </group>
+                        )}
+                      </group>
+                    </group>
+                  );
+                })()
+              )}
+            </group>
+          ) : (
+            <>
         {/* 4.0 ESTRUCTURA DE MADERA DE TECHUMBRE (Viga Cumbrera y Puntales) */}
         {(layerTimberStructure || isExploded) && isGableRoof && (
           <group>
@@ -1642,7 +2331,7 @@ export function SipHouse3D() {
                   {(layerTimberStructure || isExploded) && (
                     <TimberPiece
                       args={[totalWingRoofLengthM, 0.185, timberThickM]}
-                      position={[0, gableRoofHeightM - 0.0925 + (isExploded ? explodedProgress * 0.15 : 0), 0]}
+                      position={[0, wingGableHeightM - 0.0925 + (isExploded ? explodedProgress * 0.15 : 0), 0]}
                       orientation="horizontal"
                       materials={materials}
                       isExploded={isExploded}
@@ -1813,7 +2502,7 @@ export function SipHouse3D() {
                     <mesh
                       position={[
                         0,
-                        gableRoofHeightM + roofThickM / Math.cos(wingSlopeAngle) + 0.02 + (isExploded ? expY * 0.25 : 0),
+                        wingGableHeightM + roofThickM / Math.cos(wingSlopeAngle) + 0.02 + (isExploded ? expY * 0.25 : 0),
                         0,
                       ]}
                       material={materials.zincalumBlack}
@@ -2341,7 +3030,10 @@ export function SipHouse3D() {
             </group>
           )}
           </group>
-      </group>
+          </>
+          )}
+        </group>
+      )}
 
       {/* 5. TRAZADOS MEP */}
       {/* 5.1 Electricidad */}

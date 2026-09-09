@@ -9,21 +9,29 @@ import { generateKitchenPartsList, generateKitchenHardwareList, HARDWARE_SPECS }
 import { optimizeNesting, NestingPart, BoardResult } from '../utils/nesting';
 import { exportKitchenPDF } from '../utils/kitchenPdfGenerator';
 import { exportBlueprintDomToPdf } from '../utils/blueprintPdfExport';
+import { getFriendlyColorName } from '../utils/colorNames';
 
 export function KitchenBlueprint() {
   const state = useStore();
   const kState = useKitchenStore();
   const [isExportingA3, setIsExportingA3] = useState(false);
   const [exportProgress, setExportProgress] = useState<{ current: number; total: number } | null>(null);
+  const [generatedPdfUrl, setGeneratedPdfUrl] = useState<string | null>(null);
 
   if (!state.isPrinting) return null;
 
   const handleExportA3 = async () => {
     setIsExportingA3(true);
+    setGeneratedPdfUrl(null);
     try {
-      await exportBlueprintDomToPdf('planos_fabricacion_cocina_A3.pdf', (curr, tot) => {
+      const url = await exportBlueprintDomToPdf('planos_fabricacion_cocina_A3.pdf', (curr, tot) => {
         setExportProgress({ current: curr, total: tot });
       });
+      if (url) {
+        setGeneratedPdfUrl(url);
+      } else {
+        alert('No se pudieron compilar las láminas A3. Puedes usar el botón "Imprimir" (Guardar como PDF) o la "Ficha Técnica PDF (Despiece / BOM)".');
+      }
     } catch (err) {
       console.error('Error al exportar planos A3 en PDF', err);
       alert('Ocurrió un detalle al generar el archivo. También puedes utilizar el botón "Imprimir / Guardar".');
@@ -96,33 +104,7 @@ export function KitchenBlueprint() {
   });
 
   // Helper para nombre de color
-  const getColorName = (colorVal?: string) => {
-    if (!colorVal) return 'Melamina Blanca 15mm';
-    const hexMap: Record<string, string> = {
-      '#FFFFFF': 'Blanco Frost',
-      '#171717': 'Negro Profundo',
-      '#F8F9FA': 'Bianco Polo',
-      '#202020': 'Nero',
-      '#D4A373': 'Roble Natural',
-      '#A3B18A': 'Verde Salvia',
-      '#588157': 'Verde Bosque',
-      '#3A5A40': 'Verde Olivo',
-      '#E0E1DD': 'Gris Humo',
-      '#778DA9': 'Azul Nórdico',
-      '#415A77': 'Azul Petróleo',
-      '#1B263B': 'Azul Noche',
-      '#2B2D42': 'Grafito Mate',
-      '#8D99AE': 'Gris Plata',
-      '#EDF2F4': 'Blanco Nieve',
-      '#DDA15E': 'Madera Teca',
-      '#BC6C25': 'Nogal Ceniza',
-    };
-    if (colorVal.startsWith('#')) return hexMap[colorVal.toUpperCase()] || `Color ${colorVal}`;
-    const found = state.customTextures?.find((t: any) => t.url === colorVal);
-    if (found) return found.name;
-    const parts = colorVal.split('/');
-    return parts[parts.length - 1].replace('.jpg', '').replace('.png', '').replace('.svg', '').replace(/[-_]/g, ' ');
-  };
+  const getColorName = (colorVal?: string) => getFriendlyColorName(colorVal, state.customTextures);
 
   // Nesting (Optimización de corte agrupada por material / sustrato)
   interface BoardGroupDef {
@@ -236,9 +218,15 @@ export function KitchenBlueprint() {
   };
 
   /**
-   * Renderizado Paramétrico de Perforaciones y Cotas de Eje según Tipo de Ensamble y Pieza
+   * Renderizado Paramétrico Vectorial SVG Unificado por Pieza (Cotas, Tapacantos, Mecanizados)
+   * Escala y centra matemáticamente la pieza y sus cotas dentro del viewBox SVG.
+   * Calibrado para que la pieza y cotas ocupen ~80% del recuadro disponible con tipografías legibles (mínimo 9-11pt).
    */
-  const renderPartMachiningSVG = (part: Part, cab: CabinetType, drawW: number, drawH: number, scale: number) => {
+  const renderUnifiedPartSVG = (part: Part, cab: CabinetType) => {
+    const pw = Math.round(part.width);
+    const pl = Math.round(part.length);
+    const baseDim = Math.max(pw, pl, 200);
+
     const isLateral = part.name.includes("Lateral") && !part.name.includes("Cajón");
     const isPiso = part.name.includes("Piso") || (part.name.includes("Base") && !part.name.includes("Soporte Horno"));
     const isTecho = part.name.includes("Techo");
@@ -247,426 +235,733 @@ export function KitchenBlueprint() {
     const isPuerta = part.name.includes("Puerta");
     const isFrenteCajon = part.name.includes("Frente Cajón");
     const isLateralCajon = part.name.includes("Lateral Cajón");
-    const isTrasera = part.name.includes("Fondo") || part.name.includes("Trasera");
 
     const isMinifix = state.assemblyType === 'minifix';
-    const hasDoors = cab.variant === '1_door' || cab.variant === '2_doors' || cab.variant === '1_door_1_drawer' || cab.variant?.startsWith('wall_1_door') || cab.variant?.startsWith('wall_2_doors') || cab.variant?.startsWith('tall_1_door') || cab.variant?.startsWith('tall_2_doors') || cab.variant === 'corner_blind' || cab.variant?.startsWith('corner_blind');
-    const hasDrawers = cab.variant === '4_drawers' || cab.variant === '2_pot_drawers' || cab.variant === '1_door_1_drawer';
 
-    const elements: React.ReactNode[] = [];
+    // Detección de mecanizados por cara para cálculo de paddings
+    const hasTopMachining = isLateral || isFrenteCajon || ((isPiso || isTecho || isBarraAmarre) && isMinifix);
+    const hasLeftMachining = isPuerta || isLateral || isFrenteCajon || isLateralCajon || ((isPiso || isTecho || isBarraAmarre) && isMinifix);
 
-    // Colores estándar de la Nomenclatura Técnica
-    const COLOR_MAGENTA = "#d946ef"; // Cotas Generales
-    const COLOR_MINIFIX = "#16a34a"; // Perforación Minifix Ø15/Ø8
-    const COLOR_TARUGO = "#dc2626";  // Perforación Tarugo Ø8x30
-    const COLOR_SPAX = "#2563eb";    // Perforación Tornillo Spax Ø5
-    const COLOR_DETALLE = "#2563eb"; // Cotas de Ejes y Detalles
-    const COLOR_CANAL = "#9333ea";   // Canal Durolac
+    const vMax = Math.max(pw, pl, 300);
 
-    // 1. COSTADOS / LATERALES (Desglose de ensambles, ranura durolac, bisagras y correderas)
-    if (isLateral) {
-      const topY = halfThickness * scale;
-      const bottomY = drawH - (halfThickness * scale);
-      const canalX = drawW - (15 * scale); // Canal a 15mm del borde posterior
+    // Tipografía CAD nítida y de alta legibilidad calibrada para pantalla y A3
+    // Se escala matemáticamente para asegurar números grandes (mínimo 13-16px reales en pantalla)
+    const fSizeCotaGeneral = Math.max(48, Math.round(vMax * 0.105));
+    // En piezas angostas (barras 100mm, laterales cajón) se ajusta proporcionalmente para no desbordar
+    const fSizeCotaHoriz = Math.min(fSizeCotaGeneral, Math.max(34, Math.round(pw * 0.38)));
+    const fSizeCotaVert = fSizeCotaGeneral;
+    // Cota técnica de mecanizados (34, 32, 50, 15, 22.5, 9.5)
+    const fSizeSm = Math.max(38, Math.round(vMax * 0.088));
 
-      // Ranura Durolac en lateral
-      elements.push(
-        <g key="canal-durolac">
-          <line x1={canalX} y1={0} x2={canalX} y2={drawH} stroke={COLOR_CANAL} strokeWidth="0.8" strokeDasharray="3,2" />
-          <line x1={canalX - (4 * scale)} y1={0} x2={canalX - (4 * scale)} y2={drawH} stroke={COLOR_CANAL} strokeWidth="0.5" strokeDasharray="3,2" />
-          {/* Cota canal a borde con mayor separación */}
-          <line x1={canalX} y1={drawH + 8} x2={drawW} y2={drawH + 8} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-          <line x1={canalX} y1={drawH} x2={canalX} y2={drawH + 11} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-          <line x1={drawW} y1={drawH} x2={drawW} y2={drawH + 11} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-          <text x={canalX + (15 * scale)/2} y={drawH + 17} fontSize="8" fill={COLOR_DETALLE} textAnchor="middle" fontWeight="bold">15</text>
-        </g>
-      );
+    // Espesores de trazo sólidos y definidos (elimina líneas subpixel borrosas)
+    const strokeThick = Math.max(3.8, Math.round(vMax * 0.012));
+    const strokeMed = Math.max(2.6, Math.round(vMax * 0.008));
+    const strokeThin = Math.max(1.8, Math.round(vMax * 0.0055));
+    const haloWidth = Math.max(4.2, strokeMed * 2.2);
 
-      // Mecanizado de Ensambles en extremos superior e inferior
-      if (isMinifix) {
-        // Ensamble Minifix: Pernos Ø8/Ø5 a 34mm de bordes + Tarugos Ø8 a 66mm (o 32mm de paso)
-        const fxFront = 34 * scale;
-        const fxBack = drawW - (50 * scale);
-        const trgFront = (34 + 32) * scale;
-        const trgBack = drawW - (50 + 32) * scale;
+    const isNarrowPiece = isBarraAmarre || pw < 280;
 
-        // Perforaciones Sup / Inf
-        [topY, bottomY].forEach((yPos, i) => {
-          const isTop = i === 0;
-          const cotaY = isTop ? -14 : drawH + 14;
-          const extY = isTop ? -18 : drawH + 18;
-          const prefix = isTop ? 'top' : 'bot';
+    const isFrontPiece = part.name.includes("Puerta") || part.name.includes("Frente") || part.name.includes("Panel Ciego") || part.name.includes("Tapa");
+    const isThickEdge = isFrontPiece ? (state.edgeBandingThicknessFronts || 2.0) >= 1.0 : (state.edgeBandingThicknessCabinets || 0.5) >= 1.0;
+    const edgeColor = isThickEdge ? "#e11d48" : "#f97316";
 
-          // Pernos Minifix (Verde)
-          elements.push(
-            <circle key={`mf-pin-1-${prefix}`} cx={fxFront} cy={yPos} r={2.4} fill={COLOR_MINIFIX} stroke="#065f46" strokeWidth="0.5" />,
-            <circle key={`mf-pin-2-${prefix}`} cx={fxBack} cy={yPos} r={2.4} fill={COLOR_MINIFIX} stroke="#065f46" strokeWidth="0.5" />,
-            // Tarugos Madera (Rojo)
-            <circle key={`trg-pin-1-${prefix}`} cx={trgFront} cy={yPos} r={2.2} fill={COLOR_TARUGO} stroke="#991b1b" strokeWidth="0.5" />,
-            <circle key={`trg-pin-2-${prefix}`} cx={trgBack} cy={yPos} r={2.2} fill={COLOR_TARUGO} stroke="#991b1b" strokeWidth="0.5" />
-          );
+    const COLOR_MAGENTA = "#c026d3"; // Cotas Generales de Corte (Magenta puro alta saturación)
+    const COLOR_MINIFIX = "#15803d"; // Perforación Minifix Ø15/Ø8
+    const COLOR_TARUGO = "#b91c1c";  // Perforación Tarugo Ø8x30
+    const COLOR_SPAX = "#1d4ed8";    // Perforación Tornillo Spax Ø5
+    const COLOR_DETALLE = "#1e40af"; // Cotas de Ejes y Perforaciones (Azul técnico alto contraste)
+    const COLOR_CANAL = "#7e22ce";   // Canal Durolac
 
-          // Cotas de Eje al borde frontal en NIVELES ESCALONADOS (Nivel 1 = 34mm, Nivel 2 = 32mm)
-          if (isTop) {
-            const level1Y = -12;
-            const level2Y = -24;
-            const ext1Y = -15;
-            const ext2Y = -27;
+    // CÁLCULO RIGUROSO DE PADDINGS PARA EVITAR CORTES DE COTAS Y TEXTOS
+    const padT = hasTopMachining 
+      ? (isMinifix ? Math.max(125, Math.round(vMax * 0.25)) : Math.max(95, Math.round(vMax * 0.20))) 
+      : Math.max(40, Math.round(vMax * 0.08));
 
-            elements.push(
-              <g key="cota-eje-sup-front">
-                {/* NIVEL 1: Cota 34mm (Borde a Minifix) */}
-                <line x1={0} y1={level1Y} x2={fxFront} y2={level1Y} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-                <line x1={0} y1={ext1Y} x2={0} y2={0} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-                <line x1={fxFront} y1={ext1Y} x2={fxFront} y2={yPos} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-                <text x={fxFront / 2} y={level1Y - 2.5} fontSize="7.5" fill={COLOR_DETALLE} textAnchor="middle" fontWeight="bold">34</text>
-                
-                {/* NIVEL 2: Cota 32mm (Entre Minifix y Tarugo) */}
-                <line x1={fxFront} y1={level2Y} x2={trgFront} y2={level2Y} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-                <line x1={fxFront} y1={ext2Y} x2={fxFront} y2={level1Y} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-                <line x1={trgFront} y1={ext2Y} x2={trgFront} y2={yPos} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-                <text x={(fxFront + trgFront) / 2} y={level2Y - 2.5} fontSize="7.5" fill={COLOR_DETALLE} textAnchor="middle" fontWeight="bold">32</text>
-              </g>
-            );
-          }
-        });
-      } else {
-        // Ensamble Spax / Soberbio 5x50: Pasante a 50mm del borde frontal y posterior
-        const fxFront = 50 * scale;
-        const fxBack = drawW - (50 * scale);
+    const padL = hasLeftMachining 
+      ? Math.max(105, Math.round(vMax * 0.22)) 
+      : Math.max(40, Math.round(vMax * 0.08));
 
-        [topY, bottomY].forEach((yPos, i) => {
-          const isTop = i === 0;
-          const cotaY = isTop ? -14 : drawH + 14;
-          const extY = isTop ? -18 : drawH + 18;
-          const prefix = isTop ? 'top' : 'bot';
+    // Espacio inferior (padB): cotas de detalle + Cota General + Altura de texto
+    const distB = isLateral ? Math.max(75, Math.round(vMax * 0.16)) : Math.max(55, Math.round(vMax * 0.12));
+    const cotaBottomY = pl + distB;
+    const padB = (cotaBottomY - pl) + fSizeCotaHoriz * 1.6 + 28;
 
-          elements.push(
-            <circle key={`spax-1-${prefix}`} cx={fxFront} cy={yPos} r={2.4} fill={COLOR_SPAX} stroke="#1e3a8a" strokeWidth="0.5" />,
-            <circle key={`spax-2-${prefix}`} cx={fxBack} cy={yPos} r={2.4} fill={COLOR_SPAX} stroke="#1e3a8a" strokeWidth="0.5" />
-          );
+    // Espacio derecho (padR): Cota General Vertical + Texto Rotado
+    const distR = Math.max(55, Math.round(vMax * 0.12));
+    const cotaRightX = pw + distR;
+    const padR = (cotaRightX - pw) + fSizeCotaVert * 1.6 + 28;
 
-          if (isTop) {
-            elements.push(
-              <g key="cota-spax-sup-front">
-                <line x1={0} y1={cotaY} x2={fxFront} y2={cotaY} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-                <line x1={0} y1={extY} x2={0} y2={0} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-                <line x1={fxFront} y1={extY} x2={fxFront} y2={yPos} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-                <text x={fxFront / 2} y={cotaY - 3} fontSize="8.5" fill={COLOR_DETALLE} textAnchor="middle" fontWeight="bold">50</text>
-              </g>
-            );
-          }
-        });
-      }
-
-      // Perforaciones de Base de Bisagras en Lateral (Eje a 37mm del borde frontal)
-      if (hasDoors) {
-        const hingeEjeX = 37 * scale;
-        const hTopY = 90 * scale;
-        const hBotY = drawH - (90 * scale);
-
-        elements.push(
-          <g key="hinge-bases">
-            {/* Eje 37mm */}
-            <line x1={hingeEjeX} y1={0} x2={hingeEjeX} y2={drawH} stroke="#f97316" strokeWidth="0.7" strokeDasharray="4,2" />
-            
-            {/* Base Sup (2 orificios distanciados a 32mm) */}
-            <circle cx={hingeEjeX} cy={hTopY - (16 * scale)} r={2.0} fill="#ea580c" />
-            <circle cx={hingeEjeX} cy={hTopY + (16 * scale)} r={2.0} fill="#ea580c" />
-            
-            {/* Base Inf */}
-            <circle cx={hingeEjeX} cy={hBotY - (16 * scale)} r={2.0} fill="#ea580c" />
-            <circle cx={hingeEjeX} cy={hBotY + (16 * scale)} r={2.0} fill="#ea580c" />
-
-            {/* Cota Eje 37mm a borde frontal */}
-            <line x1={0} y1={hTopY} x2={hingeEjeX} y2={hTopY} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-            <text x={hingeEjeX / 2} y={hTopY - 3} fontSize="8" fill={COLOR_DETALLE} textAnchor="middle" fontWeight="bold">37</text>
-            
-            {/* Cota Eje 90mm al borde superior con separación */}
-            <line x1={-12} y1={0} x2={-12} y2={hTopY} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-            <line x1={-16} y1={0} x2={0} y2={0} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-            <line x1={-16} y1={hTopY} x2={hingeEjeX} y2={hTopY} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-            <text x={-19} y={hTopY / 2} fontSize="8.5" fill={COLOR_DETALLE} transform={`rotate(-90 -19 ${hTopY / 2})`} textAnchor="middle" fontWeight="bold">90</text>
-          </g>
-        );
-      }
-
-      // Perforaciones de Correderas de Cajón en Lateral (Eje a 37mm frontal, distancias del sistema 32)
-      if (hasDrawers) {
-        const slideEjeX = 37 * scale;
-        const numDrawers = cab.variant === '4_drawers' ? 4 : cab.variant === '2_pot_drawers' ? 2 : 1;
-        const drawerSpacing = (drawH - (thicknessMm * 2 * scale)) / numDrawers;
-
-        elements.push(
-          <g key="slides-holes">
-            <line x1={slideEjeX} y1={0} x2={slideEjeX} y2={drawH} stroke="#16a34a" strokeWidth="0.7" strokeDasharray="4,2" />
-            {Array.from({ length: numDrawers }).map((_, dIdx) => {
-              const slideY = drawH - (thicknessMm * scale) - ((dIdx + 0.3) * drawerSpacing);
-              const hole2X = slideEjeX + (128 * scale);
-              const hole3X = slideEjeX + ((128 + 96) * scale);
-
-              return (
-                <g key={`slide-row-${dIdx}`}>
-                  <circle cx={slideEjeX} cy={slideY} r={2.0} fill={COLOR_MINIFIX} />
-                  <circle cx={hole2X} cy={slideY} r={2.0} fill={COLOR_MINIFIX} />
-                  {hole3X < drawW - (20 * scale) && <circle cx={hole3X} cy={slideY} r={2.0} fill={COLOR_MINIFIX} />}
-                  
-                  {/* Cota de altura desde el fondo/piso al eje de la corredera */}
-                  <line x1={drawW + 8} y1={drawH} x2={drawW + 8} y2={slideY} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-                  <line x1={drawW} y1={slideY} x2={drawW + 12} y2={slideY} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-                  <text x={drawW + 16} y={slideY + 3} fontSize="8" fill={COLOR_DETALLE} fontWeight="bold">
-                    {Math.round(((drawH - slideY) / scale))}
-                  </text>
-                </g>
-              );
-            })}
-          </g>
-        );
-      }
-    }
-
-    // 2. BARRAS / AMARRES (Mecanizado en extremos de listón horizontal)
-    if (isBarraAmarre) {
-      const topY = 9.5 * scale;
-      const bottomY = drawH - (9.5 * scale);
-      const fx1 = 34 * scale;
-      const trg1 = (34 + 32) * scale;
-
-      if (isMinifix) {
-        // En cada extremo (superior e inferior), 1 Minifix (34mm) + 1 Tarugo (66mm) a 9.5mm de la testa
-        [topY, bottomY].forEach((yPos, i) => {
-          const isTop = i === 0;
-          const prefix = isTop ? 'top' : 'bot';
-
-          elements.push(
-            <g key={`mf-barra-${prefix}`}>
-              {/* Minifix Ø15 */}
-              <circle cx={fx1} cy={yPos} r={4.5 * scale} fill="none" stroke={COLOR_MINIFIX} strokeWidth="0.8" strokeDasharray="2,2" />
-              <circle cx={fx1} cy={yPos} r={2.0} fill={COLOR_MINIFIX} />
-              
-              {/* Tarugo Ø8 */}
-              <circle cx={trg1} cy={yPos} r={2.2} fill={COLOR_TARUGO} stroke="#991b1b" strokeWidth="0.5" />
-            </g>
-          );
-        });
-
-        // Cotas para Barra en NIVELES ESCALONADOS (Extremo Superior)
-        elements.push(
-          <g key="cota-barra-top">
-            {/* Cota Eje Y 9.5mm a la testa (Lateral Izquierdo Nivel 1) */}
-            <line x1={-10} y1={0} x2={-10} y2={topY} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-            <line x1={-14} y1={0} x2={0} y2={0} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-            <line x1={-14} y1={topY} x2={fx1} y2={topY} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-            <text x={-16} y={topY / 2 + 3} fontSize="7.5" fill={COLOR_DETALLE} transform={`rotate(-90 -16 ${topY / 2 + 3})`} textAnchor="middle" fontWeight="bold">9.5</text>
-
-            {/* NIVEL 1: Cota X 34mm al borde frontal */}
-            <line x1={0} y1={-12} x2={fx1} y2={-12} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-            <line x1={0} y1={-15} x2={0} y2={0} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-            <line x1={fx1} y1={-15} x2={fx1} y2={topY} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-            <text x={fx1 / 2} y={-14.5} fontSize="7.5" fill={COLOR_DETALLE} textAnchor="middle" fontWeight="bold">34</text>
-
-            {/* NIVEL 2: Cota X 32mm entre Minifix y Tarugo */}
-            <line x1={fx1} y1={-24} x2={trg1} y2={-24} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-            <line x1={fx1} y1={-27} x2={fx1} y2={-12} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-            <line x1={trg1} y1={-27} x2={trg1} y2={topY} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-            <text x={(fx1 + trg1) / 2} y={-26.5} fontSize="7.5" fill={COLOR_DETALLE} textAnchor="middle" fontWeight="bold">32</text>
-          </g>
-        );
-      } else {
-        // Spax en barras
-        const spax1 = 30 * scale;
-        const spax2 = 70 * scale;
-
-        [2 * scale, drawH - (2 * scale)].forEach((yPos, i) => {
-          elements.push(
-            <circle key={`spax-b-1-${i}`} cx={spax1} cy={yPos} r={2.0} fill={COLOR_SPAX} />,
-            <circle key={`spax-b-2-${i}`} cx={spax2} cy={yPos} r={2.0} fill={COLOR_SPAX} />
-          );
-        });
-
-        elements.push(
-          <g key="cota-spax-barra">
-            <line x1={0} y1={-10} x2={spax1} y2={-10} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-            <line x1={0} y1={-14} x2={0} y2={0} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-            <line x1={spax1} y1={-14} x2={spax1} y2={0} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-            <text x={spax1 / 2} y={-13} fontSize="7.5" fill={COLOR_DETALLE} textAnchor="middle" fontWeight="bold">30</text>
-          </g>
-        );
-      }
-    }
-
-    // 3. PISO / TECHO / REPISAS (Mecanizado en extremos de tableros anchos)
-    if (isPiso || isTecho || isRepisa) {
-      const canalX = drawW - (15 * scale); // Canal durolac paralelo al borde posterior
-
-      if (isPiso || isTecho) {
-        elements.push(
-          <g key="canal-horiz">
-            <line x1={canalX} y1={0} x2={canalX} y2={drawH} stroke={COLOR_CANAL} strokeWidth="0.8" strokeDasharray="3,2" />
-            <line x1={canalX - (4 * scale)} y1={0} x2={canalX - (4 * scale)} y2={drawH} stroke={COLOR_CANAL} strokeWidth="0.5" strokeDasharray="3,2" />
-            {/* Cota de 15 mm */}
-            <line x1={canalX} y1={drawH + 8} x2={drawW} y2={drawH + 8} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-            <line x1={canalX} y1={drawH} x2={canalX} y2={drawH + 11} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-            <line x1={drawW} y1={drawH} x2={drawW} y2={drawH + 11} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-            <text x={canalX + (15 * scale)/2} y={drawH + 17} fontSize="8" fill={COLOR_DETALLE} textAnchor="middle" fontWeight="bold">15</text>
-          </g>
-        );
-      }
-
-      if (isMinifix) {
-        const topY = 9.5 * scale;
-        const bottomY = drawH - (9.5 * scale);
-        const fxFront = 34 * scale;
-        const trgFront = (34 + 32) * scale;
-        const fxBack = drawW - (50 * scale);
-        const trgBack = drawW - (50 + 32) * scale;
-
-        // Cajas excéntricas Minifix Ø15mm + Tarugos Ø8mm en ambos extremos (superior e inferior)
-        [topY, bottomY].forEach((yPos, sideIdx) => {
-          const isTop = sideIdx === 0;
-          const prefix = isTop ? 'top' : 'bot';
-
-          elements.push(
-            <g key={`mf-panel-${prefix}`}>
-              {/* Grupo Frontal */}
-              <circle cx={fxFront} cy={yPos} r={4.5 * scale} fill="none" stroke={COLOR_MINIFIX} strokeWidth="0.8" strokeDasharray="2,2" />
-              <circle cx={fxFront} cy={yPos} r={2.0} fill={COLOR_MINIFIX} />
-              <circle cx={trgFront} cy={yPos} r={2.2} fill={COLOR_TARUGO} stroke="#991b1b" strokeWidth="0.5" />
-
-              {/* Grupo Posterior */}
-              <circle cx={fxBack} cy={yPos} r={4.5 * scale} fill="none" stroke={COLOR_MINIFIX} strokeWidth="0.8" strokeDasharray="2,2" />
-              <circle cx={fxBack} cy={yPos} r={2.0} fill={COLOR_MINIFIX} />
-              <circle cx={trgBack} cy={yPos} r={2.2} fill={COLOR_TARUGO} stroke="#991b1b" strokeWidth="0.5" />
-            </g>
-          );
-        });
-
-        // Cotas Técnicas Superiores en NIVELES ESCALONADOS
-        elements.push(
-          <g key="cota-panel-top">
-            {/* Cota Eje Y 9.5mm (Izquierda Nivel 1) */}
-            <line x1={-10} y1={0} x2={-10} y2={topY} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-            <line x1={-14} y1={0} x2={0} y2={0} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-            <line x1={-14} y1={topY} x2={fxFront} y2={topY} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-            <text x={-16} y={topY / 2 + 3} fontSize="7.5" fill={COLOR_DETALLE} transform={`rotate(-90 -16 ${topY / 2 + 3})`} textAnchor="middle" fontWeight="bold">9.5</text>
-
-            {/* GRUPO FRONTAL: */}
-            {/* NIVEL 1: Cota Frontal 34mm */}
-            <line x1={0} y1={-12} x2={fxFront} y2={-12} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-            <line x1={0} y1={-15} x2={0} y2={0} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-            <line x1={fxFront} y1={-15} x2={fxFront} y2={topY} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-            <text x={fxFront / 2} y={-14.5} fontSize="7.5" fill={COLOR_DETALLE} textAnchor="middle" fontWeight="bold">34</text>
-
-            {/* NIVEL 2: Cota 32mm entre Minifix y Tarugo Frontal */}
-            <line x1={fxFront} y1={-24} x2={trgFront} y2={-24} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-            <line x1={fxFront} y1={-27} x2={fxFront} y2={-12} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-            <line x1={trgFront} y1={-27} x2={trgFront} y2={topY} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-            <text x={(fxFront + trgFront) / 2} y={-26.5} fontSize="7.5" fill={COLOR_DETALLE} textAnchor="middle" fontWeight="bold">32</text>
-
-            {/* GRUPO POSTERIOR: */}
-            {/* NIVEL 1: Cota Posterior 50mm */}
-            <line x1={fxBack} y1={-12} x2={drawW} y2={-12} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-            <line x1={drawW} y1={-15} x2={drawW} y2={0} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-            <line x1={fxBack} y1={-15} x2={fxBack} y2={topY} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-            <text x={(fxBack + drawW) / 2} y={-14.5} fontSize="7.5" fill={COLOR_DETALLE} textAnchor="middle" fontWeight="bold">50</text>
-
-            {/* NIVEL 2: Cota 32mm entre Minifix y Tarugo Posterior */}
-            <line x1={trgBack} y1={-24} x2={fxBack} y2={-24} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-            <line x1={trgBack} y1={-27} x2={trgBack} y2={topY} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-            <line x1={fxBack} y1={-27} x2={fxBack} y2={-12} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-            <text x={(trgBack + fxBack) / 2} y={-26.5} fontSize="7.5" fill={COLOR_DETALLE} textAnchor="middle" fontWeight="bold">32</text>
-          </g>
-        );
-      } else {
-        // Ensamble Spax: Perforación guía en canto a 50mm de extremos
-        const fx1 = 50 * scale;
-        const fx2 = drawW - (50 * scale);
-        
-        [2 * scale, drawH - (2 * scale)].forEach((yPos, sideIdx) => {
-          elements.push(
-            <circle key={`spax-guide-1-${sideIdx}`} cx={fx1} cy={yPos} r={2.0} fill={COLOR_SPAX} />,
-            <circle key={`spax-guide-2-${sideIdx}`} cx={fx2} cy={yPos} r={2.0} fill={COLOR_SPAX} />
-          );
-        });
-
-        elements.push(
-          <g key="cota-spax-horiz">
-            <line x1={0} y1={-10} x2={fx1} y2={-10} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-            <line x1={0} y1={-14} x2={0} y2={0} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-            <line x1={fx1} y1={-14} x2={fx1} y2={0} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-            <text x={fx1 / 2} y={-13} fontSize="7.5" fill={COLOR_DETALLE} textAnchor="middle" fontWeight="bold">50</text>
-          </g>
-        );
-      }
-    }
-
-    // 3. PUERTAS (Cazoletas de bisagra Ø35 mm a 22.5 mm del borde lateral y 90 mm de bordes sup/inf)
-    if (isPuerta) {
-      const hingeCupX = 22.5 * scale;
-      const hTopY = 90 * scale;
-      const hBotY = drawH - (90 * scale);
-      const isTall = drawH > 1000 * scale;
-      const hMidY = drawH / 2;
-
-      const hingePositions = [hTopY, hBotY];
-      if (isTall) hingePositions.push(hMidY);
-
-      elements.push(
-        <g key="door-hinges">
-          {/* Eje longitudinal 22.5mm */}
-          <line x1={hingeCupX} y1={0} x2={hingeCupX} y2={drawH} stroke="#ea580c" strokeWidth="0.7" strokeDasharray="4,2" />
-
-          {hingePositions.map((hy, idx) => (
-            <g key={`cup-${idx}`}>
-              {/* Cazoleta Ø35 mm */}
-              <circle cx={hingeCupX} cy={hy} r={17.5 * scale} fill="none" stroke="#ea580c" strokeWidth="0.9" strokeDasharray="2,2" />
-              <circle cx={hingeCupX} cy={hy} r={2.2} fill="#ea580c" />
-              <line x1={hingeCupX - (5 * scale)} y1={hy} x2={hingeCupX + (5 * scale)} y2={hy} stroke="#ea580c" strokeWidth="0.6" />
-              <line x1={hingeCupX} y1={hy - (5 * scale)} x2={hingeCupX} y2={hy + (5 * scale)} stroke="#ea580c" strokeWidth="0.6" />
-              <text x={hingeCupX + (19 * scale)} y={hy + 3} fontSize="8" fill="#ea580c" fontWeight="bold">Ø35</text>
-            </g>
-          ))}
-
-          {/* Cota Eje 22.5 mm al borde lateral más cercano con separación */}
-          <line x1={0} y1={hTopY - (28 * scale)} x2={hingeCupX} y2={hTopY - (28 * scale)} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-          <line x1={0} y1={hTopY - (32 * scale)} x2={0} y2={hTopY} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-          <line x1={hingeCupX} y1={hTopY - (32 * scale)} x2={hingeCupX} y2={hTopY} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-          <text x={hingeCupX / 2} y={hTopY - (30 * scale)} fontSize="8" fill={COLOR_DETALLE} textAnchor="middle" fontWeight="bold">22.5</text>
-
-          {/* Cota Eje 90 mm al borde superior más cercano */}
-          <line x1={-12} y1={0} x2={-12} y2={hTopY} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-          <line x1={-16} y1={0} x2={0} y2={0} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-          <line x1={-16} y1={hTopY} x2={hingeCupX} y2={hTopY} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-          <text x={-19} y={hTopY / 2} fontSize="8.5" fill={COLOR_DETALLE} transform={`rotate(-90 -19 ${hTopY / 2})`} textAnchor="middle" fontWeight="bold">90</text>
-
-          {/* Cota Eje 90 mm al borde inferior */}
-          <line x1={-12} y1={hBotY} x2={-12} y2={drawH} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-          <line x1={-16} y1={drawH} x2={0} y2={drawH} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-          <line x1={-16} y1={hBotY} x2={hingeCupX} y2={hBotY} stroke={COLOR_DETALLE} strokeWidth="0.6" />
-          <text x={-19} y={(hBotY + drawH) / 2} fontSize="8.5" fill={COLOR_DETALLE} transform={`rotate(-90 -19 ${(hBotY + drawH) / 2})`} textAnchor="middle" fontWeight="bold">90</text>
-        </g>
-      );
-    }
-
-    // 4. CAJONES (Laterales y Frentes de Cajón)
-    if (isLateralCajon || isFrenteCajon) {
-      const edgeOffset = 15 * scale;
-      elements.push(
-        <g key="cajon-fix">
-          <line x1={edgeOffset} y1={0} x2={edgeOffset} y2={drawH} stroke={COLOR_SPAX} strokeWidth="0.6" strokeDasharray="2,2" />
-          <line x1={drawW - edgeOffset} y1={0} x2={drawW - edgeOffset} y2={drawH} stroke={COLOR_SPAX} strokeWidth="0.6" strokeDasharray="2,2" />
-          <circle cx={edgeOffset} cy={drawH / 2} r={2.0} fill={isMinifix ? COLOR_MINIFIX : COLOR_SPAX} />
-          <circle cx={drawW - edgeOffset} cy={drawH / 2} r={2.0} fill={isMinifix ? COLOR_MINIFIX : COLOR_SPAX} />
-          <text x={edgeOffset / 2} y={drawH / 2 + 3} fontSize="7.5" fill={COLOR_DETALLE} textAnchor="middle" fontWeight="bold">15</text>
-          <text x={drawW - (edgeOffset / 2)} y={drawH / 2 + 3} fontSize="7.5" fill={COLOR_DETALLE} textAnchor="middle" fontWeight="bold">15</text>
-        </g>
-      );
-    }
+    const viewBoxW = pw + padL + padR;
+    const viewBoxH = pl + padT + padB;
 
     return (
-      <svg className="absolute inset-0 w-full h-full overflow-visible pointer-events-none z-20">
-        {elements}
+      <svg 
+        viewBox={`-${padL} -${padT} ${viewBoxW} ${viewBoxH}`} 
+        className="w-full h-[215px] max-h-[225px] overflow-visible"
+        preserveAspectRatio="xMidYMid meet"
+      >
+        {/* 1. Superficie de la Pieza */}
+        <rect 
+          x={0} 
+          y={0} 
+          width={pw} 
+          height={pl} 
+          fill="#faf8f5" 
+          stroke="#0f172a" 
+          strokeWidth={strokeThick} 
+        />
+
+        {/* 2. Tapacantos en Bordes con Distintivo de Rombo */}
+        {part.edgeW1 && (
+          <g>
+            <line x1={0} y1={0} x2={pw} y2={0} stroke={edgeColor} strokeWidth={strokeThick * 2} />
+            <polygon points={`${pw / 2},-${strokeThick * 2} ${pw / 2 + 5},-${strokeThick * 2 - 5} ${pw / 2},-${strokeThick * 2 - 10} ${pw / 2 - 5},-${strokeThick * 2 - 5}`} fill={edgeColor} stroke="#ffffff" strokeWidth="0.8" />
+          </g>
+        )}
+        {part.edgeW2 && (
+          <g>
+            <line x1={0} y1={pl} x2={pw} y2={pl} stroke={edgeColor} strokeWidth={strokeThick * 2} />
+            <polygon points={`${pw / 2},${pl + strokeThick * 2} ${pw / 2 + 5},${pl + strokeThick * 2 + 5} ${pw / 2},${pl + strokeThick * 2 + 10} ${pw / 2 - 5},${pl + strokeThick * 2 + 5}`} fill={edgeColor} stroke="#ffffff" strokeWidth="0.8" />
+          </g>
+        )}
+        {part.edgeL1 && (
+          <g>
+            <line x1={0} y1={0} x2={0} y2={pl} stroke={edgeColor} strokeWidth={strokeThick * 2} />
+            <polygon points={`-${strokeThick * 2},${pl / 2} -${strokeThick * 2 - 5},${pl / 2 + 5} -${strokeThick * 2 - 10},${pl / 2} -${strokeThick * 2 - 5},${pl / 2 - 5}`} fill={edgeColor} stroke="#ffffff" strokeWidth="0.8" />
+          </g>
+        )}
+        {part.edgeL2 && (
+          <g>
+            <line x1={pw} y1={0} x2={pw} y2={pl} stroke={edgeColor} strokeWidth={strokeThick * 2} />
+            <polygon points={`${pw + strokeThick * 2},${pl / 2} ${pw + strokeThick * 2 + 5},${pl / 2 + 5} ${pw + strokeThick * 2 + 10},${pl / 2} ${pw + strokeThick * 2 + 5},${pl / 2 - 5}`} fill={edgeColor} stroke="#ffffff" strokeWidth="0.8" />
+          </g>
+        )}
+
+        {/* 3. Cota General Horizontal Inferior (Magenta) - Nítida con Halo Blanco Antidesenfoque */}
+        <g>
+          <line x1={0} y1={cotaBottomY} x2={pw} y2={cotaBottomY} stroke={COLOR_MAGENTA} strokeWidth={strokeMed} />
+          <line x1={0} y1={pl + 3} x2={0} y2={cotaBottomY + 6} stroke={COLOR_MAGENTA} strokeWidth={strokeThin} strokeDasharray="4,2" />
+          <line x1={pw} y1={pl + 3} x2={pw} y2={cotaBottomY + 6} stroke={COLOR_MAGENTA} strokeWidth={strokeThin} strokeDasharray="4,2" />
+          <line x1={-5} y1={cotaBottomY + 5} x2={5} y2={cotaBottomY - 5} stroke={COLOR_MAGENTA} strokeWidth={strokeMed * 1.5} />
+          <line x1={pw - 5} y1={cotaBottomY + 5} x2={pw + 5} y2={cotaBottomY - 5} stroke={COLOR_MAGENTA} strokeWidth={strokeMed * 1.5} />
+          <text 
+            x={pw / 2} 
+            y={cotaBottomY + fSizeCotaHoriz * 0.95 + 4} 
+            fontSize={fSizeCotaHoriz} 
+            fill={COLOR_MAGENTA} 
+            stroke="#ffffff"
+            strokeWidth={haloWidth}
+            paintOrder="stroke fill"
+            strokeLinejoin="round"
+            fontWeight="900" 
+            fontFamily="monospace"
+            textAnchor="middle"
+            textRendering="geometricPrecision"
+          >
+            {pw}
+          </text>
+        </g>
+
+        {/* 4. Cota General Vertical Derecha (Magenta) - Nítida con Halo Blanco */}
+        <g>
+          <line x1={cotaRightX} y1={0} x2={cotaRightX} y2={pl} stroke={COLOR_MAGENTA} strokeWidth={strokeMed} />
+          <line x1={pw + 3} y1={0} x2={cotaRightX + 6} y2={0} stroke={COLOR_MAGENTA} strokeWidth={strokeThin} strokeDasharray="4,2" />
+          <line x1={pw + 3} y1={pl} x2={cotaRightX + 6} y2={pl} stroke={COLOR_MAGENTA} strokeWidth={strokeThin} strokeDasharray="4,2" />
+          <line x1={cotaRightX - 5} y1={5} x2={cotaRightX + 5} y2={-5} stroke={COLOR_MAGENTA} strokeWidth={strokeMed * 1.5} />
+          <line x1={cotaRightX - 5} y1={pl + 5} x2={cotaRightX + 5} y2={pl - 5} stroke={COLOR_MAGENTA} strokeWidth={strokeMed * 1.5} />
+          <text 
+            x={cotaRightX + fSizeCotaVert * 0.95 + 4} 
+            y={pl / 2} 
+            fontSize={fSizeCotaVert} 
+            fill={COLOR_MAGENTA} 
+            stroke="#ffffff"
+            strokeWidth={haloWidth}
+            paintOrder="stroke fill"
+            strokeLinejoin="round"
+            fontWeight="900" 
+            fontFamily="monospace"
+            textAnchor="middle"
+            textRendering="geometricPrecision"
+            transform={`rotate(90 ${cotaRightX + fSizeCotaVert * 0.95 + 4} ${pl / 2})`}
+          >
+            {pl}
+          </text>
+        </g>
+
+        {/* 5. Mecanizados y Perforaciones Técnicas con Tipografía Grande y Definida */}
+        {isLateral && (
+          <g key="machining-lateral">
+            {/* Canal Trasera / Durolac */}
+            <line x1={pw - 15} y1={0} x2={pw - 15} y2={pl} stroke={COLOR_CANAL} strokeWidth={strokeMed} strokeDasharray="5,3" />
+            <line x1={pw - 19} y1={0} x2={pw - 19} y2={pl} stroke={COLOR_CANAL} strokeWidth={strokeThin} strokeDasharray="5,3" />
+            {/* Cota Canal Durolac a 15mm */}
+            <line x1={pw - 15} y1={pl + 24} x2={pw} y2={pl + 24} stroke={COLOR_CANAL} strokeWidth={strokeThin} />
+            <line x1={pw - 15} y1={pl + 3} x2={pw - 15} y2={pl + 30} stroke={COLOR_CANAL} strokeWidth={strokeThin} />
+            <line x1={pw} y1={pl + 3} x2={pw} y2={pl + 30} stroke={COLOR_CANAL} strokeWidth={strokeThin} />
+            <text x={pw - 7.5} y={pl + 20} fontSize={fSizeSm} fill={COLOR_CANAL} stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" textAnchor="middle" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision">15</text>
+
+            {isMinifix ? (
+              <g>
+                {/* Perforaciones Minifix + Tarugo */}
+                {[halfThickness, pl - halfThickness].map((yPos, i) => (
+                  <g key={i}>
+                    <circle cx={34} cy={yPos} r={Math.max(6, Math.round(vMax * 0.016))} fill={COLOR_MINIFIX} stroke="#065f46" strokeWidth={strokeThin} />
+                    <circle cx={66} cy={yPos} r={Math.max(4.5, Math.round(vMax * 0.012))} fill={COLOR_TARUGO} stroke="#991b1b" strokeWidth={strokeThin} />
+                    <circle cx={pw - 50} cy={yPos} r={Math.max(6, Math.round(vMax * 0.016))} fill={COLOR_MINIFIX} stroke="#065f46" strokeWidth={strokeThin} />
+                    <circle cx={pw - 82} cy={yPos} r={Math.max(4.5, Math.round(vMax * 0.012))} fill={COLOR_TARUGO} stroke="#991b1b" strokeWidth={strokeThin} />
+                  </g>
+                ))}
+                {/* Cotas Minifix Frontal: Tier 1 a 34mm, Tier 2 a 32mm */}
+                <line x1={0} y1={-padT * 0.36} x2={34} y2={-padT * 0.36} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                <line x1={0} y1={-padT * 0.48} x2={0} y2={0} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                <line x1={34} y1={-padT * 0.48} x2={34} y2={halfThickness} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                <text x={17} y={-padT * 0.36 - 6} fontSize={fSizeSm} fill={COLOR_DETALLE} stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" textAnchor="middle" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision">34</text>
+
+                <line x1={34} y1={-padT * 0.72} x2={66} y2={-padT * 0.72} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                <line x1={34} y1={-padT * 0.84} x2={34} y2={-padT * 0.36} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                <line x1={66} y1={-padT * 0.84} x2={66} y2={halfThickness} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                <text x={50} y={-padT * 0.72 - 6} fontSize={fSizeSm} fill={COLOR_DETALLE} stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" textAnchor="middle" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision">32</text>
+
+                {/* Cotas Minifix Trasero: 50mm y 32mm */}
+                <line x1={pw - 50} y1={-padT * 0.36} x2={pw} y2={-padT * 0.36} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                <line x1={pw - 50} y1={-padT * 0.48} x2={pw - 50} y2={halfThickness} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                <line x1={pw} y1={-padT * 0.48} x2={pw} y2={0} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                <text x={pw - 25} y={-padT * 0.36 - 6} fontSize={fSizeSm} fill={COLOR_DETALLE} stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" textAnchor="middle" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision">50</text>
+
+                {/* Cota vertical de canto: halfThickness desde bordes superior e inferior */}
+                <line x1={-padL * 0.38} y1={0} x2={-padL * 0.38} y2={halfThickness} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                <line x1={-padL * 0.50} y1={0} x2={0} y2={0} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                <line x1={-padL * 0.50} y1={halfThickness} x2={34} y2={halfThickness} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                <text x={-padL * 0.62} y={halfThickness / 2 + fSizeSm * 0.35} fontSize={fSizeSm} fill={COLOR_DETALLE} stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" textAnchor="middle" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision">{halfThickness}</text>
+
+                <line x1={-padL * 0.38} y1={pl - halfThickness} x2={-padL * 0.38} y2={pl} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                <line x1={-padL * 0.50} y1={pl - halfThickness} x2={34} y2={pl - halfThickness} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                <line x1={-padL * 0.50} y1={pl} x2={0} y2={pl} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                <text x={-padL * 0.62} y={pl - halfThickness / 2 + fSizeSm * 0.35} fontSize={fSizeSm} fill={COLOR_DETALLE} stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" textAnchor="middle" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision">{halfThickness}</text>
+              </g>
+            ) : (
+              <g>
+                {/* Perforaciones Tornillo Soberbio Spax Ø5 */}
+                {[halfThickness, pl - halfThickness].map((yPos, i) => (
+                  <g key={i}>
+                    <circle cx={50} cy={yPos} r={Math.max(5, Math.round(vMax * 0.014))} fill={COLOR_SPAX} stroke="#1e40af" strokeWidth={strokeThin} />
+                    <line x1={44} y1={yPos} x2={56} y2={yPos} stroke="#ffffff" strokeWidth={strokeThin} />
+                    <line x1={50} y1={yPos - 6} x2={50} y2={yPos + 6} stroke="#ffffff" strokeWidth={strokeThin} />
+                    <circle cx={pw - 50} cy={yPos} r={Math.max(5, Math.round(vMax * 0.014))} fill={COLOR_SPAX} stroke="#1e40af" strokeWidth={strokeThin} />
+                    <line x1={pw - 56} y1={yPos} x2={pw - 44} y2={yPos} stroke="#ffffff" strokeWidth={strokeThin} />
+                    <line x1={pw - 50} y1={yPos - 6} x2={pw - 50} y2={yPos + 6} stroke="#ffffff" strokeWidth={strokeThin} />
+                  </g>
+                ))}
+                {/* Cotas Horizontales Perforaciones Tornillos a 50mm */}
+                <line x1={0} y1={-padT * 0.38} x2={50} y2={-padT * 0.38} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                <line x1={0} y1={-padT * 0.50} x2={0} y2={0} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                <line x1={50} y1={-padT * 0.50} x2={50} y2={halfThickness} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                <text x={25} y={-padT * 0.38 - 6} fontSize={fSizeSm} fill={COLOR_DETALLE} stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" textAnchor="middle" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision">50</text>
+
+                <line x1={pw - 50} y1={-padT * 0.38} x2={pw} y2={-padT * 0.38} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                <line x1={pw - 50} y1={-padT * 0.50} x2={pw - 50} y2={halfThickness} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                <line x1={pw} y1={-padT * 0.50} x2={pw} y2={0} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                <text x={pw - 25} y={-padT * 0.38 - 6} fontSize={fSizeSm} fill={COLOR_DETALLE} stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" textAnchor="middle" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision">50</text>
+
+                {/* Cotas Verticales Perforaciones Tornillos: halfThickness */}
+                <line x1={-padL * 0.38} y1={0} x2={-padL * 0.38} y2={halfThickness} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                <line x1={-padL * 0.50} y1={0} x2={0} y2={0} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                <line x1={-padL * 0.50} y1={halfThickness} x2={50} y2={halfThickness} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                <text x={-padL * 0.62} y={halfThickness / 2 + fSizeSm * 0.35} fontSize={fSizeSm} fill={COLOR_DETALLE} stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" textAnchor="middle" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision">{halfThickness}</text>
+
+                <line x1={-padL * 0.38} y1={pl - halfThickness} x2={-padL * 0.38} y2={pl} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                <line x1={-padL * 0.50} y1={pl - halfThickness} x2={50} y2={pl - halfThickness} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                <line x1={-padL * 0.50} y1={pl} x2={0} y2={pl} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                <text x={-padL * 0.62} y={pl - halfThickness / 2 + fSizeSm * 0.35} fontSize={fSizeSm} fill={COLOR_DETALLE} stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" textAnchor="middle" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision">{halfThickness}</text>
+
+                <text x={64} y={halfThickness + fSizeSm * 0.38} fontSize={Math.round(fSizeSm * 0.9)} fill={COLOR_SPAX} stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision">Ø5</text>
+              </g>
+            )}
+          </g>
+        )}
+
+        {/* Perforaciones en Piso / Techo / Barra de Amarre / Repisa */}
+        {(isPiso || isTecho || isBarraAmarre || isRepisa) && (
+          <g key="machining-horizontal">
+            {isNarrowPiece ? (
+              // PIEZA ESTRECHA (Barra de amarre pw <= 280mm): 1 solo conjunto de ensamble sin solapamiento
+              isMinifix ? (
+                <>
+                  {[halfThickness, pl - halfThickness].map((yPos, i) => (
+                    <g key={i}>
+                      <circle cx={34} cy={yPos} r={Math.max(6, Math.round(vMax * 0.016))} fill="none" stroke={COLOR_MINIFIX} strokeWidth={strokeMed} strokeDasharray="3,2" />
+                      <circle cx={34} cy={yPos} r={Math.max(3, Math.round(vMax * 0.008))} fill={COLOR_MINIFIX} />
+                      {pw >= 85 && (
+                        <circle cx={66} cy={yPos} r={Math.max(4.5, Math.round(vMax * 0.012))} fill={COLOR_TARUGO} stroke="#991b1b" strokeWidth={strokeThin} />
+                      )}
+                    </g>
+                  ))}
+                  {/* Cota Tier 1: 34mm */}
+                  <line x1={0} y1={-padT * 0.36} x2={34} y2={-padT * 0.36} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                  <line x1={0} y1={-padT * 0.48} x2={0} y2={0} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                  <line x1={34} y1={-padT * 0.48} x2={34} y2={halfThickness} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                  <text x={17} y={-padT * 0.36 - 6} fontSize={fSizeSm} fill={COLOR_DETALLE} stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" textAnchor="middle" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision">34</text>
+
+                  {/* Cota Tier 2: 32mm al tarugo si la pieza tiene al menos 85mm de ancho */}
+                  {pw >= 85 && (
+                    <>
+                      <line x1={34} y1={-padT * 0.72} x2={66} y2={-padT * 0.72} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                      <line x1={34} y1={-padT * 0.84} x2={34} y2={-padT * 0.36} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                      <line x1={66} y1={-padT * 0.84} x2={66} y2={halfThickness} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                      <text x={50} y={-padT * 0.72 - 6} fontSize={fSizeSm} fill={COLOR_DETALLE} stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" textAnchor="middle" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision">32</text>
+                    </>
+                  )}
+
+                  {/* Cota vertical 9.5mm a centro Minifix */}
+                  <line x1={-padL * 0.38} y1={0} x2={-padL * 0.38} y2={halfThickness} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                  <line x1={-padL * 0.50} y1={0} x2={0} y2={0} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                  <line x1={-padL * 0.50} y1={halfThickness} x2={34} y2={halfThickness} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                  <text x={-padL * 0.62} y={halfThickness / 2 + fSizeSm * 0.35} fontSize={fSizeSm} fill={COLOR_DETALLE} stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" textAnchor="middle" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision">{halfThickness}</text>
+                  <text x={isNarrowPiece ? pw - 4 : 46} y={halfThickness + fSizeSm * 0.38} fontSize={Math.round(fSizeSm * 0.85)} fill={COLOR_MINIFIX} stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" fontWeight="900" fontFamily="monospace" textAnchor={isNarrowPiece ? "end" : "start"} textRendering="geometricPrecision">Ø15</text>
+                </>
+              ) : (
+                <>
+                  {/* Spax en barra estrecha: 1 solo tornillo centrado a pw/2 */}
+                  {[halfThickness, pl - halfThickness].map((yPos, i) => (
+                    <g key={i}>
+                      <circle cx={pw / 2} cy={yPos} r={Math.max(4.5, Math.round(vMax * 0.012))} fill={COLOR_SPAX} stroke="#1e40af" strokeWidth={strokeThin} />
+                      <line x1={pw / 2 - 5} y1={yPos} x2={pw / 2 + 5} y2={yPos} stroke="#ffffff" strokeWidth={strokeThin} />
+                      <line x1={pw / 2} y1={yPos - 5} x2={pw / 2} y2={yPos + 5} stroke="#ffffff" strokeWidth={strokeThin} />
+                    </g>
+                  ))}
+                  <line x1={0} y1={-padT * 0.38} x2={pw / 2} y2={-padT * 0.38} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                  <line x1={0} y1={-padT * 0.50} x2={0} y2={0} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                  <line x1={pw / 2} y1={-padT * 0.50} x2={pw / 2} y2={halfThickness} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                  <text x={pw / 4} y={-padT * 0.38 - 6} fontSize={fSizeSm} fill={COLOR_DETALLE} stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" textAnchor="middle" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision">{Math.round(pw / 2)}</text>
+                </>
+              )
+            ) : (
+              // PIEZA ANCHA (Piso, Techo, Repisa pw > 280mm): Ensamble frontal y trasero
+              isMinifix ? (
+                <>
+                  {[halfThickness, pl - halfThickness].map((yPos, i) => (
+                    <g key={i}>
+                      <circle cx={34} cy={yPos} r={Math.max(6, Math.round(vMax * 0.016))} fill="none" stroke={COLOR_MINIFIX} strokeWidth={strokeMed} strokeDasharray="3,2" />
+                      <circle cx={34} cy={yPos} r={Math.max(3, Math.round(vMax * 0.008))} fill={COLOR_MINIFIX} />
+                      <circle cx={66} cy={yPos} r={Math.max(4.5, Math.round(vMax * 0.012))} fill={COLOR_TARUGO} stroke="#991b1b" strokeWidth={strokeThin} />
+                      <circle cx={pw - 50} cy={yPos} r={Math.max(6, Math.round(vMax * 0.016))} fill="none" stroke={COLOR_MINIFIX} strokeWidth={strokeMed} strokeDasharray="3,2" />
+                      <circle cx={pw - 50} cy={yPos} r={Math.max(3, Math.round(vMax * 0.008))} fill={COLOR_MINIFIX} />
+                      <circle cx={pw - 82} cy={yPos} r={Math.max(4.5, Math.round(vMax * 0.012))} fill={COLOR_TARUGO} stroke="#991b1b" strokeWidth={strokeThin} />
+                    </g>
+                  ))}
+                  {/* Frontal: 34 y 32 */}
+                  <line x1={0} y1={-padT * 0.36} x2={34} y2={-padT * 0.36} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                  <line x1={0} y1={-padT * 0.48} x2={0} y2={0} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                  <line x1={34} y1={-padT * 0.48} x2={34} y2={halfThickness} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                  <text x={17} y={-padT * 0.36 - 6} fontSize={fSizeSm} fill={COLOR_DETALLE} stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" textAnchor="middle" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision">34</text>
+
+                  <line x1={34} y1={-padT * 0.72} x2={66} y2={-padT * 0.72} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                  <line x1={34} y1={-padT * 0.84} x2={34} y2={-padT * 0.36} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                  <line x1={66} y1={-padT * 0.84} x2={66} y2={halfThickness} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                  <text x={50} y={-padT * 0.72 - 6} fontSize={fSizeSm} fill={COLOR_DETALLE} stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" textAnchor="middle" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision">32</text>
+
+                  {/* Trasero: 50 y 32 */}
+                  <line x1={pw - 50} y1={-padT * 0.36} x2={pw} y2={-padT * 0.36} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                  <line x1={pw - 50} y1={-padT * 0.48} x2={pw - 50} y2={halfThickness} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                  <line x1={pw} y1={-padT * 0.48} x2={pw} y2={0} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                  <text x={pw - 25} y={-padT * 0.36 - 6} fontSize={fSizeSm} fill={COLOR_DETALLE} stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" textAnchor="middle" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision">50</text>
+
+                  {/* Cota vertical 9.5mm a centro Minifix */}
+                  <line x1={-padL * 0.38} y1={0} x2={-padL * 0.38} y2={halfThickness} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                  <line x1={-padL * 0.50} y1={0} x2={0} y2={0} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                  <line x1={-padL * 0.50} y1={halfThickness} x2={34} y2={halfThickness} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                  <text x={-padL * 0.62} y={halfThickness / 2 + fSizeSm * 0.35} fontSize={fSizeSm} fill={COLOR_DETALLE} stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" textAnchor="middle" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision">{halfThickness}</text>
+                  <text x={46} y={halfThickness + fSizeSm * 0.38} fontSize={Math.round(fSizeSm * 0.9)} fill={COLOR_MINIFIX} stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision">Ø15</text>
+                </>
+              ) : (
+                <>
+                  {[halfThickness, pl - halfThickness].map((yPos, i) => (
+                    <g key={i}>
+                      <circle cx={50} cy={yPos} r={Math.max(4.5, Math.round(vMax * 0.012))} fill={COLOR_SPAX} stroke="#1e40af" strokeWidth={strokeThin} />
+                      <circle cx={pw - 50} cy={yPos} r={Math.max(4.5, Math.round(vMax * 0.012))} fill={COLOR_SPAX} stroke="#1e40af" strokeWidth={strokeThin} />
+                    </g>
+                  ))}
+                  <line x1={0} y1={-padT * 0.38} x2={50} y2={-padT * 0.38} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                  <line x1={0} y1={-padT * 0.50} x2={0} y2={0} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                  <line x1={50} y1={-padT * 0.50} x2={50} y2={halfThickness} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                  <text x={25} y={-padT * 0.38 - 6} fontSize={fSizeSm} fill={COLOR_DETALLE} stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" textAnchor="middle" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision">50</text>
+
+                  <line x1={pw - 50} y1={-padT * 0.38} x2={pw} y2={-padT * 0.38} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                  <line x1={pw - 50} y1={-padT * 0.50} x2={pw - 50} y2={halfThickness} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                  <line x1={pw} y1={-padT * 0.50} x2={pw} y2={0} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                  <text x={pw - 25} y={-padT * 0.38 - 6} fontSize={fSizeSm} fill={COLOR_DETALLE} stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" textAnchor="middle" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision">50</text>
+                </>
+              )
+            )}
+          </g>
+        )}
+
+        {/* Cazoletas de Bisagra en Puertas */}
+        {isPuerta && (
+          <g key="machining-door">
+            {[90, pl - 90].map((hy, idx) => (
+              <g key={idx}>
+                <circle cx={22.5} cy={hy} r={Math.max(16, Math.round(vMax * 0.040))} fill="none" stroke="#ea580c" strokeWidth={strokeMed} strokeDasharray="3,2" />
+                <circle cx={22.5} cy={hy} r={Math.max(3.5, Math.round(vMax * 0.010))} fill="#ea580c" />
+                <line x1={12} y1={hy} x2={33} y2={hy} stroke="#ea580c" strokeWidth={strokeThin} />
+                <line x1={22.5} y1={hy - 10} x2={22.5} y2={hy + 10} stroke="#ea580c" strokeWidth={strokeThin} />
+                <text x={48} y={hy + fSizeSm * 0.35} fontSize={fSizeSm} fill="#ea580c" stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision">Ø35</text>
+              </g>
+            ))}
+            {/* Cota horizontal eje a 22.5mm */}
+            <line x1={0} y1={90 - 32} x2={22.5} y2={90 - 32} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+            <line x1={0} y1={90 - 40} x2={0} y2={90} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+            <line x1={22.5} y1={90 - 40} x2={22.5} y2={90} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+            <text x={11.25} y={90 - 35} fontSize={fSizeSm} fill={COLOR_DETALLE} stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" textAnchor="middle" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision">22.5</text>
+
+            {/* Cotas verticales eje a 90mm de extremos */}
+            <line x1={-padL * 0.40} y1={0} x2={-padL * 0.40} y2={90} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+            <line x1={-padL * 0.52} y1={0} x2={0} y2={0} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+            <line x1={-padL * 0.52} y1={90} x2={22.5} y2={90} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+            <text x={-padL * 0.65} y={45} fontSize={fSizeSm} fill={COLOR_DETALLE} stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" textAnchor="middle" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision" transform={`rotate(-90 -${padL * 0.65} 45)`}>90</text>
+
+            <line x1={-padL * 0.40} y1={pl - 90} x2={-padL * 0.40} y2={pl} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+            <line x1={-padL * 0.52} y1={pl - 90} x2={22.5} y2={pl - 90} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+            <line x1={-padL * 0.52} y1={pl} x2={0} y2={pl} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+            <text x={-padL * 0.65} y={pl - 45} fontSize={fSizeSm} fill={COLOR_DETALLE} stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" textAnchor="middle" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision" transform={`rotate(-90 -${padL * 0.65} ${pl - 45})`}>90</text>
+          </g>
+        )}
+
+        {/* Frentes de Cajón: Perforaciones de fijación y tirador */}
+        {isFrenteCajon && (
+          <g key="machining-frente-cajon">
+            {/* Ejes de fijación caja cajón a 15mm */}
+            <line x1={15} y1={0} x2={15} y2={pl} stroke={COLOR_DETALLE} strokeWidth={strokeThin} strokeDasharray="4,2" />
+            <line x1={pw - 15} y1={0} x2={pw - 15} y2={pl} stroke={COLOR_DETALLE} strokeWidth={strokeThin} strokeDasharray="4,2" />
+            <circle cx={15} cy={35} r={Math.max(4, Math.round(vMax * 0.012))} fill={COLOR_SPAX} />
+            <circle cx={15} cy={pl - 35} r={Math.max(4, Math.round(vMax * 0.012))} fill={COLOR_SPAX} />
+            <circle cx={pw - 15} cy={35} r={Math.max(4, Math.round(vMax * 0.012))} fill={COLOR_SPAX} />
+            <circle cx={pw - 15} cy={pl - 35} r={Math.max(4, Math.round(vMax * 0.012))} fill={COLOR_SPAX} />
+
+            {/* Cota horizontal 15mm superior izquierda */}
+            <line x1={0} y1={-padT * 0.38} x2={15} y2={-padT * 0.38} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+            <line x1={0} y1={-padT * 0.50} x2={0} y2={0} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+            <line x1={15} y1={-padT * 0.50} x2={15} y2={35} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+            <text x={7.5} y={-padT * 0.38 - 6} fontSize={fSizeSm} fill={COLOR_DETALLE} stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" textAnchor="middle" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision">15</text>
+
+            {/* Cota horizontal 15mm superior derecha */}
+            <line x1={pw - 15} y1={-padT * 0.38} x2={pw} y2={-padT * 0.38} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+            <line x1={pw - 15} y1={-padT * 0.50} x2={pw - 15} y2={35} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+            <line x1={pw} y1={-padT * 0.50} x2={pw} y2={0} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+            <text x={pw - 7.5} y={-padT * 0.38 - 6} fontSize={fSizeSm} fill={COLOR_DETALLE} stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" textAnchor="middle" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision">15</text>
+
+            {/* Cota vertical 35mm a tornillo */}
+            <line x1={-padL * 0.38} y1={0} x2={-padL * 0.38} y2={35} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+            <line x1={-padL * 0.50} y1={0} x2={0} y2={0} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+            <line x1={-padL * 0.50} y1={35} x2={15} y2={35} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+            <text x={-padL * 0.62} y={18 + fSizeSm * 0.35} fontSize={fSizeSm} fill={COLOR_DETALLE} stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" textAnchor="middle" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision">35</text>
+
+            {/* Perforaciones de Tirador Centrado (Entreeje 128mm) */}
+            {pl >= 260 && (
+              <g>
+                <circle cx={pw / 2} cy={pl / 2 - 64} r={Math.max(4.5, Math.round(vMax * 0.012))} fill="#475569" stroke="#0f172a" strokeWidth={strokeThin} />
+                <circle cx={pw / 2} cy={pl / 2 + 64} r={Math.max(4.5, Math.round(vMax * 0.012))} fill="#475569" stroke="#0f172a" strokeWidth={strokeThin} />
+                <line x1={pw / 2} y1={pl / 2 - 64} x2={pw / 2} y2={pl / 2 + 64} stroke="#64748b" strokeWidth={strokeThin} strokeDasharray="4,2" />
+                <text x={pw / 2} y={pl / 2 + fSizeSm * 0.35} fontSize={Math.round(fSizeSm * 0.85)} fill="#475569" stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" textAnchor="middle" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision">128</text>
+              </g>
+            )}
+          </g>
+        )}
+
+        {/* Laterales de Cajón: Perforaciones para corredera y ensamble */}
+        {isLateralCajon && (
+          <g key="machining-lateral-cajon">
+            {/* Eje corredera a 25mm del fondo */}
+            <line x1={0} y1={pl - 25} x2={pw} y2={pl - 25} stroke={COLOR_DETALLE} strokeWidth={strokeThin} strokeDasharray="4,2" />
+            <circle cx={37} cy={pl - 25} r={Math.max(4, Math.round(vMax * 0.012))} fill={COLOR_SPAX} />
+            <circle cx={pw - 37} cy={pl - 25} r={Math.max(4, Math.round(vMax * 0.012))} fill={COLOR_SPAX} />
+
+            {/* Cota horizontal 37mm */}
+            <line x1={0} y1={-padT * 0.38} x2={37} y2={-padT * 0.38} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+            <line x1={0} y1={-padT * 0.50} x2={0} y2={0} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+            <line x1={37} y1={-padT * 0.50} x2={37} y2={pl - 25} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+            <text x={18.5} y={-padT * 0.38 - 6} fontSize={fSizeSm} fill={COLOR_DETALLE} stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" textAnchor="middle" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision">37</text>
+
+            {/* Cota vertical 25mm eje corredera */}
+            <line x1={-padL * 0.38} y1={pl - 25} x2={-padL * 0.38} y2={pl} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+            <line x1={-padL * 0.50} y1={pl - 25} x2={37} y2={pl - 25} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+            <line x1={-padL * 0.50} y1={pl} x2={0} y2={pl} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+            <text x={-padL * 0.62} y={pl - 12 + fSizeSm * 0.35} fontSize={fSizeSm} fill={COLOR_DETALLE} stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" textAnchor="middle" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision">25</text>
+            <text x={pw / 2} y={pl - 32} fontSize={Math.round(fSizeSm * 0.85)} fill={COLOR_DETALLE} stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" textAnchor="middle" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision">Eje Corredera Ø4</text>
+          </g>
+        )}
       </svg>
+    );
+  };
+
+  /**
+   * Renderizado Paramétrico de las 3 Vistas Ortogonales del Módulo (Planta, Frontal, Lateral)
+   * 100% Vectorial SVG con cotas magenta arquitectónicas y líneas de extensión sin cortes.
+   */
+  const renderCabinetOrthographicViews = (cab: CabinetType) => {
+    const cabW = Math.round(cab.width * 10);
+    const cabD = Math.round(cab.depth * 10);
+    const cabH = Math.round(cab.height * 10);
+
+    const legsH = cab.type === 'base' ? 150 : 0;
+    const bodyH = cabH - legsH;
+
+    // VISTA DE PLANTA: cotas en TOP (Ancho) y RIGHT (Profundidad)
+    const baseDimP = Math.max(cabW, cabD, 400);
+    const padLeftP = Math.max(25, Math.round(cabW * 0.05));
+    const padTopP = Math.max(75, Math.round(cabD * 0.16));
+    const padRightP = Math.max(130, Math.round(cabW * 0.22));
+    const padBottomP = Math.max(25, Math.round(cabD * 0.05));
+    const fSizeP = Math.max(28, Math.round(baseDimP * 0.075));
+    const strokeP = Math.max(1.5, baseDimP * 0.0035);
+
+    // VISTA FRONTAL: cotas en TOP (Ancho) y LEFT (Alto)
+    const baseDimF = Math.max(cabW, cabH, 400);
+    const padLeftF = Math.max(150, Math.round(cabH * 0.22));
+    const padTopF = Math.max(75, Math.round(cabW * 0.14));
+    const padRightF = Math.max(25, Math.round(cabW * 0.04));
+    const padBottomF = Math.max(30, Math.round(cabH * 0.05));
+    const fSizeF = Math.max(30, Math.round(baseDimF * 0.075));
+    const strokeF = Math.max(1.5, baseDimF * 0.0035);
+
+    // VISTA LATERAL: cotas en TOP (Profundidad) y RIGHT (Alto) - Evita colisión en zona media
+    const baseDimL = Math.max(cabD, cabH, 400);
+    const padLeftL = Math.max(25, Math.round(cabD * 0.04));
+    const padTopL = Math.max(75, Math.round(cabD * 0.14));
+    const padRightL = Math.max(150, Math.round(cabH * 0.22));
+    const padBottomL = Math.max(30, Math.round(cabH * 0.05));
+    const fSizeL = Math.max(30, Math.round(baseDimL * 0.075));
+    const strokeL = Math.max(1.5, baseDimL * 0.0035);
+
+    const COLOR_MAGENTA = "#d946ef";
+
+    return (
+      <div className="flex flex-col justify-between items-center w-full h-full py-2 gap-4">
+        {/* VISTA DE PLANTA */}
+        <div className="flex flex-col items-center w-full">
+          <div className="text-xs font-black tracking-widest text-slate-800 mb-1.5 uppercase">
+            VISTA DE PLANTA
+          </div>
+          <svg 
+            viewBox={`-${padLeftP} -${padTopP} ${cabW + padLeftP + padRightP} ${cabD + padTopP + padBottomP}`}
+            className="w-full h-[240px] max-h-[260px] overflow-visible"
+            preserveAspectRatio="xMidYMid meet"
+          >
+            <rect x={0} y={0} width={cabW} height={cabD} fill="#f8fafc" stroke="#0f172a" strokeWidth={strokeP * 1.5} />
+            <line x1={0} y1={0} x2={cabW} y2={cabD} stroke="#94a3b8" strokeWidth={strokeP * 0.6} strokeDasharray="4,4" />
+            <line x1={0} y1={cabD} x2={cabW} y2={0} stroke="#94a3b8" strokeWidth={strokeP * 0.6} strokeDasharray="4,4" />
+            
+            {/* Cota Ancho Superior */}
+            <line x1={0} y1={-padTopP * 0.42} x2={cabW} y2={-padTopP * 0.42} stroke={COLOR_MAGENTA} strokeWidth={strokeP} />
+            <line x1={0} y1={-padTopP * 0.52} x2={0} y2={0} stroke={COLOR_MAGENTA} strokeWidth={strokeP * 0.8} />
+            <line x1={cabW} y1={-padTopP * 0.52} x2={cabW} y2={0} stroke={COLOR_MAGENTA} strokeWidth={strokeP * 0.8} />
+            <line x1={-5} y1={-padTopP * 0.42 + 5} x2={5} y2={-padTopP * 0.42 - 5} stroke={COLOR_MAGENTA} strokeWidth={strokeP * 1.6} />
+            <line x1={cabW - 5} y1={-padTopP * 0.42 + 5} x2={cabW + 5} y2={-padTopP * 0.42 - 5} stroke={COLOR_MAGENTA} strokeWidth={strokeP * 1.6} />
+            <text 
+              x={cabW / 2} 
+              y={-padTopP * 0.42 - 8} 
+              fontSize={fSizeP} 
+              fill={COLOR_MAGENTA} 
+              stroke="#ffffff"
+              strokeWidth={strokeP * 2}
+              paintOrder="stroke fill"
+              strokeLinejoin="round"
+              fontWeight="900" 
+              fontFamily="monospace" 
+              textAnchor="middle"
+              textRendering="geometricPrecision"
+            >
+              {cabW} mm
+            </text>
+            
+            {/* Cota Profundidad Derecha */}
+            <line x1={cabW + padRightP * 0.42} y1={0} x2={cabW + padRightP * 0.42} y2={cabD} stroke={COLOR_MAGENTA} strokeWidth={strokeP} />
+            <line x1={cabW} y1={0} x2={cabW + padRightP * 0.52} y2={0} stroke={COLOR_MAGENTA} strokeWidth={strokeP * 0.8} />
+            <line x1={cabW} y1={cabD} x2={cabW + padRightP * 0.52} y2={cabD} stroke={COLOR_MAGENTA} strokeWidth={strokeP * 0.8} />
+            <line x1={cabW + padRightP * 0.42 - 5} y1={5} x2={cabW + padRightP * 0.42 + 5} y2={-5} stroke={COLOR_MAGENTA} strokeWidth={strokeP * 1.6} />
+            <line x1={cabW + padRightP * 0.42 - 5} y1={cabD + 5} x2={cabW + padRightP * 0.42 + 5} y2={cabD - 5} stroke={COLOR_MAGENTA} strokeWidth={strokeP * 1.6} />
+            <text 
+              x={cabW + padRightP * 0.42 + fSizeP * 0.65 + 4} 
+              y={cabD / 2} 
+              fontSize={fSizeP} 
+              fill={COLOR_MAGENTA} 
+              stroke="#ffffff"
+              strokeWidth={strokeP * 2}
+              paintOrder="stroke fill"
+              strokeLinejoin="round"
+              fontWeight="900" 
+              fontFamily="monospace" 
+              textAnchor="middle" 
+              textRendering="geometricPrecision"
+              transform={`rotate(90 ${cabW + padRightP * 0.42 + fSizeP * 0.65 + 4} ${cabD / 2})`}
+            >
+              {cabD}
+            </text>
+          </svg>
+        </div>
+
+        {/* VISTAS ELEVACIÓN: FRONTAL Y LATERAL */}
+        <div className="flex gap-4 w-full justify-center items-end">
+          {/* VISTA FRONTAL */}
+          <div className="flex-1 flex flex-col items-center">
+            <div className="text-xs font-black tracking-widest text-slate-800 mb-1.5 uppercase">
+              VISTA FRONTAL
+            </div>
+            <svg 
+              viewBox={`-${padLeftF} -${padTopF} ${cabW + padLeftF + padRightF} ${cabH + padTopF + padBottomF}`}
+              className="w-full h-[300px] max-h-[320px] overflow-visible"
+              preserveAspectRatio="xMidYMid meet"
+            >
+              <rect x={0} y={0} width={cabW} height={bodyH} fill="#ffffff" stroke="#0f172a" strokeWidth={strokeF * 1.5} />
+              {legsH > 0 && (
+                <g>
+                  <rect x={15} y={bodyH} width={cabW - 30} height={legsH} fill="#e2e8f0" stroke="#475569" strokeWidth={strokeF} />
+                  <rect x={35} y={bodyH} width={25} height={legsH} fill="#94a3b8" />
+                  <rect x={cabW - 60} y={bodyH} width={25} height={legsH} fill="#94a3b8" />
+                  <text x={cabW / 2} y={bodyH + legsH * 0.65} fontSize={Math.max(20, fSizeF * 0.6)} fill="#475569" fontWeight="bold" textAnchor="middle">ZÓCALO H=150</text>
+                </g>
+              )}
+              {cab.variant === '4_drawers' ? (
+                Array.from({ length: 4 }).map((_, di) => {
+                  const dy = (bodyH / 4) * di;
+                  const dh = bodyH / 4;
+                  return (
+                    <g key={di}>
+                      <line x1={0} y1={dy} x2={cabW} y2={dy} stroke="#0f172a" strokeWidth={strokeF * 0.8} />
+                      <text x={cabW / 2} y={dy + dh * 0.6} fontSize={Math.max(18, fSizeF * 0.55)} fill="#64748b" textAnchor="middle" fontFamily="monospace">Cajón {di + 1}</text>
+                    </g>
+                  );
+                })
+              ) : cab.variant === '2_doors' ? (
+                <g>
+                  <line x1={cabW / 2} y1={0} x2={cabW / 2} y2={bodyH} stroke="#0f172a" strokeWidth={strokeF} />
+                  <path d={`M 0 ${bodyH / 2} L ${cabW / 2} 0 L ${cabW / 2} ${bodyH} Z`} fill="none" stroke="#c026d3" strokeWidth={strokeF * 0.8} strokeDasharray="4,4" />
+                  <path d={`M ${cabW} ${bodyH / 2} L ${cabW / 2} 0 L ${cabW / 2} ${bodyH} Z`} fill="none" stroke="#c026d3" strokeWidth={strokeF * 0.8} strokeDasharray="4,4" />
+                </g>
+              ) : (
+                <path d={`M 0 ${bodyH / 2} L ${cabW} 0 L ${cabW} ${bodyH} Z`} fill="none" stroke="#c026d3" strokeWidth={strokeF * 0.8} strokeDasharray="4,4" />
+              )}
+
+              {/* Cota Ancho Superior */}
+              <line x1={0} y1={-padTopF * 0.42} x2={cabW} y2={-padTopF * 0.42} stroke={COLOR_MAGENTA} strokeWidth={strokeF} />
+              <line x1={0} y1={-padTopF * 0.52} x2={0} y2={0} stroke={COLOR_MAGENTA} strokeWidth={strokeF * 0.8} />
+              <line x1={cabW} y1={-padTopF * 0.52} x2={cabW} y2={0} stroke={COLOR_MAGENTA} strokeWidth={strokeF * 0.8} />
+              <line x1={-5} y1={-padTopF * 0.42 + 5} x2={5} y2={-padTopF * 0.42 - 5} stroke={COLOR_MAGENTA} strokeWidth={strokeF * 1.6} />
+              <line x1={cabW - 5} y1={-padTopF * 0.42 + 5} x2={cabW + 5} y2={-padTopF * 0.42 - 5} stroke={COLOR_MAGENTA} strokeWidth={strokeF * 1.6} />
+              <text 
+                x={cabW / 2} 
+                y={-padTopF * 0.42 - 8} 
+                fontSize={fSizeF} 
+                fill={COLOR_MAGENTA} 
+                stroke="#ffffff"
+                strokeWidth={strokeF * 2}
+                paintOrder="stroke fill"
+                strokeLinejoin="round"
+                fontWeight="900" 
+                fontFamily="monospace" 
+                textAnchor="middle"
+                textRendering="geometricPrecision"
+              >
+                {cabW}
+              </text>
+              
+              {/* Cota Alto Izquierda (Nunca se corta) */}
+              <line x1={-padLeftF * 0.42} y1={0} x2={-padLeftF * 0.42} y2={cabH} stroke={COLOR_MAGENTA} strokeWidth={strokeF} />
+              <line x1={-padLeftF * 0.52} y1={0} x2={0} y2={0} stroke={COLOR_MAGENTA} strokeWidth={strokeF * 0.8} />
+              <line x1={-padLeftF * 0.52} y1={cabH} x2={0} y2={cabH} stroke={COLOR_MAGENTA} strokeWidth={strokeF * 0.8} />
+              <line x1={-padLeftF * 0.42 - 5} y1={5} x2={-padLeftF * 0.42 + 5} y2={-5} stroke={COLOR_MAGENTA} strokeWidth={strokeF * 1.6} />
+              <line x1={-padLeftF * 0.42 - 5} y1={cabH + 5} x2={-padLeftF * 0.42 + 5} y2={cabH - 5} stroke={COLOR_MAGENTA} strokeWidth={strokeF * 1.6} />
+              <text 
+                x={-padLeftF * 0.42 - fSizeF * 0.55 - 4} 
+                y={cabH / 2} 
+                fontSize={fSizeF} 
+                fill={COLOR_MAGENTA} 
+                stroke="#ffffff"
+                strokeWidth={strokeF * 2}
+                paintOrder="stroke fill"
+                strokeLinejoin="round"
+                fontWeight="900" 
+                fontFamily="monospace" 
+                textAnchor="middle" 
+                textRendering="geometricPrecision"
+                transform={`rotate(-90 ${-padLeftF * 0.42 - fSizeF * 0.55 - 4} ${cabH / 2})`}
+              >
+                {cabH}
+              </text>
+            </svg>
+          </div>
+
+          {/* VISTA LATERAL: Cota de Alto a la derecha para balance simétrico */}
+          <div className="flex-1 flex flex-col items-center">
+            <div className="text-xs font-black tracking-widest text-slate-800 mb-1.5 uppercase">
+              VISTA LATERAL
+            </div>
+            <svg 
+              viewBox={`-${padLeftL} -${padTopL} ${cabD + padLeftL + padRightL} ${cabH + padTopL + padBottomL}`}
+              className="w-full h-[300px] max-h-[320px] overflow-visible"
+              preserveAspectRatio="xMidYMid meet"
+            >
+              <rect x={0} y={0} width={cabD} height={bodyH} fill="#ffffff" stroke="#0f172a" strokeWidth={strokeL * 1.5} />
+              <rect x={15} y={0} width={4} height={bodyH} fill="#9333ea" />
+              <text x={17} y={bodyH / 2} fontSize={Math.max(16, fSizeL * 0.5)} fill="#9333ea" fontWeight="bold" transform={`rotate(-90 17 ${bodyH / 2})`} textAnchor="middle">DUROLAC</text>
+              <rect x={cabD - 18} y={0} width={18} height={bodyH} fill="#f97316" stroke="#ea580c" strokeWidth={strokeL * 0.8} />
+              {legsH > 0 && (
+                <g>
+                  <rect x={15} y={bodyH} width={cabD - 30} height={legsH} fill="#e2e8f0" stroke="#475569" strokeWidth={strokeL} />
+                  <text x={cabD / 2} y={bodyH + legsH * 0.65} fontSize={Math.max(20, fSizeL * 0.6)} fill="#475569" fontWeight="bold" textAnchor="middle">ZÓCALO</text>
+                </g>
+              )}
+
+              {/* Cota Profundidad Superior */}
+              <line x1={0} y1={-padTopL * 0.42} x2={cabD} y2={-padTopL * 0.42} stroke={COLOR_MAGENTA} strokeWidth={strokeL} />
+              <line x1={0} y1={-padTopL * 0.52} x2={0} y2={0} stroke={COLOR_MAGENTA} strokeWidth={strokeL * 0.8} />
+              <line x1={cabD} y1={-padTopL * 0.52} x2={cabD} y2={0} stroke={COLOR_MAGENTA} strokeWidth={strokeL * 0.8} />
+              <line x1={-5} y1={-padTopL * 0.42 + 5} x2={5} y2={-padTopL * 0.42 - 5} stroke={COLOR_MAGENTA} strokeWidth={strokeL * 1.6} />
+              <line x1={cabD - 5} y1={-padTopL * 0.42 + 5} x2={cabD + 5} y2={-padTopL * 0.42 - 5} stroke={COLOR_MAGENTA} strokeWidth={strokeL * 1.6} />
+              <text 
+                x={cabD / 2} 
+                y={-padTopL * 0.42 - 8} 
+                fontSize={fSizeL} 
+                fill={COLOR_MAGENTA} 
+                stroke="#ffffff"
+                strokeWidth={strokeL * 2}
+                paintOrder="stroke fill"
+                strokeLinejoin="round"
+                fontWeight="900" 
+                fontFamily="monospace" 
+                textAnchor="middle"
+                textRendering="geometricPrecision"
+              >
+                {cabD}
+              </text>
+              
+              {/* Cota Alto Derecha (Nunca se corta y balancea con la vista frontal) */}
+              <line x1={cabD + padRightL * 0.42} y1={0} x2={cabD + padRightL * 0.42} y2={cabH} stroke={COLOR_MAGENTA} strokeWidth={strokeL} />
+              <line x1={cabD} y1={0} x2={cabD + padRightL * 0.52} y2={0} stroke={COLOR_MAGENTA} strokeWidth={strokeL * 0.8} />
+              <line x1={cabD} y1={cabH} x2={cabD + padRightL * 0.52} y2={cabH} stroke={COLOR_MAGENTA} strokeWidth={strokeL * 0.8} />
+              <line x1={cabD + padRightL * 0.42 - 5} y1={5} x2={cabD + padRightL * 0.42 + 5} y2={-5} stroke={COLOR_MAGENTA} strokeWidth={strokeL * 1.6} />
+              <line x1={cabD + padRightL * 0.42 - 5} y1={cabH + 5} x2={cabD + padRightL * 0.42 + 5} y2={cabH - 5} stroke={COLOR_MAGENTA} strokeWidth={strokeL * 1.6} />
+              <text 
+                x={cabD + padRightL * 0.42 + fSizeL * 0.65 + 4} 
+                y={cabH / 2} 
+                fontSize={fSizeL} 
+                fill={COLOR_MAGENTA} 
+                stroke="#ffffff"
+                strokeWidth={strokeL * 2}
+                paintOrder="stroke fill"
+                strokeLinejoin="round"
+                fontWeight="900" 
+                fontFamily="monospace" 
+                textAnchor="middle" 
+                textRendering="geometricPrecision"
+                transform={`rotate(90 ${cabD + padRightL * 0.42 + fSizeL * 0.65 + 4} ${cabH / 2})`}
+              >
+                {cabH}
+              </text>
+            </svg>
+          </div>
+        </div>
+      </div>
     );
   };
 
@@ -796,6 +1091,20 @@ export function KitchenBlueprint() {
             </>
           )}
         </button>
+
+        {generatedPdfUrl && (
+          <a
+            href={generatedPdfUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            download="planos_fabricacion_cocina_A3.pdf"
+            className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-xl font-bold uppercase text-xs tracking-wider shadow-lg flex items-center gap-2 animate-bounce cursor-pointer"
+            title="Haz clic para abrir o descargar directamente el PDF generado"
+          >
+            <Download size={15} />
+            <span>¡PDF Listo! Abrir / Descargar</span>
+          </a>
+        )}
 
         {/* Botón Secundario: Ficha Técnica PDF Directo */}
         <button 
@@ -1013,28 +1322,40 @@ export function KitchenBlueprint() {
                   )}
 
                   {/* Cotas y Muros Perimetrales */}
-                  {wallSegments.map((wall, wIdx) => {
-                    const x1 = toSvgX(wall.start.x);
-                    const y1 = toSvgY(wall.start.y);
-                    const x2 = toSvgX(wall.end.x);
-                    const y2 = toSvgY(wall.end.y);
-                    const mx = (x1 + x2) / 2;
-                    const my = (y1 + y2) / 2;
+                  {(() => {
+                    const roomCenterSvgX = vertices.length > 0 ? toSvgX(vertices.reduce((sum, v) => sum + v.x, 0) / vertices.length) : svgW / 2;
+                    const roomCenterSvgY = vertices.length > 0 ? toSvgY(vertices.reduce((sum, v) => sum + v.y, 0) / vertices.length) : svgH / 2;
 
-                    // Vector normal exterior para la cota
-                    const dx = x2 - x1;
-                    const dy = y2 - y1;
-                    const len = Math.hypot(dx, dy);
-                    const normX = len > 0 ? -dy / len : 0;
-                    const normY = len > 0 ? dx / len : 0;
+                    return wallSegments.map((wall, wIdx) => {
+                      const x1 = toSvgX(wall.start.x);
+                      const y1 = toSvgY(wall.start.y);
+                      const x2 = toSvgX(wall.end.x);
+                      const y2 = toSvgY(wall.end.y);
+                      const mx = (x1 + x2) / 2;
+                      const my = (y1 + y2) / 2;
 
-                    const cotaDist = 16;
-                    const cx1 = x1 + normX * cotaDist;
-                    const cy1 = y1 + normY * cotaDist;
-                    const cx2 = x2 + normX * cotaDist;
-                    const cy2 = y2 + normY * cotaDist;
-                    const cmx = mx + normX * (cotaDist + 4);
-                    const cmy = my + normY * (cotaDist + 4);
+                      // Vector normal exterior para la cota
+                      const dx = x2 - x1;
+                      const dy = y2 - y1;
+                      const len = Math.hypot(dx, dy);
+                      let normX = len > 0 ? -dy / len : 0;
+                      let normY = len > 0 ? dx / len : 0;
+
+                      // Forzar dirección exterior respecto al centro geométrico del recinto
+                      const toCenterX = roomCenterSvgX - mx;
+                      const toCenterY = roomCenterSvgY - my;
+                      if (normX * toCenterX + normY * toCenterY > 0) {
+                        normX = -normX;
+                        normY = -normY;
+                      }
+
+                      const cotaDist = 16;
+                      const cx1 = x1 + normX * cotaDist;
+                      const cy1 = y1 + normY * cotaDist;
+                      const cx2 = x2 + normX * cotaDist;
+                      const cy2 = y2 + normY * cotaDist;
+                      const cmx = mx + normX * (cotaDist + 4);
+                      const cmy = my + normY * (cotaDist + 4);
 
                     return (
                       <g key={wIdx}>
@@ -1062,7 +1383,8 @@ export function KitchenBlueprint() {
                         </g>
                       </g>
                     );
-                  })}
+                  });
+                })()}
 
                   {/* Renderizado de MUEBLES REALES en Planta con Sub-Cotas */}
                   {realCabinets.map((cab, cIdx) => {
@@ -1288,9 +1610,14 @@ export function KitchenBlueprint() {
                                     stroke="#e11d48"
                                     strokeWidth="0.8"
                                   />
-                                  {/* Llamada DETALLE 1 */}
-                                  <path d={`M ${cLeftX + cW * 0.3} ${cTopY - 4} L ${cLeftX + cW * 0.25} ${cTopY - 20}`} fill="none" stroke="#2563eb" strokeWidth="0.6" />
-                                  <text x={cLeftX + cW * 0.25} y={cTopY - 22} fontSize="5.5" fill="#2563eb" fontWeight="bold">DETALLE 1</text>
+                                  {/* Llamada DETALLE 1 solo en el primer módulo base para evitar saturación */}
+                                  {ci === cabs.findIndex(c => c.cab.type === 'base' || c.cab.type === 'island') && (
+                                    <g>
+                                      <path d={`M ${cLeftX + cW * 0.2} ${cTopY - 4} L ${cLeftX + cW * 0.2} ${cTopY - 24}`} fill="none" stroke="#2563eb" strokeWidth="0.8" />
+                                      <circle cx={cLeftX + cW * 0.2} cy={cTopY - 4} r={1.5} fill="#2563eb" />
+                                      <text x={cLeftX + cW * 0.2} y={cTopY - 27} fontSize="6" fill="#2563eb" fontWeight="bold" textAnchor="middle">DETALLE 1</text>
+                                    </g>
+                                  )}
                                 </g>
                               )}
 
@@ -1442,297 +1769,87 @@ export function KitchenBlueprint() {
             </div>
 
             {/* Contenido Principal: Vistas 3D a la Izquierda + Despiece a la Derecha */}
-            <div className="flex-1 grid grid-cols-12 gap-6 pb-28 overflow-hidden">
+            <div className="flex-1 grid grid-cols-12 gap-8 pb-32 overflow-hidden items-start pt-2">
               
               {/* COLUMNA IZQUIERDA: 3 VISTAS DEL MÓDULO (Planta, Frontal, Lateral) */}
-              <div className="col-span-4 border-r-2 border-slate-300 pr-6 flex flex-col justify-between items-center py-2">
-                
-                {/* VISTA DE PLANTA */}
-                <div className="flex flex-col items-center w-full">
-                  <div className="text-[11px] font-bold tracking-widest text-slate-700 mb-6 uppercase">
-                    VISTA DE PLANTA
-                  </div>
-                  <div 
-                    className="relative border-2 border-slate-900 bg-slate-100/50 flex items-center justify-center shadow-xs"
-                    style={{ width: `${cab.width * viewScale}px`, height: `${cab.depth * viewScale}px` }}
-                  >
-                    {/* Cota Ancho Superior (Magenta) */}
-                    <div className="absolute -top-4 w-full flex flex-col items-center">
-                      <div className="w-full border-b border-[#d946ef] relative">
-                        <div className="absolute -top-1 left-0 h-2 border-l border-[#d946ef]"></div>
-                        <div className="absolute -top-1 right-0 h-2 border-r border-[#d946ef]"></div>
-                      </div>
-                      <div className="text-[9.5px] text-[#d946ef] font-bold font-mono -mt-0.5">
-                        {cab.width * 10} mm
-                      </div>
-                    </div>
-                    {/* Cota Fondo Derecha (Magenta) */}
-                    <div className="absolute top-0 -right-8 h-full flex items-center">
-                      <div className="h-full border-r border-[#d946ef] relative">
-                        <div className="absolute top-0 -left-1 w-2 border-t border-[#d946ef]"></div>
-                        <div className="absolute bottom-0 -left-1 w-2 border-b border-[#d946ef]"></div>
-                      </div>
-                      <div className="text-[9.5px] ml-1.5 -rotate-90 origin-left translate-x-2 text-[#d946ef] font-bold font-mono">
-                        {cab.depth * 10}
-                      </div>
-                    </div>
-
-                    {/* Simetría o división interior */}
-                    <svg className="absolute inset-0 w-full h-full">
-                      <line x1="0" y1="0" x2="100%" y2="100%" stroke="#94a3b8" strokeWidth="0.5" strokeDasharray="2,2"/>
-                      <line x1="0" y1="100%" x2="100%" y2="0" stroke="#94a3b8" strokeWidth="0.5" strokeDasharray="2,2"/>
-                    </svg>
-                  </div>
-                </div>
-
-                {/* VISTAS ELEVACIÓN: FRONTAL Y LATERAL */}
-                <div className="flex gap-8 w-full justify-center items-end mt-4">
-                  {/* VISTA FRONTAL */}
-                  <div className="flex flex-col items-center">
-                    <div className="text-[11px] font-bold tracking-widest text-slate-700 mb-6 uppercase">
-                      VISTA FRONTAL
-                    </div>
-                    <div 
-                      className="relative border-2 border-slate-900 bg-slate-50 flex flex-col justify-between shadow-xs"
-                      style={{ width: `${cab.width * viewScale}px`, height: `${cab.height * viewScale}px` }}
-                    >
-                      {/* Cota Ancho Superior (Magenta) */}
-                      <div className="absolute -top-4 w-full flex flex-col items-center">
-                        <div className="w-full border-b border-[#d946ef] relative">
-                          <div className="absolute -top-1 left-0 h-2 border-l border-[#d946ef]"></div>
-                          <div className="absolute -top-1 right-0 h-2 border-r border-[#d946ef]"></div>
-                        </div>
-                        <div className="text-[9.5px] text-[#d946ef] font-bold font-mono -mt-0.5">
-                          {cab.width * 10}
-                        </div>
-                      </div>
-                      {/* Cota Alto Total Izquierda (Magenta) */}
-                      <div className="absolute top-0 -left-8 h-full flex items-center">
-                        <div className="h-full border-l border-[#d946ef] relative">
-                          <div className="absolute top-0 -right-1 w-2 border-t border-[#d946ef]"></div>
-                          <div className="absolute bottom-0 -right-1 w-2 border-b border-[#d946ef]"></div>
-                        </div>
-                        <div className="text-[9.5px] -mr-1.5 -rotate-90 origin-center text-[#d946ef] font-bold font-mono">
-                          {cab.height * 10}
-                        </div>
-                      </div>
-
-                      {/* Cuerpo de Gabinete vs Zócalo */}
-                      <div className="relative flex-1 border-b border-slate-800 flex items-center justify-center">
-                        {/* Diagonales de apertura de puertas */}
-                        {cab.variant === '2_doors' && (
-                          <svg className="absolute inset-0 w-full h-full">
-                            <line x1="0" y1="50%" x2="50%" y2="0" stroke="#c026d3" strokeWidth="0.8"/>
-                            <line x1="0" y1="50%" x2="50%" y2="100%" stroke="#c026d3" strokeWidth="0.8"/>
-                            <line x1="100%" y1="50%" x2="50%" y2="0" stroke="#c026d3" strokeWidth="0.8"/>
-                            <line x1="100%" y1="50%" x2="50%" y2="100%" stroke="#c026d3" strokeWidth="0.8"/>
-                            <line x1="50%" y1="0" x2="50%" y2="100%" stroke="#0f172a" strokeWidth="1"/>
-                          </svg>
-                        )}
-                        {cab.variant === '1_door' && (
-                          <svg className="absolute inset-0 w-full h-full">
-                            <line x1="0" y1="50%" x2="100%" y2="0" stroke="#c026d3" strokeWidth="0.8"/>
-                            <line x1="0" y1="50%" x2="100%" y2="100%" stroke="#c026d3" strokeWidth="0.8"/>
-                          </svg>
-                        )}
-                        {cab.variant === '4_drawers' && (
-                          <div className="w-full h-full flex flex-col justify-between">
-                            {Array.from({ length: 4 }).map((_, di) => (
-                              <div key={di} className="flex-1 border-b border-slate-700 flex items-center justify-center text-[8px] text-slate-500 font-mono">
-                                Cajón {di + 1}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Zócalo o Patas */}
-                      {legsH > 0 && (
-                        <div className="h-[20px] bg-slate-200/80 border-t border-slate-900 flex justify-between px-2 items-center text-[7px] text-slate-600 font-bold">
-                          <span>PATAS REGULABLES</span>
-                          <span>H=150</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* VISTA LATERAL */}
-                  <div className="flex flex-col items-center">
-                    <div className="text-[11px] font-bold tracking-widest text-slate-700 mb-6 uppercase">
-                      VISTA LATERAL
-                    </div>
-                    <div 
-                      className="relative border-2 border-slate-900 bg-slate-50 shadow-xs"
-                      style={{ width: `${cab.depth * viewScale}px`, height: `${cab.height * viewScale}px` }}
-                    >
-                      {/* Cota Fondo Superior (Magenta) */}
-                      <div className="absolute -top-4 w-full flex flex-col items-center">
-                        <div className="w-full border-b border-[#d946ef] relative">
-                          <div className="absolute -top-1 left-0 h-2 border-l border-[#d946ef]"></div>
-                          <div className="absolute -top-1 right-0 h-2 border-r border-[#d946ef]"></div>
-                        </div>
-                        <div className="text-[9.5px] text-[#d946ef] font-bold font-mono -mt-0.5">
-                          {cab.depth * 10}
-                        </div>
-                      </div>
-
-                      {/* Indicación de Trasera a la izquierda (borde posterior) */}
-                      <div className="absolute left-0 top-0 h-full w-[3px] bg-purple-600" title="Ranura Durolac"></div>
-                      
-                      {/* Frentes a la derecha (borde frontal) */}
-                      <div className="absolute right-0 top-0 h-full w-[4px] bg-orange-500/80" title="Frente de Puerta / Cajón"></div>
-
-                      {legsH > 0 && (
-                        <div className="absolute bottom-0 left-0 w-full h-[20px] bg-slate-200/80 border-t border-slate-900 flex items-center justify-center text-[7px] text-slate-600">
-                          ZÓCALO
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                </div>
-
+              <div className="col-span-4 border-r-2 border-slate-300 pr-4 flex flex-col justify-between items-center py-1 h-full">
+                {renderCabinetOrthographicViews(cab)}
               </div>
 
               {/* COLUMNA DERECHA: DESPIECE TÉCNICO Y PERFORACIONES PARAMÉTRICAS */}
               <div className="col-span-8 flex flex-col justify-between">
                 
                 {/* Cuadrícula de Piezas */}
-                <div className="grid grid-cols-4 gap-x-12 gap-y-16 items-end pr-4 pt-6">
-                  {page.parts.map((part, pSubIdx) => {
-                    const drawW = Math.max(part.width * partScale, 24);
-                    const drawH = Math.max(part.length * partScale, 24);
-
-                    // Unificación estricta de espesor y tipo de tapacanto por pieza
-                    const isFrontPiece = part.name.includes("Puerta") || part.name.includes("Frente") || part.name.includes("Panel Ciego") || part.name.includes("Tapa");
-                    const isThick = isFrontPiece ? (state.edgeBandingThicknessFronts || 2.0) >= 1.0 : (state.edgeBandingThicknessCabinets || 0.5) >= 1.0;
-                    const edgeDiamondClass = isThick ? "bg-rose-600 border border-white" : "bg-orange-500 border border-white";
-                    const edgeDiamondTitle = isThick ? "TC PVC 22x2.0 MM (Frentes)" : "TC PVC 22x0.45 MM (Estructura)";
-
-                    return (
-                      <div key={pSubIdx} className="flex flex-col items-center relative">
-                        
-                        {/* Cabecera de la Pieza */}
-                        <div className="flex flex-col items-center mb-6 h-14 justify-end">
-                          <div className="text-[10px] font-bold text-slate-900 uppercase tracking-tight text-center leading-tight">
-                            {part.name.replace(/\(Cab \d+ [^)]+\)/, '')}
-                          </div>
-                          <div className="flex items-center gap-1.5 mt-0.5">
-                            <span className="text-[9px] bg-black text-white px-2 py-0.5 rounded font-mono font-bold">
-                              {part.qty} UN
-                            </span>
-                            <span className="text-[8px] text-slate-500">
-                              {part.thickness}mm
-                            </span>
-                          </div>
+                <div className="grid grid-cols-4 gap-x-4 gap-y-4 items-start pr-2 pt-1">
+                  {page.parts.map((part, pSubIdx) => (
+                    <div key={pSubIdx} className="flex flex-col items-center bg-slate-50/50 p-2.5 rounded-lg border border-slate-200 shadow-2xs">
+                      {/* Cabecera de la Pieza */}
+                      <div className="w-full flex flex-col items-center mb-1.5 justify-center">
+                        <div className="text-[11px] font-black text-slate-900 uppercase tracking-tight text-center leading-tight line-clamp-1 max-w-full">
+                          {part.name.replace(/\(Cab \d+ [^)]+\)/, '')}
                         </div>
-
-                        {/* Contenedor Gráfico de la Pieza a Escala */}
-                        <div className="relative z-10" style={{ width: `${drawW}px`, height: `${drawH}px` }}>
-                          
-                          {/* Superficie de la pieza */}
-                          <div className="absolute inset-0 bg-[#faf8f5] border-2 border-slate-800 shadow-xs"></div>
-
-                          {/* Rombos de Tapacanto Unificados */}
-                          {part.edgeL1 && (
-                            <div className={`absolute top-1/2 left-0 -translate-x-1/2 -translate-y-1/2 w-3 h-3 rotate-45 ${edgeDiamondClass} shadow-xs z-30`} title={`Canto Largo 1 - ${edgeDiamondTitle}`}></div>
-                          )}
-                          {part.edgeL2 && (
-                            <div className={`absolute top-1/2 right-0 translate-x-1/2 -translate-y-1/2 w-3 h-3 rotate-45 ${edgeDiamondClass} shadow-xs z-30`} title={`Canto Largo 2 - ${edgeDiamondTitle}`}></div>
-                          )}
-                          {part.edgeW1 && (
-                            <div className={`absolute top-0 left-1/2 -translate-y-1/2 -translate-x-1/2 w-3 h-3 rotate-45 ${edgeDiamondClass} shadow-xs z-30`} title={`Canto Ancho 1 - ${edgeDiamondTitle}`}></div>
-                          )}
-                          {part.edgeW2 && (
-                            <div className={`absolute bottom-0 left-1/2 translate-y-1/2 -translate-x-1/2 w-3 h-3 rotate-45 ${edgeDiamondClass} shadow-xs z-30`} title={`Canto Ancho 2 - ${edgeDiamondTitle}`}></div>
-                          )}
-
-                          {/* Cota General Horizontal Inferior (NIVEL 2 EXTERIOR - Magenta) */}
-                          <div className="absolute -bottom-11 left-0 w-full flex flex-col items-center pointer-events-none">
-                            {/* Líneas guía / extensión desde la pieza */}
-                            <div className="w-full relative h-0">
-                              <div className="absolute -top-5 left-0 h-5 border-l border-[#d946ef]/60 border-dashed"></div>
-                              <div className="absolute -top-5 right-0 h-5 border-r border-[#d946ef]/60 border-dashed"></div>
-                            </div>
-                            <div className="w-full border-b-2 border-[#d946ef] relative">
-                              <div className="absolute -top-1.5 left-0 h-3 border-l-2 border-[#d946ef]"></div>
-                              <div className="absolute -top-1.5 right-0 h-3 border-r-2 border-[#d946ef]"></div>
-                            </div>
-                            <div className="text-[10px] text-[#d946ef] font-black font-mono mt-0.5 bg-white/90 px-1 rounded">
-                              {part.width.toFixed(0)}
-                            </div>
-                          </div>
-
-                          {/* Cota General Vertical Derecha (NIVEL 2 EXTERIOR - Magenta) */}
-                          <div className="absolute top-0 -right-14 h-full flex items-center pointer-events-none">
-                            {/* Líneas guía / extensión desde la pieza */}
-                            <div className="h-full relative w-0">
-                              <div className="absolute top-0 -left-7 w-7 border-t border-[#d946ef]/60 border-dashed"></div>
-                              <div className="absolute bottom-0 -left-7 w-7 border-b border-[#d946ef]/60 border-dashed"></div>
-                            </div>
-                            <div className="h-full border-r-2 border-[#d946ef] relative">
-                              <div className="absolute top-0 -left-1.5 w-3 border-t-2 border-[#d946ef]"></div>
-                              <div className="absolute bottom-0 -left-1.5 w-3 border-b-2 border-[#d946ef]"></div>
-                            </div>
-                            <div className="text-[10px] ml-1.5 -rotate-90 origin-center text-[#d946ef] font-black font-mono bg-white/90 px-1 rounded whitespace-nowrap">
-                              {part.length.toFixed(0)}
-                            </div>
-                          </div>
-
-                          {/* Renderizado de Mecanizados, Perforaciones y Cotas de Eje */}
-                          {renderPartMachiningSVG(part, cab, drawW, drawH, partScale)}
-
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-[10px] bg-slate-900 text-white px-2 py-0.5 rounded font-mono font-black tracking-wide">
+                            {part.qty} UN
+                          </span>
+                          <span className="text-[10px] text-slate-700 font-mono font-black">
+                            {part.thickness}mm
+                          </span>
                         </div>
-
                       </div>
-                    );
-                  })}
+
+                      {/* Contenedor Gráfico de la Pieza a Escala Vectorial SVG */}
+                      <div className="w-full flex items-center justify-center p-0.5">
+                        {renderUnifiedPartSVG(part, cab)}
+                      </div>
+                    </div>
+                  ))}
                 </div>
 
                 {/* DETALLES TÉCNICOS AMPLIADOS (Callouts al pie según plano de referencia) */}
-                <div className="grid grid-cols-3 gap-4 bg-slate-50/80 p-3 rounded-lg border border-slate-200 mt-6">
+                <div className="grid grid-cols-3 gap-4 bg-slate-50/95 p-3 rounded-lg border border-slate-200 mt-4">
                   {/* Detalle 1: Canal Durolac */}
                   <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-full border-2 border-purple-500 bg-white flex items-center justify-center shrink-0 relative overflow-hidden">
+                    <div className="w-16 h-16 rounded-full border-2 border-purple-500 bg-white flex items-center justify-center shrink-0 relative overflow-hidden shadow-xs">
                       <svg viewBox="0 0 50 50" className="w-full h-full p-1">
-                        <rect x="5" y="10" width="40" height="30" fill="#f8fafc" stroke="#334155" strokeWidth="1"/>
-                        <rect x="28" y="10" width="8" height="15" fill="#e2e8f0" stroke="#9333ea" strokeWidth="1" strokeDasharray="1,1"/>
-                        <line x1="28" y1="35" x2="36" y2="35" stroke="#2563eb" strokeWidth="0.8"/>
-                        <text x="32" y="42" fontSize="6" fill="#2563eb" textAnchor="middle">4mm</text>
+                        <rect x="5" y="10" width="40" height="30" fill="#f8fafc" stroke="#334155" strokeWidth="1.2"/>
+                        <rect x="28" y="10" width="8" height="15" fill="#e2e8f0" stroke="#9333ea" strokeWidth="1.2" strokeDasharray="1,1"/>
+                        <line x1="28" y1="35" x2="36" y2="35" stroke="#2563eb" strokeWidth="1"/>
+                        <text x="32" y="44" fontSize="8.5" fill="#2563eb" textAnchor="middle" fontWeight="900" fontFamily="monospace">4mm</text>
                       </svg>
                     </div>
-                    <div className="text-[8px] text-slate-700 leading-tight">
-                      <div className="font-bold text-purple-700 uppercase">DETALLE 1</div>
-                      <div>CANAL TRASERA / DUROLAC</div>
-                      <div className="text-slate-500">A 15mm del borde • Prof. 7.5mm</div>
+                    <div className="text-[10.5px] text-slate-800 leading-tight">
+                      <div className="font-black text-purple-700 uppercase">DETALLE 1</div>
+                      <div className="font-bold">CANAL TRASERA / DUROLAC</div>
+                      <div className="text-slate-600 font-medium">A 15mm del borde • Prof. 7.5mm</div>
                     </div>
                   </div>
 
                   {/* Detalle 2: Ensamble Minifix o Tornillo */}
                   <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-full border-2 border-emerald-500 bg-white flex items-center justify-center shrink-0 relative overflow-hidden">
+                    <div className="w-16 h-16 rounded-full border-2 border-emerald-500 bg-white flex items-center justify-center shrink-0 relative overflow-hidden shadow-xs">
                       <svg viewBox="0 0 50 50" className="w-full h-full p-1">
                         {state.assemblyType === 'minifix' ? (
                           <>
-                            <circle cx="25" cy="25" r="10" fill="#dcfce7" stroke="#16a34a" strokeWidth="1.2"/>
-                            <circle cx="25" cy="25" r="3" fill="#16a34a"/>
-                            <line x1="12" y1="25" x2="38" y2="25" stroke="#16a34a" strokeWidth="0.6"/>
-                            <text x="25" y="44" fontSize="6" fill="#16a34a" textAnchor="middle" fontWeight="bold">Ø15 Minifix</text>
+                            <circle cx="25" cy="23" r="11" fill="#dcfce7" stroke="#16a34a" strokeWidth="1.4"/>
+                            <circle cx="25" cy="23" r="3.5" fill="#16a34a"/>
+                            <line x1="12" y1="23" x2="38" y2="23" stroke="#16a34a" strokeWidth="0.8"/>
+                            <text x="25" y="44" fontSize="8.5" fill="#16a34a" textAnchor="middle" fontWeight="900" fontFamily="monospace">Ø15 Minifix</text>
                           </>
                         ) : (
                           <>
-                            <circle cx="25" cy="25" r="5" fill="#dbeafe" stroke="#2563eb" strokeWidth="1.2"/>
-                            <line x1="20" y1="20" x2="30" y2="30" stroke="#2563eb" strokeWidth="1"/>
-                            <line x1="20" y1="30" x2="30" y2="20" stroke="#2563eb" strokeWidth="1"/>
-                            <text x="25" y="44" fontSize="6" fill="#2563eb" textAnchor="middle" fontWeight="bold">Ø5 Tornillo</text>
+                            <circle cx="25" cy="23" r="6" fill="#dbeafe" stroke="#2563eb" strokeWidth="1.4"/>
+                            <line x1="20" y1="18" x2="30" y2="28" stroke="#2563eb" strokeWidth="1.2"/>
+                            <line x1="20" y1="28" x2="30" y2="18" stroke="#2563eb" strokeWidth="1.2"/>
+                            <text x="25" y="44" fontSize="8.5" fill="#2563eb" textAnchor="middle" fontWeight="900" fontFamily="monospace">Ø5 Tornillo</text>
                           </>
                         )}
                       </svg>
                     </div>
-                    <div className="text-[8px] text-slate-700 leading-tight">
-                      <div className="font-bold text-emerald-700 uppercase">DETALLE 2</div>
-                      <div>ENSAMBLE ESTRUCTURAL</div>
-                      <div className="text-slate-500">
+                    <div className="text-[10.5px] text-slate-800 leading-tight">
+                      <div className="font-black text-emerald-700 uppercase">DETALLE 2</div>
+                      <div className="font-bold">ENSAMBLE ESTRUCTURAL</div>
+                      <div className="text-slate-600 font-medium">
                         {state.assemblyType === 'minifix' ? 'Minifix a 34mm + Tarugo a 66mm' : 'Soberbio Spax 5x50 a 50mm'}
                       </div>
                     </div>
@@ -1740,18 +1857,18 @@ export function KitchenBlueprint() {
 
                   {/* Detalle 3: Cazoleta Bisagra */}
                   <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-full border-2 border-orange-500 bg-white flex items-center justify-center shrink-0 relative overflow-hidden">
+                    <div className="w-16 h-16 rounded-full border-2 border-orange-500 bg-white flex items-center justify-center shrink-0 relative overflow-hidden shadow-xs">
                       <svg viewBox="0 0 50 50" className="w-full h-full p-1">
-                        <circle cx="25" cy="25" r="14" fill="#ffedd5" stroke="#ea580c" strokeWidth="1.2" strokeDasharray="2,2"/>
-                        <circle cx="25" cy="25" r="3" fill="#ea580c"/>
-                        <line x1="25" y1="5" x2="25" y2="45" stroke="#ea580c" strokeWidth="0.6" strokeDasharray="1,1"/>
-                        <text x="25" y="44" fontSize="6" fill="#ea580c" textAnchor="middle" fontWeight="bold">Ø35 Bisagra</text>
+                        <circle cx="25" cy="23" r="14" fill="#ffedd5" stroke="#ea580c" strokeWidth="1.4" strokeDasharray="2,2"/>
+                        <circle cx="25" cy="23" r="3.5" fill="#ea580c"/>
+                        <line x1="25" y1="5" x2="25" y2="41" stroke="#ea580c" strokeWidth="0.8" strokeDasharray="1,1"/>
+                        <text x="25" y="44" fontSize="8.5" fill="#ea580c" textAnchor="middle" fontWeight="900" fontFamily="monospace">Ø35 Bisagra</text>
                       </svg>
                     </div>
-                    <div className="text-[8px] text-slate-700 leading-tight">
-                      <div className="font-bold text-orange-700 uppercase">DETALLE 3</div>
-                      <div>CAZOLETA DE BISAGRA</div>
-                      <div className="text-slate-500">Eje a 22.5mm • A 90mm de extremos</div>
+                    <div className="text-[10.5px] text-slate-800 leading-tight">
+                      <div className="font-black text-orange-700 uppercase">DETALLE 3</div>
+                      <div className="font-bold">CAZOLETA DE BISAGRA</div>
+                      <div className="text-slate-600 font-medium">Eje a 22.5mm • A 90mm de extremos</div>
                     </div>
                   </div>
                 </div>
@@ -1802,41 +1919,64 @@ export function KitchenBlueprint() {
             </div>
             
             <div className="w-full flex items-center justify-center my-auto">
-              <div 
-                className="relative bg-slate-100 border-2 border-slate-700 rounded shadow-md overflow-hidden w-full max-w-[880px]" 
-                style={{ aspectRatio: `${board.w} / ${board.h}`, maxHeight: '560px' }}
+              <svg 
+                viewBox={`-20 -20 ${board.w + 40} ${board.h + 40}`} 
+                className="w-full max-w-[880px] max-h-[500px] bg-slate-100 border-2 border-slate-800 rounded shadow-md"
+                preserveAspectRatio="xMidYMid meet"
               >
+                {/* Plancha Base */}
+                <rect x={0} y={0} width={board.w} height={board.h} fill="#f8fafc" stroke="#334155" strokeWidth={3} />
+                
                 {board.placedParts.map((bp, pi) => {
-                  const scaleX = 100 / board.w;
-                  const scaleY = 100 / board.h;
+                  const fontSize = Math.max(16, Math.min(bp.w / 9, bp.h / 4, 34));
                   return (
-                    <div 
-                      key={pi}
-                      className="absolute border border-slate-700 bg-white hover:bg-amber-50/50 shadow-xs flex flex-col items-center justify-center p-0.5 overflow-hidden transition-colors"
-                      style={{
-                        left: `${bp.x * scaleX}%`,
-                        top: `${bp.y * scaleY}%`,
-                        width: `${bp.w * scaleX}%`,
-                        height: `${bp.h * scaleY}%`,
-                        boxSizing: 'border-box'
-                      }}
-                    >
-                      {/* Tapacantos visuales en los bordes */}
-                      {bp.edgeTop && <div className="absolute top-0 left-0 right-0 h-[2px] bg-orange-500 z-10" />}
-                      {bp.edgeBottom && <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-orange-500 z-10" />}
-                      {bp.edgeLeft && <div className="absolute top-0 bottom-0 left-0 w-[2px] bg-orange-500 z-10" />}
-                      {bp.edgeRight && <div className="absolute top-0 bottom-0 right-0 w-[2px] bg-orange-500 z-10" />}
+                    <g key={pi}>
+                      <rect
+                        x={bp.x}
+                        y={bp.y}
+                        width={bp.w}
+                        height={bp.h}
+                        fill="#ffffff"
+                        stroke="#1e293b"
+                        strokeWidth={1.5}
+                      />
+                      {/* Tapacantos visuales */}
+                      {bp.edgeTop && <line x1={bp.x} y1={bp.y + 2} x2={bp.x + bp.w} y2={bp.y + 2} stroke="#f97316" strokeWidth={4} />}
+                      {bp.edgeBottom && <line x1={bp.x} y1={bp.y + bp.h - 2} x2={bp.x + bp.w} y2={bp.y + bp.h - 2} stroke="#f97316" strokeWidth={4} />}
+                      {bp.edgeLeft && <line x1={bp.x + 2} y1={bp.y} x2={bp.x + 2} y2={bp.y + bp.h} stroke="#f97316" strokeWidth={4} />}
+                      {bp.edgeRight && <line x1={bp.x + bp.w - 2} y1={bp.y} x2={bp.x + bp.w - 2} y2={bp.y + bp.h} stroke="#f97316" strokeWidth={4} />}
 
-                      <span className="text-[8px] font-bold text-slate-900 text-center leading-tight truncate max-w-full px-1">
-                        {bp.name.replace(/\(Cab \d+ [^)]+\)/, '')}
-                      </span>
-                      <span className="text-[7.5px] font-mono font-bold text-orange-600">
-                        {bp.w} x {bp.h} mm
-                      </span>
-                    </div>
+                      {bp.h > 40 && bp.w > 60 && (
+                        <>
+                          <text
+                            x={bp.x + bp.w / 2}
+                            y={bp.y + bp.h / 2 - (bp.h > 75 ? fontSize * 0.35 : 0)}
+                            textAnchor="middle"
+                            fontSize={fontSize}
+                            fontWeight="bold"
+                            fill="#0f172a"
+                          >
+                            {bp.name.replace(/\(Cab \d+ [^)]+\)/, '')}
+                          </text>
+                          {bp.h > 75 && (
+                            <text
+                              x={bp.x + bp.w / 2}
+                              y={bp.y + bp.h / 2 + fontSize * 0.9}
+                              textAnchor="middle"
+                              fontSize={fontSize * 0.8}
+                              fontFamily="monospace"
+                              fontWeight="bold"
+                              fill="#ea580c"
+                            >
+                              {bp.w} x {bp.h} mm
+                            </text>
+                          )}
+                        </>
+                      )}
+                    </g>
                   );
                 })}
-              </div>
+              </svg>
             </div>
 
             <div className="flex justify-between items-center text-xs text-slate-600 border-t border-slate-200 pt-2 shrink-0">
@@ -1909,6 +2049,37 @@ export function KitchenBlueprint() {
         
         <BlueprintTitleBlock pageNum={totalDocPages} title="LISTADO CONSOLIDADO DE MATERIALES E INSUMOS (BOM)" />
       </div>
+
+      {/* Modal de PDF Listo para Descargar */}
+      {generatedPdfUrl && (
+        <div className="fixed inset-0 z-[300] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl text-center space-y-6 border border-slate-100 animate-in fade-in zoom-in duration-200">
+            <div className="w-16 h-16 bg-green-100 text-green-600 rounded-2xl mx-auto flex items-center justify-center">
+              <CheckCircle2 size={36} />
+            </div>
+            <div>
+              <h3 className="text-xl font-bold text-slate-900">¡Planos A3 Generados con Éxito!</h3>
+              <p className="text-slate-600 text-sm mt-2">Su documento PDF de fabricación está listo para descargar.</p>
+            </div>
+            <div className="space-y-3">
+              <a
+                href={generatedPdfUrl}
+                download="planos_fabricacion_cocina_A3.pdf"
+                className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-3.5 px-6 rounded-2xl shadow-lg flex items-center justify-center gap-2.5 transition-all cursor-pointer text-base"
+              >
+                <Download size={20} />
+                <span>Descargar Archivo PDF</span>
+              </a>
+              <button
+                onClick={() => setGeneratedPdfUrl(null)}
+                className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-3 px-6 rounded-2xl transition-all cursor-pointer text-sm"
+              >
+                Cerrar ventana
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

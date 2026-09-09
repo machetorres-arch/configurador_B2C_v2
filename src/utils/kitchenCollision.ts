@@ -21,13 +21,16 @@ export function getCabinetBox2D(
     type?: string;
   }
 ): Box2D {
-  const rot = cab.rotation || 0;
+  const rot = Number(cab.rotation) || 0;
   const cos = Math.cos(rot);
   const sin = Math.sin(rot);
-  const cx = cab.position[0];
-  const cz = cab.position[2];
-  const hw = cab.width / 2;
-  const hd = cab.depth / 2;
+  const cx = Number(cab.position?.[0]) || 0;
+  const cz = Number(cab.position?.[2]) || 0;
+  const width = Number(cab.width) || 60;
+  const depth = Number(cab.depth) || 60;
+  const height = Number(cab.height) || 80;
+  const hw = width / 2;
+  const hd = depth / 2;
 
   // Local corners relative to center: (-hw, -hd), (hw, -hd), (hw, hd), (-hw, hd)
   const localCorners: [number, number][] = [
@@ -47,15 +50,16 @@ export function getCabinetBox2D(
     [-sin, cos],
   ];
 
-  const yMin = cab.position[1] - cab.height / 2;
-  const yMax = cab.position[1] + cab.height / 2;
+  const cy = Number(cab.position?.[1]) || (height / 2);
+  const yMin = cy - height / 2;
+  const yMax = cy + height / 2;
 
   return {
     corners,
     center: [cx, cz],
     axes,
-    width: cab.width,
-    depth: cab.depth,
+    width,
+    depth,
     rotation: rot,
     yMin,
     yMax,
@@ -617,6 +621,8 @@ export function resolvePlacement({
       ? 140 + cabHeight / 2
       : variant === 'deco_hood'
       ? 145 + cabHeight / 2
+      : cabType === 'decoration' && variant === 'window'
+      ? 90 + cabHeight / 2
       : cabHeight / 2;
 
   const otherCabinets = cabinets.filter((c) => !ignoreId || c.id !== ignoreId);
@@ -742,6 +748,7 @@ export function resolvePlacement({
     cabType === 'base' ||
     cabType === 'tall' ||
     cabType === 'wall' ||
+    cabType === 'decoration' ||
     variant === 'deco_hood' ||
     variant === 'deco_stove' ||
     variant === 'deco_fridge';
@@ -785,7 +792,8 @@ export function resolvePlacement({
       const s = (mouseX - x1) * uX + (mouseZ - z1) * uZ;
       const sClamped = Math.max(cabWidth / 2 + 0.5, Math.min(wallLen - cabWidth / 2 - 0.5, s));
       const wallThickness = w.thickness || 20;
-      const flushDist = wallThickness / 2 + cabDepth / 2;
+      const isWallMountedDeco = variant === 'deco_hood' || variant === 'deco_stove' || variant === 'deco_fridge';
+      const flushDist = (cabType === 'decoration' && !isWallMountedDeco && variant !== 'deco_plant') ? 0 : (variant === 'deco_plant' ? 0 : wallThickness / 2 + cabDepth / 2);
 
       // La posición de enganche siempre queda exactamente en la cara interior del tabique
       let snapPosX = x1 + sClamped * uX + flushDist * nX;

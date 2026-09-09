@@ -47,6 +47,7 @@ export interface ProviderTenantItem {
   address?: string;
   currency: string;
   default_margin_pct: number;
+  commission_pct?: number; // % Comisión que retiene Arquify sobre la venta final
   is_active: boolean;
   users_count?: number;
   projects_count?: number;
@@ -168,7 +169,8 @@ export function UsersAndProvidersTab() {
     phone: '',
     address: '',
     currency: 'CLP',
-    default_margin_pct: 35
+    default_margin_pct: 35,
+    commission_pct: 15
   });
 
   // Form states for User
@@ -275,6 +277,7 @@ export function UsersAndProvidersTab() {
 
     const slug = tenantForm.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
     const supabase = getSupabase();
+    let cloudSynced = false;
 
     if (isCloud && supabase) {
       try {
@@ -294,8 +297,11 @@ export function UsersAndProvidersTab() {
             })
             .eq('id', editingTenant.id);
 
-          if (error) throw error;
-          showFeedback('success', `Proveedor "${tenantForm.name}" actualizado en Supabase.`);
+          if (!error) {
+            cloudSynced = true;
+          } else {
+            console.warn('Supabase tenant update failed (RLS/Permissions), applying resilient local storage:', error);
+          }
         } else {
           // Insert
           const { error } = await supabase.from('tenants').insert({
@@ -308,43 +314,78 @@ export function UsersAndProvidersTab() {
             default_margin_pct: tenantForm.default_margin_pct
           });
 
-          if (error) throw error;
-          showFeedback('success', `Proveedor "${tenantForm.name}" registrado en Supabase.`);
+          if (!error) {
+            cloudSynced = true;
+          } else {
+            console.warn('Supabase tenant insert failed (RLS/Permissions), applying resilient local storage:', error);
+          }
         }
-        await loadCloudData();
+        if (cloudSynced) {
+          await loadCloudData();
+        }
       } catch (err: any) {
-        showFeedback('error', err.message || 'Error al guardar proveedor');
+        console.warn('Exception during cloud tenant sync, falling back to local store:', err);
       } finally {
         setIsLoading(false);
       }
-    } else {
-      // Local fallback
-      if (editingTenant) {
-        setTenants(
-          tenants.map((t) =>
-            t.id === editingTenant.id
-              ? {
-                  ...t,
-                  ...tenantForm
-                }
-              : t
-          )
-        );
-        showFeedback('success', `Proveedor "${tenantForm.name}" actualizado.`);
-      } else {
-        const newT: ProviderTenantItem = {
-          id: `tenant-${Date.now()}`,
+    }
+
+    // Always update local list & useAdminStore so that the provider is immediately active everywhere
+    const adminStore = useAdminStore.getState();
+    const existingInStore = adminStore.providers.find(
+      (p) => p.name.toLowerCase() === tenantForm.name.trim().toLowerCase() || (editingTenant && p.id === editingTenant.id)
+    );
+
+    if (editingTenant) {
+      setTenants(
+        tenants.map((t) =>
+          t.id === editingTenant.id
+            ? {
+                ...t,
+                ...tenantForm,
+                commission_pct: Number(tenantForm.commission_pct || 15)
+              }
+            : t
+        )
+      );
+
+      if (existingInStore) {
+        adminStore.updateProvider(existingInStore.id, {
           name: tenantForm.name.trim(),
-          slug,
-          ...tenantForm,
-          is_active: true,
-          users_count: 0,
-          projects_count: 0,
-          created_at: new Date().toISOString().split('T')[0]
-        };
-        setTenants([newT, ...tenants]);
-        showFeedback('success', `Proveedor "${tenantForm.name}" creado con éxito.`);
+          email: tenantForm.contact_email.trim(),
+          phone: tenantForm.phone.trim(),
+          address: tenantForm.address.trim(),
+          commissionPercentage: Number(tenantForm.commission_pct || 15)
+        });
       }
+
+      showFeedback('success', `Proveedor "${tenantForm.name}" actualizado con éxito${cloudSynced ? ' (Nube Supabase)' : ' (Local y Activo)'}.`);
+    } else {
+      const newId = `tenant-${Date.now()}`;
+      const newT: ProviderTenantItem = {
+        id: newId,
+        name: tenantForm.name.trim(),
+        slug,
+        ...tenantForm,
+        commission_pct: Number(tenantForm.commission_pct || 15),
+        is_active: true,
+        users_count: 0,
+        projects_count: 0,
+        created_at: new Date().toISOString().split('T')[0]
+      };
+      setTenants([newT, ...tenants]);
+
+      // Registrar en useAdminStore
+      adminStore.addProvider({
+        name: tenantForm.name.trim(),
+        email: tenantForm.contact_email.trim(),
+        phone: tenantForm.phone.trim(),
+        address: tenantForm.address.trim(),
+        commissionPercentage: Number(tenantForm.commission_pct || 15),
+        active: true
+      });
+
+      showFeedback('success', `Proveedor "${tenantForm.name}" creado con éxito${cloudSynced ? ' (Sincronizado con Supabase)' : ' (Listo para publicar terminaciones)'}.`);
     }
 
     setEditingTenant(null);
@@ -354,7 +395,8 @@ export function UsersAndProvidersTab() {
       phone: '',
       address: '',
       currency: 'CLP',
-      default_margin_pct: 35
+      default_margin_pct: 35,
+      commission_pct: 15
     });
     setIsNewTenantModalOpen(false);
   };
@@ -593,7 +635,8 @@ export function UsersAndProvidersTab() {
                   phone: '',
                   address: '',
                   currency: 'CLP',
-                  default_margin_pct: 35
+                  default_margin_pct: 35,
+                  commission_pct: 15
                 });
                 setIsNewTenantModalOpen(true);
               }}
@@ -803,6 +846,13 @@ export function UsersAndProvidersTab() {
                       <span className="text-zinc-400">Margen por Defecto:</span>
                       <strong className="text-orange-400 font-mono">{tenant.default_margin_pct}%</strong>
                     </div>
+
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-zinc-400">Comisión Arquify:</span>
+                      <span className="px-2 py-0.5 bg-amber-500/15 border border-amber-500/30 text-amber-300 rounded-md font-mono font-bold">
+                        {tenant.commission_pct ?? 15}%
+                      </span>
+                    </div>
                   </div>
                 </div>
 
@@ -820,7 +870,8 @@ export function UsersAndProvidersTab() {
                           phone: tenant.phone || '',
                           address: tenant.address || '',
                           currency: tenant.currency || 'CLP',
-                          default_margin_pct: tenant.default_margin_pct || 35
+                          default_margin_pct: tenant.default_margin_pct || 35,
+                          commission_pct: tenant.commission_pct ?? 15
                         });
                         setIsNewTenantModalOpen(true);
                       }}
@@ -949,6 +1000,45 @@ export function UsersAndProvidersTab() {
                     className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-700 rounded-xl text-white focus:outline-none focus:border-orange-500 font-mono"
                   />
                 </div>
+              </div>
+
+              {/* Comisión Arquify acordada */}
+              <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-amber-300 font-bold text-xs">
+                    % Comisión que retiene Arquify por Venta Final *
+                  </label>
+                  <span className="text-amber-400 font-mono font-bold text-sm">
+                    {tenantForm.commission_pct || 15}%
+                  </span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="range"
+                    min={0}
+                    max={50}
+                    step={1}
+                    value={tenantForm.commission_pct || 15}
+                    onChange={(e) =>
+                      setTenantForm({ ...tenantForm, commission_pct: Number(e.target.value) })
+                    }
+                    className="flex-1 accent-amber-500 cursor-pointer"
+                  />
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={tenantForm.commission_pct || 15}
+                    onChange={(e) =>
+                      setTenantForm({ ...tenantForm, commission_pct: Number(e.target.value) })
+                    }
+                    className="w-16 px-2 py-1.5 bg-zinc-900 border border-amber-500/40 rounded-lg text-white font-mono text-center font-bold"
+                  />
+                </div>
+                <p className="text-[11px] text-zinc-400 leading-tight">
+                  Al cargar un producto a <span className="text-white font-mono">$100.000</span> (precio final en configurador), 
+                  Arquify retiene <span className="text-amber-300 font-bold">{tenantForm.commission_pct || 15}%</span> (${((100000 * (tenantForm.commission_pct || 15)) / 100).toLocaleString('es-CL')}) y el proveedor recibe neto <span className="text-emerald-400 font-bold">{100 - (tenantForm.commission_pct || 15)}%</span> (${((100000 * (100 - (tenantForm.commission_pct || 15))) / 100).toLocaleString('es-CL')}).
+                </p>
               </div>
 
               <div className="pt-4 border-t border-zinc-800 flex items-center justify-end gap-3">

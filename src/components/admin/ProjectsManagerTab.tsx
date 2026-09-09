@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   FolderKanban,
   FileSpreadsheet,
@@ -18,9 +18,15 @@ import {
   Sparkles,
   Calendar,
   User,
-  AlertCircle
+  AlertCircle,
+  RefreshCw,
+  Cloud,
+  HardDrive,
+  Building2
 } from 'lucide-react';
 import { useAdminStore, ProjectItem, ProjectType } from '../../store/adminStore';
+import { useSupabaseAuthStore } from '../../store/supabaseAuthStore';
+import { useTenantDataStore } from '../../store/tenantDataStore';
 import { exportProjectToPdf } from '../../utils/pdfGenerator';
 import * as XLSX from 'xlsx-js-style';
 import { calculateSipHouseQuantities } from '../../utils/sipExcelGenerator';
@@ -28,13 +34,17 @@ import { useSipHouseStore } from '../../store/sipHouseStore';
 import { useKitchenStore } from '../../store/kitchenStore';
 import { useStore as useClosetStore } from '../../store';
 import { useSpecialFurnitureStore } from '../../store/specialFurnitureStore';
+import { useOfficeStore } from '../../store/officeStore';
 
 interface ProjectsManagerTabProps {
-  onLoadProjectToModule: (route: 'sip-house' | 'kitchen' | 'closet' | 'special') => void;
+  onLoadProjectToModule: (route: 'sip-house' | 'kitchen' | 'closet' | 'special' | 'hpl-bathroom' | 'concrete-house' | 'office') => void;
 }
 
 export function ProjectsManagerTab({ onLoadProjectToModule }: ProjectsManagerTabProps) {
-  const { projects, saveProject, renameProject, duplicateProject, deleteProject } = useAdminStore();
+  const { projects, saveProject, renameProject, duplicateProject, deleteProject, syncCloudProjects } = useAdminStore();
+  const { user: supabaseUser, tenant: supabaseTenant } = useSupabaseAuthStore();
+  const { saveProjectToCloud } = useTenantDataStore();
+
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedType, setSelectedType] = useState<'all' | ProjectType>('all');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -45,7 +55,27 @@ export function ProjectsManagerTab({ onLoadProjectToModule }: ProjectsManagerTab
   const [newName, setNewName] = useState('');
   const [newClient, setNewClient] = useState('');
   const [newDescription, setNewDescription] = useState('');
+  const [isSyncing, setIsSyncing] = useState(false);
   const [feedbackMsg, setFeedbackMsg] = useState<{ text: string; type: 'success' | 'info' } | null>(null);
+
+  // Sincronizar al montar si hay supabase
+  useEffect(() => {
+    if (supabaseUser && supabaseTenant) {
+      syncCloudProjects();
+    }
+  }, [supabaseUser, supabaseTenant, syncCloudProjects]);
+
+  const handleManualSync = async () => {
+    setIsSyncing(true);
+    try {
+      await syncCloudProjects();
+      showNotification('Proyectos sincronizados con la nube correctamente.');
+    } catch (e) {
+      showNotification('Error al sincronizar proyectos.', 'info');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   // Filtered projects
   const filteredProjects = projects.filter((p) => {
@@ -142,6 +172,17 @@ export function ProjectsManagerTab({ onLoadProjectToModule }: ProjectsManagerTab
         if (proj.data.woodColor) specialState.setExteriorColor('terracota');
       }
       onLoadProjectToModule('special');
+    } else if (proj.type === 'office') {
+      const officeState = useOfficeStore.getState();
+      if (proj.data) {
+        if (proj.data.placedItems) {
+          useOfficeStore.setState({ placedItems: proj.data.placedItems });
+        }
+        if (proj.data.floorPlan) {
+          useOfficeStore.setState({ floorPlan: proj.data.floorPlan });
+        }
+      }
+      onLoadProjectToModule('office');
     }
   };
 
@@ -226,6 +267,31 @@ export function ProjectsManagerTab({ onLoadProjectToModule }: ProjectsManagerTab
       data: initialData,
     });
 
+    if (supabaseUser && supabaseTenant) {
+      const cloudTypeMap: Record<ProjectType, 'kitchen' | 'closet' | 'special_furniture' | 'sip_house'> = {
+        kitchen: 'kitchen',
+        closet: 'closet',
+        special: 'special_furniture',
+        'sip-house': 'sip_house',
+        'hpl-bathroom': 'special_furniture',
+        'concrete-house': 'sip_house',
+        office: 'special_furniture',
+      };
+      saveProjectToCloud({
+        code: `PRJ-${Math.floor(1000 + Math.random() * 9000)}`,
+        name: newName.trim(),
+        client_name: newClient.trim() || 'General',
+        project_type: cloudTypeMap[newType],
+        status: 'draft',
+        total_area_m2: 0,
+        total_sheets_count: 0,
+        material_cost: estimatedCost * 0.6,
+        hardware_cost: estimatedCost * 0.15,
+        total_price: estimatedCost,
+        config_json: initialData,
+      }).catch(console.warn);
+    }
+
     setIsCreatingNew(false);
     setNewName('');
     setNewClient('');
@@ -259,6 +325,24 @@ export function ProjectsManagerTab({ onLoadProjectToModule }: ProjectsManagerTab
             <Sparkles size={12} /> Especial
           </span>
         );
+      case 'hpl-bathroom':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 rounded text-[10px] font-bold uppercase tracking-wider">
+            <FolderKanban size={12} /> Baños HPL
+          </span>
+        );
+      case 'concrete-house':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-stone-500/10 text-stone-300 border border-stone-500/30 rounded text-[10px] font-bold uppercase tracking-wider">
+            <Home size={12} /> Hormigón
+          </span>
+        );
+      case 'office':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-500/10 text-indigo-400 border border-indigo-500/30 rounded text-[10px] font-bold uppercase tracking-wider">
+            <Building2 size={12} /> Oficinas
+          </span>
+        );
     }
   };
 
@@ -290,7 +374,10 @@ export function ProjectsManagerTab({ onLoadProjectToModule }: ProjectsManagerTab
         <div className="flex items-center gap-1 bg-zinc-950 p-1 rounded-lg border border-zinc-800 overflow-x-auto">
           {[
             { id: 'all', label: 'Todos' },
+            { id: 'office', label: 'Oficinas' },
             { id: 'sip-house', label: 'Casas SIP' },
+            { id: 'concrete-house', label: 'Hormigón' },
+            { id: 'hpl-bathroom', label: 'Baños HPL' },
             { id: 'kitchen', label: 'Cocinas' },
             { id: 'closet', label: 'Clósets' },
             { id: 'special', label: 'Muebles Esp.' },
@@ -309,13 +396,28 @@ export function ProjectsManagerTab({ onLoadProjectToModule }: ProjectsManagerTab
           ))}
         </div>
 
-        {/* Create Button */}
-        <button
-          onClick={() => setIsCreatingNew(!isCreatingNew)}
-          className="px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-400 hover:to-amber-500 text-white rounded-lg text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-md shadow-orange-500/20 shrink-0 transition-all"
-        >
-          <Plus size={16} /> Guardar Nuevo
-        </button>
+        {/* Actions Buttons */}
+        <div className="flex items-center gap-2 shrink-0">
+          {supabaseUser && supabaseTenant && (
+            <button
+              onClick={handleManualSync}
+              disabled={isSyncing}
+              className="px-3 py-2 bg-zinc-950 border border-sky-500/30 text-sky-400 hover:text-sky-300 hover:bg-sky-500/10 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+              title="Sincronizar proyectos con base de datos en la nube"
+            >
+              <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />
+              <span className="hidden sm:inline">{isSyncing ? 'Sincronizando...' : 'Sincronizar Nube'}</span>
+            </button>
+          )}
+
+          {/* Create Button */}
+          <button
+            onClick={() => setIsCreatingNew(!isCreatingNew)}
+            className="px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-400 hover:to-amber-500 text-white rounded-lg text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-md shadow-orange-500/20 transition-all cursor-pointer"
+          >
+            <Plus size={16} /> Guardar Nuevo
+          </button>
+        </div>
       </div>
 
       {/* New Project Form */}
@@ -346,7 +448,10 @@ export function ProjectsManagerTab({ onLoadProjectToModule }: ProjectsManagerTab
                 onChange={(e) => setNewType(e.target.value as ProjectType)}
                 className="w-full p-2 bg-zinc-950 border border-zinc-700 rounded-lg text-xs text-white focus:border-orange-500 focus:outline-none"
               >
+                <option value="office">Mobiliario de Oficina (Space Planning 3D)</option>
                 <option value="sip-house">Casa Panel SIP (Molco 132 m²)</option>
+                <option value="concrete-house">Casa Hormigón Armado (ICH)</option>
+                <option value="hpl-bathroom">Cabinas Sanitarias HPL</option>
                 <option value="kitchen">Cocina Planificador 2D/3D</option>
                 <option value="closet">Clóset Paramétrico Modular</option>
                 <option value="special">Mueble Especial Abet & Madera</option>

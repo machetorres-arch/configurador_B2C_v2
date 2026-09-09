@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Printer, Download, X, FileText, Loader2 } from 'lucide-react';
+import { Printer, Download, X, FileText, CheckCircle2, Loader2 } from 'lucide-react';
 import { useStore, ClosetModule } from '../store';
 import { generatePartsList, Part, exportToPDF } from '../utils/manufacturing';
 import { optimizeNesting, NestingPart, BoardResult } from '../utils/nesting';
@@ -9,15 +9,22 @@ export function Blueprint() {
   const state = useStore();
   const [isExportingA3, setIsExportingA3] = useState(false);
   const [exportProgress, setExportProgress] = useState<{ current: number; total: number } | null>(null);
+  const [generatedPdfUrl, setGeneratedPdfUrl] = useState<string | null>(null);
 
   if (!state.isPrinting) return null;
 
   const handleExportA3 = async () => {
     setIsExportingA3(true);
+    setGeneratedPdfUrl(null);
     try {
-      await exportBlueprintDomToPdf('planos_closet_completos_A3.pdf', (curr, tot) => {
+      const url = await exportBlueprintDomToPdf('planos_closet_completos_A3.pdf', (curr, tot) => {
         setExportProgress({ current: curr, total: tot });
       });
+      if (url) {
+        setGeneratedPdfUrl(url);
+      } else {
+        alert('No se pudieron compilar las láminas A3. Puedes usar el botón "Imprimir" (Guardar como PDF) o la "Ficha Técnica PDF".');
+      }
     } catch (err) {
       console.error('Error al exportar planos A3 en PDF', err);
       alert('Ocurrió un detalle al generar el archivo. También puedes utilizar el botón "Imprimir / Guardar".');
@@ -312,6 +319,20 @@ export function Blueprint() {
           )}
         </button>
 
+        {generatedPdfUrl && (
+          <a
+            href={generatedPdfUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            download="planos_closet_completos_A3.pdf"
+            className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-xl font-bold uppercase text-xs tracking-wider shadow-lg flex items-center gap-2 animate-bounce cursor-pointer"
+            title="Haz clic para abrir o descargar directamente el PDF generado"
+          >
+            <Download size={15} />
+            <span>¡PDF Listo! Abrir / Descargar</span>
+          </a>
+        )}
+
         {/* Botón Secundario: Ficha Técnica PDF Directo */}
         <button 
           onClick={() => exportToPDF(state)}
@@ -345,13 +366,35 @@ export function Blueprint() {
       <style>{`
         @media screen { 
            .print-only-container { display: flex; flex-direction: column; background: #525252; padding: 2rem; align-items: center; gap: 2rem; } 
-           .blueprint-page { background: white; width: 420mm; height: 297mm; position: relative; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+           .blueprint-page { 
+             background: white; 
+             width: 420mm; 
+             min-width: 420mm; 
+             max-width: 420mm; 
+             height: 297mm; 
+             min-height: 297mm; 
+             max-height: 297mm; 
+             flex-shrink: 0; 
+             position: relative; 
+             box-shadow: 0 4px 15px rgba(0,0,0,0.5); 
+             box-sizing: border-box;
+           }
         }
         @media print {
           body * { visibility: hidden; }
           .print-only-container, .print-only-container * { visibility: visible; }
           .print-only-container { position: absolute; left: 0; top: 0; width: 100%; height: auto; display: block; background: white !important; }
-          .blueprint-page { width: 100%; height: 100vh; position: relative; page-break-after: always; overflow: hidden; }
+          .blueprint-page { 
+            width: 420mm; 
+            height: 297mm; 
+            min-height: 297mm;
+            max-height: 297mm;
+            position: relative; 
+            page-break-after: always; 
+            page-break-inside: avoid;
+            overflow: hidden; 
+            box-sizing: border-box;
+          }
           @page { size: A3 landscape; margin: 0; }
         }
       `}</style>
@@ -576,6 +619,37 @@ export function Blueprint() {
           </div>
         );
       })}
+
+      {/* Modal de PDF Listo para Descargar */}
+      {generatedPdfUrl && (
+        <div className="fixed inset-0 z-[300] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl text-center space-y-6 border border-slate-100 animate-in fade-in zoom-in duration-200">
+            <div className="w-16 h-16 bg-green-100 text-green-600 rounded-2xl mx-auto flex items-center justify-center">
+              <CheckCircle2 size={36} />
+            </div>
+            <div>
+              <h3 className="text-xl font-bold text-slate-900">¡Planos A3 Generados con Éxito!</h3>
+              <p className="text-slate-600 text-sm mt-2">Su documento PDF de fabricación está listo para descargar.</p>
+            </div>
+            <div className="space-y-3">
+              <a
+                href={generatedPdfUrl}
+                download="planos_closet_completos_A3.pdf"
+                className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-3.5 px-6 rounded-2xl shadow-lg flex items-center justify-center gap-2.5 transition-all cursor-pointer text-base"
+              >
+                <Download size={20} />
+                <span>Descargar Archivo PDF</span>
+              </a>
+              <button
+                onClick={() => setGeneratedPdfUrl(null)}
+                className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-3 px-6 rounded-2xl transition-all cursor-pointer text-sm"
+              >
+                Cerrar ventana
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

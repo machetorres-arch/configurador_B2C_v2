@@ -1,8 +1,12 @@
 import React, { useState, useRef, useCallback } from 'react';
 import * as THREE from 'three';
 import { ThreeEvent } from '@react-three/fiber';
-import { Html } from '@react-three/drei';
-import { SipOpening, WallTarget, useSipHouseStore } from '../../store/sipHouseStore';
+import {
+  SipOpening,
+  WallTarget,
+  useSipHouseStore,
+  getWallLengthCm,
+} from '../../store/sipHouseStore';
 
 interface SipInteractiveOpeningProps {
   opening: SipOpening & {
@@ -38,6 +42,7 @@ export function SipInteractiveOpening({
   materials,
 }: SipInteractiveOpeningProps) {
   const {
+    dimensions,
     selectedOpeningId,
     setSelectedOpeningId,
     setIsDraggingOpening,
@@ -72,7 +77,7 @@ export function SipInteractiveOpening({
   const profileThick = 0.045; // 45mm perfil de marco
   const frameDepth = wallThickness + 0.015;
 
-  // Manejador de Arrastre Global Ultra-Robusto
+  // Manejador de Arrastre Global Continuo por el Contorno Perimetral de la Casa
   const handlePointerDown = useCallback(
     (e: ThreeEvent<PointerEvent>) => {
       e.stopPropagation();
@@ -84,29 +89,67 @@ export function SipInteractiveOpening({
       const startClientY = e.nativeEvent.clientY;
       const startOffset = opening.offsetAlongWall || 50;
 
+      const perimeterCycle: WallTarget[] = ['front', 'right', 'back', 'left'];
+
       const onPointerMoveWindow = (moveEvent: PointerEvent) => {
         const dx = moveEvent.clientX - startClientX;
         const dy = moveEvent.clientY - startClientY;
 
-        // Sensibilidad calibrada: 1px = ~0.6cm
-        let deltaCm = Math.round(dx * 0.6);
+        // Sensibilidad calibrada y ágil (1px = ~1.8cm para respuesta inmediata y fluida)
+        // La dirección del offset del muro aumenta de izquierda a derecha.
+        // Adaptamos según la orientación de la cara del muro y la perspectiva de la cámara 3D:
+        const SPEED = 1.8;
+        let deltaCm = 0;
 
-        // Inversión según cara de muro para que el arrastre siga el movimiento visual del mouse
-        if (wallId === 'back') {
-          deltaCm = -Math.round(dx * 0.6);
+        if (wallId === 'front') {
+          // Vista frontal / isométrica: mover mouse a la derecha (+dx) aumenta el offset (+deltaCm)
+          deltaCm = Math.round(dx * SPEED);
+        } else if (wallId === 'back') {
+          // Vista trasera: mover mouse a la derecha (+dx) en pantalla corresponde a ir hacia la derecha visual
+          deltaCm = Math.round(dx * SPEED);
         } else if (wallId === 'left') {
-          deltaCm = Math.round((dx - dy * 0.4) * 0.6);
+          // Muro lateral izquierdo: en vista isométrica, respuesta ágil combinada
+          deltaCm = Math.round((dx - dy * 0.5) * SPEED);
         } else if (wallId === 'right' || wallId.startsWith('wing')) {
-          deltaCm = Math.round((dx + dy * 0.4) * 0.6);
+          // Muro lateral derecho: en vista isométrica, respuesta ágil combinada
+          deltaCm = Math.round((dx + dy * 0.5) * SPEED);
+        } else {
+          deltaCm = Math.round(dx * SPEED);
         }
 
-        const minCm = 20;
-        const maxCm = Math.max(minCm, Math.round((wallLength - wM - 0.2) * 100));
+        const minCm = 25; // 25cm margen mínimo de esquina SIP
+        const maxCm = Math.max(minCm, Math.round((wallLength - wM - 0.25) * 100));
 
         let nextOffset = startOffset + deltaCm;
+
+        // Transición continua al muro contiguo si se sobrepasan los extremos
+        if (nextOffset > maxCm + 25) {
+          const currentIdx = perimeterCycle.indexOf(wallId);
+          if (currentIdx !== -1) {
+            const nextWall = perimeterCycle[(currentIdx + 1) % perimeterCycle.length];
+            updateOpening(opening.id, {
+              assignedWall: nextWall,
+              offsetAlongWall: 30,
+            });
+            return;
+          }
+        } else if (nextOffset < minCm - 25) {
+          const currentIdx = perimeterCycle.indexOf(wallId);
+          if (currentIdx !== -1) {
+            const prevWall = perimeterCycle[(currentIdx - 1 + perimeterCycle.length) % perimeterCycle.length];
+            const targetLen = getWallLengthCm(prevWall, dimensions);
+            const newOff = Math.max(25, Math.round(targetLen - opening.width - 30));
+            updateOpening(opening.id, {
+              assignedWall: prevWall,
+              offsetAlongWall: newOff,
+            });
+            return;
+          }
+        }
+
         nextOffset = Math.max(minCm, Math.min(maxCm, nextOffset));
 
-        // Snapping inteligente cada 5cm
+        // Snapping inteligente a retícula modular cada 5cm
         const snapped = Math.round(nextOffset / 5) * 5;
 
         updateOpening(opening.id, { offsetAlongWall: snapped });
@@ -122,7 +165,18 @@ export function SipInteractiveOpening({
       window.addEventListener('pointermove', onPointerMoveWindow);
       window.addEventListener('pointerup', onPointerUpWindow);
     },
-    [opening.id, opening.offsetAlongWall, wallId, wallLength, wM, setIsDraggingOpening, setSelectedOpeningId, updateOpening]
+    [
+      opening.id,
+      opening.width,
+      opening.offsetAlongWall,
+      wallId,
+      wallLength,
+      wM,
+      dimensions,
+      setIsDraggingOpening,
+      setSelectedOpeningId,
+      updateOpening,
+    ]
   );
 
   const handleClick = useCallback(
@@ -131,18 +185,6 @@ export function SipInteractiveOpening({
       setSelectedOpeningId(opening.id);
     },
     [opening.id, setSelectedOpeningId]
-  );
-
-  const handleNudge = useCallback(
-    (delta: number, e?: React.MouseEvent) => {
-      e?.stopPropagation();
-      const current = opening.offsetAlongWall || 50;
-      const minCm = 20;
-      const maxCm = Math.max(minCm, Math.round((wallLength - wM - 0.2) * 100));
-      const next = Math.max(minCm, Math.min(maxCm, current + delta));
-      updateOpening(opening.id, { offsetAlongWall: next });
-    },
-    [opening.id, opening.offsetAlongWall, wallLength, wM, updateOpening]
   );
 
   return (
@@ -162,7 +204,7 @@ export function SipInteractiveOpening({
       onClick={handleClick}
     >
       {/* ========================================================================= */}
-      {/* 1. INDICADOR DE SELECCIÓN, BORDE LUMINOSO Y BADGE 3D INTERACTIVO          */}
+      {/* 1. INDICADOR DE SELECCIÓN Y BORDE LUMINOSO EN EL MODELO 3D                */}
       {/* ========================================================================= */}
       {(isSelected || hovered || isDragging) && (
         <group>
@@ -174,61 +216,6 @@ export function SipInteractiveOpening({
               linewidth={2}
             />
           </lineSegments>
-
-          {/* Cartela Informativa / Badge 3D flotante con botones interactivos */}
-          <Html
-            position={[0, hM / 2 + 0.22, wallThickness / 2 + 0.08]}
-            center
-            distanceFactor={10}
-            className="select-none z-30"
-          >
-            <div
-              className={`px-3 py-2 rounded-2xl text-xs font-bold whitespace-nowrap shadow-2xl border flex items-center gap-2 backdrop-blur-xl transition-all ${
-                isSelected
-                  ? 'bg-slate-950/95 text-sky-200 border-sky-400/90 ring-2 ring-sky-500/40 scale-105'
-                  : 'bg-slate-900/90 text-slate-200 border-white/25'
-              }`}
-            >
-              <div className="flex items-center gap-1.5 cursor-grab active:cursor-grabbing">
-                <span className={`w-2.5 h-2.5 rounded-full ${isSelected ? 'bg-sky-400 animate-ping' : 'bg-amber-400'}`} />
-                <span className="font-mono text-xs font-black tracking-wider text-white uppercase">
-                  {opening.code}
-                </span>
-                <span className="text-slate-300 text-xs font-medium">
-                  {Math.round(wM * 100)}×{Math.round(hM * 100)} cm
-                </span>
-              </div>
-
-              {/* Botones de ajuste rápido en el muro */}
-              <div className="flex items-center gap-1 bg-white/10 p-1 rounded-xl pointer-events-auto">
-                <button
-                  type="button"
-                  onClick={(e) => handleNudge(-10, e)}
-                  className="px-1.5 py-0.5 bg-white/10 hover:bg-sky-500 hover:text-white rounded-lg text-slate-200 font-mono text-[11px] transition-colors"
-                  title="Mover 10cm hacia la izquierda"
-                >
-                  ◀ -10
-                </button>
-                <span className="text-[11px] text-sky-300 font-mono font-bold px-1">
-                  {opening.offsetAlongWall || 50} cm
-                </span>
-                <button
-                  type="button"
-                  onClick={(e) => handleNudge(10, e)}
-                  className="px-1.5 py-0.5 bg-white/10 hover:bg-sky-500 hover:text-white rounded-lg text-slate-200 font-mono text-[11px] transition-colors"
-                  title="Mover 10cm hacia la derecha"
-                >
-                  +10 ▶
-                </button>
-              </div>
-
-              {isDragging && (
-                <span className="text-[11px] text-emerald-400 animate-pulse font-bold">
-                  ↔ Arrastrando...
-                </span>
-              )}
-            </div>
-          </Html>
         </group>
       )}
 

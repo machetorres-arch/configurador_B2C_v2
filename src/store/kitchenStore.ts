@@ -32,6 +32,9 @@ export type ToolMode =
   | 'place_deco_fridge'
   | 'place_deco_hood'
   | 'place_deco_plant'
+  | 'place_arch_door'
+  | 'place_arch_window'
+  | 'place_arch_pillar'
   | 'move_active';
 
 export interface WallType {
@@ -40,6 +43,21 @@ export interface WallType {
   end: [number, number];
   thickness: number;
   height: number;
+}
+
+export interface ArchitecturalElement {
+  id: string;
+  wallId?: string;
+  offset?: number;
+  type: 'door' | 'window' | 'pillar';
+  name: string;
+  width: number;
+  height: number;
+  depth?: number; // thickness / depth for pillars
+  length?: number; // length for pillars / walls
+  elevation: number; // height from floor (0 for doors/pillars, e.g. 90 for windows)
+  position: [number, number, number]; // [x, y, z]
+  rotation: number;
 }
 
 export interface CabinetType {
@@ -85,6 +103,10 @@ interface KitchenState {
   roomConfig: RoomConfig;
   wallColor: string;
   floorType: string;
+  architecturalElements: ArchitecturalElement[];
+  activeArchElementId: string | null;
+  draggingArchElementId: string | null;
+  draggingCabinetId: string | null;
 
   setViewMode: (mode: ViewMode) => void;
   setToolMode: (mode: ToolMode) => void;
@@ -93,6 +115,12 @@ interface KitchenState {
   addCabinet: (cabinet: CabinetType) => void;
   removeCabinet: (id: string) => void;
   setActiveCabinet: (id: string | null) => void;
+  addArchitecturalElement: (el: ArchitecturalElement) => void;
+  updateArchitecturalElement: (id: string, updates: Partial<ArchitecturalElement>) => void;
+  removeArchitecturalElement: (id: string) => void;
+  setActiveArchElement: (id: string | null) => void;
+  setDraggingArchElementId: (id: string | null) => void;
+  setDraggingCabinetId: (id: string | null) => void;
   setDrawingStart: (pos: [number, number] | null) => void;
   setShowSocle: (val: boolean) => void;
   updateCabinet: (id: string, updates: Partial<CabinetType>) => void;
@@ -276,6 +304,10 @@ export const useKitchenStore = create<KitchenState>((set) => ({
   roomConfig: initialRoomConfig,
   wallColor: '#E2E8F0',
   floorType: 'ceramic_white_60x60',
+  architecturalElements: [],
+  activeArchElementId: null,
+  draggingArchElementId: null,
+  draggingCabinetId: null,
 
   setViewMode: (mode) => set({ viewMode: mode }),
   setToolMode: (mode) => set({ toolMode: mode, drawingStart: null }),
@@ -302,6 +334,18 @@ export const useKitchenStore = create<KitchenState>((set) => ({
       activeCabinetId: state.activeCabinetId === id ? null : state.activeCabinetId,
     })),
   setActiveCabinet: (id) => set({ activeCabinetId: id }),
+  addArchitecturalElement: (el) => set((state) => ({ architecturalElements: [...state.architecturalElements, el] })),
+  updateArchitecturalElement: (id, updates) => set((state) => ({
+    architecturalElements: state.architecturalElements.map(el => el.id === id ? { ...el, ...updates } : el)
+  })),
+  removeArchitecturalElement: (id) => set((state) => ({
+    architecturalElements: state.architecturalElements.filter(el => el.id !== id),
+    activeArchElementId: state.activeArchElementId === id ? null : state.activeArchElementId,
+    draggingArchElementId: state.draggingArchElementId === id ? null : state.draggingArchElementId
+  })),
+  setActiveArchElement: (id) => set({ activeArchElementId: id }),
+  setDraggingArchElementId: (id) => set({ draggingArchElementId: id }),
+  setDraggingCabinetId: (id) => set({ draggingCabinetId: id }),
   setDrawingStart: (pos) => set({ drawingStart: pos }),
   setShowSocle: (val) => set({ showSocle: val }),
   updateCabinet: (id, updates) =>

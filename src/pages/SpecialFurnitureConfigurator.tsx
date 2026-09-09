@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   ArrowLeft,
   FileSpreadsheet,
@@ -12,13 +12,11 @@ import {
   Sliders,
   CheckCircle2,
   Compass,
-  Upload,
-  Trash2,
   Image as ImageIcon
 } from 'lucide-react';
-import { get, set } from 'idb-keyval';
 import { SpecialScene } from '../components/special/SpecialScene';
 import { SpecialBlueprint } from '../components/special/SpecialBlueprint';
+import { SaveProjectModal } from '../components/common/SaveProjectModal';
 import {
   useSpecialFurnitureStore,
   SPECIAL_COLORS,
@@ -32,69 +30,19 @@ import {
   generateSpecialPartsList,
   generateSpecialHardwareList
 } from '../utils/specialFurnitureManufacturing';
+import { Save } from 'lucide-react';
+import { useAdminStore } from '../store/adminStore';
 
 export function SpecialFurnitureConfigurator({ onNavigate }: { onNavigate: () => void }) {
   const state = useSpecialFurnitureStore();
+  const adminTextures = useAdminStore((s) => s.textures);
   const [viewMode, setViewMode] = useState<'3d' | 'blueprint' | 'bom'>('3d');
-  const [localTextures, setLocalTextures] = useState<any[]>([]);
-  const [uploading, setUploading] = useState(false);
+  const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
 
-  useEffect(() => {
-    loadLocalTextures();
-  }, []);
-
-  const loadLocalTextures = async () => {
-    try {
-      const stored = await get('custom_textures');
-      if (stored && Array.isArray(stored)) {
-        setLocalTextures(stored);
-      }
-    } catch (e) {
-      console.error('Error loading custom textures from IndexedDB', e);
-    }
-  };
-
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files || e.target.files.length === 0) return;
-    const file = e.target.files[0];
-    setUploading(true);
-
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const base64Url = event.target?.result as string;
-      const newTexture = {
-        id: Date.now().toString(),
-        name: file.name,
-        url: base64Url,
-      };
-
-      const updatedTextures = [newTexture, ...localTextures];
-      setLocalTextures(updatedTextures);
-      await set('custom_textures', updatedTextures);
-      
-      // Aplicar directamente
-      state.setCustomBackTextureUrl(base64Url);
-      setUploading(false);
-      e.target.value = '';
-    };
-
-    reader.onerror = () => {
-      alert('Error al leer el archivo de imagen');
-      setUploading(false);
-    };
-
-    reader.readAsDataURL(file);
-  };
-
-  const handleDeleteCustomTexture = async (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const updated = localTextures.filter(t => t.id !== id);
-    setLocalTextures(updated);
-    await set('custom_textures', updated);
-    if (state.customBackTextureUrl) {
-      state.setBackTexture('abet_broccato_2831');
-    }
-  };
+  // Terminaciones aprobadas del catálogo oficial de Backoffice
+  const approvedBackofficeTextures = adminTextures.filter(
+    (t) => t.active && (t.approvalStatus === 'approved' || !t.approvalStatus)
+  );
 
   const extColor = SPECIAL_COLORS.find(c => c.id === state.exteriorColor) || SPECIAL_COLORS[0];
   const abetTex = ABET_TEXTURES.find(t => t.id === state.backTexture) || ABET_TEXTURES[0];
@@ -154,6 +102,13 @@ export function SpecialFurnitureConfigurator({ onNavigate }: { onNavigate: () =>
 
         {/* Export & Actions */}
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setIsSaveModalOpen(true)}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-orange-600 hover:bg-orange-500 text-white rounded-lg text-xs font-bold uppercase tracking-wider transition-all shadow-md shadow-orange-600/20 cursor-pointer"
+            title="Guardar diseño de Mueble Especial en el Backoffice"
+          >
+            <Save size={14} /> Guardar Proyecto
+          </button>
           <button
             onClick={() => exportSpecialFurnitureExcel(state)}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 rounded-lg text-xs font-semibold uppercase tracking-wider transition-colors border border-emerald-500/40"
@@ -484,56 +439,39 @@ export function SpecialFurnitureConfigurator({ onNavigate }: { onNavigate: () =>
               })}
             </div>
 
-            {/* Subir Textura Personalizada */}
-            <div className="pt-2">
-              <label className="flex items-center justify-center gap-2 p-2.5 bg-white/5 hover:bg-white/10 border border-dashed border-white/20 hover:border-orange-500/50 rounded-xl cursor-pointer transition-all text-xs font-semibold text-slate-300 hover:text-white">
-                <Upload size={14} className="text-orange-400" />
-                <span>{uploading ? 'Cargando textura...' : 'Subir Textura Personalizada'}</span>
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp,image/svg+xml"
-                  onChange={handleUpload}
-                  className="hidden"
-                  disabled={uploading}
-                />
-              </label>
-            </div>
-
-            {/* Galería de Texturas Personalizadas Subidas */}
-            {localTextures.length > 0 && (
-              <div className="space-y-2 pt-1">
+            {/* Otras Texturas Oficiales Aprobadas desde Backoffice */}
+            {approvedBackofficeTextures.length > 0 && (
+              <div className="space-y-2 pt-2 border-t border-white/10">
                 <span className="text-[10px] uppercase tracking-widest text-slate-400 font-bold block">
-                  Mis Texturas Guardadas ({localTextures.length})
+                  Terminaciones de Proveedores Aprobados
                 </span>
-                <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto pr-1">
-                  {localTextures.map((t) => {
-                    const isSelected = state.customBackTextureUrl === t.url;
+                <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto pr-1">
+                  {approvedBackofficeTextures.map((tex) => {
+                    const isSelected = state.customBackTextureUrl === tex.url;
                     return (
-                      <div key={t.id} className="relative group">
-                        <button
-                          onClick={() => state.setCustomBackTextureUrl(t.url)}
-                          className={`flex flex-col items-center gap-1.5 p-1.5 rounded-lg border w-full text-left transition-all ${
-                            isSelected
-                              ? 'bg-orange-500/15 border-orange-500 ring-1 ring-orange-500'
-                              : 'bg-white/5 border-white/10 hover:border-white/25'
-                          }`}
-                        >
-                          <div
-                            className="w-full aspect-video rounded border border-white/20 bg-cover bg-center"
-                            style={{ backgroundImage: `url('${t.url}')` }}
-                          />
-                          <span className="text-[9px] text-slate-300 font-medium truncate w-full text-center">
-                            {t.name}
+                      <button
+                        key={tex.id}
+                        onClick={() => state.setCustomBackTextureUrl(tex.url)}
+                        className={`flex items-center gap-3 p-2 rounded-xl border transition-all text-left ${
+                          isSelected
+                            ? 'bg-orange-500/10 border-orange-500 shadow-md shadow-orange-500/10 ring-1 ring-orange-500/30'
+                            : 'bg-white/5 border-white/5 hover:border-white/20'
+                        }`}
+                      >
+                        <div
+                          className="w-10 h-10 rounded-lg border border-white/20 shrink-0 bg-cover bg-center"
+                          style={tex.url?.startsWith('#') ? { backgroundColor: tex.url } : { backgroundImage: `url('${tex.url}')` }}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-white truncate">{tex.name}</span>
+                            {isSelected && <CheckCircle2 size={14} className="text-orange-500 shrink-0" />}
+                          </div>
+                          <span className="text-[9px] text-orange-400 font-mono block">
+                            {tex.brand || tex.providerName || 'Proveedor'} • {tex.code || 'STD'}
                           </span>
-                        </button>
-                        <button
-                          onClick={(e) => handleDeleteCustomTexture(t.id, e)}
-                          className="absolute -top-1 -right-1 bg-rose-600 hover:bg-rose-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
-                          title="Eliminar textura"
-                        >
-                          <Trash2 size={10} />
-                        </button>
-                      </div>
+                        </div>
+                      </button>
                     );
                   })}
                 </div>
@@ -571,6 +509,30 @@ export function SpecialFurnitureConfigurator({ onNavigate }: { onNavigate: () =>
           </div>
         </div>
       </div>
+
+      {/* Modal Guardar Proyecto */}
+      <SaveProjectModal
+        isOpen={isSaveModalOpen}
+        onClose={() => setIsSaveModalOpen(false)}
+        projectType="special"
+        defaultName="Proyecto Mueble Especial Arquify"
+        estimatedCost={1450000}
+        projectData={{
+          width: state.width,
+          height: state.height,
+          depth: state.depth,
+          thickness: state.thickness,
+          legHeight: state.legHeight,
+          exteriorColor: state.exteriorColor,
+          backTexture: state.backTexture,
+          doorGlassType: state.doorGlassType,
+          assemblyType: state.assemblyType,
+          hardwareBrand: state.hardwareBrand,
+        }}
+        onSaved={(id) => {
+          console.log('Proyecto especial guardado con ID:', id);
+        }}
+      />
     </div>
   );
 }

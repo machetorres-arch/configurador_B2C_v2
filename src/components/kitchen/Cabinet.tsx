@@ -684,7 +684,7 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
    const cBack = backColor || color || '#f8fafc';
    const cSocle = socleColor || '#111';
 
-   const { activeCabinetId, setActiveCabinet, showSocle, cabinets, viewMode } = useKitchenStore();
+   const { activeCabinetId, setActiveCabinet, setDraggingCabinetId, setToolMode, showSocle, cabinets, viewMode } = useKitchenStore();
    const showDimensions = useStore((s) => s.showDimensions);
    const dimensionLevel = useStore((s) => s.dimensionLevel);
    const isActive = activeCabinetId === id;
@@ -695,16 +695,22 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
    };
 
    // Criterio Planimétrico BIM: Detección de extremos libres de fila / batería
-   const cos = Math.cos(rotation || 0);
-   const sin = Math.sin(rotation || 0);
+   const safeRot = Number(rotation) || 0;
+   const safePos: [number, number, number] = [
+      Number(position?.[0]) || 0,
+      Number(position?.[1]) || 0,
+      Number(position?.[2]) || 0,
+   ];
+   const cos = Math.cos(safeRot);
+   const sin = Math.sin(safeRot);
 
    const leftFlankWorld: [number, number] = [
-      position[0] + (-width / 2) * cos,
-      position[2] + (-width / 2) * sin,
+      safePos[0] + (-width / 2) * cos,
+      safePos[2] + (-width / 2) * sin,
    ];
    const rightFlankWorld: [number, number] = [
-      position[0] + (width / 2) * cos,
-      position[2] + (width / 2) * sin,
+      safePos[0] + (width / 2) * cos,
+      safePos[2] + (width / 2) * sin,
    ];
 
    const isFloorCabinet = type !== 'wall';
@@ -1592,16 +1598,17 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
 
    return (
      <group
-       position={position}
-       rotation={[0, rotation, 0]}
+       position={safePos}
+       rotation={[0, safeRot, 0]}
        onPointerDown={(e) => {
-         const currentTool = useKitchenStore.getState().toolMode;
-         if (currentTool === 'move_active' || currentTool.startsWith('place_')) {
-           return;
-         }
-         e.stopPropagation();
-         setActiveCabinet(id);
-       }}
+          const currentTool = useKitchenStore.getState().toolMode;
+          if (currentTool.startsWith('place_') || currentTool === 'move_active') {
+            return;
+          }
+          e.stopPropagation();
+          setActiveCabinet(id);
+          setToolMode('move_active');
+        }}
      >
        {renderParametricBody()}
        {isActive && (

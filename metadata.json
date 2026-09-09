@@ -1,6 +1,6 @@
 {
   "name": "MuebleStudio 3D",
-  "description": "Configurador paramétrico y BIM 3D de clósets, cocinas modulares, casas SIP, casas de hormigón armado (ICH/NCh430), muebles especiales y separadores de baños HPL fenólicos",
+  "description": "Configurador paramétrico y BIM 3D de casas y edificios en Madera Masiva CLT y GLT (Niuform CMPC / CIM UC MINVU / NCh433 / NCh1198), sillas de terciado curvo con Abet Laminati y patas de fierro, mobiliario de oficina sobre planos PDF, clósets, cocinas modulares, casas SIP, casas de hormigón armado (ICH/NCh430) y cabinas de baños HPL fenólicos",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

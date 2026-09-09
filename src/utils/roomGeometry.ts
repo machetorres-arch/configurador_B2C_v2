@@ -220,3 +220,236 @@ export function generateWallsFromRoom(config: RoomConfig): any[] {
   }
   return walls;
 }
+
+// Mueve un vértice en modo ORTHO preservando los ángulos rectos (90°) de sus muros adyacentes
+export function moveVertexOrthogonal(
+  vertices: RoomVertex[],
+  vertexIndex: number,
+  targetPos: { x: number; y: number },
+  snapStepCm: number = 122
+): RoomVertex[] {
+  const n = vertices.length;
+  if (n < 3 || vertexIndex < 0 || vertexIndex >= n) return vertices;
+
+  const snappedX = Math.round(targetPos.x / snapStepCm) * snapStepCm;
+  const snappedY = Math.round(targetPos.y / snapStepCm) * snapStepCm;
+
+  const prevIdx = (vertexIndex - 1 + n) % n;
+  const nextIdx = (vertexIndex + 1) % n;
+
+  const cur = vertices[vertexIndex];
+  const prev = vertices[prevIdx];
+  const next = vertices[nextIdx];
+
+  const updated = vertices.map((v) => ({ ...v }));
+  updated[vertexIndex] = { ...cur, x: snappedX, y: snappedY };
+
+  // Analizar si el segmento (prev -> cur) es horizontal o vertical
+  const dxPrev = Math.abs(cur.x - prev.x);
+  const dyPrev = Math.abs(cur.y - prev.y);
+  if (dxPrev >= dyPrev) {
+    // Era horizontal: para mantenerlo horizontal a 90°, el vértice prev debe compartir la nueva Y
+    updated[prevIdx].y = snappedY;
+  } else {
+    // Era vertical: para mantenerlo vertical a 90°, el vértice prev debe compartir la nueva X
+    updated[prevIdx].x = snappedX;
+  }
+
+  // Analizar si el segmento (cur -> next) es horizontal o vertical
+  const dxNext = Math.abs(next.x - cur.x);
+  const dyNext = Math.abs(next.y - cur.y);
+  if (dxNext >= dyNext) {
+    // Es horizontal: para mantenerlo horizontal a 90°, el vértice next debe compartir la nueva Y
+    updated[nextIdx].y = snappedY;
+  } else {
+    // Es vertical: para mantenerlo vertical a 90°, el vértice next debe compartir la nueva X
+    updated[nextIdx].x = snappedX;
+  }
+
+  return updated;
+}
+
+// Modifica la longitud de una pared preservando la ortogonalidad (90°) sin deformar en diagonales
+export function adjustWallLengthOrthogonal(
+  vertices: RoomVertex[],
+  segmentIndex: number,
+  newLengthCm: number,
+  snapStepCm: number = 122
+): RoomVertex[] {
+  const n = vertices.length;
+  if (n < 3 || segmentIndex < 0 || segmentIndex >= n || newLengthCm <= 50) return vertices;
+
+  const p1Idx = segmentIndex;
+  const p2Idx = (segmentIndex + 1) % n;
+  const p3Idx = (segmentIndex + 2) % n;
+
+  const p1 = vertices[p1Idx];
+  const p2 = vertices[p2Idx];
+
+  const dx = p2.x - p1.x;
+  const dy = p2.y - p1.y;
+  const isHorizontal = Math.abs(dx) >= Math.abs(dy);
+
+  const updated = vertices.map((v) => ({ ...v }));
+
+  if (n === 4) {
+    // Si es un cuadrilátero regular, escalar simétricamente la dimensión correspondiente
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    vertices.forEach((v) => {
+      if (v.x < minX) minX = v.x;
+      if (v.x > maxX) maxX = v.x;
+      if (v.y < minY) minY = v.y;
+      if (v.y > maxY) maxY = v.y;
+    });
+
+    const targetW = isHorizontal ? newLengthCm : maxX - minX;
+    const targetH = isHorizontal ? maxY - minY : newLengthCm;
+
+    return [
+      { id: vertices[0].id, x: -targetW / 2, y: -targetH / 2 },
+      { id: vertices[1].id, x: targetW / 2, y: -targetH / 2 },
+      { id: vertices[2].id, x: targetW / 2, y: targetH / 2 },
+      { id: vertices[3].id, x: -targetW / 2, y: targetH / 2 },
+    ];
+  }
+
+  if (isHorizontal) {
+    const dirX = dx >= 0 ? 1 : -1;
+    const currentLen = Math.abs(dx) || 1;
+    const deltaX = (newLengthCm - currentLen) * dirX;
+    updated[p2Idx].x += deltaX;
+    updated[p3Idx].x += deltaX;
+  } else {
+    const dirY = dy >= 0 ? 1 : -1;
+    const currentLen = Math.abs(dy) || 1;
+    const deltaY = (newLengthCm - currentLen) * dirY;
+    updated[p2Idx].y += deltaY;
+    updated[p3Idx].y += deltaY;
+  }
+
+  return updated;
+}
+
+// Endereza cualquier polígono a ángulos estrictos de 90° y modulación SIP
+export function orthogonalizePolygon(vertices: RoomVertex[], snapModuleCm = 122): RoomVertex[] {
+  const n = vertices.length;
+  if (n < 3) return vertices;
+
+  // Si es un rectángulo estándar de 4 vértices
+  if (n === 4) {
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    vertices.forEach((v) => {
+      if (v.x < minX) minX = v.x;
+      if (v.x > maxX) maxX = v.x;
+      if (v.y < minY) minY = v.y;
+      if (v.y > maxY) maxY = v.y;
+    });
+
+    const w = Math.max(snapModuleCm * 2, Math.round((maxX - minX) / snapModuleCm) * snapModuleCm);
+    const h = Math.max(snapModuleCm * 2, Math.round((maxY - minY) / snapModuleCm) * snapModuleCm);
+
+    return [
+      { id: vertices[0].id || 'v1', x: -w / 2, y: -h / 2 },
+      { id: vertices[1].id || 'v2', x: w / 2, y: -h / 2 },
+      { id: vertices[2].id || 'v3', x: w / 2, y: h / 2 },
+      { id: vertices[3].id || 'v4', x: -w / 2, y: h / 2 },
+    ];
+  }
+
+  // Si es una casa en L (6 vértices)
+  if (n === 6) {
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    vertices.forEach((v) => {
+      if (v.x < minX) minX = v.x;
+      if (v.x > maxX) maxX = v.x;
+      if (v.y < minY) minY = v.y;
+      if (v.y > maxY) maxY = v.y;
+    });
+
+    const totalW = Math.max(snapModuleCm * 3, Math.round((maxX - minX) / snapModuleCm) * snapModuleCm);
+    const totalH = Math.max(snapModuleCm * 3, Math.round((maxY - minY) / snapModuleCm) * snapModuleCm);
+    const wingW = Math.max(snapModuleCm, Math.round(totalW * 0.45 / snapModuleCm) * snapModuleCm);
+    const wingH = Math.max(snapModuleCm, Math.round(totalH * 0.50 / snapModuleCm) * snapModuleCm);
+
+    const halfW = totalW / 2;
+    const halfH = totalH / 2;
+
+    return [
+      { id: 'v1', x: -halfW, y: -halfH },
+      { id: 'v2', x: halfW - wingW, y: -halfH },
+      { id: 'v3', x: halfW - wingW, y: -halfH + wingH },
+      { id: 'v4', x: halfW, y: -halfH + wingH },
+      { id: 'v5', x: halfW, y: halfH },
+      { id: 'v6', x: -halfW, y: halfH },
+    ];
+  }
+
+  // Para polígonos generales, iterar proyectando cada arista a su eje dominante a 90°
+  const snapped = vertices.map((v) => ({
+    ...v,
+    x: Math.round(v.x / snapModuleCm) * snapModuleCm,
+    y: Math.round(v.y / snapModuleCm) * snapModuleCm,
+  }));
+
+  for (let i = 0; i < n; i++) {
+    const cur = snapped[i];
+    const nextIdx = (i + 1) % n;
+    const next = snapped[nextIdx];
+
+    const dx = Math.abs(next.x - cur.x);
+    const dy = Math.abs(next.y - cur.y);
+
+    if (dx >= dy) {
+      next.y = cur.y; // Forzar horizontal
+    } else {
+      next.x = cur.x; // Forzar vertical
+    }
+  }
+
+  return centerVertices(snapped);
+}
+
+// Mueve una pared completa (segmento) en dirección perpendicular preservando la ortogonalidad
+export function moveWallSegmentOrthogonal(
+  vertices: RoomVertex[],
+  segmentIndex: number,
+  targetCm: { x: number; y: number },
+  snapStepCm: number = 122
+): RoomVertex[] {
+  const n = vertices.length;
+  if (n < 3 || segmentIndex < 0 || segmentIndex >= n) return vertices;
+
+  const p1Idx = segmentIndex;
+  const p2Idx = (segmentIndex + 1) % n;
+  const p1 = vertices[p1Idx];
+  const p2 = vertices[p2Idx];
+
+  const dx = p2.x - p1.x;
+  const dy = p2.y - p1.y;
+  const isHorizontal = Math.abs(dx) >= Math.abs(dy);
+
+  const updated = vertices.map((v) => ({ ...v }));
+
+  if (isHorizontal) {
+    // La pared es horizontal -> se mueve verticalmente (en Y)
+    const snappedY = Math.round(targetCm.y / snapStepCm) * snapStepCm;
+    updated[p1Idx].y = snappedY;
+    updated[p2Idx].y = snappedY;
+  } else {
+    // La pared es vertical -> se mueve horizontalmente (en X)
+    const snappedX = Math.round(targetCm.x / snapStepCm) * snapStepCm;
+    updated[p1Idx].x = snappedX;
+    updated[p2Idx].x = snappedX;
+  }
+
+  return updated;
+}

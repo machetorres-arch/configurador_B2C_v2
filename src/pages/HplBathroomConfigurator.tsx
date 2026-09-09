@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   ArrowLeft,
   FileSpreadsheet,
@@ -12,8 +12,6 @@ import {
   Sliders,
   CheckCircle2,
   Compass,
-  Upload,
-  Trash2,
   Image as ImageIcon,
   Scissors,
   DollarSign,
@@ -21,8 +19,9 @@ import {
   LayoutGrid,
   ShieldCheck,
   Package,
+  Save,
+  Trash2,
 } from 'lucide-react';
-import { get, set } from 'idb-keyval';
 import {
   useHplBathroomStore,
   ABET_SHEET_FORMATS,
@@ -38,76 +37,27 @@ import {
   HookModel,
   WallFixingModel,
 } from '../store/hplBathroomStore';
+import { useAdminStore } from '../store/adminStore';
 import { HplBathroomScene } from '../components/hpl/HplBathroomScene';
 import { HplBlueprint } from '../components/hpl/HplBlueprint';
 import { HplRoomPlannerModal } from '../components/hpl/HplRoomPlannerModal';
+import { SaveProjectModal } from '../components/common/SaveProjectModal';
 import { calculateHplManufacturingBOM } from '../utils/hplManufacturing';
 import { exportHplBathroomExcel } from '../utils/hplExcelGenerator';
 import { exportHplBathroomPDF } from '../utils/hplPdfGenerator';
 
 export function HplBathroomConfigurator({ onNavigate }: { onNavigate: () => void }) {
   const state = useHplBathroomStore();
+  const adminTextures = useAdminStore((s) => s.textures);
   const [viewMode, setViewMode] = useState<'3d' | 'blueprint' | 'bom'>('3d');
   const [activeTab, setActiveTab] = useState<'layout' | 'thickness' | 'colors' | 'hardware' | 'summary'>('layout');
   const [isRoomModalOpen, setIsRoomModalOpen] = useState(false);
-  const [localTextures, setLocalTextures] = useState<any[]>([]);
-  const [uploading, setUploading] = useState(false);
+  const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
 
-  useEffect(() => {
-    loadLocalTextures();
-  }, []);
-
-  const loadLocalTextures = async () => {
-    try {
-      const stored = await get('custom_hpl_textures');
-      if (stored && Array.isArray(stored)) {
-        setLocalTextures(stored);
-      }
-    } catch (e) {
-      console.error('Error loading custom textures from IndexedDB', e);
-    }
-  };
-
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files || e.target.files.length === 0) return;
-    const file = e.target.files[0];
-    setUploading(true);
-
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const base64Url = event.target?.result as string;
-      const newTexture = {
-        id: Date.now().toString(),
-        name: file.name,
-        url: base64Url,
-      };
-
-      const updatedTextures = [newTexture, ...localTextures];
-      setLocalTextures(updatedTextures);
-      await set('custom_hpl_textures', updatedTextures);
-
-      state.setCustomTexture(base64Url, file.name);
-      setUploading(false);
-      e.target.value = '';
-    };
-
-    reader.onerror = () => {
-      alert('Error al leer el archivo de imagen');
-      setUploading(false);
-    };
-
-    reader.readAsDataURL(file);
-  };
-
-  const handleDeleteCustomTexture = async (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const updated = localTextures.filter((t) => t.id !== id);
-    setLocalTextures(updated);
-    await set('custom_hpl_textures', updated);
-    if (state.customTextureUrl) {
-      state.setSelectedColorId('abet_410');
-    }
-  };
+  // Terminaciones HPL aprobadas desde el Backoffice
+  const approvedHplTextures = adminTextures.filter(
+    (t) => t.active && (t.approvalStatus === 'approved' || !t.approvalStatus) && (t.category === 'hpl_autor' || t.name.toLowerCase().includes('abet') || t.name.toLowerCase().includes('hpl'))
+  );
 
   const bom = calculateHplManufacturingBOM(state);
   const finishInfo = JNF_FINISHES[state.hardwareFinish];
@@ -188,8 +138,17 @@ export function HplBathroomConfigurator({ onNavigate }: { onNavigate: () => void
           </button>
         </div>
 
-        {/* Action Buttons: Export PDF & Excel */}
+        {/* Action Buttons: Save, Export PDF & Excel */}
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setIsSaveModalOpen(true)}
+            className="px-3.5 py-1.5 bg-orange-600 hover:bg-orange-500 text-white rounded-xl text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 shadow-lg shadow-orange-600/20 transition-all cursor-pointer"
+            title="Guardar diseño de Baños HPL en el Backoffice"
+          >
+            <Save size={15} />
+            <span className="hidden sm:inline">Guardar Proyecto</span>
+          </button>
+
           <button
             onClick={() => exportHplBathroomExcel(state)}
             className="px-3.5 py-1.5 bg-emerald-600/90 hover:bg-emerald-500 border border-emerald-500/40 rounded-xl text-xs font-bold text-white flex items-center gap-2 shadow-lg shadow-emerald-600/10 transition-all cursor-pointer"
@@ -878,63 +837,45 @@ export function HplBathroomConfigurator({ onNavigate }: { onNavigate: () => void
                   </div>
                 </div>
 
-                {/* Subida de Decorativos / Texturas Personalizadas */}
-                <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
-                  <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
-                    <Sparkles size={14} className="text-amber-400" />
-                    <span>Cargar Decorativo Personalizado</span>
-                  </h4>
-                  <p className="text-[11px] text-slate-400">
-                    Sube cualquier textura o patrón de HPL para renderizar en tiempo real.
-                  </p>
+                {/* Terminaciones Oficiales Aprobadas desde Backoffice */}
+                {approvedHplTextures.length > 0 && (
+                  <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
+                    <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                      <Sparkles size={14} className="text-amber-400" />
+                      <span>Terminaciones Proveedores Oficiales (Abet / HPL)</span>
+                    </h4>
+                    <p className="text-[11px] text-slate-400">
+                      Materiales con Visto Bueno del Superadministrador cargados desde Backoffice.
+                    </p>
 
-                  <label className="w-full py-3 bg-slate-900 hover:bg-slate-800 border-2 border-dashed border-slate-700 hover:border-sky-500 rounded-xl flex flex-col items-center justify-center gap-1 cursor-pointer transition-all">
-                    <Upload size={18} className="text-sky-400" />
-                    <span className="text-xs font-semibold text-slate-300">
-                      {uploading ? 'Cargando imagen...' : 'Seleccionar archivo JPG / PNG / SVG'}
-                    </span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleUpload}
-                      disabled={uploading}
-                      className="hidden"
-                    />
-                  </label>
-
-                  {/* Lista de texturas personalizadas guardadas */}
-                  {localTextures.length > 0 && (
-                    <div className="space-y-2 pt-2">
-                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-                        Mis Texturas Guardadas
-                      </span>
-                      <div className="grid grid-cols-2 gap-2">
-                        {localTextures.map((tex) => (
-                          <div
-                            key={tex.id}
-                            onClick={() => state.setCustomTexture(tex.url, tex.name)}
-                            className={`p-2 rounded-lg border flex items-center justify-between cursor-pointer transition-all ${
-                              state.customTextureUrl === tex.url
-                                ? 'bg-sky-500/20 border-sky-500'
-                                : 'bg-slate-900 border-slate-800 hover:border-slate-700'
-                            }`}
-                          >
-                            <div className="flex items-center gap-2 overflow-hidden">
-                              <img src={tex.url} alt="" className="w-6 h-6 rounded object-cover" />
-                              <span className="text-[10px] text-white truncate">{tex.name}</span>
+                    <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
+                      {approvedHplTextures.map((tex) => (
+                        <div
+                          key={tex.id}
+                          onClick={() => state.setCustomTexture(tex.url, tex.name)}
+                          className={`p-2 rounded-lg border flex items-center justify-between cursor-pointer transition-all ${
+                            state.customTextureUrl === tex.url
+                              ? 'bg-sky-500/20 border-sky-500 ring-1 ring-sky-500/30'
+                              : 'bg-slate-900 border-slate-800 hover:border-slate-700'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 overflow-hidden">
+                            <div
+                              className="w-7 h-7 rounded shrink-0 bg-cover bg-center border border-slate-700"
+                              style={{ backgroundImage: `url(${tex.url})` }}
+                            />
+                            <div className="min-w-0">
+                              <span className="text-[10px] font-bold text-white block truncate">{tex.name}</span>
+                              <span className="text-[8px] text-sky-400 font-mono block">
+                                {tex.brand || 'Abet'} • {tex.code || 'HPL'}
+                              </span>
                             </div>
-                            <button
-                              onClick={(e) => handleDeleteCustomTexture(tex.id, e)}
-                              className="p-1 text-slate-500 hover:text-rose-400"
-                            >
-                              <Trash2 size={12} />
-                            </button>
                           </div>
-                        ))}
-                      </div>
+                        </div>
+                      ))}
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -1128,6 +1069,38 @@ export function HplBathroomConfigurator({ onNavigate }: { onNavigate: () => void
 
       {/* Modal de Configuración de Recinto */}
       <HplRoomPlannerModal isOpen={isRoomModalOpen} onClose={() => setIsRoomModalOpen(false)} />
+
+      {/* Modal Guardar Proyecto */}
+      <SaveProjectModal
+        isOpen={isSaveModalOpen}
+        onClose={() => setIsSaveModalOpen(false)}
+        projectType="hpl-bathroom"
+        defaultName="Proyecto Tabiquería Sanitaria HPL Arquify"
+        estimatedCost={bom.costs.totalBrutoClp}
+        projectData={{
+          cubicles: state.cubicles,
+          urinalScreens: state.urinalScreens,
+          room: state.room,
+          thicknessDoor: state.thicknessDoor,
+          thicknessPilaster: state.thicknessPilaster,
+          thicknessDivider: state.thicknessDivider,
+          thicknessUrinal: state.thicknessUrinal,
+          selectedColorId: state.selectedColorId,
+          customTextureUrl: state.customTextureUrl,
+          customTextureName: state.customTextureName,
+          hardwareFinish: state.hardwareFinish,
+          stabilizerSystem: state.stabilizerSystem,
+          footModel: state.footModel,
+          hingeModel: state.hingeModel,
+          lockModel: state.lockModel,
+          handleModel: state.handleModel,
+          hookModel: state.hookModel,
+          wallFixingModel: state.wallFixingModel,
+        }}
+        onSaved={(id) => {
+          console.log('Proyecto HPL guardado con ID:', id);
+        }}
+      />
     </div>
   );
 }

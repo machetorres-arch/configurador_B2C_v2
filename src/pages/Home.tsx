@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
-import { Box, LayoutDashboard, Sparkles, ArrowRight, Home as HomeIcon, Lock, Settings2, ShieldCheck, Layers, Shield, Building2, User, LogIn, Cloud } from 'lucide-react';
+import { Box, LayoutDashboard, Sparkles, ArrowRight, Home as HomeIcon, Lock, Settings2, ShieldCheck, Layers, Shield, Building2, User, LogIn, Cloud, Briefcase, Armchair, TreePine } from 'lucide-react';
 import { useAdminStore } from '../store/adminStore';
 import { useSupabaseAuthStore } from '../store/supabaseAuthStore';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { AdminLoginModal } from '../components/admin/AdminLoginModal';
 import { AdminBackofficeModal } from '../components/admin/AdminBackofficeModal';
 
-export function Home({ onNavigate }: { onNavigate: (route: 'closet' | 'kitchen' | 'special' | 'sip-house' | 'hpl-bathroom' | 'concrete-house') => void }) {
+export function Home({ onNavigate }: { onNavigate: (route: 'closet' | 'kitchen' | 'special' | 'sip-house' | 'hpl-bathroom' | 'concrete-house' | 'office' | 'chair' | 'clt-house') => void }) {
   const [isLoginOpen, setIsLoginOpen] = useState(false);
   const [isBackofficeOpen, setIsBackofficeOpen] = useState(false);
   const isLocalAuth = useAdminStore((state) => state.isAuthenticated);
@@ -79,13 +79,63 @@ export function Home({ onNavigate }: { onNavigate: (route: 'closet' | 'kitchen' 
 
       <main className="w-full max-w-7xl flex flex-col items-center">
         <h1 className="text-4xl md:text-6xl font-bold text-center mb-6 tracking-tight">Planifica tus espacios con <br/><span className="text-orange-500">precisión milimétrica</span></h1>
-        <p className="text-slate-400 text-center max-w-2xl mb-16 text-lg">Selecciona un módulo de diseño para comenzar. Crea muebles paramétricos detallados, cabinas sanitarias fenólicas o planifica casas industrializadas y estructuras de hormigón armado en 2D y 3D.</p>
+        <p className="text-slate-400 text-center max-w-2xl mb-16 text-lg">Selecciona un módulo de diseño para comenzar. Crea muebles paramétricos detallados, cabinas sanitarias fenólicas o planifica casas industrializadas y estructuras en Madera Masiva CLT/GLT, SIP u Hormigón Armado en 2D y 3D.</p>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 w-full">
+          {/* CLT & GLT Mass Timber Configurator Card (DESTACADA) */}
+          <div 
+            onClick={() => onNavigate('clt-house')}
+            className="group relative bg-zinc-900 border border-orange-500/80 rounded-2xl p-6 hover:border-orange-400 transition-all cursor-pointer overflow-hidden flex flex-col items-start min-h-[340px] shadow-xl shadow-orange-500/15 hover:shadow-orange-500/30 ring-2 ring-orange-500/40"
+          >
+            <div className="absolute top-0 right-0 w-64 h-64 bg-orange-500/25 rounded-full blur-3xl -mr-20 -mt-20 transition-all group-hover:bg-orange-500/40"></div>
+            <div className="p-3.5 bg-black/50 rounded-xl border border-orange-500/50 mb-4 z-10 relative">
+              <TreePine size={28} className="text-orange-400" />
+            </div>
+            <h2 className="text-xl font-bold uppercase tracking-wide mb-1.5 z-10 relative text-white">Casas y Edificios CLT & GLT</h2>
+            <div className="inline-block px-2.5 py-0.5 bg-orange-500/20 text-orange-300 text-[10px] font-bold uppercase tracking-widest rounded mb-2.5 z-10 relative border border-orange-500/30">Niuform CMPC • CIM UC MINVU • NCh433 / NCh1198</div>
+            <p className="text-slate-400 text-xs leading-relaxed mb-5 z-10 relative">Configurador paramétrico de madera masiva 1 a 4 pisos: Módulo Niuform 2P, Edificio DS49 MINVU 3P y Casas GLT/CLT. Cálculo de conectores Simpson/Rothoblaas, deriva sísmica, transmitancia térmica NCh853 y secuestro de CO₂.</p>
+            <div className="mt-auto flex items-center gap-2 text-orange-400 font-bold uppercase text-xs tracking-wider group-hover:gap-3 transition-all z-10 relative">
+              Configurar CLT & GLT <ArrowRight size={13} />
+            </div>
+          </div>
+          {/* Chair Configurator Card (Sillas Abet Laminati & Fierro) */}
+          <div 
+            onClick={() => onNavigate('chair')}
+            className="group relative bg-zinc-900 border border-orange-500/60 rounded-2xl p-6 hover:border-orange-400 transition-all cursor-pointer overflow-hidden flex flex-col items-start min-h-[340px] shadow-lg shadow-orange-500/10 hover:shadow-orange-500/25 ring-1 ring-orange-500/30"
+          >
+            <div className="absolute top-0 right-0 w-64 h-64 bg-orange-500/20 rounded-full blur-3xl -mr-20 -mt-20 transition-all group-hover:bg-orange-500/30"></div>
+            <div className="p-3.5 bg-black/40 rounded-xl border border-orange-500/40 mb-4 z-10 relative">
+              <Armchair size={28} className="text-orange-400" />
+            </div>
+            <h2 className="text-xl font-bold uppercase tracking-wide mb-1.5 z-10 relative text-white">Configurador de Sillas</h2>
+            <div className="inline-block px-2.5 py-0.5 bg-orange-500/20 text-orange-300 text-[10px] font-bold uppercase tracking-widest rounded mb-2.5 z-10 relative border border-orange-500/30">Terciado Curvo • Abet Laminati • Fierro</div>
+            <p className="text-slate-400 text-xs leading-relaxed mb-5 z-10 relative">Personaliza respaldos y asientos en terciado curvo con HPL Abet Laminati (130x305 cm), cantos multilaminares vistos y patas de fierro esmaltadas al horno.</p>
+            <div className="mt-auto flex items-center gap-2 text-orange-400 font-bold uppercase text-xs tracking-wider group-hover:gap-3 transition-all z-10 relative">
+              Configurar Sillas <ArrowRight size={13} />
+            </div>
+          </div>
+
+          {/* Office Furniture Configurator Card (Mobiliario de Oficina y Plantas PDF) */}
+          <div 
+            onClick={() => onNavigate('office')}
+            className="group relative bg-zinc-900 border border-white/10 rounded-2xl p-6 hover:border-orange-500/50 transition-all cursor-pointer overflow-hidden flex flex-col items-start min-h-[340px] shadow-lg shadow-orange-500/5 hover:shadow-orange-500/15"
+          >
+            <div className="absolute top-0 right-0 w-64 h-64 bg-orange-500/10 rounded-full blur-3xl -mr-20 -mt-20 transition-all group-hover:bg-orange-500/20"></div>
+            <div className="p-3.5 bg-black/40 rounded-xl border border-orange-500/40 mb-4 z-10 relative">
+              <Briefcase size={28} className="text-orange-400" />
+            </div>
+            <h2 className="text-xl font-bold uppercase tracking-wide mb-1.5 z-10 relative text-white">Mobiliario de Oficina</h2>
+            <div className="inline-block px-2.5 py-0.5 bg-orange-500/20 text-orange-300 text-[10px] font-bold uppercase tracking-widest rounded mb-2.5 z-10 relative border border-orange-500/30">Plano PDF • 2D / 3D • Ergonomía</div>
+            <p className="text-slate-400 text-xs leading-relaxed mb-5 z-10 relative">Carga planos de arquitectura en PDF o imagen, calibra la escala métrica y amuebla oficinas operativas, gerenciales y salas de reunión en 2D y 3D.</p>
+            <div className="mt-auto flex items-center gap-2 text-orange-400 font-bold uppercase text-xs tracking-wider group-hover:gap-3 transition-all z-10 relative">
+              Configurar Oficinas <ArrowRight size={13} />
+            </div>
+          </div>
+
           {/* Concrete House Card (Hormigón Armado ICH) */}
           <div 
             onClick={() => onNavigate('concrete-house')}
-            className="group relative bg-zinc-900 border border-orange-500/50 rounded-2xl p-6 hover:border-orange-400 transition-all cursor-pointer overflow-hidden flex flex-col items-start min-h-[340px] shadow-lg shadow-orange-500/5 hover:shadow-orange-500/15"
+            className="group relative bg-zinc-900 border border-white/10 rounded-2xl p-6 hover:border-orange-500/50 transition-all cursor-pointer overflow-hidden flex flex-col items-start min-h-[340px] shadow-lg shadow-orange-500/5 hover:shadow-orange-500/15"
           >
             <div className="absolute top-0 right-0 w-64 h-64 bg-orange-500/15 rounded-full blur-3xl -mr-20 -mt-20 transition-all group-hover:bg-orange-500/25"></div>
             <div className="p-3.5 bg-black/40 rounded-xl border border-orange-500/30 mb-4 z-10 relative">
@@ -108,9 +158,9 @@ export function Home({ onNavigate }: { onNavigate: (route: 'closet' | 'kitchen' 
             <div className="p-3.5 bg-black/40 rounded-xl border border-sky-500/20 mb-4 z-10 relative">
               <HomeIcon size={28} className="text-sky-400" />
             </div>
-            <h2 className="text-xl font-bold uppercase tracking-wide mb-1.5 z-10 relative text-white">Configurador SIP</h2>
-            <div className="inline-block px-2.5 py-0.5 bg-sky-500/20 text-sky-300 text-[10px] font-bold uppercase tracking-widest rounded mb-2.5 z-10 relative border border-sky-500/30">BIM + MEP + EETT</div>
-            <p className="text-slate-400 text-xs leading-relaxed mb-5 z-10 relative">Ingeniería y fabricación de casas SIP (Template Molco 132.1 m²). Modulación 162/114/90/210, vanos, trazados MEP y cubicación comercial.</p>
+            <h2 className="text-xl font-bold uppercase tracking-wide mb-1.5 z-10 relative text-white">Configurador Casas SIP</h2>
+            <div className="inline-block px-2.5 py-0.5 bg-sky-500/20 text-sky-300 text-[10px] font-bold uppercase tracking-widest rounded mb-2.5 z-10 relative border border-sky-500/30">Vivienda Social 60m² • Cabaña 24m² • Casa en L</div>
+            <p className="text-slate-400 text-xs leading-relaxed mb-5 z-10 relative">Modelos: Vivienda Social SIP 60 m² (3D 1B + Logia D.S.49), Cabaña 24 m² y Casa en L 68 m². Modulación 162/114/90/210, vanos, tabiques interiores, MEP y cubicación comercial.</p>
             <div className="mt-auto flex items-center gap-2 text-sky-400 font-bold uppercase text-xs tracking-wider group-hover:gap-3 transition-all z-10 relative">
               Iniciar SIP <ArrowRight size={13} />
             </div>
@@ -130,6 +180,23 @@ export function Home({ onNavigate }: { onNavigate: (route: 'closet' | 'kitchen' 
             <p className="text-slate-400 text-xs leading-relaxed mb-5 z-10 relative">Cabinas fenólicas 10/12/15/19mm, patas y bisagras JNF Inox/PVD, optimización de cortes Nesting 2D y recinto cerámico 60x60.</p>
             <div className="mt-auto flex items-center gap-2 text-teal-400 font-bold uppercase text-xs tracking-wider group-hover:gap-3 transition-all z-10 relative">
               Configurar Baños <ArrowRight size={13} />
+            </div>
+          </div>
+
+          {/* Special Furniture Card */}
+          <div 
+            onClick={() => onNavigate('special')}
+            className="group relative bg-zinc-900 border border-white/10 rounded-2xl p-6 hover:border-amber-500/50 transition-all cursor-pointer overflow-hidden flex flex-col items-start min-h-[340px] shadow-lg shadow-amber-500/5 hover:shadow-amber-500/15"
+          >
+            <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/10 rounded-full blur-3xl -mr-20 -mt-20 transition-all group-hover:bg-amber-500/20"></div>
+            <div className="p-3.5 bg-black/40 rounded-xl border border-amber-500/20 mb-4 z-10 relative">
+              <Sparkles size={28} className="text-amber-400" />
+            </div>
+            <h2 className="text-xl font-bold uppercase tracking-wide mb-1.5 z-10 relative text-white">Muebles Especiales</h2>
+            <div className="inline-block px-2.5 py-0.5 bg-amber-500/20 text-amber-300 text-[10px] font-bold uppercase tracking-widest rounded mb-2.5 z-10 relative border border-amber-500/30">Abet & Madera</div>
+            <p className="text-slate-400 text-xs leading-relaxed mb-5 z-10 relative">Aparador vitrina individual de autor con fondo decorativo exclusivo, marco de madera y patas de acero.</p>
+            <div className="mt-auto flex items-center gap-2 text-amber-400 font-bold uppercase text-xs tracking-wider group-hover:gap-3 transition-all z-10 relative">
+              Configurar <ArrowRight size={13} />
             </div>
           </div>
 
@@ -164,23 +231,6 @@ export function Home({ onNavigate }: { onNavigate: (route: 'closet' | 'kitchen' 
             <p className="text-slate-400 text-xs leading-relaxed mb-5 z-10 relative">Configurador paramétrico modular. Ajusta dimensiones, materiales, divisiones internas y herrajes.</p>
             <div className="mt-auto flex items-center gap-2 text-orange-500 font-bold uppercase text-xs tracking-wider group-hover:gap-3 transition-all z-10 relative">
               Iniciar Diseño <ArrowRight size={13} />
-            </div>
-          </div>
-
-          {/* Muebles Especiales Card */}
-          <div 
-            onClick={() => onNavigate('special')}
-            className="group relative bg-zinc-900 border border-white/10 rounded-2xl p-6 hover:border-amber-500/50 transition-all cursor-pointer overflow-hidden flex flex-col items-start min-h-[340px]"
-          >
-            <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/10 rounded-full blur-3xl -mr-20 -mt-20 transition-all group-hover:bg-amber-500/20"></div>
-            <div className="p-3.5 bg-black/40 rounded-xl border border-white/5 mb-4 z-10 relative">
-              <Sparkles size={28} className="text-amber-400" />
-            </div>
-            <h2 className="text-xl font-bold uppercase tracking-wide mb-1.5 z-10 relative">Muebles Especiales</h2>
-            <div className="inline-block px-2.5 py-0.5 bg-amber-500/20 text-amber-400 text-[10px] font-bold uppercase tracking-widest rounded mb-2.5 z-10 relative">Abet & Madera</div>
-            <p className="text-slate-400 text-xs leading-relaxed mb-5 z-10 relative">Aparador vitrina individual de autor con fondo decorativo exclusivo, marco de madera y patas de acero.</p>
-            <div className="mt-auto flex items-center gap-2 text-amber-400 font-bold uppercase text-xs tracking-wider group-hover:gap-3 transition-all z-10 relative">
-              Configurar <ArrowRight size={13} />
             </div>
           </div>
         </div>
