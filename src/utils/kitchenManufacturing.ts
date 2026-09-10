@@ -91,31 +91,51 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
     });
 
     // 3. Techo o Barras de Armado
+    const ctConfig = kState.countertopConfig;
+    const selectedProduct = kState.qstoneCatalog?.find(p => p.id === ctConfig?.selectedProductId);
+    const requiresFullTop = ctConfig?.enabled && selectedProduct?.materialType === 'sinterizado';
+
     if (cab.type === 'base' || cab.type === 'island') {
-        // Barras superior delantera
-        parts.push({
-            name: `Barra Frontal ${cabName}`,
-            moduleId: cab.id,
-            moduleIndex: index,
-            qty: 1,
-            length: innerW * 10,
-            width: 10 * 10, // 10 cm width
-            thickness: thickness * 10,
-            material: cab.structureColor || state.structureColor,
-            edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false
-        });
-        // Barra trasera
-        parts.push({
-            name: `Barra Trasera ${cabName}`,
-            moduleId: cab.id,
-            moduleIndex: index,
-            qty: 1,
-            length: innerW * 10,
-            width: 10 * 10, // 10 cm width
-            thickness: thickness * 10,
-            material: cab.structureColor || state.structureColor,
-            edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false
-        });
+        if (requiresFullTop) {
+            // Regla técnica de fabricación: para cubierta sinterizada se exige tapa/techo ciego completo de melamina
+            parts.push({
+                name: `Tapa Melamina Completa (Soporte Sinterizado) ${cabName}`,
+                moduleId: cab.id,
+                moduleIndex: index,
+                qty: 1,
+                length: innerW * 10,
+                width: d * 10,
+                thickness: thickness * 10,
+                material: cab.structureColor || state.structureColor,
+                edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
+                notes: 'Tapa continua completa para soporte homogéneo de cubierta sinterizada 12mm'
+            });
+        } else {
+            // Barras superior delantera y trasera tradicionales (para cuarzo o sin cubierta)
+            parts.push({
+                name: `Barra Frontal ${cabName}`,
+                moduleId: cab.id,
+                moduleIndex: index,
+                qty: 1,
+                length: innerW * 10,
+                width: 10 * 10, // 10 cm width
+                thickness: thickness * 10,
+                material: cab.structureColor || state.structureColor,
+                edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false
+            });
+            // Barra trasera
+            parts.push({
+                name: `Barra Trasera ${cabName}`,
+                moduleId: cab.id,
+                moduleIndex: index,
+                qty: 1,
+                length: innerW * 10,
+                width: 10 * 10, // 10 cm width
+                thickness: thickness * 10,
+                material: cab.structureColor || state.structureColor,
+                edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false
+            });
+        }
     } else {
         // Wall or Tall cabinet has a full top
         parts.push({
@@ -600,6 +620,13 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
         if (cab.variant === '1_door_1_drawer') {
             drawCount = 1;
             drawerHeights = [isGola ? 14.5 : 18]; // 35mm top deduction if Gola L
+        }
+
+        // Modificación de altura de frentes de cajón según el regrueso delantero de cubierta (0 a 5 cm)
+        const regruesoCm = (ctConfig?.enabled && (cab.type === 'base' || cab.type === 'island')) ? (ctConfig.regruesoCm || 0) : 0;
+        const regruesoDeduction = isGola ? Math.max(0, regruesoCm - 3.5) : regruesoCm;
+        if (regruesoDeduction > 0 && drawerHeights.length > 0) {
+            drawerHeights[0] = Math.max(8, Number((drawerHeights[0] - regruesoDeduction).toFixed(1)));
         }
         
         drawerHeights.forEach((dh, i) => {

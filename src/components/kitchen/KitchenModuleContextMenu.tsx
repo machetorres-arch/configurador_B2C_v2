@@ -12,12 +12,20 @@ const DEFAULT_TEXTURES = [
   { id: 'def_wood_grain', name: 'Veta Madera Clara', url: '/textures/light-wood-grain.svg' }
 ];
 
-export function KitchenModuleContextMenu() {
+export function KitchenModuleContextMenu({ isLight: propIsLight }: { isLight?: boolean } = {}) {
   const { activeCabinetId, cabinets, updateCabinet, removeCabinet, setActiveCabinet, setToolMode, setViewMode } = useKitchenStore();
   const globalStore = useStore();
   const adminTextures = useAdminStore((s) => s.textures);
   const [showCatalog, setShowCatalog] = useState(false);
   const [targetZone, setTargetZone] = useState<PartType>('doors');
+
+  const isLight = propIsLight !== undefined ? propIsLight : (() => {
+    try {
+      return localStorage.getItem('arquify_kitchen_theme') === 'light';
+    } catch {
+      return false;
+    }
+  })();
 
   if (!activeCabinetId) return null;
   const activeCabinet = cabinets.find(c => c.id === activeCabinetId);
@@ -38,16 +46,24 @@ export function KitchenModuleContextMenu() {
         : 'Elemento de Equipamiento';
 
     return (
-      <div className="absolute top-6 right-6 w-80 bg-[#141416]/95 backdrop-blur-xl border border-white/10 shadow-2xl shadow-black/80 rounded-2xl overflow-hidden z-50 flex flex-col pointer-events-auto">
+      <div className={`absolute top-6 right-6 w-80 backdrop-blur-xl border rounded-2xl overflow-hidden z-50 flex flex-col pointer-events-auto transition-colors ${
+        isLight
+          ? 'bg-white/95 border-slate-200 shadow-2xl shadow-slate-300 text-slate-800'
+          : 'bg-[#141416]/95 border-white/10 shadow-2xl shadow-black/80 text-white'
+      }`}>
         {/* Header */}
-        <div className="px-4 py-3.5 border-b border-white/10 flex items-center justify-between bg-black/40 shrink-0">
-          <div className="flex items-center gap-2 text-cyan-400 font-bold text-xs uppercase tracking-wider truncate pr-2">
-            <span className="w-2 h-2 rounded-full bg-cyan-400 shrink-0 animate-pulse"></span>
+        <div className={`px-4 py-3.5 border-b flex items-center justify-between shrink-0 ${
+          isLight ? 'border-slate-200 bg-slate-50' : 'border-white/10 bg-black/40'
+        }`}>
+          <div className="flex items-center gap-2 text-cyan-600 font-bold text-xs uppercase tracking-wider truncate pr-2">
+            <span className="w-2 h-2 rounded-full bg-cyan-500 shrink-0 animate-pulse"></span>
             <span className="truncate">{decoTitle}</span>
           </div>
           <button
             onClick={() => setActiveCabinet(null)}
-            className="text-zinc-400 hover:text-white transition-colors p-1 rounded hover:bg-white/5"
+            className={`transition-colors p-1 rounded ${
+              isLight ? 'text-slate-400 hover:text-slate-800 hover:bg-slate-200' : 'text-zinc-400 hover:text-white hover:bg-white/5'
+            }`}
             title="Deseleccionar"
           >
             <X size={16} />
@@ -56,18 +72,20 @@ export function KitchenModuleContextMenu() {
 
         <div className="p-4 flex flex-col gap-3.5">
           {/* Dimensiones */}
-          <div className="grid grid-cols-3 gap-2 bg-white/5 p-2.5 rounded-xl border border-white/10 text-center">
+          <div className={`grid grid-cols-3 gap-2 p-2.5 rounded-xl border text-center ${
+            isLight ? 'bg-slate-50 border-slate-200' : 'bg-white/5 border-white/10'
+          }`}>
             <div>
-              <div className="text-[9px] uppercase tracking-widest text-slate-400">Ancho</div>
-              <div className="text-white font-mono text-xs font-bold">{activeCabinet.width} cm</div>
+              <div className={`text-[9px] uppercase tracking-widest ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>Ancho</div>
+              <div className={`font-mono text-xs font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>{activeCabinet.width} cm</div>
             </div>
             <div>
-              <div className="text-[9px] uppercase tracking-widest text-slate-400">Alto</div>
-              <div className="text-white font-mono text-xs font-bold">{activeCabinet.height} cm</div>
+              <div className={`text-[9px] uppercase tracking-widest ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>Alto</div>
+              <div className={`font-mono text-xs font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>{activeCabinet.height} cm</div>
             </div>
             <div>
-              <div className="text-[9px] uppercase tracking-widest text-slate-400">Fondo</div>
-              <div className="text-white font-mono text-xs font-bold">{activeCabinet.depth} cm</div>
+              <div className={`text-[9px] uppercase tracking-widest ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>Fondo</div>
+              <div className={`font-mono text-xs font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>{activeCabinet.depth} cm</div>
             </div>
           </div>
 
@@ -91,19 +109,25 @@ export function KitchenModuleContextMenu() {
                 const nextRot = (currentRot + Math.PI / 2) % (Math.PI * 2);
                 updateCabinet(activeCabinet.id, { rotation: nextRot });
               }}
-              className="flex items-center justify-center gap-2 py-2.5 px-3 bg-white/10 hover:bg-white/20 text-white font-bold rounded-xl text-xs uppercase tracking-wider border border-white/10 transition-all cursor-pointer"
+              className={`flex items-center justify-center gap-2 py-2.5 px-3 font-bold rounded-xl text-xs uppercase tracking-wider border transition-all cursor-pointer ${
+                isLight
+                  ? 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300 shadow-sm'
+                  : 'bg-white/10 hover:bg-white/20 text-white border-white/10'
+              }`}
             >
-              <RotateCw size={15} className="text-cyan-400" />
+              <RotateCw size={15} className={isLight ? 'text-cyan-600' : 'text-cyan-400'} />
               Girar 90°
             </button>
           </div>
 
           {/* Si es campana: regular elevación */}
           {activeCabinet.variant === 'deco_hood' && (
-            <div className="flex flex-col gap-2 p-2.5 bg-black/40 border border-white/10 rounded-xl">
-              <div className="flex justify-between items-center text-[10px] text-zinc-300">
-                <span className="uppercase font-bold tracking-wider text-slate-400">Elevación Base (piso)</span>
-                <span className="font-mono font-bold text-orange-400">
+            <div className={`flex flex-col gap-2 p-2.5 border rounded-xl ${
+              isLight ? 'bg-slate-50 border-slate-200' : 'bg-black/40 border-white/10'
+            }`}>
+              <div className={`flex justify-between items-center text-[10px] ${isLight ? 'text-slate-600' : 'text-zinc-300'}`}>
+                <span className={`uppercase font-bold tracking-wider ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>Elevación Base (piso)</span>
+                <span className={`font-mono font-bold ${isLight ? 'text-orange-600' : 'text-orange-400'}`}>
                   {Math.round(activeCabinet.position[1] - activeCabinet.height / 2)} cm
                 </span>
               </div>
@@ -119,7 +143,7 @@ export function KitchenModuleContextMenu() {
                     position: [activeCabinet.position[0], newBottom + activeCabinet.height / 2, activeCabinet.position[2]]
                   });
                 }}
-                className="w-full accent-orange-500 cursor-pointer"
+                className={`w-full cursor-pointer accent-orange-500 ${isLight ? 'bg-slate-300' : ''}`}
               />
             </div>
           )}
@@ -127,7 +151,11 @@ export function KitchenModuleContextMenu() {
           {/* Botón Eliminar */}
           <button
             onClick={() => removeCabinet(activeCabinet.id)}
-            className="w-full flex items-center justify-center gap-2 py-2.5 px-3 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-xl text-xs uppercase font-bold tracking-wider transition-all cursor-pointer"
+            className={`w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs uppercase font-bold tracking-wider transition-all cursor-pointer border ${
+              isLight
+                ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-300 shadow-sm'
+                : 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border-rose-500/30'
+            }`}
           >
             <Trash2 size={14} />
             Eliminar Equipamiento
@@ -312,14 +340,22 @@ export function KitchenModuleContextMenu() {
     <div key={tex.id} className="relative group">
       <button 
         onClick={() => handleApplyTexture(tex.url, tex.name)}
-        className="flex flex-col items-center gap-1 p-1 bg-white/5 border border-white/10 rounded-lg hover:border-orange-500/60 transition-colors w-full"
+        className={`flex flex-col items-center gap-1 p-1 rounded-lg transition-colors w-full border ${
+          isLight
+            ? 'bg-white border-slate-200 hover:border-orange-500 shadow-sm'
+            : 'bg-white/5 border-white/10 hover:border-orange-500/60'
+        }`}
         title={tex.name}
       >
         <div 
-          className="w-full aspect-square rounded-md border border-white/20 group-hover:shadow-[0_0_10px_rgba(249,115,22,0.3)] bg-cover bg-center"
+          className={`w-full aspect-square rounded-md border group-hover:shadow-[0_0_10px_rgba(249,115,22,0.3)] bg-cover bg-center ${
+            isLight ? 'border-slate-300' : 'border-white/20'
+          }`}
           style={tex.url.startsWith('#') ? { backgroundColor: tex.url } : { backgroundImage: `url('${tex.url}')` }}
         />
-        <span className="text-[8px] uppercase tracking-wider text-slate-400 truncate w-full text-center">
+        <span className={`text-[8px] uppercase tracking-wider truncate w-full text-center ${
+          isLight ? 'text-slate-600 font-medium' : 'text-slate-400'
+        }`}>
           {tex.name.length > 14 ? tex.name.substring(0, 14) + '...' : tex.name}
         </span>
       </button>
@@ -327,12 +363,18 @@ export function KitchenModuleContextMenu() {
   );
 
   return (
-    <div className="absolute top-6 right-6 w-80 max-h-[calc(100vh-100px)] bg-[#141416]/95 backdrop-blur-xl border border-white/10 shadow-2xl shadow-black/80 rounded-2xl overflow-hidden z-50 flex flex-col pointer-events-auto">
+    <div className={`absolute top-6 right-6 w-80 max-h-[calc(100vh-100px)] backdrop-blur-xl border rounded-2xl overflow-hidden z-50 flex flex-col pointer-events-auto transition-colors ${
+      isLight
+        ? 'bg-white/95 border-slate-200 shadow-2xl shadow-slate-300 text-slate-800'
+        : 'bg-[#141416]/95 border-white/10 shadow-2xl shadow-black/80 text-white'
+    }`}>
       {/* Header */}
-      <div className="px-4 py-3.5 border-b border-white/10 flex items-center justify-between bg-black/40 shrink-0">
-        <div className="flex items-center gap-2 text-orange-500 font-bold text-xs uppercase tracking-wider">
-          <SlidersHorizontal size={16} className="text-orange-500" />
-          <span className="text-orange-500 tracking-wider">
+      <div className={`px-4 py-3.5 border-b flex items-center justify-between shrink-0 ${
+        isLight ? 'border-slate-200 bg-slate-50' : 'border-white/10 bg-black/40'
+      }`}>
+        <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-wider">
+          <SlidersHorizontal size={16} className={isLight ? "text-orange-600" : "text-orange-500"} />
+          <span className={`${isLight ? 'text-orange-600' : 'text-orange-500'} tracking-wider`}>
             MÓDULO ACTIVO {cabinetIndex >= 0 ? `(MOD ${cabinetIndex + 1})` : ''}
           </span>
         </div>
@@ -344,20 +386,26 @@ export function KitchenModuleContextMenu() {
               updateCabinet(activeCabinet.id, { rotation: nextRot });
             }}
             title="Girar 90°"
-            className="text-zinc-400 hover:text-cyan-400 transition-colors p-1 rounded hover:bg-white/5"
+            className={`transition-colors p-1 rounded ${
+              isLight ? 'text-slate-500 hover:text-cyan-600 hover:bg-slate-200' : 'text-zinc-400 hover:text-cyan-400 hover:bg-white/5'
+            }`}
           >
             <RotateCw size={15} />
           </button>
           <button 
             onClick={() => removeCabinet(activeCabinet.id)} 
             title="Eliminar Módulo"
-            className="text-zinc-400 hover:text-rose-400 transition-colors p-1 rounded hover:bg-white/5"
+            className={`transition-colors p-1 rounded ${
+              isLight ? 'text-slate-500 hover:text-rose-600 hover:bg-rose-100' : 'text-zinc-400 hover:text-rose-400 hover:bg-white/5'
+            }`}
           >
             <Trash2 size={15} />
           </button>
           <button 
             onClick={() => setActiveCabinet(null)} 
-            className="text-zinc-400 hover:text-white transition-colors p-1 rounded hover:bg-white/5"
+            className={`transition-colors p-1 rounded ${
+              isLight ? 'text-slate-500 hover:text-slate-800 hover:bg-slate-200' : 'text-zinc-400 hover:text-white hover:bg-white/5'
+            }`}
           >
             <X size={16} />
           </button>
@@ -368,15 +416,23 @@ export function KitchenModuleContextMenu() {
         
         {/* SECCIÓN: APERTURA INDIVIDUAL DE PUERTAS Y CAJONES */}
         {hasInteractiveElements && (
-          <div className="flex flex-col gap-2 p-2.5 bg-[#1c1c1f] rounded-xl border border-white/5">
+          <div className={`flex flex-col gap-2 p-2.5 rounded-xl border ${
+            isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#1c1c1f] border-white/5'
+          }`}>
             <div className="flex items-center justify-between px-1">
-              <div className="text-[10px] uppercase font-bold tracking-widest text-zinc-400 flex items-center gap-1.5">
-                <DoorOpen size={13} className="text-orange-400" />
+              <div className={`text-[10px] uppercase font-bold tracking-widest flex items-center gap-1.5 ${
+                isLight ? 'text-slate-600' : 'text-zinc-400'
+              }`}>
+                <DoorOpen size={13} className={isLight ? "text-orange-600" : "text-orange-400"} />
                 <span>Apertura de Puertas y Cajones</span>
               </div>
               <button
                 onClick={toggleAllOpen}
-                className="text-[10px] uppercase font-bold tracking-wider px-2 py-1 rounded bg-white/5 hover:bg-orange-500/20 text-orange-400 transition-colors flex items-center gap-1"
+                className={`text-[10px] uppercase font-bold tracking-wider px-2 py-1 rounded transition-colors flex items-center gap-1 cursor-pointer ${
+                  isLight
+                    ? 'bg-orange-100 hover:bg-orange-200 text-orange-700 border border-orange-200'
+                    : 'bg-white/5 hover:bg-orange-500/20 text-orange-400'
+                }`}
                 title={anyElementOpen ? "Cerrar todo el módulo" : "Abrir todo el módulo"}
               >
                 {anyElementOpen ? <DoorClosed size={12} /> : <DoorOpen size={12} />}
@@ -391,18 +447,28 @@ export function KitchenModuleContextMenu() {
                   <div
                     key={`open-${el.id}`}
                     onClick={() => toggleElementOpen(el.id)}
-                    className="flex items-center justify-between px-3 py-2 bg-[#242428] hover:bg-[#2c2c31] rounded-lg transition-colors cursor-pointer group"
+                    className={`flex items-center justify-between px-3 py-2 rounded-lg transition-colors cursor-pointer group ${
+                      isLight
+                        ? 'bg-white hover:bg-slate-100 border border-slate-200 shadow-sm'
+                        : 'bg-[#242428] hover:bg-[#2c2c31]'
+                    }`}
                   >
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-semibold text-zinc-200 group-hover:text-white">
+                      <span className={`text-xs font-semibold ${
+                        isLight ? 'text-slate-800 group-hover:text-black' : 'text-zinc-200 group-hover:text-white'
+                      }`}>
                         {el.label}
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className={`text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded transition-all ${
                         open 
-                          ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-[0_0_8px_rgba(16,185,129,0.2)]' 
-                          : 'bg-zinc-800 text-zinc-400 border border-white/5'
+                          ? isLight
+                            ? 'bg-emerald-100 text-emerald-700 border border-emerald-300'
+                            : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-[0_0_8px_rgba(16,185,129,0.2)]'
+                          : isLight
+                            ? 'bg-slate-100 text-slate-600 border border-slate-200'
+                            : 'bg-zinc-800 text-zinc-400 border border-white/5'
                       }`}>
                         {open ? 'Abierto' : 'Cerrado'}
                       </span>
@@ -416,9 +482,13 @@ export function KitchenModuleContextMenu() {
 
         {/* SECCIÓN: VETA (GRANO) POR PIEZA */}
         {hasInteractiveElements && (
-          <div className="flex flex-col gap-2 p-2.5 bg-[#1c1c1f] rounded-xl border border-white/5">
-            <div className="text-[10px] uppercase font-bold tracking-widest text-zinc-400 px-1 flex items-center gap-1.5">
-              <Layers size={13} className="text-orange-400" />
+          <div className={`flex flex-col gap-2 p-2.5 rounded-xl border ${
+            isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#1c1c1f] border-white/5'
+          }`}>
+            <div className={`text-[10px] uppercase font-bold tracking-widest px-1 flex items-center gap-1.5 ${
+              isLight ? 'text-slate-600' : 'text-zinc-400'
+            }`}>
+              <Layers size={13} className={isLight ? "text-orange-600" : "text-orange-400"} />
               <span>Orientación de Veta (Grano)</span>
             </div>
 
@@ -429,10 +499,16 @@ export function KitchenModuleContextMenu() {
                   <div 
                     key={`grain-${el.id}`}
                     onClick={() => toggleGrain(el.id)}
-                    className="flex items-center justify-between px-3 py-2 bg-[#242428] hover:bg-[#2c2c31] rounded-lg transition-colors cursor-pointer group"
+                    className={`flex items-center justify-between px-3 py-2 rounded-lg transition-colors cursor-pointer group ${
+                      isLight
+                        ? 'bg-white hover:bg-slate-100 border border-slate-200 shadow-sm'
+                        : 'bg-[#242428] hover:bg-[#2c2c31]'
+                    }`}
                   >
-                    <span className="text-xs font-semibold text-zinc-200 group-hover:text-white">{el.label}</span>
-                    <span className="text-orange-500 font-bold text-xs tracking-wider flex items-center gap-1.5">
+                    <span className={`text-xs font-semibold ${
+                      isLight ? 'text-slate-800 group-hover:text-black' : 'text-zinc-200 group-hover:text-white'
+                    }`}>{el.label}</span>
+                    <span className={`${isLight ? 'text-orange-600' : 'text-orange-500'} font-bold text-xs tracking-wider flex items-center gap-1.5`}>
                       {grain === 'horizontal' ? (
                         <><ArrowLeftRight size={13} strokeWidth={2.5} /> HORIZ</>
                       ) : (
@@ -448,13 +524,21 @@ export function KitchenModuleContextMenu() {
 
         {/* Trascara HPL */}
         <div className="flex flex-col gap-1.5">
-          <div className="text-[10px] uppercase font-bold tracking-widest text-zinc-400">Trascara HPL</div>
+          <div className={`text-[10px] uppercase font-bold tracking-widest ${isLight ? 'text-slate-600' : 'text-zinc-400'}`}>Trascara HPL</div>
           <button 
             onClick={() => {
               const current = activeCabinet.hplBalancer ?? globalStore.hplBalancer;
               handleOverride('hplBalancer', !current);
             }}
-            className={`w-full py-2.5 px-3 rounded-xl border text-xs uppercase font-bold tracking-wider transition-all text-center ${(activeCabinet.hplBalancer ?? globalStore.hplBalancer) ? 'border-orange-500 bg-orange-500/10 text-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.15)] hover:bg-orange-500/20' : 'border-white/10 bg-white/5 text-zinc-400 hover:bg-white/10 hover:text-white'}`}
+            className={`w-full py-2.5 px-3 rounded-xl border text-xs uppercase font-bold tracking-wider transition-all text-center cursor-pointer ${
+              (activeCabinet.hplBalancer ?? globalStore.hplBalancer) 
+                ? isLight
+                  ? 'border-orange-500 bg-orange-50 text-orange-700 font-bold shadow-sm hover:bg-orange-100'
+                  : 'border-orange-500 bg-orange-500/10 text-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.15)] hover:bg-orange-500/20' 
+                : isLight
+                  ? 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50 shadow-sm'
+                  : 'border-white/10 bg-white/5 text-zinc-400 hover:bg-white/10 hover:text-white'
+            }`}
           >
             {(activeCabinet.hplBalancer ?? globalStore.hplBalancer) ? 'Balancer Blanco Activado' : 'Sin Balancer (Mismo Diseño)'}
           </button>
@@ -462,10 +546,14 @@ export function KitchenModuleContextMenu() {
 
         {/* Diseño Local (Por Pieza) */}
         <div className="flex flex-col gap-1.5">
-          <div className="text-[10px] uppercase font-bold tracking-widest text-zinc-400">Diseño Local (Por Pieza)</div>
+          <div className={`text-[10px] uppercase font-bold tracking-widest ${isLight ? 'text-slate-600' : 'text-zinc-400'}`}>Diseño Local (Por Pieza)</div>
           <button 
             onClick={() => setShowCatalog(!showCatalog)}
-            className="w-full py-2.5 px-4 bg-[#242428] border border-white/20 rounded-xl text-center cursor-pointer hover:border-white/40 hover:bg-[#2c2c31] transition-all text-xs uppercase font-bold tracking-wider text-white"
+            className={`w-full py-2.5 px-4 rounded-xl text-center cursor-pointer transition-all text-xs uppercase font-bold tracking-wider ${
+              isLight
+                ? 'bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 shadow-sm'
+                : 'bg-[#242428] border border-white/20 hover:border-white/40 hover:bg-[#2c2c31] text-white'
+            }`}
           >
             {showCatalog ? 'Ocultar Catálogo' : 'Cambiar Diseño Local'}
           </button>
@@ -473,13 +561,21 @@ export function KitchenModuleContextMenu() {
 
         {/* Catálogo de Materiales */}
         {showCatalog && (
-          <div className="border border-orange-500/40 rounded-2xl bg-[#19191c] p-3.5 flex flex-col gap-3.5 shadow-inner">
-            <div className="text-orange-500 font-bold text-xs uppercase tracking-wider">
+          <div className={`border rounded-2xl p-3.5 flex flex-col gap-3.5 shadow-inner ${
+            isLight
+              ? 'border-orange-300 bg-orange-50/40 shadow-sm'
+              : 'border-orange-500/40 bg-[#19191c]'
+          }`}>
+            <div className={`font-bold text-xs uppercase tracking-wider ${
+              isLight ? 'text-orange-700' : 'text-orange-500'
+            }`}>
               Catálogo de Materiales
             </div>
 
             <div className="flex flex-col gap-2">
-              <div className="text-[10px] uppercase tracking-wider font-semibold text-zinc-400">
+              <div className={`text-[10px] uppercase tracking-wider font-semibold ${
+                isLight ? 'text-slate-600' : 'text-zinc-400'
+              }`}>
                 1. Selecciona la zona a modificar:
               </div>
               <div className="grid grid-cols-2 gap-2">
@@ -497,10 +593,14 @@ export function KitchenModuleContextMenu() {
                     <button 
                       key={part.id}
                       onClick={() => setTargetZone(part.id as PartType)}
-                      className={`py-2 px-3 rounded-lg text-xs uppercase tracking-wider font-bold transition-all ${
+                      className={`py-2 px-3 rounded-lg text-xs uppercase tracking-wider font-bold transition-all cursor-pointer ${
                         isSelected 
-                          ? 'bg-orange-500 text-black shadow-[0_0_12px_rgba(249,115,22,0.35)]' 
-                          : 'bg-[#2a2a2e] text-zinc-300 hover:bg-[#34343a] border border-white/5'
+                          ? isLight
+                            ? 'bg-orange-500 text-black shadow-sm font-bold'
+                            : 'bg-orange-500 text-black shadow-[0_0_12px_rgba(249,115,22,0.35)]' 
+                          : isLight
+                            ? 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-300 shadow-sm'
+                            : 'bg-[#2a2a2e] text-zinc-300 hover:bg-[#34343a] border border-white/5'
                       }`}
                     >
                       {part.label}
@@ -513,7 +613,9 @@ export function KitchenModuleContextMenu() {
             {/* Masisa */}
             {masisaTextures.length > 0 && (
               <div className="flex flex-col gap-2">
-                <div className="text-[10px] uppercase tracking-wider font-semibold text-zinc-400">
+                <div className={`text-[10px] uppercase tracking-wider font-semibold ${
+                  isLight ? 'text-slate-600' : 'text-zinc-400'
+                }`}>
                   2. Masisa (Melaminas)
                 </div>
                 <div className="grid grid-cols-3 gap-2">
@@ -525,7 +627,9 @@ export function KitchenModuleContextMenu() {
             {/* Abet */}
             {abetTextures.length > 0 && (
               <div className="flex flex-col gap-2">
-                <div className="text-[10px] uppercase tracking-wider font-semibold text-zinc-400">
+                <div className={`text-[10px] uppercase tracking-wider font-semibold ${
+                  isLight ? 'text-slate-600' : 'text-zinc-400'
+                }`}>
                   3. Abet Laminati (HPL)
                 </div>
                 <div className="grid grid-cols-3 gap-2">
@@ -536,8 +640,10 @@ export function KitchenModuleContextMenu() {
 
             {/* Otras Texturas Oficiales de Proveedor */}
             {otherTextures.length > 0 && (
-              <div className="pt-3 border-t border-white/10 flex flex-col gap-2">
-                <div className="text-[10px] uppercase tracking-wider font-semibold text-zinc-400">
+              <div className={`pt-3 border-t flex flex-col gap-2 ${isLight ? 'border-slate-200' : 'border-white/10'}`}>
+                <div className={`text-[10px] uppercase tracking-wider font-semibold ${
+                  isLight ? 'text-slate-600' : 'text-zinc-400'
+                }`}>
                   4. Otras Terminaciones de Proveedor
                 </div>
                 <div className="grid grid-cols-3 gap-2">
@@ -552,13 +658,21 @@ export function KitchenModuleContextMenu() {
         <div className="grid grid-cols-2 gap-2 mt-1">
           <button 
             onClick={handleClearOverrides}
-            className="flex items-center justify-center gap-1.5 py-2.5 px-2 bg-amber-500/10 border border-amber-500/30 rounded-xl text-center cursor-pointer hover:bg-amber-500/20 transition-all text-[11px] uppercase font-bold tracking-wider text-amber-400"
+            className={`flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl text-center cursor-pointer transition-all text-[11px] uppercase font-bold tracking-wider border ${
+              isLight
+                ? 'bg-amber-50 hover:bg-amber-100 border-amber-300 text-amber-800 shadow-sm'
+                : 'bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/30 text-amber-400'
+            }`}
           >
             <RefreshCw size={13} /> Revertir Global
           </button>
           <button 
             onClick={() => removeCabinet(activeCabinet.id)}
-            className="flex items-center justify-center gap-1.5 py-2.5 px-2 bg-rose-500/10 border border-rose-500/30 rounded-xl text-center cursor-pointer hover:bg-rose-500/20 transition-all text-[11px] uppercase font-bold tracking-wider text-rose-400"
+            className={`flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl text-center cursor-pointer transition-all text-[11px] uppercase font-bold tracking-wider border ${
+              isLight
+                ? 'bg-rose-50 hover:bg-rose-100 border-rose-300 text-rose-700 shadow-sm'
+                : 'bg-rose-500/10 hover:bg-rose-500/20 border-rose-500/30 text-rose-400'
+            }`}
           >
             <Trash2 size={13} /> Eliminar Mueble
           </button>

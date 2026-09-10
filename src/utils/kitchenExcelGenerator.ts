@@ -3,6 +3,7 @@ import { useStore } from '../store';
 import { useKitchenStore } from '../store/kitchenStore';
 import { generateKitchenPartsList, generateKitchenHardwareList, HARDWARE_SPECS } from './kitchenManufacturing';
 import { generateEdgeBandingList } from './manufacturing';
+import { generateCountertopPieces } from './countertopNesting';
 
 export const exportKitchenToExcel = () => {
   try {
@@ -207,6 +208,28 @@ export const exportKitchenToExcel = () => {
     }
     XLSX.utils.book_append_sheet(wb, wsBoM, '2_BOM_y_Herrajes');
     XLSX.utils.book_append_sheet(wb, wsEdgeBanding, '3_Metros_Tapacanto');
+
+    // Hoja 4: Marmolería y Cubiertas Qstone
+    if (kState.countertopConfig?.enabled) {
+      const ctBOM = generateCountertopPieces(cabinets, kState.countertopConfig, kState.qstoneCatalog);
+      if (ctBOM && ctBOM.pieces.length > 0) {
+        const dataStone = ctBOM.pieces.map(p => ({
+          'Código': p.id,
+          'Descripción Pieza': p.name,
+          'Material': ctBOM.product.name,
+          'Largo (mm)': p.lengthMm,
+          'Ancho (mm)': p.widthMm,
+          'Espesor (mm)': p.thicknessMm,
+          'Área Neta (m²)': Number(p.areaM2.toFixed(3)),
+          'Canto Pulido (m)': Number(p.edgePolishingM.toFixed(2)),
+          'Notas de Taller': p.notes || ''
+        }));
+
+        const wsStone = XLSX.utils.json_to_sheet(dataStone);
+        applyStyles(wsStone, [18, 36, 26, 14, 14, 14, 16, 18, 38]);
+        XLSX.utils.book_append_sheet(wb, wsStone, '4_Cubiertas_Qstone');
+      }
+    }
 
     XLSX.writeFile(wb, 'Optimizacion_Cortes_Cocina.xlsx');
   } catch (e: any) {

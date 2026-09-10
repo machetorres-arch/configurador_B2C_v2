@@ -684,11 +684,22 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
    const cBack = backColor || color || '#f8fafc';
    const cSocle = socleColor || '#111';
 
-   const { activeCabinetId, setActiveCabinet, setDraggingCabinetId, setToolMode, showSocle, cabinets, viewMode, golaSystem } = useKitchenStore();
-   const isGolaActive = (golaSystem === 'aluminum' || golaSystem === 'black') && (type === 'base' || type === 'island');
+   const { activeCabinetId, setActiveCabinet, setDraggingCabinetId, setToolMode, showSocle, cabinets, viewMode, golaSystem, countertopConfig, qstoneCatalog } = useKitchenStore();
+   const isBaseOrIsland = type === 'base' || type === 'island';
+   const isGolaActive = (golaSystem === 'aluminum' || golaSystem === 'black') && isBaseOrIsland;
    const golaColor = golaSystem === 'black' ? '#18181b' : '#d1d5db';
    const golaMetalness = golaSystem === 'black' ? 0.85 : 0.92;
    const golaRoughness = golaSystem === 'black' ? 0.35 : 0.20;
+
+   // Cálculo paramétrico de regrueso y holgura de faldón de cubierta
+   const activeProduct = countertopConfig?.enabled && isBaseOrIsland
+      ? (qstoneCatalog?.find((p) => p.id === countertopConfig.selectedProductId) || qstoneCatalog?.[0])
+      : null;
+   const stoneThicknessCm = (activeProduct?.thicknessMm || 20) / 10;
+   const rawRegruesoCm = (countertopConfig?.enabled && isBaseOrIsland) ? (countertopConfig.regruesoCm || 0) : 0;
+   const regruesoDeduct = isGolaActive
+      ? Math.max(0, rawRegruesoCm - 3.5)
+      : (rawRegruesoCm > 0 ? (Math.max(0, rawRegruesoCm - stoneThicknessCm) + (rawRegruesoCm > stoneThicknessCm ? 0.3 : 0)) : 0);
    const showDimensions = useStore((s) => s.showDimensions);
    const dimensionLevel = useStore((s) => s.dimensionLevel);
    const isActive = activeCabinetId === id;
@@ -710,11 +721,11 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
 
    const leftFlankWorld: [number, number] = [
       safePos[0] + (-width / 2) * cos,
-      safePos[2] + (-width / 2) * sin,
+      safePos[2] - (-width / 2) * sin,
    ];
    const rightFlankWorld: [number, number] = [
       safePos[0] + (width / 2) * cos,
-      safePos[2] + (width / 2) * sin,
+      safePos[2] - (width / 2) * sin,
    ];
 
    const isFloorCabinet = type !== 'wall';
@@ -723,38 +734,44 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
       if (c.id === id) return false;
       const cIsFloor = c.type !== 'wall';
       if (isFloorCabinet !== cIsFloor) return false; // distinto nivel (piso vs aéreo)
-      const cCos = Math.cos(c.rotation || 0);
-      const cSin = Math.sin(c.rotation || 0);
+      const cSafeRot = Number(c.rotation) || 0;
+      const cCos = Math.cos(cSafeRot);
+      const cSin = Math.sin(cSafeRot);
+      const cPos = c.position || [0, 0, 0];
       const cRight: [number, number] = [
-         c.position[0] + (c.width / 2) * cCos,
-         c.position[2] + (c.width / 2) * cSin,
+         cPos[0] + (c.width / 2) * cCos,
+         cPos[2] - (c.width / 2) * cSin,
       ];
       const cLeft: [number, number] = [
-         c.position[0] + (-c.width / 2) * cCos,
-         c.position[2] + (-c.width / 2) * cSin,
+         cPos[0] + (-c.width / 2) * cCos,
+         cPos[2] - (-c.width / 2) * cSin,
       ];
       const d1 = Math.hypot(leftFlankWorld[0] - cRight[0], leftFlankWorld[1] - cRight[1]);
       const d2 = Math.hypot(leftFlankWorld[0] - cLeft[0], leftFlankWorld[1] - cLeft[1]);
-      return d1 < 5 || d2 < 5;
+      const dCorner = Math.hypot(leftFlankWorld[0] - cPos[0], leftFlankWorld[1] - cPos[2]);
+      return d1 < 5 || d2 < 5 || dCorner < (c.width / 2 + 5);
    });
 
    const rightNeighbor = cabinets.find((c) => {
       if (c.id === id) return false;
       const cIsFloor = c.type !== 'wall';
       if (isFloorCabinet !== cIsFloor) return false;
-      const cCos = Math.cos(c.rotation || 0);
-      const cSin = Math.sin(c.rotation || 0);
+      const cSafeRot = Number(c.rotation) || 0;
+      const cCos = Math.cos(cSafeRot);
+      const cSin = Math.sin(cSafeRot);
+      const cPos = c.position || [0, 0, 0];
       const cLeft: [number, number] = [
-         c.position[0] + (-c.width / 2) * cCos,
-         c.position[2] + (-c.width / 2) * cSin,
+         cPos[0] + (-c.width / 2) * cCos,
+         cPos[2] - (-c.width / 2) * cSin,
       ];
       const cRight: [number, number] = [
-         c.position[0] + (c.width / 2) * cCos,
-         c.position[2] + (c.width / 2) * cSin,
+         cPos[0] + (c.width / 2) * cCos,
+         cPos[2] - (c.width / 2) * cSin,
       ];
       const d1 = Math.hypot(rightFlankWorld[0] - cLeft[0], rightFlankWorld[1] - cLeft[1]);
       const d2 = Math.hypot(rightFlankWorld[0] - cRight[0], rightFlankWorld[1] - cRight[1]);
-      return d1 < 5 || d2 < 5;
+      const dCorner = Math.hypot(rightFlankWorld[0] - cPos[0], rightFlankWorld[1] - cPos[2]);
+      return d1 < 5 || d2 < 5 || dCorner < (c.width / 2 + 5);
    });
 
    const hasNeighborLeft = Boolean(leftNeighbor);
@@ -784,12 +801,10 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
    const thickness = 1.5;
 
    // Riel Gola Continuo (Provelcar 300cm):
-   // Pasa de lado a lado entre muebles contiguos gracias al ruteo/destaje CNC en los laterales intermedios.
-   // En costados exteriores terminales (sin mueble contiguo), el riel se ajusta al ras interior para eliminar puntas sobresalientes.
-   const golaStart = hasNeighborLeft ? -width / 2 : -width / 2 + thickness;
-   const golaEnd = hasNeighborRight ? width / 2 : width / 2 - thickness;
-   const golaSpan = Math.max(1, golaEnd - golaStart);
-   const golaCenterX = (golaStart + golaEnd) / 2;
+   // Pasa continuo a lo ancho completo del gabinete (-width/2 a +width/2) alojándose perfectamente
+   // en los rebajes CNC de los laterales sin interrupciones ni desfaces visuales.
+   const golaSpan = width;
+   const golaCenterX = 0;
 
    const isBaseOrTall = type === 'base' || type === 'tall' || type === 'island';
    const legsHeight = isBaseOrTall ? 10 : 0;
@@ -901,15 +916,6 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                   <boxGeometry args={[golaSpan, 0.4, 0.2]} />
                   <meshStandardMaterial color={golaColor} metalness={golaMetalness} roughness={golaRoughness} />
                </mesh>
-               {/* Escuadras de fijación Provelcar a laterales */}
-               <mesh position={[-innerW / 2 + 0.2, legsHeight + cabH - 1.75, depth / 2 - 2.0]}>
-                  <boxGeometry args={[0.3, 2.5, 1.8]} />
-                  <meshStandardMaterial color="#94a3b8" metalness={0.7} roughness={0.3} />
-               </mesh>
-               <mesh position={[innerW / 2 - 0.2, legsHeight + cabH - 1.75, depth / 2 - 2.0]}>
-                  <boxGeometry args={[0.3, 2.5, 1.8]} />
-                  <meshStandardMaterial color="#94a3b8" metalness={0.7} roughness={0.3} />
-               </mesh>
             </group>
          );
 
@@ -932,23 +938,14 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                   <boxGeometry args={[golaSpan, 0.4, 0.2]} />
                   <meshStandardMaterial color={golaColor} metalness={golaMetalness} roughness={golaRoughness} />
                </mesh>
-               {/* Escuadras de fijación Provelcar a laterales */}
-               <mesh position={[-innerW / 2 + 0.2, yPos, depth / 2 - 2.0]}>
-                  <boxGeometry args={[0.3, 3.0, 1.8]} />
-                  <meshStandardMaterial color="#94a3b8" metalness={0.7} roughness={0.3} />
-               </mesh>
-               <mesh position={[innerW / 2 - 0.2, yPos, depth / 2 - 2.0]}>
-                  <boxGeometry args={[0.3, 3.0, 1.8]} />
-                  <meshStandardMaterial color="#94a3b8" metalness={0.7} roughness={0.3} />
-               </mesh>
             </group>
          );
          
          if (effectiveVariant === '1_door' || effectiveVariant === 'tall_1_door') {
             const doorW = width - gap*2;
-            const topDeduct = isGolaActive ? 3.5 : 0;
-            const doorH = cabH - topDeduct - gap*2;
-            const doorY = isGolaActive ? (legsHeight + (cabH - topDeduct)/2) : (legsHeight + cabH/2);
+            const topDeduct = isGolaActive ? 3.5 : (isBaseOrIsland ? regruesoDeduct : 0);
+            const doorH = Math.max(10, cabH - topDeduct - gap*2);
+            const doorY = isGolaActive ? (legsHeight + (cabH - topDeduct)/2) : (legsHeight + gap + doorH/2);
             return (
                <>
                   {isGolaActive && renderGolaL()}
@@ -1125,9 +1122,9 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
 
          if (effectiveVariant === 'spice_rack') {
             const slideLength = depth - 5;
-            const topDeduct = isGolaActive ? 3.5 : 0;
-            const doorH = cabH - topDeduct - gap * 2;
-            const doorY = isGolaActive ? (legsHeight + (cabH - topDeduct)/2) : (legsHeight + cabH / 2);
+            const topDeduct = isGolaActive ? 3.5 : (isBaseOrIsland ? regruesoDeduct : 0);
+            const doorH = Math.max(10, cabH - topDeduct - gap * 2);
+            const doorY = isGolaActive ? (legsHeight + (cabH - topDeduct)/2) : (legsHeight + gap + doorH / 2);
             return (
                <>
                   {isGolaActive && renderGolaL()}
@@ -1158,9 +1155,9 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
          
          if (effectiveVariant === '2_doors' || effectiveVariant === 'tall_2_doors') {
             const doorW = (width - gap*3) / 2;
-            const topDeduct = isGolaActive ? 3.5 : 0;
-            const doorH = cabH - topDeduct - gap*2;
-            const doorY = isGolaActive ? (legsHeight + (cabH - topDeduct)/2) : (legsHeight + cabH/2);
+            const topDeduct = isGolaActive ? 3.5 : (isBaseOrIsland ? regruesoDeduct : 0);
+            const doorH = Math.max(10, cabH - topDeduct - gap*2);
+            const doorY = isGolaActive ? (legsHeight + (cabH - topDeduct)/2) : (legsHeight + gap + doorH/2);
             const leftDoorX = -width/2 + gap + doorW/2;
             const rightDoorX = width/2 - gap - doorW/2;
             return (
@@ -1205,7 +1202,8 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
          
          if (effectiveVariant === '1_door_1_drawer') {
             if (isGolaActive) {
-               const drawerH = 14.5;
+               const golaRegruesoDeduct = Math.max(0, rawRegruesoCm - 3.5);
+               const drawerH = Math.max(8, 14.5 - golaRegruesoDeduct);
                const yBoxCenter = legsHeight + cabH - 3.5 - drawerH / 2;
                const yGolaC = legsHeight + cabH - 3.5 - drawerH - 2.0;
                const doorH = Math.max(15, cabH - 3.5 - drawerH - 4.0 - gap * 3);
@@ -1232,8 +1230,9 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                   </>
                );
             }
-            const drawerH = 15;
-            const doorH = cabH - drawerH - gap*3;
+            const deduct = isBaseOrIsland ? regruesoDeduct : 0;
+            const drawerH = Math.max(8, 15 - deduct);
+            const doorH = cabH - 15 - gap*3;
             const yBoxCenter = legsHeight + gap*2 + doorH + drawerH/2;
             const yDoorCenter = legsHeight + gap + doorH/2;
             return (
@@ -1260,7 +1259,8 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
          
          if (effectiveVariant === '4_drawers') {
             if (isGolaActive) {
-               const availH = Math.max(20, cabH - 3.5 - 4.0 - gap * 5);
+               const golaRegruesoDeduct = Math.max(0, rawRegruesoCm - 3.5);
+               const availH = Math.max(20, cabH - 3.5 - 4.0 - gap * 5 - golaRegruesoDeduct);
                const drawerH = availH / 4;
                const yGolaC = legsHeight + gap + (drawerH + gap) * 2 + 2.0;
                return (
@@ -1274,12 +1274,17 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                   </>
                );
             }
-            const drawerH = (cabH - gap*5) / 4;
+            const deduct = isBaseOrIsland ? regruesoDeduct : 0;
+            const baseDrawerH = (cabH - gap*5) / 4;
+            const topDrawerH = Math.max(8, baseDrawerH - deduct);
             return (
                <>
                   {[0,1,2,3].map(i => {
-                    const yBoxCenter = legsHeight + gap + drawerH/2 + i*(drawerH + gap);
-                    return renderUndermountDrawer('d' + i, yBoxCenter, drawerH, parseColor(cDrawers, drawerFrontMaterial, `drawer-${i}`), `drawer-${i}`);
+                    const currentH = i === 3 ? topDrawerH : baseDrawerH;
+                    const yBoxCenter = i === 3
+                      ? legsHeight + gap + 3*(baseDrawerH + gap) + topDrawerH/2
+                      : legsHeight + gap + baseDrawerH/2 + i*(baseDrawerH + gap);
+                    return renderUndermountDrawer('d' + i, yBoxCenter, currentH, parseColor(cDrawers, drawerFrontMaterial, `drawer-${i}`), `drawer-${i}`);
                   })}
                </>
             );
@@ -1287,7 +1292,8 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
          
          if (effectiveVariant === '2_pot_drawers') {
             if (isGolaActive) {
-               const availH = Math.max(20, cabH - 3.5 - 4.0 - gap * 3);
+               const golaRegruesoDeduct = Math.max(0, rawRegruesoCm - 3.5);
+               const availH = Math.max(20, cabH - 3.5 - 4.0 - gap * 3 - golaRegruesoDeduct);
                const drawerH = availH / 2;
                const yLower = legsHeight + gap + drawerH / 2;
                const yGolaC = legsHeight + gap + drawerH + 2.0;
@@ -1301,13 +1307,16 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                   </>
                );
             }
-            const drawerH = (cabH - gap*3) / 2;
+            const deduct = isBaseOrIsland ? regruesoDeduct : 0;
+            const baseH = (cabH - gap*3) / 2;
+            const lowerH = baseH;
+            const upperH = Math.max(10, baseH - deduct);
+            const yLower = legsHeight + gap + lowerH / 2;
+            const yUpper = legsHeight + gap + lowerH + gap + upperH / 2;
             return (
                <>
-                  {[0,1].map(i => {
-                    const yBoxCenter = legsHeight + gap + drawerH/2 + i*(drawerH + gap);
-                    return renderUndermountDrawer('p' + i, yBoxCenter, drawerH, parseColor(cDrawers, drawerFrontMaterial, `drawer-${i}`), `drawer-${i}`);
-                  })}
+                  {renderUndermountDrawer('p0', yLower, lowerH, parseColor(cDrawers, drawerFrontMaterial, 'drawer-0'), 'drawer-0')}
+                  {renderUndermountDrawer('p1', yUpper, upperH, parseColor(cDrawers, drawerFrontMaterial, 'drawer-1'), 'drawer-1')}
                </>
             );
          }
@@ -1316,9 +1325,9 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
             const isRight = effectiveVariant !== 'corner_blind_left';
             const blindW = Math.max(35, width / 2);
             const doorW = width - blindW - gap * 2;
-            const topDeduct = isGolaActive ? 3.5 : 0;
-            const doorH = cabH - topDeduct - gap * 2;
-            const doorY = isGolaActive ? (legsHeight + (cabH - topDeduct)/2) : (legsHeight + cabH / 2);
+            const topDeduct = isGolaActive ? 3.5 : (isBaseOrIsland ? regruesoDeduct : 0);
+            const doorH = Math.max(10, cabH - topDeduct - gap * 2);
+            const doorY = isGolaActive ? (legsHeight + (cabH - topDeduct)/2) : (legsHeight + gap + doorH / 2);
             
             const blindX = isRight ? (width / 2 - blindW / 2) : (-width / 2 + blindW / 2);
             const postX = isRight ? (width / 2 - blindW + thickness / 2) : (-width / 2 + blindW - thickness / 2);
@@ -1329,16 +1338,16 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                   {isGolaActive && renderGolaL()}
                   {/* Panel Ciego Frontal Fijo (Mismo decorativo de paredes/estructura) */}
                   <Board
-                     position={[blindX, legsHeight + cabH / 2, frontZ]}
-                     args={[blindW, cabH - gap * 2, thickness]}
+                     position={[blindX, doorY, frontZ]}
+                     args={[blindW, doorH, thickness]}
                      {...parseColor(cStructure, structureMaterial, 'blind')}
                      isFrontPanel={false}
-                     globalPosition={[position[0] + blindX, position[1] + legsHeight + cabH / 2, position[2] + frontZ]}
+                     globalPosition={[position[0] + blindX, position[1] + doorY, position[2] + frontZ]}
                   />
 
                   {/* Poste / Regleta Vertical de Amarre Interior */}
                   <Board
-                     position={[postX, legsHeight + cabH / 2, depth / 2 - 5]}
+                     position={[postX, legsHeight + cabH / 2, isGolaActive ? depth / 2 - 2.8 - 5 : depth / 2 - 5]}
                      args={[thickness, cabH, 10]}
                      {...parseColor(cStructure, structureMaterial)}
                   />
@@ -1496,11 +1505,9 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                const renderLateral = (isLeft: boolean) => {
                   const xPos = isLeft ? -width/2 + thickness/2 : width/2 - thickness/2;
                   const key = isLeft ? 'left' : 'right';
-                  const isTerminal = isLeft ? !hasNeighborLeft : !hasNeighborRight;
 
-                  // Si Gola no está activo o si es un costado exterior terminal (sin mueble contiguo),
-                  // el lateral se mantiene cerrado y completo al ras, evitando puntas o aberturas hacia la habitación.
-                  if (!isGolaActive || isTerminal) {
+                  // Si Gola no está activo, el lateral se mantiene cerrado y completo al ras
+                  if (!isGolaActive) {
                      return (
                         <Board 
                            key={`lat-${key}`}
@@ -1511,8 +1518,8 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                      );
                   }
 
-                  // Lateral Intermedio (con mueble contiguo): Destaje CNC para paso continuo del riel Gola
-                  const notchDepth = 2.6;
+                  // Lateral con Gola activo: Destaje CNC para paso continuo del riel Gola L (y Gola C si aplica)
+                  const notchDepth = 2.8;
                   const notchLHeight = 5.8;
                   const backDepth = depth - notchDepth;
                   const zBack = -depth/2 + backDepth/2;
@@ -1522,17 +1529,22 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                   if (!effVariant) {
                      effVariant = width > 60 ? '2_doors' : '1_door';
                   }
-                  const hasGolaC = effVariant === '1_door_1_drawer' || effVariant === '2_pot_drawers' || effVariant === '4_drawers';
+                  const myHasGolaC = effVariant === '1_door_1_drawer' || effVariant === '2_pot_drawers' || effVariant === '4_drawers';
+                  const neighbor = isLeft ? leftNeighbor : rightNeighbor;
+                  const neighborVariant = neighbor?.variant;
+                  const neighborHasGolaC = neighborVariant === '1_door_1_drawer' || neighborVariant === '2_pot_drawers' || neighborVariant === '4_drawers';
+                  const hasGolaC = myHasGolaC || (Boolean(neighbor) && neighborHasGolaC);
 
+                  const effGolaCVariant = myHasGolaC ? effVariant : (neighborVariant || effVariant);
                   let yGolaC = 0;
-                  if (effVariant === '1_door_1_drawer') {
+                  if (effGolaCVariant === '1_door_1_drawer') {
                      const drawerH = 14.5;
                      yGolaC = legsHeight + cabH - 3.5 - drawerH - 2.0;
-                  } else if (effVariant === '2_pot_drawers') {
+                  } else if (effGolaCVariant === '2_pot_drawers') {
                      const availH = Math.max(20, cabH - 3.5 - 4.0 - gap * 3);
                      const drawerH = availH / 2;
                      yGolaC = legsHeight + gap + drawerH + 2.0;
-                  } else if (effVariant === '4_drawers') {
+                  } else if (effGolaCVariant === '4_drawers') {
                      const availH = Math.max(20, cabH - 3.5 - 4.0 - gap * 5);
                      const drawerH = availH / 4;
                      yGolaC = legsHeight + gap + (drawerH + gap) * 2 + 2.0;
@@ -1600,18 +1612,18 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
             {type === 'base' || type === 'island' ? (
                <>
                   <Board 
-                     position={[0, height - thickness/2, isGolaActive ? depth/2 - 2.6 - 5 : depth/2 - 5]} 
+                     position={[0, height - thickness/2, isGolaActive ? depth/2 - 2.8 - 5 : depth/2 - 5]} 
                      args={[innerW, thickness, 10]} 
                      {...parseColor(cStructure, structureMaterial, 'top')} 
                   />
                   <Board position={[0, height - 5, -depth/2 + thickness * 1.5]} args={[innerW, 10, thickness]} {...parseColor(cStructure, structureMaterial, 'top')} />
                   {/* Amarres frontales y traseros a laterales */}
                   <AssemblyJoint 
-                     position={[-innerW/2, height - thickness/2, isGolaActive ? depth/2 - 2.6 - 5 : depth/2 - 5]} 
+                     position={[-innerW/2, height - thickness/2, isGolaActive ? depth/2 - 2.8 - 5 : depth/2 - 5]} 
                      length={10} axis="z" pointing="right" thickness={thickness} count={1} 
                   />
                   <AssemblyJoint 
-                     position={[innerW/2, height - thickness/2, isGolaActive ? depth/2 - 2.6 - 5 : depth/2 - 5]} 
+                     position={[innerW/2, height - thickness/2, isGolaActive ? depth/2 - 2.8 - 5 : depth/2 - 5]} 
                      length={10} axis="z" pointing="left" thickness={thickness} count={1} 
                   />
                   <AssemblyJoint position={[-innerW/2, height - 5, -depth/2 + thickness * 1.5]} length={10} axis="y" pointing="right" thickness={thickness} count={1} />

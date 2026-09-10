@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { getSupabase } from '../lib/supabase';
 import { useSupabaseAuthStore } from './supabaseAuthStore';
+import { useKitchenStore } from './kitchenStore';
 
 export type ProjectType = 'closet' | 'kitchen' | 'special' | 'sip-house' | 'hpl-bathroom' | 'concrete-house' | 'office';
 
@@ -15,7 +16,7 @@ export interface ProjectItem {
   data: any;
 }
 
-export type SupplyCategory = 'melamina' | 'herrajes' | 'sip' | 'madera' | 'fijaciones_sellantes';
+export type SupplyCategory = 'melamina' | 'herrajes' | 'cubiertas_qstone' | 'sip' | 'madera' | 'fijaciones_sellantes';
 
 export interface SupplyItem {
   id: string;
@@ -123,6 +124,8 @@ export interface AdminState {
   supplies: SupplyItem[];
   updateSupplyPrice: (id: string, newPrice: number) => void;
   updateSupply: (id: string, updates: Partial<SupplyItem>) => void;
+  addSupply: (supply: Omit<SupplyItem, 'id'>) => string;
+  deleteSupply: (id: string) => void;
   resetSuppliesToDefault: () => void;
 
   // Texturas y Decorativos
@@ -259,6 +262,128 @@ export const DEFAULT_SUPPLIES: SupplyItem[] = [
     supplier: 'Häfele',
     stockRef: 2000,
     notes: 'Ensamble de módulos desarmables'
+  },
+
+  // Cubiertas y Marmolería Qstone (Cuarzos & Sinterizados)
+  {
+    id: 'qs-blanco-estelar-20',
+    category: 'cubiertas_qstone',
+    name: 'Qstone Cuarzo Blanco Estelar 20mm',
+    code: 'QS-BLEST-20',
+    spec: 'Cuarzo blanco puro con micro-espejos, dureza Mohs 7, formato 3.20 x 1.60 m',
+    unit: 'm²',
+    priceClp: 165000,
+    supplier: 'Qstone Chile',
+    stockRef: 30,
+    notes: 'Resistente a manchas y ácidos domésticos'
+  },
+  {
+    id: 'qs-blanco-nieve-18',
+    category: 'cubiertas_qstone',
+    name: 'Qstone Cuarzo Blanco Nieve 18mm',
+    code: 'QS-BLNIE-18',
+    spec: 'Cuarzo blanco puro homogéneo espesor 18mm, formato 3.20 x 1.60 m',
+    unit: 'm²',
+    priceClp: 145000,
+    supplier: 'Qstone Chile',
+    stockRef: 45,
+    notes: 'Gama clásica para cocinas residenciales'
+  },
+  {
+    id: 'qs-gris-plomo-20',
+    category: 'cubiertas_qstone',
+    name: 'Qstone Cuarzo Gris Plomo 20mm',
+    code: 'QS-GRPLO-20',
+    spec: 'Tonalidad grafito contemporánea mate texturado 20mm, formato 3.20 x 1.60 m',
+    unit: 'm²',
+    priceClp: 158000,
+    supplier: 'Qstone Chile',
+    stockRef: 20,
+    notes: 'Acabado Suede mate suave al tacto'
+  },
+  {
+    id: 'qs-negro-marquina-20',
+    category: 'cubiertas_qstone',
+    name: 'Qstone Cuarzo Negro Marquina 20mm',
+    code: 'QS-NEMAR-20',
+    spec: 'Fondo negro carbón con vetas blancas estilizadas 20mm, formato 3.20 x 1.60 m',
+    unit: 'm²',
+    priceClp: 175000,
+    supplier: 'Qstone Chile',
+    stockRef: 25,
+    notes: 'Pulido alto brillo premium'
+  },
+  {
+    id: 'qs-sint-calacatta-12',
+    category: 'cubiertas_qstone',
+    name: 'Qstone Sinterizado Calacatta Gold 12mm',
+    code: 'QS-SINT-CAL-12',
+    spec: 'Piedra sinterizada ultra-compacta 12mm, requiere base continua, formato 3.20 x 1.60 m',
+    unit: 'm²',
+    priceClp: 210000,
+    supplier: 'Qstone Chile',
+    stockRef: 15,
+    notes: 'Resistencia térmica directa hasta 300°C y rayado extremo'
+  },
+  {
+    id: 'qs-sint-pietra-grey-12',
+    category: 'cubiertas_qstone',
+    name: 'Qstone Sinterizado Pietra Grey 12mm',
+    code: 'QS-SINT-PIE-12',
+    spec: 'Piedra sinterizada gris grafito con sutil veta mineral 12mm, formato 3.20 x 1.60 m',
+    unit: 'm²',
+    priceClp: 220000,
+    supplier: 'Qstone Chile',
+    stockRef: 18,
+    notes: 'Acabado sedoso anti-huellas'
+  },
+  {
+    id: 'qs-sint-statuario-12',
+    category: 'cubiertas_qstone',
+    name: 'Qstone Sinterizado Statuario 12mm',
+    code: 'QS-SINT-STA-12',
+    spec: 'Piedra sinterizada tipo mármol Carrara 12mm, formato 3.20 x 1.60 m',
+    unit: 'm²',
+    priceClp: 235000,
+    supplier: 'Qstone Chile',
+    stockRef: 12,
+    notes: 'Veteado continuo sincronizado para islas'
+  },
+  {
+    id: 'qs-canto-pulido',
+    category: 'cubiertas_qstone',
+    name: 'Mano de Obra: Pulido y Bisel Canto Recto Qstone',
+    code: 'QS-CANTO-PUL',
+    spec: 'Corte diamantado CNC + pulido de cantos visibles al agua (Kerf 3.5mm)',
+    unit: 'Metro Lineal (m)',
+    priceClp: 18500,
+    supplier: 'Marmolería Especializada',
+    stockRef: 999,
+    notes: 'Biselado de aristas 2mm anti-desportille'
+  },
+  {
+    id: 'qs-encastre-lavaplatos',
+    category: 'cubiertas_qstone',
+    name: 'Mano de Obra: Perforación y Encastre Lavaplatos Bajo Cubierta',
+    code: 'QS-ENC-LAVA',
+    spec: 'Ruteado CNC + pulido interior de perímetro para cubeta bajo cubierta',
+    unit: 'Unid.',
+    priceClp: 45000,
+    supplier: 'Marmolería Especializada',
+    stockRef: 999,
+    notes: 'Incluye perforación grifería monomando'
+  },
+  {
+    id: 'qs-encastre-encimera',
+    category: 'cubiertas_qstone',
+    name: 'Mano de Obra: Calado y Perforación para Encimera / Placa de Cocción',
+    code: 'QS-ENC-ENCI',
+    spec: 'Corte en ángulo recto con esquinas redondeadas R=10mm anti-fisura',
+    unit: 'Unid.',
+    priceClp: 38000,
+    supplier: 'Marmolería Especializada',
+    stockRef: 999,
+    notes: 'Para encimeras a gas o inducción sobrepuesta'
   },
 
   // Paneles SIP
@@ -648,7 +773,16 @@ const getInitialState = () => {
         themeMode: (parsed.themeMode === 'light' ? 'light' : 'dark') as 'dark' | 'light',
         providers: Array.isArray(parsed.providers) && parsed.providers.length > 0 ? parsed.providers : DEFAULT_PROVIDERS,
         projects: Array.isArray(parsed.projects) ? parsed.projects : DEFAULT_PROJECTS,
-        supplies: Array.isArray(parsed.supplies) && parsed.supplies.length > 0 ? parsed.supplies : DEFAULT_SUPPLIES,
+        supplies: (() => {
+          if (!Array.isArray(parsed.supplies) || parsed.supplies.length === 0) return DEFAULT_SUPPLIES;
+          const map = new Map<string, SupplyItem>();
+          DEFAULT_SUPPLIES.forEach((s) => map.set(s.id, s));
+          parsed.supplies.forEach((s: SupplyItem) => {
+            const def = map.get(s.id);
+            map.set(s.id, def ? { ...def, ...s } : s);
+          });
+          return Array.from(map.values());
+        })(),
         textures: Array.isArray(parsed.textures) && parsed.textures.length > 0
           ? parsed.textures.map((t: CustomTextureItem) => ({
               ...t,
@@ -1006,17 +1140,82 @@ export const useAdminStore = create<AdminState>((set, get) => {
     supplies: initial.supplies,
 
     updateSupplyPrice: (id, newPrice) => {
-      const currentSupplies = get().supplies.map((s) => (s.id === id ? { ...s, priceClp: Math.max(0, newPrice) } : s));
+      const validPrice = Math.max(0, newPrice);
+      const currentSupplies = get().supplies.map((s) => (s.id === id ? { ...s, priceClp: validPrice } : s));
       persist({ supplies: currentSupplies });
+      try {
+        useKitchenStore.getState().updateQstoneCatalogItemPrice(id, validPrice);
+      } catch (e) {
+        console.warn('Error sincronizando precio con kitchenStore:', e);
+      }
     },
 
     updateSupply: (id, updates) => {
       const currentSupplies = get().supplies.map((s) => (s.id === id ? { ...s, ...updates } : s));
       persist({ supplies: currentSupplies });
+      try {
+        if (updates.priceClp !== undefined) {
+          useKitchenStore.getState().updateQstoneCatalogItemPrice(id, updates.priceClp);
+        }
+        if (updates.name || updates.spec || updates.supplier) {
+          useKitchenStore.getState().updateQstoneCatalogItem(id, {
+            name: updates.name,
+            description: updates.spec,
+          });
+        }
+      } catch (e) {
+        console.warn('Error sincronizando supply con kitchenStore:', e);
+      }
+    },
+
+    addSupply: (supplyData) => {
+      const newId = `sup-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+      const newItem: SupplyItem = {
+        ...supplyData,
+        id: newId,
+      };
+      const currentSupplies = [newItem, ...get().supplies];
+      persist({ supplies: currentSupplies });
+
+      if (supplyData.category === 'cubiertas_qstone') {
+        try {
+          const isSintered = supplyData.spec.toLowerCase().includes('sinteriz') || supplyData.name.toLowerCase().includes('sinteriz');
+          useKitchenStore.getState().addQstoneCatalogItem({
+            id: newId,
+            code: supplyData.code,
+            name: supplyData.name,
+            materialType: isSintered ? 'sinterizado' : 'quarzo',
+            thicknessMm: isSintered ? 12 : 20,
+            priceM2Clp: supplyData.priceClp,
+            sheetWidthMm: 3200,
+            sheetHeightMm: 1600,
+            colorHex: '#E2E8F0',
+            finish: supplyData.spec,
+            description: supplyData.notes || supplyData.spec,
+            active: true,
+          });
+        } catch (e) {
+          console.warn('Error añadiendo material a kitchenStore:', e);
+        }
+      }
+      return newId;
+    },
+
+    deleteSupply: (id) => {
+      const currentSupplies = get().supplies.filter((s) => s.id !== id);
+      persist({ supplies: currentSupplies });
+      try {
+        useKitchenStore.getState().removeQstoneCatalogItem(id);
+      } catch (e) {}
     },
 
     resetSuppliesToDefault: () => {
       persist({ supplies: DEFAULT_SUPPLIES });
+      try {
+        DEFAULT_SUPPLIES.filter((s) => s.category === 'cubiertas_qstone').forEach((s) => {
+          useKitchenStore.getState().updateQstoneCatalogItemPrice(s.id, s.priceClp);
+        });
+      } catch (e) {}
     },
 
     textures: initial.textures,

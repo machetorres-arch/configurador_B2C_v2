@@ -10,6 +10,7 @@ import { KitchenSocle } from './KitchenSocle';
 import { KitchenRunDimensions } from './KitchenRunDimensions';
 import { RoomFloorAndDimensions } from './RoomFloorAndDimensions';
 import { ArchitecturalElementsRenderer } from './ArchitecturalElementsRenderer';
+import { KitchenCountertop3D } from './KitchenCountertop3D';
 import { resolvePlacement } from '../../utils/kitchenCollision';
 
 function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
@@ -625,6 +626,7 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
           return <Cabinet key={cab.id} {...cab} />;
         })}
         <KitchenSocle />
+        <KitchenCountertop3D />
         <KitchenRunDimensions />
         <ArchitecturalElementsRenderer />
 

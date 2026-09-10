@@ -1,6 +1,16 @@
 import { create } from 'zustand';
 import { RoomConfig, getPresetRoomVertices, generateWallsFromRoom } from '../utils/roomGeometry';
 import { constrainInsideRoomAndWalls, repositionCabinetsOnRoomChange } from '../utils/kitchenCollision';
+import { 
+  CountertopConfig, 
+  DEFAULT_COUNTERTOP_CONFIG, 
+  QstoneProductItem, 
+  DEFAULT_QSTONE_CATALOG, 
+  SinkModelId, 
+  CooktopModelId,
+  QSTONE_SINKS,
+  FDV_COOKTOPS
+} from '../types/countertop';
 
 export type GolaSystem = 'none' | 'aluminum' | 'black';
 
@@ -93,6 +103,13 @@ export interface CabinetType {
   openElements?: Record<string, boolean>;
 }
 
+export interface GolaIncompatibilityAlert {
+  isOpen: boolean;
+  regruesoCm: number;
+  stoneThicknessCm: number;
+  attemptedAction: 'gola' | 'regrueso';
+}
+
 interface KitchenState {
   viewMode: ViewMode;
   toolMode: ToolMode;
@@ -101,6 +118,7 @@ interface KitchenState {
   activeCabinetId: string | null;
   showSocle: boolean;
   golaSystem: GolaSystem;
+  golaIncompatibilityAlert: GolaIncompatibilityAlert | null;
   drawingStart: [number, number] | null;
   isRoomPlannerOpen: boolean;
   roomConfig: RoomConfig;
@@ -110,6 +128,8 @@ interface KitchenState {
   activeArchElementId: string | null;
   draggingArchElementId: string | null;
   draggingCabinetId: string | null;
+  countertopConfig: CountertopConfig;
+  qstoneCatalog: QstoneProductItem[];
 
   setViewMode: (mode: ViewMode) => void;
   setToolMode: (mode: ToolMode) => void;
@@ -127,12 +147,22 @@ interface KitchenState {
   setDrawingStart: (pos: [number, number] | null) => void;
   setShowSocle: (val: boolean) => void;
   setGolaSystem: (system: GolaSystem) => void;
+  setGolaIncompatibilityAlert: (alert: GolaIncompatibilityAlert | null) => void;
   updateCabinet: (id: string, updates: Partial<CabinetType>) => void;
   setRoomPlannerOpen: (open: boolean) => void;
   setRoomConfig: (config: RoomConfig) => void;
   setWallColor: (color: string) => void;
   setFloorType: (floorType: string) => void;
   applyGlobalTexture: (part: 'structure' | 'doors' | 'drawerFronts' | 'drawerInner' | 'shelves' | 'back' | 'socle' | 'all', url: string, mat: 'melamina' | 'hpl') => void;
+  setCountertopConfig: (config: Partial<CountertopConfig>) => void;
+  setCountertopSink: (model: SinkModelId, cabinetId?: string | null) => { success: boolean; error?: string };
+  setCountertopCooktop: (model: CooktopModelId, cabinetId?: string | null) => { success: boolean; error?: string };
+  updateQstoneCatalogItemPrice: (id: string, priceM2Clp: number) => void;
+  addQstoneCatalogItem: (item: QstoneProductItem) => void;
+  updateQstoneCatalogItem: (id: string, updates: Partial<QstoneProductItem>) => void;
+  removeQstoneCatalogItem: (id: string) => void;
+  validateCabinetForSink: (cab: CabinetType, sinkModel: SinkModelId) => { valid: boolean; minWidth: number; actualWidth: number; reason?: string };
+  validateCabinetForCooktop: (cab: CabinetType, cooktopModel: CooktopModelId) => { valid: boolean; minWidth: number; actualWidth: number; reason?: string };
   resetKitchen: () => void;
 }
 
@@ -313,6 +343,9 @@ export const useKitchenStore = create<KitchenState>((set) => ({
   activeArchElementId: null,
   draggingArchElementId: null,
   draggingCabinetId: null,
+  countertopConfig: DEFAULT_COUNTERTOP_CONFIG,
+  qstoneCatalog: DEFAULT_QSTONE_CATALOG,
+  golaIncompatibilityAlert: null,
 
   setViewMode: (mode) => set({ viewMode: mode }),
   setToolMode: (mode) => set({ toolMode: mode, drawingStart: null }),
@@ -353,7 +386,27 @@ export const useKitchenStore = create<KitchenState>((set) => ({
   setDraggingCabinetId: (id) => set({ draggingCabinetId: id }),
   setDrawingStart: (pos) => set({ drawingStart: pos }),
   setShowSocle: (val) => set({ showSocle: val }),
-  setGolaSystem: (system) => set({ golaSystem: system }),
+  setGolaIncompatibilityAlert: (alert) => set({ golaIncompatibilityAlert: alert }),
+  setGolaSystem: (system) => {
+    const state = useKitchenStore.getState();
+    if (system !== 'none' && state.countertopConfig.enabled && (state.countertopConfig.regruesoCm || 0) > 0) {
+      const prod = state.qstoneCatalog.find((p) => p.id === state.countertopConfig.selectedProductId) || state.qstoneCatalog[0];
+      const thicknessCm = (prod?.thicknessMm || 20) / 10;
+      const regruesoCm = state.countertopConfig.regruesoCm || 0;
+      if (regruesoCm > thicknessCm + 2.0) {
+        set({
+          golaIncompatibilityAlert: {
+            isOpen: true,
+            regruesoCm,
+            stoneThicknessCm: thicknessCm,
+            attemptedAction: 'gola',
+          },
+        });
+        return;
+      }
+    }
+    set({ golaSystem: system });
+  },
   updateCabinet: (id, updates) =>
     set((state) => {
       const resolved = resolveCabinetsWithResize(state.cabinets, id, updates);
@@ -428,6 +481,138 @@ export const useKitchenStore = create<KitchenState>((set) => ({
       });
       return { cabinets: updatedCabinets };
     }),
+  setCountertopConfig: (updates) => {
+    const state = useKitchenStore.getState();
+    const targetProductId = updates.selectedProductId || state.countertopConfig.selectedProductId;
+    const prod = state.qstoneCatalog.find((p) => p.id === targetProductId) || state.qstoneCatalog[0];
+    const thicknessCm = (prod?.thicknessMm || 20) / 10;
+    const targetRegrueso = updates.regruesoCm !== undefined ? updates.regruesoCm : state.countertopConfig.regruesoCm;
+
+    if (state.golaSystem !== 'none' && targetRegrueso > thicknessCm + 2.0) {
+      set({
+        golaIncompatibilityAlert: {
+          isOpen: true,
+          regruesoCm: targetRegrueso,
+          stoneThicknessCm: thicknessCm,
+          attemptedAction: 'regrueso',
+        },
+      });
+      // Aplicar las demás actualizaciones sin modificar regruesoCm incompatible
+      const { regruesoCm, ...safeUpdates } = updates;
+      set((s) => ({
+        countertopConfig: { ...s.countertopConfig, ...safeUpdates },
+      }));
+      return;
+    }
+    set((s) => ({
+      countertopConfig: { ...s.countertopConfig, ...updates },
+    }));
+  },
+  updateQstoneCatalogItemPrice: (id, priceM2Clp) =>
+    set((state) => ({
+      qstoneCatalog: state.qstoneCatalog.map((item) =>
+        item.id === id ? { ...item, priceM2Clp } : item
+      ),
+    })),
+  addQstoneCatalogItem: (item) =>
+    set((state) => ({
+      qstoneCatalog: [...state.qstoneCatalog, item],
+    })),
+  updateQstoneCatalogItem: (id, updates) =>
+    set((state) => ({
+      qstoneCatalog: state.qstoneCatalog.map((item) =>
+        item.id === id ? { ...item, ...updates } : item
+      ),
+    })),
+  removeQstoneCatalogItem: (id) =>
+    set((state) => ({
+      qstoneCatalog: state.qstoneCatalog.filter((item) => item.id !== id),
+    })),
+  validateCabinetForSink: (cab, sinkModel) => {
+    if (sinkModel === 'none') return { valid: true, minWidth: 0, actualWidth: cab.width };
+    const spec = QSTONE_SINKS[sinkModel];
+    if (!spec) return { valid: true, minWidth: 0, actualWidth: cab.width };
+
+    // ALFA ONEC requires min 80cm, ALFA TWOC requires min 90cm
+    const minWidth = spec.minCabinetWidthCm;
+    const actualWidth = cab.width;
+    const valid = actualWidth >= minWidth;
+    return {
+      valid,
+      minWidth,
+      actualWidth,
+      reason: valid
+        ? undefined
+        : `La cubeta ${spec.name} requiere un mueble base de al menos ${minWidth} cm de ancho (Encastre: ${(spec.cutoutWidthMm / 10).toFixed(1)} cm). El mueble seleccionado mide ${actualWidth} cm.`,
+    };
+  },
+  validateCabinetForCooktop: (cab, cooktopModel) => {
+    if (cooktopModel === 'none') return { valid: true, minWidth: 0, actualWidth: cab.width };
+    const spec = FDV_COOKTOPS[cooktopModel];
+    if (!spec) return { valid: true, minWidth: 0, actualWidth: cab.width };
+
+    const minWidth = spec.minCabinetWidthCm;
+    const actualWidth = cab.width;
+    const valid = actualWidth >= minWidth;
+    return {
+      valid,
+      minWidth,
+      actualWidth,
+      reason: valid
+        ? undefined
+        : `La encimera ${spec.name} requiere un mueble de al menos ${minWidth} cm de ancho (Encastre: ${(spec.cutoutWidthMm / 10).toFixed(1)} cm). El mueble seleccionado mide ${actualWidth} cm.`,
+    };
+  },
+  setCountertopSink: (model, cabinetId) => {
+    const state = useKitchenStore.getState();
+    const targetCabId = cabinetId !== undefined ? cabinetId : state.activeCabinetId;
+    if (model === 'none') {
+      set((s) => ({
+        countertopConfig: { ...s.countertopConfig, sinkModel: 'none', sinkCabinetId: null },
+      }));
+      return { success: true };
+    }
+    if (!targetCabId) {
+      return { success: false, error: 'Debes seleccionar un mueble base para instalar la cubeta.' };
+    }
+    const cab = state.cabinets.find((c) => c.id === targetCabId);
+    if (!cab || (cab.type !== 'base' && cab.type !== 'island')) {
+      return { success: false, error: 'Solo se puede instalar la cubeta en un mueble tipo Base o Isla.' };
+    }
+    const validation = state.validateCabinetForSink(cab, model);
+    if (!validation.valid) {
+      return { success: false, error: validation.reason };
+    }
+    set((s) => ({
+      countertopConfig: { ...s.countertopConfig, sinkModel: model, sinkCabinetId: targetCabId },
+    }));
+    return { success: true };
+  },
+  setCountertopCooktop: (model, cabinetId) => {
+    const state = useKitchenStore.getState();
+    const targetCabId = cabinetId !== undefined ? cabinetId : state.activeCabinetId;
+    if (model === 'none') {
+      set((s) => ({
+        countertopConfig: { ...s.countertopConfig, cooktopModel: 'none', cooktopCabinetId: null },
+      }));
+      return { success: true };
+    }
+    if (!targetCabId) {
+      return { success: false, error: 'Debes seleccionar un mueble base o isla para situar la encimera.' };
+    }
+    const cab = state.cabinets.find((c) => c.id === targetCabId);
+    if (!cab || (cab.type !== 'base' && cab.type !== 'island')) {
+      return { success: false, error: 'Solo se puede instalar la encimera en un mueble tipo Base o Isla.' };
+    }
+    const validation = state.validateCabinetForCooktop(cab, model);
+    if (!validation.valid) {
+      return { success: false, error: validation.reason };
+    }
+    set((s) => ({
+      countertopConfig: { ...s.countertopConfig, cooktopModel: model, cooktopCabinetId: targetCabId },
+    }));
+    return { success: true };
+  },
   resetKitchen: () => {
     const defaultRoom: RoomConfig = {
       type: 'rectangular',
@@ -448,6 +633,7 @@ export const useKitchenStore = create<KitchenState>((set) => ({
       showSocle: false,
       golaSystem: 'none',
       drawingStart: null,
+      countertopConfig: DEFAULT_COUNTERTOP_CONFIG,
     });
   },
 }));

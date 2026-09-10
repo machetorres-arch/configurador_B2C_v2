@@ -14,12 +14,15 @@ import {
   ShieldAlert,
   HelpCircle,
   Save,
-  CheckCircle2
+  CheckCircle2,
+  Sparkles,
+  Plus,
+  Trash2
 } from 'lucide-react';
 import { useAdminStore, SupplyItem, SupplyCategory } from '../../store/adminStore';
 
 export function SuppliesPriceTab() {
-  const { supplies, updateSupplyPrice, updateSupply, resetSuppliesToDefault } = useAdminStore();
+  const { supplies, updateSupplyPrice, updateSupply, addSupply, deleteSupply, resetSuppliesToDefault } = useAdminStore();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<'all' | SupplyCategory>('all');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -28,8 +31,20 @@ export function SuppliesPriceTab() {
   const [editNotes, setEditNotes] = useState<string>('');
   const [feedback, setFeedback] = useState<string | null>(null);
 
+  // Modal para agregar nuevo insumo / material
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [newCategory, setNewCategory] = useState<SupplyCategory>('cubiertas_qstone');
+  const [newName, setNewName] = useState('');
+  const [newCode, setNewCode] = useState('');
+  const [newSpec, setNewSpec] = useState('');
+  const [newUnit, setNewUnit] = useState('m²');
+  const [newPrice, setNewPrice] = useState<number>(180000);
+  const [newSupplier, setNewSupplier] = useState('Qstone Chile');
+  const [newNotes, setNewNotes] = useState('');
+
   const categories: { id: 'all' | SupplyCategory; label: string; icon: any }[] = [
     { id: 'all', label: 'Todos los Insumos', icon: Filter },
+    { id: 'cubiertas_qstone', label: 'Cubiertas Qstone', icon: Sparkles },
     { id: 'melamina', label: 'Melaminas & Tableros', icon: Layers },
     { id: 'herrajes', label: 'Herrajes & Cantos', icon: Wrench },
     { id: 'sip', label: 'Paneles SIP (PROSIP)', icon: Home },
@@ -49,7 +64,7 @@ export function SuppliesPriceTab() {
 
   const showToast = (msg: string) => {
     setFeedback(msg);
-    setTimeout(() => setFeedback(null), 3000);
+    setTimeout(() => setFeedback(null), 3500);
   };
 
   const handleStartEdit = (item: SupplyItem) => {
@@ -66,7 +81,7 @@ export function SuppliesPriceTab() {
       notes: editNotes.trim(),
     });
     setEditingId(null);
-    showToast('Precio actualizado correctamente en el sistema.');
+    showToast('Precio y especificación actualizados correctamente.');
   };
 
   const handleResetDefaults = () => {
@@ -76,8 +91,45 @@ export function SuppliesPriceTab() {
     }
   };
 
+  const handleDeleteItem = (id: string, name: string) => {
+    if (window.confirm(`¿Eliminar el insumo "${name}" del catálogo?`)) {
+      deleteSupply(id);
+      showToast(`Insumo "${name}" eliminado.`);
+    }
+  };
+
+  const handleCreateSupply = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newName.trim() || !newCode.trim()) {
+      alert('Por favor ingrese al menos el nombre y código del insumo.');
+      return;
+    }
+
+    addSupply({
+      category: newCategory,
+      name: newName.trim(),
+      code: newCode.trim().toUpperCase(),
+      spec: newSpec.trim() || 'Especificación estándar de taller',
+      unit: newUnit.trim() || 'Unid.',
+      priceClp: Math.max(0, Number(newPrice)),
+      supplier: newSupplier.trim() || 'Proveedor General',
+      notes: newNotes.trim()
+    });
+
+    setIsAddModalOpen(false);
+    // Limpiar campos
+    setNewName('');
+    setNewCode('');
+    setNewSpec('');
+    setNewPrice(180000);
+    setNewNotes('');
+    showToast(`Material "${newName}" agregado al catálogo con éxito.`);
+  };
+
   const getCategoryBadge = (cat: SupplyCategory) => {
     switch (cat) {
+      case 'cubiertas_qstone':
+        return <span className="px-2 py-0.5 bg-amber-500/15 text-amber-400 border border-amber-500/30 rounded text-[9px] font-bold uppercase">Cubiertas Qstone</span>;
       case 'melamina':
         return <span className="px-2 py-0.5 bg-orange-500/10 text-orange-400 border border-orange-500/20 rounded text-[9px] font-bold uppercase">Melaminas</span>;
       case 'herrajes':
@@ -112,13 +164,27 @@ export function SuppliesPriceTab() {
             </p>
           </div>
         </div>
-        <button
-          onClick={handleResetDefaults}
-          className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-slate-300 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 shrink-0 transition-colors"
-          title="Restaurar precios iniciales"
-        >
-          <RotateCcw size={13} /> Restaurar Fábrica
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={() => {
+              setNewCategory('cubiertas_qstone');
+              setNewUnit('m²');
+              setNewSupplier('Qstone Chile');
+              setIsAddModalOpen(true);
+            }}
+            className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg text-[11px] flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+            title="Agregar nuevo material de cubierta o insumo"
+          >
+            <Plus size={13} /> Agregar Insumo / Material
+          </button>
+          <button
+            onClick={handleResetDefaults}
+            className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-slate-300 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 shrink-0 transition-colors cursor-pointer"
+            title="Restaurar precios iniciales"
+          >
+            <RotateCcw size={13} /> Restaurar Fábrica
+          </button>
+        </div>
       </div>
 
       {/* Filter and Search */}
@@ -253,12 +319,21 @@ export function SuppliesPriceTab() {
                             </button>
                           </div>
                         ) : (
-                          <button
-                            onClick={() => handleStartEdit(item)}
-                            className="px-2.5 py-1 bg-zinc-800/80 hover:bg-orange-500/20 text-slate-300 hover:text-orange-400 border border-zinc-700/60 rounded-md text-[11px] font-semibold flex items-center gap-1 transition-colors mx-auto"
-                          >
-                            <Edit2 size={12} /> Editar
-                          </button>
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              onClick={() => handleStartEdit(item)}
+                              className="px-2.5 py-1 bg-zinc-800/80 hover:bg-orange-500/20 text-slate-300 hover:text-orange-400 border border-zinc-700/60 rounded-md text-[11px] font-semibold flex items-center gap-1 transition-colors"
+                            >
+                              <Edit2 size={12} /> Editar
+                            </button>
+                            <button
+                              onClick={() => handleDeleteItem(item.id, item.name)}
+                              className="p-1 text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 rounded transition-colors"
+                              title="Eliminar insumo"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
                         )}
                       </td>
                     </tr>
@@ -269,6 +344,180 @@ export function SuppliesPriceTab() {
           </table>
         </div>
       </div>
+
+      {/* Modal: Agregar Insumo / Material */}
+      {isAddModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="p-5 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/50">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                  <Sparkles size={16} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Nuevo Insumo o Cubierta</h3>
+                  <p className="text-[11px] text-zinc-400">Incorpora materiales de marmolería Qstone, herrajes o tableros con costo unitario</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsAddModalOpen(false)}
+                className="p-1.5 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateSupply} className="p-6 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider mb-1.5">
+                    Categoría
+                  </label>
+                  <select
+                    value={newCategory}
+                    onChange={(e) => {
+                      const cat = e.target.value as SupplyCategory;
+                      setNewCategory(cat);
+                      if (cat === 'cubiertas_qstone') {
+                        setNewUnit('m²');
+                        setNewSupplier('Qstone Chile');
+                      } else if (cat === 'melamina') {
+                        setNewUnit('Plancha (4.57 m²)');
+                        setNewSupplier('Arauco / Masisa');
+                      } else {
+                        setNewUnit('Unid.');
+                      }
+                    }}
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
+                  >
+                    <option value="cubiertas_qstone">Cubiertas Qstone (Cuarzo / Sinterizado / MO)</option>
+                    <option value="melamina">Melaminas & Tableros</option>
+                    <option value="herrajes">Herrajes & Accesorios</option>
+                    <option value="sip">Paneles SIP</option>
+                    <option value="madera">Madera Estructural IPV</option>
+                    <option value="fijaciones_sellantes">Fijaciones & Sellos</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider mb-1.5">
+                    Código SKU / Modelo
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ej: QS-CUA-CALACAT-20"
+                    value={newCode}
+                    onChange={(e) => setNewCode(e.target.value)}
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider mb-1.5">
+                  Nombre del Insumo / Material
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ej: Qstone Cuarzo Calacatta Gold 20mm"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider mb-1.5">
+                    Precio Unitario ($ CLP)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="500"
+                    required
+                    value={newPrice}
+                    onChange={(e) => setNewPrice(Number(e.target.value))}
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-emerald-400 font-bold focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider mb-1.5">
+                    Unidad de Medida
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="m², Plancha, Metro Lineal, Unid."
+                    value={newUnit}
+                    onChange={(e) => setNewUnit(e.target.value)}
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider mb-1.5">
+                    Proveedor
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ej: Qstone Chile"
+                    value={newSupplier}
+                    onChange={(e) => setNewSupplier(e.target.value)}
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider mb-1.5">
+                  Especificación Técnica / Formato
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej: Formato 3.20 x 1.60 m, espesor 20mm, acabado pulido brillante"
+                  value={newSpec}
+                  onChange={(e) => setNewSpec(e.target.value)}
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider mb-1.5">
+                  Notas de Taller / Criterio de Montaje
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Ej: Para cubiertas sinterizadas de 12mm requiere base de melamina completa 18mm como soporte continuo."
+                  value={newNotes}
+                  onChange={(e) => setNewNotes(e.target.value)}
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500 resize-none"
+                />
+              </div>
+
+              <div className="pt-3 border-t border-zinc-800 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsAddModalOpen(false)}
+                  className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl text-xs font-semibold transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors shadow-md"
+                >
+                  <Save size={14} /> Guardar en Catálogo
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -10,6 +10,7 @@ import { optimizeNesting, NestingPart, BoardResult } from '../utils/nesting';
 import { exportKitchenPDF } from '../utils/kitchenPdfGenerator';
 import { exportBlueprintDomToPdf } from '../utils/blueprintPdfExport';
 import { getFriendlyColorName } from '../utils/colorNames';
+import { generateCountertopPieces } from '../utils/countertopNesting';
 
 export function KitchenBlueprint() {
   const state = useStore();
@@ -208,7 +209,10 @@ export function KitchenBlueprint() {
     });
   });
 
-  const totalDocPages = 1 + printPages.length + boardResults.length + 1;
+  const ctBOM = generateCountertopPieces(kState.cabinets, kState.countertopConfig, kState.qstoneCatalog);
+  const stonePagesCount = (kState.countertopConfig?.enabled && ctBOM && ctBOM.pieces.length > 0) ? ctBOM.slabsLayout.length : 0;
+
+  const totalDocPages = 1 + printPages.length + boardResults.length + stonePagesCount + 1;
 
   const getCabinetTypeName = (cab: CabinetType) => {
     if (cab.type === 'wall') return 'MUEBLE AÉREO / MURAL';
@@ -2118,6 +2122,159 @@ export function KitchenBlueprint() {
             </div>
 
             <BlueprintTitleBlock pageNum={pageNum} title={`OPTIMIZACIÓN CORTE: ${board.label}`} />
+          </div>
+        );
+      })}
+
+      {/* 3.1. PLANOS DE OPTIMIZACIÓN DE CORTE EN PLANCHA QSTONE (3200 x 1600 mm) */}
+      {kState.countertopConfig?.enabled && ctBOM && ctBOM.slabsLayout.map((slab, sIndex) => {
+        const pageNum = 1 + printPages.length + boardResults.length + sIndex + 1;
+        const bType = kState.countertopConfig.buildingType === 'edificio' ? 'Edificio (máx 2000 mm)' : 'Casa (máx 2500 mm)';
+
+        return (
+          <div key={'qstone-slab-' + sIndex} className="blueprint-page border border-black/10 flex flex-col justify-between p-8 pb-32 bg-white relative">
+            <div className="flex justify-between items-end border-b-2 border-slate-900 pb-3 mb-2 shrink-0">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-[10px] uppercase font-bold tracking-widest px-2 py-0.5 rounded bg-amber-100 text-amber-900">
+                    Marmolería & Cubiertas Qstone
+                  </span>
+                  <span className="text-[10px] uppercase font-mono text-slate-500">
+                    Plancha #{sIndex + 1} de {ctBOM.slabsLayout.length}
+                  </span>
+                </div>
+                <h2 className="text-2xl font-bold uppercase tracking-tight text-slate-900">
+                  Esquema de Corte & Optimización en Plancha <span className="text-amber-600">#{sIndex + 1}</span>
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5 uppercase tracking-wider">
+                  Material: <span className="font-bold text-slate-800">{ctBOM.product.name}</span> • Espesor: <span className="font-bold text-slate-800">{ctBOM.product.thicknessMm} mm</span> • Criterio Logístico: <span className="font-bold text-amber-700">{bType}</span>
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-slate-500 uppercase tracking-widest mb-0.5">Aprovechamiento</p>
+                <p className="font-mono text-xl font-bold text-emerald-600">{slab.efficiencyPercent}%</p>
+                <p className="text-[10px] text-slate-500 font-mono">Útil: {slab.usedAreaM2} m² | Retazo: {slab.offcutAreaM2} m²</p>
+              </div>
+            </div>
+
+            <div className="w-full flex items-center justify-center my-auto">
+              <svg
+                viewBox="-40 -40 3280 1680"
+                className="w-full max-w-[940px] max-h-[460px] bg-slate-50 border-2 border-slate-800 rounded shadow-md"
+                preserveAspectRatio="xMidYMid meet"
+              >
+                {/* Plancha Base Qstone 3200 x 1600 mm */}
+                <rect x={0} y={0} width={3200} height={1600} fill="#f1f5f9" stroke="#1e293b" strokeWidth={4} />
+
+                {/* Margen de despunte perimetral de fábrica (10mm) */}
+                <rect x={10} y={10} width={3180} height={1580} fill="none" stroke="#94a3b8" strokeWidth={2} strokeDasharray="16,8" />
+
+                {/* Piezas Anidadas */}
+                {slab.pieces.map((p, pIdx) => {
+                  let fillColor = '#fef3c7'; // amber-100
+                  let strokeColor = '#d97706'; // amber-600
+                  if (p.type === 'apron') {
+                    fillColor = '#ffedd5'; // orange-100
+                    strokeColor = '#ea580c'; // orange-600
+                  } else if (p.type === 'backsplash') {
+                    fillColor = '#e0f2fe'; // sky-100
+                    strokeColor = '#0284c7'; // sky-600
+                  } else if (p.type === 'waterfall') {
+                    fillColor = '#f3e8ff'; // purple-100
+                    strokeColor = '#9333ea'; // purple-600
+                  }
+
+                  const fontSize = Math.max(22, Math.min(p.widthMm / 16, p.lengthMm / 4, 48));
+
+                  return (
+                    <g key={pIdx}>
+                      <rect
+                        x={p.x}
+                        y={p.y}
+                        width={p.widthMm}
+                        height={p.lengthMm}
+                        fill={fillColor}
+                        stroke={strokeColor}
+                        strokeWidth={3}
+                      />
+
+                      {/* Calado de lavaplatos o encimera en líneas punteadas */}
+                      {p.hasCutout && p.widthMm > 600 && p.lengthMm > 350 && (
+                        <g>
+                          <rect
+                            x={p.x + (p.widthMm - (p.hasCutout === 'sink' ? 695 : 550)) / 2}
+                            y={p.y + (p.lengthMm - (p.hasCutout === 'sink' ? 400 : 470)) / 2}
+                            width={p.hasCutout === 'sink' ? 695 : 550}
+                            height={p.hasCutout === 'sink' ? 400 : 470}
+                            fill="#ffffff"
+                            stroke="#dc2626"
+                            strokeWidth={3}
+                            strokeDasharray="12,8"
+                          />
+                          <text
+                            x={p.x + p.widthMm / 2}
+                            y={p.y + p.lengthMm / 2 + 8}
+                            textAnchor="middle"
+                            fontSize={24}
+                            fontWeight="bold"
+                            fill="#dc2626"
+                          >
+                            {p.hasCutout === 'sink' ? 'CALADO ENCASTRE LAVAPLATOS' : 'CALADO ENCIMERA'}
+                          </text>
+                        </g>
+                      )}
+
+                      {/* Identificación y medidas de la pieza */}
+                      {p.widthMm > 150 && p.lengthMm > 60 && (
+                        <>
+                          <text
+                            x={p.x + p.widthMm / 2}
+                            y={p.y + p.lengthMm / 2 - (p.lengthMm > 120 ? fontSize * 0.4 : 0)}
+                            textAnchor="middle"
+                            fontSize={fontSize}
+                            fontWeight="bold"
+                            fill="#0f172a"
+                          >
+                            {p.pieceId}
+                          </text>
+                          {p.lengthMm > 120 && (
+                            <text
+                              x={p.x + p.widthMm / 2}
+                              y={p.y + p.lengthMm / 2 + fontSize * 0.9}
+                              textAnchor="middle"
+                              fontSize={fontSize * 0.75}
+                              fontFamily="monospace"
+                              fontWeight="bold"
+                              fill="#b45309"
+                            >
+                              {p.widthMm} x {p.lengthMm} mm
+                            </text>
+                          )}
+                        </>
+                      )}
+                    </g>
+                  );
+                })}
+              </svg>
+            </div>
+
+            <div className="flex justify-between items-center text-xs text-slate-600 border-t border-slate-200 pt-2 shrink-0">
+              <div className="flex gap-8">
+                <p><span className="font-bold text-black">Formato Plancha:</span> 3200 x 1600 mm</p>
+                <p><span className="font-bold text-black">Espesor Disco Diamante:</span> Kerf 3.5 mm</p>
+                <p><span className="font-bold text-black">Despunte Perimetral:</span> 10 mm</p>
+                <p><span className="font-bold text-black">Criterio Logístico:</span> {bType}</p>
+              </div>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-amber-200 border border-amber-600"></span><span>Cubierta</span></div>
+                <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-orange-200 border border-orange-600"></span><span>Faldón</span></div>
+                <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-sky-200 border border-sky-600"></span><span>Respaldo</span></div>
+                <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-purple-200 border border-purple-600"></span><span>Cascada</span></div>
+                <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-red-100 border border-red-600 border-dashed"></span><span>Encastre</span></div>
+              </div>
+            </div>
+
+            <BlueprintTitleBlock pageNum={pageNum} title={`OPTIMIZACIÓN CUBIERTA QSTONE: PLANCHA #${slab.slabIndex}`} />
           </div>
         );
       })}

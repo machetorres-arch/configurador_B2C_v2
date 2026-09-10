@@ -1,7 +1,8 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { CabinetType } from '../store/kitchenStore';
+import { CabinetType, useKitchenStore } from '../store/kitchenStore';
 import { generateKitchenPartsList, generateKitchenHardwareList, HARDWARE_SPECS } from './kitchenManufacturing';
+import { generateCountertopPieces } from './countertopNesting';
 import { renderArquifyPdfLogo } from './pdfLogo';
 import { getFriendlyColorName } from './colorNames';
 
@@ -232,6 +233,287 @@ export function exportKitchenPDF(cabinets: CabinetType[], state: any, filename =
     },
     margin: { left: 14, right: 14 }
   });
+
+  // =========================================================================
+  // PÁGINA 3: MARMOLERÍA TÉCNICA QSTONE (CUARZO & SINTERIZADO), CORTE & ENCASTRES
+  // =========================================================================
+  const kStore = useKitchenStore.getState();
+  const ctBOM = generateCountertopPieces(cabinets, kStore.countertopConfig, kStore.qstoneCatalog);
+
+  if (kStore.countertopConfig?.enabled && ctBOM && ctBOM.pieces.length > 0) {
+    doc.addPage('a4', 'p');
+
+    // Header superior
+    doc.setFillColor(15, 23, 42); // slate-900
+    doc.rect(0, 0, 210, 28, 'F');
+
+    renderArquifyPdfLogo(doc, 14, 13, 20);
+
+    doc.setTextColor(248, 250, 252);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.text('ESPECIFICACIONES DE MARMOLERÍA, DESPIECE Y OPTIMIZACIÓN (QSTONE)', 14, 21);
+
+    doc.setFontSize(8);
+    doc.setTextColor(251, 191, 36); // amber-400
+    doc.text(`Proveedor: Qstone | Material: ${ctBOM.product.name} (${ctBOM.product.thicknessMm} mm)`, 105, 20);
+
+    let ctY = 36;
+
+    // Cuadro resumen de producto
+    doc.setDrawColor(203, 213, 225);
+    doc.setFillColor(248, 250, 252);
+    doc.roundedRect(14, ctY, 182, 38, 2, 2, 'FD');
+
+    doc.setTextColor(15, 23, 42);
+    doc.setFontSize(9.5);
+    doc.setFont('helvetica', 'bold');
+    doc.text('PARÁMETROS TÉCNICOS DE INSTALACIÓN Y FABRICACIÓN', 18, ctY + 6);
+
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(51, 65, 85);
+
+    const isSint = ctBOM.product.materialType === 'sinterizado';
+    const regrueso = kStore.countertopConfig.regruesoCm;
+    const bType = kStore.countertopConfig.buildingType === 'edificio' ? 'Edificio (máx 200 cm)' : 'Casa (máx 250 cm)';
+
+    doc.text(`• Material: ${ctBOM.product.name} | Espesor: ${ctBOM.product.thicknessMm} mm | Formato Plancha: ${(ctBOM.product.sheetWidthMm/10)} x ${(ctBOM.product.sheetHeightMm/10)} cm`, 18, ctY + 12);
+    doc.text(`• Criterio Estructural: ${isSint ? 'SINTERIZADO 12mm -> Requiere Tapa Continua de Melamina Completa en módulos base' : 'CUARZO -> Sistema tradicional con barras de amarre superior 10cm'}`, 18, ctY + 17);
+    doc.text(`• Faldón / Regrueso Delantero: ${regrueso > 0 ? `${regrueso} cm (con deducción automática en altura de primer frente de cajón)` : 'Sin regrueso (0 cm)'}`, 18, ctY + 22);
+    doc.text(`• Respaldo Muro: ${kStore.countertopConfig.backsplashMode === 'standard_5cm' ? 'Zócalo estándar 50 mm' : kStore.countertopConfig.backsplashMode === 'full_height' ? 'Revestimiento completo hasta muebles aéreos' : 'Sin respaldo'} | Uniones: Ortogonales a 90°`, 18, ctY + 27);
+    doc.text(`• Logística: ${bType} | Corte con disco diamantado (Kerf 3.5 mm) | Remates: ${kStore.countertopConfig.waterfallLeft ? 'Cascada Izq [x] ' : ''}${kStore.countertopConfig.waterfallRight ? 'Cascada Der [x]' : ''}`, 18, ctY + 32);
+
+    // Tabla de Despiece de Marmolería
+    ctY = ctY + 44;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9.5);
+    doc.setTextColor(15, 23, 42);
+    doc.text('DESPIECE TÉCNICO DE PIEZAS DE PIEDRA (DISCO KERF 3.5 mm)', 14, ctY);
+
+    const pieceRows = ctBOM.pieces.map(p => [
+      p.id,
+      p.name,
+      `${p.lengthMm} mm`,
+      `${p.widthMm} mm`,
+      `${p.thicknessMm} mm`,
+      `${p.areaM2.toFixed(3)} m²`,
+      `${p.edgePolishingM.toFixed(2)} m`
+    ]);
+
+    autoTable(doc, {
+      startY: ctY + 3,
+      head: [['Cód', 'Descripción de Pieza', 'Largo', 'Ancho', 'Esp.', 'Área Neta', 'Canto Pulido']],
+      body: pieceRows,
+      theme: 'grid',
+      headStyles: { fillColor: [217, 119, 6], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7.5 },
+      styles: { fontSize: 7, cellPadding: 2 },
+      columnStyles: {
+        0: { cellWidth: 28 },
+        1: { cellWidth: 64 },
+        2: { cellWidth: 18, halign: 'center' },
+        3: { cellWidth: 18, halign: 'center' },
+        4: { cellWidth: 14, halign: 'center' },
+        5: { cellWidth: 20, halign: 'right' },
+        6: { cellWidth: 20, halign: 'right' }
+      },
+      margin: { left: 14, right: 14 }
+    });
+
+    let nextCtY = (doc as any).lastAutoTable.finalY + 8;
+
+    // Resumen de Nesting y Presupuesto
+    const nestingStoneRows = [
+      ['Área Neta Requerida (Cubiertas y faldones)', `${ctBOM.totalNetAreaM2} m²`],
+      ['Planchas Qstone Estimadas (3200 x 1600 mm, 5.12 m²/plancha)', `${ctBOM.slabsCount} unid. (${ctBOM.grossBilledM2} m² brutos)`],
+      ['Rendimiento de Aprovechamiento Nesting (Kerf 3.5mm)', `${ctBOM.efficiencyPercent} %`],
+      ['Total Metros Lineales de Canto Pulido', `${ctBOM.totalLinearEdgeM} m lineales`],
+      ['Perforaciones y Encastres (Lavaplatos / Encimera)', `${ctBOM.cutouts.length} unidades (${ctBOM.cutouts.map(c => c.modelName).join(', ') || 'Ninguno'})`],
+      ['Valor Material Qstone', `$${ctBOM.materialCostClp.toLocaleString('es-CL')} CLP ($${ctBOM.product.priceM2Clp.toLocaleString('es-CL')}/m²)`],
+      ['Valor Estimado Elaboración, Pulido & Encastres', `$${ctBOM.fabricationCostClp.toLocaleString('es-CL')} CLP`],
+      ['PRESUPUESTO TOTAL ESTIMADO CUBIERTA', `$${ctBOM.totalCostClp.toLocaleString('es-CL')} CLP`]
+    ];
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9.5);
+    doc.setTextColor(15, 23, 42);
+    doc.text('RESUMEN DE OPTIMIZACIÓN DE CORTE (NESTING) & PRESUPUESTO QSTONE', 14, nextCtY);
+
+    autoTable(doc, {
+      startY: nextCtY + 3,
+      head: [['Concepto Técnico / Rendimiento', 'Detalle']],
+      body: nestingStoneRows,
+      theme: 'striped',
+      headStyles: { fillColor: [30, 41, 59], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7.5 },
+      styles: { fontSize: 7, cellPadding: 2 },
+      columnStyles: {
+        0: { cellWidth: 100, fontStyle: 'bold' },
+        1: { cellWidth: 82, halign: 'right' }
+      },
+      margin: { left: 14, right: 14 }
+    });
+
+    // PÁGINA GRÁFICA DE OPTIMIZACIÓN DE CORTE EN PLANCHA (NESTING 3200 x 1600 mm)
+    if (ctBOM.slabsLayout && ctBOM.slabsLayout.length > 0) {
+      for (const slab of ctBOM.slabsLayout) {
+        doc.addPage('a4', 'l'); // Landscape 297 x 210 mm
+
+        // Encabezado superior
+        doc.setFillColor(15, 23, 42); // slate-900
+        doc.rect(0, 0, 297, 24, 'F');
+
+        renderArquifyPdfLogo(doc, 14, 11, 18);
+
+        doc.setTextColor(248, 250, 252);
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`PLANO DE OPTIMIZACIÓN DE CORTE EN PLANCHA QSTONE (3200 x 1600 mm) - PLANCHA #${slab.slabIndex} DE ${ctBOM.slabsCount}`, 14, 18);
+
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(251, 191, 36);
+        doc.text(`Material: ${ctBOM.product.name} (${ctBOM.product.thicknessMm} mm) | Criterio Logístico: ${kStore.countertopConfig.buildingType === 'edificio' ? 'Edificio (máx 200cm)' : 'Casa (máx 250cm)'} | Kerf: 3.5mm`, 130, 18);
+
+        // Barra informativa de rendimiento
+        const infoY = 28;
+        doc.setFillColor(241, 245, 249);
+        doc.setDrawColor(203, 213, 225);
+        doc.roundedRect(14, infoY, 269, 12, 1.5, 1.5, 'FD');
+
+        doc.setFontSize(8);
+        doc.setTextColor(15, 23, 42);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`Rendimiento Plancha: ${slab.efficiencyPercent}%`, 18, infoY + 7.5);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`• Área Utilizada: ${slab.usedAreaM2} m²`, 75, infoY + 7.5);
+        doc.text(`• Retazo Aprovechable: ${slab.offcutAreaM2} m²`, 135, infoY + 7.5);
+        doc.text(`• Total Piezas en Plancha: ${slab.pieces.length} unidades`, 195, infoY + 7.5);
+
+        // Área gráfica de la plancha (Escala: 3200mm -> 240mm, 1600mm -> 120mm; factor = 0.075)
+        const slabOriginX = 28;
+        const slabOriginY = 46;
+        const slabDrawW = 240;
+        const slabDrawH = 120;
+        const scale = slabDrawW / slab.slabWidthMm; // 0.075
+
+        // Fondo de plancha (Retazo / Descarte)
+        doc.setFillColor(248, 250, 252);
+        doc.setDrawColor(51, 65, 85);
+        doc.setLineWidth(0.8);
+        doc.rect(slabOriginX, slabOriginY, slabDrawW, slabDrawH, 'FD');
+
+        // Margen de despunte perimetral (10mm)
+        doc.setDrawColor(148, 163, 184);
+        doc.setLineWidth(0.2);
+        doc.setLineDashPattern([1.5, 1.5], 0);
+        doc.rect(slabOriginX + 10 * scale, slabOriginY + 10 * scale, (slab.slabWidthMm - 20) * scale, (slab.slabHeightMm - 20) * scale, 'D');
+        doc.setLineDashPattern([], 0); // Reset dash
+
+        // Cotas perimetrales de la plancha
+        doc.setFontSize(7);
+        doc.setTextColor(100, 116, 139);
+        doc.text(`${slab.slabWidthMm} mm`, slabOriginX + slabDrawW / 2 - 8, slabOriginY - 2);
+        doc.text(`${slab.slabHeightMm} mm`, slabOriginX - 14, slabOriginY + slabDrawH / 2);
+
+        // Renderizar piezas colocadas
+        for (const p of slab.pieces) {
+          const px = slabOriginX + p.x * scale;
+          const py = slabOriginY + p.y * scale;
+          const pw = p.widthMm * scale;
+          const ph = p.lengthMm * scale;
+
+          // Color según tipo de pieza
+          if (p.type === 'slab') {
+            doc.setFillColor(254, 243, 199); // amber-100
+            doc.setDrawColor(217, 119, 6);   // amber-600
+          } else if (p.type === 'apron') {
+            doc.setFillColor(255, 237, 213); // orange-100
+            doc.setDrawColor(234, 88, 12);   // orange-600
+          } else if (p.type === 'backsplash') {
+            doc.setFillColor(224, 242, 254); // sky-100
+            doc.setDrawColor(2, 132, 199);   // sky-600
+          } else {
+            doc.setFillColor(243, 232, 255); // purple-100
+            doc.setDrawColor(147, 51, 234);  // purple-600
+          }
+
+          doc.setLineWidth(0.4);
+          doc.rect(px, py, pw, ph, 'FD');
+
+          // Si contiene encastre de lavaplatos o encimera, dibujar el hueco en líneas discontinuas
+          if (p.hasCutout && pw > 25 && ph > 20) {
+            const cutW = (p.hasCutout === 'sink' ? 695 : 550) * scale;
+            const cutD = (p.hasCutout === 'sink' ? 400 : 470) * scale;
+            const cutX = px + (pw - cutW) / 2;
+            const cutY = py + (ph - cutD) / 2;
+
+            doc.setFillColor(255, 255, 255);
+            doc.setDrawColor(220, 38, 38); // red-600
+            doc.setLineWidth(0.3);
+            doc.setLineDashPattern([1, 1], 0);
+            doc.rect(cutX, cutY, cutW, cutD, 'FD');
+            doc.setLineDashPattern([], 0);
+
+            doc.setFontSize(5);
+            doc.setTextColor(185, 28, 28);
+            doc.setFont('helvetica', 'bold');
+            doc.text(p.hasCutout === 'sink' ? 'CALADO LAVAPLATOS' : 'CALADO ENCIMERA', cutX + 1.5, cutY + cutD / 2 + 1.5);
+          }
+
+          // Etiqueta de la pieza
+          if (pw > 14 && ph > 6) {
+            doc.setFontSize(ph < 10 || pw < 20 ? 5 : 6.5);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(15, 23, 42);
+            const labelText = p.pieceId;
+            doc.text(labelText, px + 2, py + (ph < 10 ? ph / 2 + 1.5 : 4.5));
+
+            if (ph >= 12 && pw >= 24) {
+              doc.setFontSize(5.5);
+              doc.setFont('helvetica', 'normal');
+              doc.setTextColor(71, 85, 105);
+              doc.text(`${p.widthMm} x ${p.lengthMm} mm`, px + 2, py + 8.5);
+            }
+          }
+        }
+
+        // Leyenda inferior de colores
+        const legendY = 175;
+        doc.setFontSize(7);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(15, 23, 42);
+        doc.text('LEYENDA TÉCNICA:', 28, legendY + 4);
+
+        const legendItems = [
+          { label: 'Cubierta Horizontal', fill: [254, 243, 199], stroke: [217, 119, 6] },
+          { label: 'Faldón / Regrueso', fill: [255, 237, 213], stroke: [234, 88, 12] },
+          { label: 'Respaldo / Zócalo', fill: [224, 242, 254], stroke: [2, 132, 199] },
+          { label: 'Pata Cascada', fill: [243, 232, 255], stroke: [147, 51, 234] },
+          { label: 'Encastre / Calado', fill: [255, 255, 255], stroke: [220, 38, 38] },
+        ];
+
+        let legX = 65;
+        for (const item of legendItems) {
+          doc.setFillColor(item.fill[0], item.fill[1], item.fill[2]);
+          doc.setDrawColor(item.stroke[0], item.stroke[1], item.stroke[2]);
+          doc.setLineWidth(0.3);
+          doc.rect(legX, legendY, 5, 5, 'FD');
+
+          doc.setFontSize(6.5);
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(51, 65, 85);
+          doc.text(item.label, legX + 7, legendY + 3.8);
+
+          legX += 40;
+        }
+
+        // Pie de página con normas de corte CNC
+        doc.setFontSize(6.5);
+        doc.setTextColor(100, 116, 139);
+        doc.text('NOTAS DE CORTE: Espesor de corte por disco de diamante (Kerf) = 3.5 mm • Cortes ortogonales a 90° con puente CNC • Rectificación y pulido perimetral según despiece.', 28, 190);
+      }
+    }
+  }
 
   // Guardar documento
   doc.save(filename);

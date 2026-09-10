@@ -67,10 +67,10 @@ export function calculateSocleSystem(
     const rot = cab.rotation || 0;
     const cos = Math.cos(rot);
     const sin = Math.sin(rot);
-    // uX: vector along width from left to right
-    const uX: [number, number] = [cos, sin];
-    // uZ: vector along depth from back to front
-    const uZ: [number, number] = [-sin, cos];
+    // Three.js: uX: vector along width from left to right ([cos, -sin])
+    const uX: [number, number] = [cos, -sin];
+    // uZ: vector along depth from back to front ([sin, cos])
+    const uZ: [number, number] = [sin, cos];
 
     const cx = cab.position[0];
     const cz = cab.position[2];
@@ -145,12 +145,12 @@ export function calculateSocleSystem(
       }
     }
 
-    // Orientation reference from the component
+    // Orientation reference from the component (Three.js coordinate system)
     const baseRot = component[0].rotation || 0;
     const cos = Math.cos(baseRot);
     const sin = Math.sin(baseRot);
-    const uX: [number, number] = [cos, sin];
-    const uZ: [number, number] = [-sin, cos];
+    const uX: [number, number] = [cos, -sin];
+    const uZ: [number, number] = [sin, cos];
 
     // Sort all cabinets in the run along the uX axis (from leftmost to rightmost)
     component.sort((a, b) => {

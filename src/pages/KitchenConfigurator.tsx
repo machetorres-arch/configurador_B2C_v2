@@ -11,6 +11,8 @@ import { ResetConfirmModal } from '../components/kitchen/ResetConfirmModal';
 import { RoomFinishesSection } from '../components/kitchen/RoomFinishesSection';
 import { KitchenModuleContextMenu } from '../components/kitchen/KitchenModuleContextMenu';
 import { SaveProjectModal } from '../components/common/SaveProjectModal';
+import { CountertopConfigModal } from '../components/kitchen/CountertopConfigModal';
+import { GolaRegruesoIncompatibilityModal } from '../components/kitchen/GolaRegruesoIncompatibilityModal';
 import { calculatePolygonArea } from '../utils/roomGeometry';
 import { ArrowLeft, Box, Square, Move3D, PenTool, LayoutGrid, Trash2, RotateCw, Flame, Refrigerator, Flower2, Info, Sparkles, Maximize2, Layers, Palette, ListOrdered, Save, Columns, Sliders, Sun, Moon } from 'lucide-react';
 
@@ -109,9 +111,10 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
 
   const isLight = theme === 'light';
 
-  const { viewMode, setViewMode, toolMode, setToolMode, cabinets, activeCabinetId, updateCabinet, removeCabinet, setActiveCabinet, applyGlobalTexture, showSocle, setShowSocle, roomConfig, setRoomPlannerOpen, architecturalElements, activeArchElementId, addArchitecturalElement, updateArchitecturalElement, removeArchitecturalElement, setActiveArchElement, golaSystem, setGolaSystem } = useKitchenStore();
+  const { viewMode, setViewMode, toolMode, setToolMode, cabinets, activeCabinetId, updateCabinet, removeCabinet, setActiveCabinet, applyGlobalTexture, showSocle, setShowSocle, roomConfig, setRoomPlannerOpen, architecturalElements, activeArchElementId, addArchitecturalElement, updateArchitecturalElement, removeArchitecturalElement, setActiveArchElement, golaSystem, setGolaSystem, countertopConfig, qstoneCatalog } = useKitchenStore();
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
+  const [isCountertopModalOpen, setIsCountertopModalOpen] = useState(false);
   const [leftTab, setLeftTab] = useState<'modules' | 'placed' | 'decorations'>('modules');
   const [rightTab, setRightTab] = useState<'module' | 'materials' | 'engineering'>('module');
   const [showIndividualMaterial, setShowIndividualMaterial] = useState(false);
@@ -310,6 +313,33 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                       <span className="text-[9px] text-zinc-800 font-normal font-mono">{currentAreaM2.toFixed(2)} m² • Muros y Cotas</span>
                     </div>
                   </button>
+
+                  <button
+                    onClick={() => setIsCountertopModalOpen(true)}
+                    className={`flex items-center gap-3 p-3 rounded-lg text-xs font-extrabold uppercase tracking-wider transition-all border cursor-pointer ${
+                      countertopConfig.enabled
+                        ? 'bg-amber-500/20 border-amber-500 text-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.2)]'
+                        : isLight
+                          ? 'bg-slate-100 border-slate-300 text-slate-800 hover:bg-slate-200 shadow-sm'
+                          : 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10'
+                    }`}
+                  >
+                    <Sparkles size={16} className="text-amber-400 shrink-0" />
+                    <div className="flex flex-col text-left">
+                      <div className="flex items-center gap-1.5">
+                        <span>Cubiertas Qstone</span>
+                        {countertopConfig.enabled && (
+                          <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+                        )}
+                      </div>
+                      <span className="text-[9px] font-normal text-slate-400 font-mono">
+                        {countertopConfig.enabled
+                          ? `${qstoneCatalog.find(p => p.id === countertopConfig.selectedProductId)?.materialType === 'sinterizado' ? 'Sinterizado 12mm' : 'Cuarzo'} • Faldón ${countertopConfig.regruesoCm}cm`
+                          : 'Cuarzos & Sinterizados • Nesting'}
+                      </span>
+                    </div>
+                  </button>
+
                   <ToolButton isLight={isLight} active={toolMode === 'select'} onClick={() => setToolMode('select')} icon={<Move3D size={16}/>} label="Seleccionar" />
                   <ToolButton isLight={isLight} active={toolMode === 'draw_wall'} onClick={() => { setToolMode('draw_wall'); setViewMode('2d'); }} icon={<PenTool size={16}/>} label="Dibujar Tramo Muro" />
                </div>
@@ -411,21 +441,23 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                ) : leftTab === 'placed' ? (
                  <div className="flex flex-col gap-3">
                    <div className="flex items-center justify-between">
-                     <div className="text-[10px] uppercase font-bold tracking-widest text-slate-400">
+                     <div className={`text-[10px] uppercase font-bold tracking-widest ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
                        Módulos en Escena ({cabinets.length})
                      </div>
                      {cabinets.length > 0 && (
-                       <span className="text-[9px] text-zinc-500">Clic para editar o borrar</span>
+                       <span className={`text-[9px] ${isLight ? 'text-slate-500' : 'text-zinc-500'}`}>Clic para editar o borrar</span>
                      )}
                    </div>
 
                    {cabinets.length === 0 ? (
-                     <div className="p-5 rounded-xl bg-white/5 border border-white/10 text-center flex flex-col items-center gap-2.5 mt-2">
-                       <Box size={24} className="text-zinc-500" />
-                       <p className="text-xs text-zinc-400 font-medium">No hay muebles cargados en la escena</p>
+                     <div className={`p-5 rounded-xl border text-center flex flex-col items-center gap-2.5 mt-2 ${
+                       isLight ? 'bg-slate-50 border-slate-200' : 'bg-white/5 border-white/10'
+                     }`}>
+                       <Box size={24} className={isLight ? "text-slate-400" : "text-zinc-500"} />
+                       <p className={`text-xs font-medium ${isLight ? 'text-slate-600' : 'text-zinc-400'}`}>No hay muebles cargados en la escena</p>
                        <button
                          onClick={() => setLeftTab('modules')}
-                         className="mt-1 px-3 py-1.5 bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 text-[10px] font-bold uppercase tracking-wider rounded-lg border border-orange-500/40 transition-colors"
+                         className="mt-1 px-3 py-1.5 bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 text-[10px] font-bold uppercase tracking-wider rounded-lg border border-orange-500/40 transition-colors cursor-pointer"
                        >
                          Ver Catálogo de Módulos
                        </button>
@@ -441,16 +473,30 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                              onClick={() => setActiveCabinet(cab.id)}
                              className={`p-3 rounded-xl border transition-all cursor-pointer group flex flex-col gap-2 ${
                                isSelected
-                                 ? 'bg-orange-500/15 border-orange-500 shadow-[0_0_12px_rgba(249,115,22,0.25)]'
-                                 : 'bg-[#18181b] border-white/10 hover:border-white/20 hover:bg-[#202024]'
+                                 ? isLight
+                                   ? 'bg-orange-50 border-orange-500 shadow-[0_0_12px_rgba(249,115,22,0.25)]'
+                                   : 'bg-orange-500/15 border-orange-500 shadow-[0_0_12px_rgba(249,115,22,0.25)]'
+                                 : isLight
+                                   ? 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50 shadow-sm'
+                                   : 'bg-[#18181b] border-white/10 hover:border-white/20 hover:bg-[#202024]'
                              }`}
                            >
                              <div className="flex items-center justify-between gap-2">
                                <div className="flex items-center gap-2 min-w-0">
-                                 <span className="shrink-0 px-1.5 py-0.5 rounded bg-black/50 border border-white/10 text-[9px] font-mono font-bold text-orange-400">
+                                 <span className={`shrink-0 px-1.5 py-0.5 rounded border text-[9px] font-mono font-bold ${
+                                   isLight
+                                     ? isSelected
+                                       ? 'bg-orange-500 text-black border-orange-600'
+                                       : 'bg-slate-100 border-slate-300 text-slate-700'
+                                     : 'bg-black/50 border-white/10 text-orange-400'
+                                 }`}>
                                    MOD {idx + 1}
                                  </span>
-                                 <span className="text-xs font-bold text-zinc-200 truncate group-hover:text-white">
+                                 <span className={`text-xs font-bold truncate ${
+                                   isSelected
+                                     ? isLight ? 'text-slate-900 font-extrabold' : 'text-white'
+                                     : isLight ? 'text-slate-700 group-hover:text-slate-950' : 'text-zinc-200 group-hover:text-white'
+                                 }`}>
                                    {label}
                                  </span>
                                </div>
@@ -463,7 +509,11 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                                      updateCabinet(cab.id, { rotation: nextRot });
                                    }}
                                    title="Girar 90°"
-                                   className="p-1 rounded text-zinc-400 hover:text-cyan-400 hover:bg-white/5 transition-colors"
+                                   className={`p-1 rounded transition-colors ${
+                                     isLight
+                                       ? 'text-slate-400 hover:text-cyan-600 hover:bg-slate-100'
+                                       : 'text-zinc-400 hover:text-cyan-400 hover:bg-white/5'
+                                   }`}
                                  >
                                    <RotateCw size={13} />
                                  </button>
@@ -473,16 +523,24 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                                      removeCabinet(cab.id);
                                    }}
                                    title="Eliminar este mueble"
-                                   className="p-1 rounded text-zinc-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                                   className={`p-1 rounded transition-colors ${
+                                     isLight
+                                       ? 'text-slate-400 hover:text-rose-600 hover:bg-rose-50'
+                                       : 'text-zinc-400 hover:text-rose-400 hover:bg-rose-500/10'
+                                   }`}
                                  >
                                    <Trash2 size={13} />
                                  </button>
                                </div>
                              </div>
 
-                             <div className="flex items-center justify-between text-[10px] text-zinc-400 font-mono pt-1 border-t border-white/5">
+                             <div className={`flex items-center justify-between text-[10px] font-mono pt-1 border-t ${
+                               isLight ? 'border-slate-200 text-slate-500' : 'border-white/5 text-zinc-400'
+                             }`}>
                                <span>{cab.width} × {cab.height} × {cab.depth} cm</span>
-                               <span className="text-[9px] uppercase font-sans text-zinc-500 tracking-wider">
+                               <span className={`text-[9px] uppercase font-sans tracking-wider ${
+                                 isLight ? 'text-slate-500' : 'text-zinc-500'
+                               }`}>
                                  {cab.type === 'base' ? 'Base' : cab.type === 'tall' ? 'Torre' : cab.type === 'wall' ? 'Aéreo' : cab.type === 'island' ? 'Isla' : 'Equipamiento'}
                                </span>
                              </div>
@@ -516,14 +574,18 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
          </div>
          <div className={`flex-1 min-w-0 relative transition-colors ${isLight ? 'bg-[#e2e8f0]' : 'bg-[#111]'}`}>
             <KitchenScene theme={theme} />
-            <KitchenModuleContextMenu />
+            <KitchenModuleContextMenu isLight={isLight} />
             {toolMode === 'draw_wall' && (
-              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-black/80 backdrop-blur-md px-6 py-3 rounded-full border border-white/10 text-xs font-semibold text-slate-300 pointer-events-none uppercase tracking-wider">
+              <div className={`absolute bottom-6 left-1/2 -translate-x-1/2 backdrop-blur-md px-6 py-3 rounded-full border text-xs font-semibold pointer-events-none uppercase tracking-wider ${
+                isLight ? 'bg-white/90 border-slate-300 text-slate-800 shadow-lg' : 'bg-black/80 border-white/10 text-slate-300'
+              }`}>
                 Haz clic en la grilla para iniciar un muro. Pulsa ESC para cancelar.
               </div>
             )}
             {toolMode.startsWith('place_') && (
-              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-orange-500/20 backdrop-blur-md px-6 py-3 rounded-full border border-orange-500/50 text-xs font-semibold text-blue-200 pointer-events-none uppercase tracking-wider">
+              <div className={`absolute bottom-6 left-1/2 -translate-x-1/2 backdrop-blur-md px-6 py-3 rounded-full border text-xs font-semibold pointer-events-none uppercase tracking-wider ${
+                isLight ? 'bg-orange-100/90 border-orange-300 text-orange-950 shadow-lg' : 'bg-orange-500/20 border-orange-500/50 text-blue-200'
+              }`}>
                 Mueve el cursor sobre un muro para imantar. Clic para posicionar.
               </div>
             )}
@@ -1082,6 +1144,32 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                         </button>
                       </div>
                     </div>
+
+                    <div className={`flex items-center justify-between p-3 rounded-xl border mt-3 ${
+                      isLight ? 'bg-amber-50/70 border-amber-200' : 'bg-amber-950/20 border-amber-500/30'
+                    }`}>
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-amber-500/20 border border-amber-500/30 text-amber-400 flex items-center justify-center font-bold text-xs">
+                          QS
+                        </div>
+                        <div>
+                          <div className={`text-xs font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                            Cubiertas Qstone
+                          </div>
+                          <div className="text-[10px] text-slate-400">
+                            {countertopConfig.enabled
+                              ? `${qstoneCatalog.find(p => p.id === countertopConfig.selectedProductId)?.materialType === 'sinterizado' ? 'Sinterizado 12mm' : 'Cuarzo'} (Activa)`
+                              : 'Desactivada'}
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => setIsCountertopModalOpen(true)}
+                        className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold rounded-lg transition shadow-sm cursor-pointer"
+                      >
+                        Configurar
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1356,6 +1444,15 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
        console.log('Proyecto de cocina guardado con ID:', id);
      }}
    />
+
+   {/* Modal Cubiertas Qstone */}
+   <CountertopConfigModal
+     isOpen={isCountertopModalOpen}
+     onClose={() => setIsCountertopModalOpen(false)}
+   />
+
+   {/* Modal Popup Alerta Incompatibilidad Riel Gola vs Regrueso */}
+   <GolaRegruesoIncompatibilityModal />
     </div>
   );
 }
