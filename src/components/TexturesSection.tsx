@@ -1,5 +1,6 @@
-import { useStore } from '../store';
+import { useStore, PartType } from '../store';
 import { useAdminStore } from '../store/adminStore';
+import { useKitchenStore } from '../store/kitchenStore';
 
 const DEFAULT_TEXTURES = [
   { id: 'def_mas_blanco', name: 'Masisa Blanco', url: '#FFFFFF' },
@@ -19,6 +20,7 @@ export const TexturesSection = ({
 }) => {
   const state = useStore();
   const adminTextures = useAdminStore((s) => s.textures);
+  const hasIslands = useKitchenStore((s) => s.cabinets?.some((c) => c.type === 'island'));
 
   const applyTexture = (url: string, name: string) => {
     const nameLower = name.toLowerCase();
@@ -29,6 +31,16 @@ export const TexturesSection = ({
     
     if (onSelectTexture) {
       onSelectTexture(url, mat);
+      return;
+    }
+
+    if (state.targetPart === 'islandBack') {
+      useKitchenStore.getState().setIslandBackConfig({
+        enabled: true,
+        materialType: 'decorative',
+        decorativeColor: url,
+        decorativeMaterial: mat,
+      });
       return;
     }
 
@@ -127,21 +139,32 @@ export const TexturesSection = ({
         }`}>1. Selecciona la zona a modificar:</label>
         <div className="grid grid-cols-2 gap-2 mb-2">
           {[
-            { id: 'all', label: 'Todo el Mueble' },
-            { id: 'doors', label: 'Puertas' },
-            { id: 'drawerFronts', label: 'Frentes Cajón' },
-            { id: 'structure', label: 'Paredes / Casco' },
-            { id: 'drawerInner', label: 'Cajas Cajón' },
-            { id: 'shelves', label: 'Repisas' },
-            { id: 'back', label: 'Fondo' },
-            { id: 'socle', label: 'Zócalo' }
+            { id: 'all' as PartType, label: 'Todo el Mueble' },
+            { id: 'doors' as PartType, label: 'Puertas' },
+            { id: 'drawerFronts' as PartType, label: 'Frentes Cajón' },
+            { id: 'structure' as PartType, label: 'Paredes / Casco' },
+            { id: 'drawerInner' as PartType, label: 'Cajas Cajón' },
+            { id: 'shelves' as PartType, label: 'Repisas' },
+            { id: 'back' as PartType, label: 'Fondo Interior' },
+            { id: 'socle' as PartType, label: 'Zócalo' },
+            ...(hasIslands
+              ? [
+                  {
+                    id: 'islandBack' as PartType,
+                    label: 'Placa Trasera Isla (Revestimiento Exterior)',
+                    highlight: true,
+                  },
+                ]
+              : []),
           ].map(part => (
             <button 
               key={part.id}
-              onClick={() => state.setTargetPart(part.id as any)}
+              onClick={() => state.setTargetPart(part.id)}
               className={`p-1.5 rounded-md text-[9px] uppercase tracking-widest font-bold transition-all cursor-pointer ${
+                (part as any).highlight ? 'col-span-2 py-2 border-orange-500/60 shadow-sm' : ''
+              } ${
                 state.targetPart === part.id 
-                  ? 'bg-orange-500 text-black shadow-[0_0_10px_rgba(249,115,22,0.3)] border border-orange-500' 
+                  ? 'bg-orange-500 text-black shadow-[0_0_10px_rgba(249,115,22,0.3)] border border-orange-500 font-extrabold' 
                   : isLight 
                     ? 'bg-white text-slate-800 border border-slate-300 hover:border-orange-500 hover:text-black shadow-sm' 
                     : 'bg-white/10 text-slate-300 border border-transparent hover:bg-white/20'
@@ -171,17 +194,6 @@ export const TexturesSection = ({
           }`}>3. Abet Laminati (HPL)</label>
           <div className="grid grid-cols-3 gap-2">
             {abetTextures.map(t => renderTextureButton(t))}
-          </div>
-        </div>
-      )}
-
-      {otherTextures.length > 0 && (
-        <div className="mb-2">
-          <label className={`text-[10px] uppercase tracking-widest font-bold block mb-2 ${
-            isLight ? 'text-slate-700' : 'text-slate-400'
-          }`}>4. Terminaciones Proveedores Oficiales</label>
-          <div className="grid grid-cols-3 gap-2">
-            {otherTextures.map(t => renderTextureButton(t))}
           </div>
         </div>
       )}

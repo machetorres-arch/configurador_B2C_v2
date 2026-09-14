@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 
 export type MaterialType = 'melamina' | 'hpl';
-export type PartType = 'structure' | 'doors' | 'drawerFronts' | 'drawerInner' | 'shelves' | 'back' | 'socle' | 'all';
+export type PartType = 'structure' | 'doors' | 'drawerFronts' | 'drawerInner' | 'shelves' | 'back' | 'socle' | 'islandBack' | 'all';
 
 export interface TextureItem {
   id: string;
@@ -125,6 +125,7 @@ export interface ClosetState {
   toggleSocle: () => void;
   toggleLegs: () => void;
   toggleDimensions: () => void;
+  setShowDimensions: (val: boolean) => void;
   setDimensionLevel: (l: number) => void;
   toggleDecorations: () => void;
   toggleTransparent: () => void;
@@ -225,7 +226,7 @@ export const useStore = create<ClosetState>((set, get) => ({
   showBackWall: true,
   showSocle: true,
   showLegs: false,
-  showDimensions: true,
+  showDimensions: false,
   dimensionLevel: 2,
   showDecorations: true,
   isTransparent: false,
@@ -296,6 +297,7 @@ export const useStore = create<ClosetState>((set, get) => ({
   toggleSocle: () => set((state) => ({ showSocle: !state.showSocle })),
   toggleLegs: () => set((state) => ({ showLegs: !state.showLegs })),
   toggleDimensions: () => set((state) => ({ showDimensions: !state.showDimensions })),
+  setShowDimensions: (showDimensions) => set({ showDimensions }),
   setDimensionLevel: (dimensionLevel) => set({ dimensionLevel }),
   toggleDecorations: () => set((state) => ({ showDecorations: !state.showDecorations })),
   toggleTransparent: () => set((state) => ({ isTransparent: !state.isTransparent })),

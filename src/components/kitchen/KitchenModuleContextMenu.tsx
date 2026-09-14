@@ -286,14 +286,14 @@ export function KitchenModuleContextMenu({ isLight: propIsLight }: { isLight?: b
   const is4Drawers = variant === '4_drawers';
   const is2PotDrawers = variant === '2_pot_drawers';
   const is1Door1Drawer = variant === '1_door_1_drawer';
-  const is2Doors = variant === '2_doors' || variant === 'tall_2_doors';
+  const is2Doors = variant === '2_doors' || variant === 'tall_2_doors' || variant === 'wall_2_doors';
   const is1Door = variant === '1_door' || variant === 'wall_1_door' || variant === 'tall_1_door';
   const isSplit2Doors = variant === 'tall_split_2_doors';
-  const isLiftUp = variant === 'wall_lift_up' || variant === 'wall_microwave_niche';
+  const isLiftUp = variant === 'wall_lift_up';
   const isLiftUpDouble = variant === 'wall_lift_up_double';
   const isOvenMicro = variant === 'tall_oven_micro';
   const isSpiceRack = variant === 'spice_rack';
-  const isCornerBlind = variant === 'corner_blind' || variant === 'corner_blind_left' || variant === 'corner_blind_right';
+  const isCornerBlind = variant === 'corner_blind' || variant === 'corner_blind_left' || variant === 'corner_blind_right' || variant?.startsWith('corner_blind') || variant?.startsWith('wall_corner_blind');
 
   const getElementsList = () => {
     const elements: { id: string; label: string; type: 'door' | 'drawer' }[] = [];
@@ -301,7 +301,10 @@ export function KitchenModuleContextMenu({ isLight: propIsLight }: { isLight?: b
       elements.push({ id: 'door-0', label: 'Puerta Izquierda', type: 'door' });
       elements.push({ id: 'door-1', label: 'Puerta Derecha', type: 'door' });
     } else if (is1Door || isCornerBlind) {
-      elements.push({ id: 'door-0', label: 'Puerta Frontal', type: 'door' });
+      const doorLabel = variant?.startsWith('wall_corner_blind')
+        ? 'Puerta Esquinero Aéreo'
+        : (isCornerBlind ? 'Puerta Esquinero' : 'Puerta Frontal');
+      elements.push({ id: 'door-0', label: doorLabel, type: 'door' });
     } else if (isSplit2Doors) {
       elements.push({ id: 'door-upper', label: 'Puerta Superior', type: 'door' });
       elements.push({ id: 'door-lower', label: 'Puerta Inferior', type: 'door' });

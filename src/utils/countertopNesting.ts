@@ -1,5 +1,6 @@
-import { CountertopConfig, QstoneProductItem, DEFAULT_QSTONE_CATALOG, QSTONE_SINKS, FDV_COOKTOPS } from '../types/countertop';
-import { CabinetType } from '../store/kitchenStore';
+import { CountertopConfig, QstoneProductItem, DEFAULT_QSTONE_CATALOG, QSTONE_SINKS, FDV_COOKTOPS, IslandBackConfig } from '../types/countertop';
+import { CabinetType, ArchitecturalElement } from '../store/kitchenStore';
+import { getPillarsBox2D } from './kitchenCollision';
 
 export interface CountertopPiece {
   id: string;
@@ -58,6 +59,8 @@ export interface ContinuousRunInfo {
   canWaterfallRight: boolean;
   cornerExtensionLeftMm: number;
   cornerExtensionRightMm: number;
+  extensionToWallLeftMm?: number;
+  extensionToWallRightMm?: number;
 }
 
 export interface CountertopBOM {
@@ -136,6 +139,31 @@ export function isFlankBlockedByAnyCabinet(
 }
 
 /**
+ * Determina si un flanco linda directamente con un pilar arquitectónico.
+ */
+export function isFlankBlockedByPillar(
+  flankWorld: [number, number],
+  elements: ArchitecturalElement[] = [],
+  walls: { id: string; start: [number, number]; end: [number, number]; thickness?: number }[] = [],
+  toleranceCm = 8
+): boolean {
+  if (!elements || elements.length === 0) return false;
+  const pillarBoxes = getPillarsBox2D(elements, walls);
+  return pillarBoxes.some((pBox) => {
+    const dx = flankWorld[0] - pBox.center[0];
+    const dz = flankWorld[1] - pBox.center[1];
+    const uX = pBox.axes[0];
+    const uZ = pBox.axes[1];
+    const localX = dx * uX[0] + dz * uX[1];
+    const localZ = dx * uZ[0] + dz * uZ[1];
+    return (
+      Math.abs(localX) <= pBox.width / 2 + toleranceCm &&
+      Math.abs(localZ) <= pBox.depth / 2 + toleranceCm
+    );
+  });
+}
+
+/**
  * Calcula la extensión requerida del respaldo en el extremo izquierdo o derecho
  * para cubrir el rincón en encuentros de esquina en L.
  */
@@ -145,13 +173,19 @@ export function detectCornerBacksplashExtension(
   isLeftFlank: boolean,
   runCabIds: Set<string>,
   allCabinets: CabinetType[],
-  walls: { id: string; start: [number, number]; end: [number, number]; thickness?: number }[] = []
+  walls: { id: string; start: [number, number]; end: [number, number]; thickness?: number }[] = [],
+  architecturalElements: ArchitecturalElement[] = []
 ): number {
+  if (isFlankBlockedByPillar(flankWorld, architecturalElements, walls, 5)) {
+    return 0;
+  }
   const cos = Math.cos(runRot);
   const sin = Math.sin(runRot);
   // Vector apuntando hacia afuera del extremo de la corrida:
-  // Si es flank izquierdo, hacia afuera es -uX. Si es flank derecho, es +uX.
+  // Si es flank izquierdo, hacia afuera es [-cos, sin]. Si es derecho, es [cos, -sin].
   const outwardDir: [number, number] = isLeftFlank ? [-cos, sin] : [cos, -sin];
+
+  let rawExtCm = 0;
 
   // 1. Buscar mueble perpendicular adyacente en este extremo
   for (const other of allCabinets) {
@@ -170,34 +204,191 @@ export function detectCornerBacksplashExtension(
     if (projOutward > -12 && projOutward < Math.max(other.width, other.depth) + 25) {
       const distToCab = Math.hypot(dx, dz);
       if (distToCab < Math.max(other.width, other.depth) + 30) {
-        const depthMm = Math.round(((other.depth || 60) + 2) * 10);
-        return depthMm > 0 ? depthMm : 620;
+        rawExtCm = (other.depth || 60) + 2;
+        break;
       }
     }
   }
 
-  // 2. Comprobar si hay un muro perpendicular cruzando a distancia de rincón
-  if (walls && walls.length > 0) {
-    for (const w of walls) {
-      const wdx = w.end[0] - w.start[0];
-      const wdz = w.end[1] - w.start[1];
-      const wLen = Math.hypot(wdx, wdz);
-      if (wLen < 15) continue;
+  if (rawExtCm <= 0) return 0;
 
-      const wallDir: [number, number] = [wdx / wLen, wdz / wLen];
-      const wallPerpDot = -wallDir[1] * outwardDir[0] + wallDir[0] * outwardDir[1];
-      if (Math.abs(wallPerpDot) > 0.7) {
-        const toStartX = flankWorld[0] - w.start[0];
-        const toStartZ = flankWorld[1] - w.start[1];
-        const distToWallLine = Math.abs(toStartX * wallDir[1] - toStartZ * wallDir[0]);
-        if (distToWallLine >= 5 && distToWallLine <= 120) {
-          return Math.round(distToWallLine * 10);
+  // 2. SEGURIDAD Y PRECISIÓN ESTRUCTURAL:
+  // Si en la trayectoria de extensión hay un pilar arquitectónico, recortar la extensión
+  // para que remate limpiamente contra la cara del pilar sin perforarlo.
+  if (architecturalElements && architecturalElements.length > 0) {
+    const pillarBoxes = getPillarsBox2D(architecturalElements, walls);
+    for (const pBox of pillarBoxes) {
+      const uX = pBox.axes[0];
+      const uZ = pBox.axes[1];
+      for (let t = 2; t <= rawExtCm; t += 2) {
+        const ptX = flankWorld[0] + t * outwardDir[0];
+        const ptZ = flankWorld[1] + t * outwardDir[1];
+        const localX = (ptX - pBox.center[0]) * uX[0] + (ptZ - pBox.center[1]) * uX[1];
+        const localZ = (ptX - pBox.center[0]) * uZ[0] + (ptZ - pBox.center[1]) * uZ[1];
+        if (
+          Math.abs(localX) <= pBox.width / 2 + 1 &&
+          Math.abs(localZ) <= pBox.depth / 2 + 1
+        ) {
+          rawExtCm = Math.max(0, t - 2);
+          break;
         }
       }
     }
   }
 
-  return 0;
+  return Math.round(rawExtCm * 10);
+}
+
+/**
+ * Detecta la distancia exacta desde el flanco exterior de la corrida hasta la cara
+ * de un muro o pilar arquitectónico frontal/adyacente, permitiendo que la cubierta
+ * remate a tope contra el muro/pilar si el usuario activó la opción.
+ */
+export function getEffectiveWallsFromInputs(
+  walls?: { id: string; start: [number, number]; end: [number, number]; thickness?: number; height?: number }[],
+  roomConfig?: any
+): { id: string; start: [number, number]; end: [number, number]; thickness: number; height?: number }[] {
+  if (roomConfig?.vertices && roomConfig.vertices.length >= 3) {
+    return roomConfig.vertices.map((v: any, i: number, arr: any[]) => {
+      const next = arr[(i + 1) % arr.length];
+      return {
+        id: `wall_${i}`,
+        start: [v.x, v.y] as [number, number],
+        end: [next.x, next.y] as [number, number],
+        thickness: roomConfig.wallThickness || 20,
+        height: roomConfig.wallHeight || 250,
+      };
+    });
+  }
+  if (walls && walls.length > 0) {
+    return walls.map((w, idx) => ({
+      id: w.id || `wall_${idx}`,
+      start: w.start,
+      end: w.end,
+      thickness: w.thickness || 20,
+      height: w.height || 250,
+    }));
+  }
+  return [];
+}
+
+/**
+ * Detecta si el extremo libre de una corrida puede extenderse hacia un muro, pilar arquitectónico
+ * o mueble adyacente dentro de una distancia máxima configurable (maxGapCm).
+ * Calcula con precisión geométrica el tope exacto contra la cara interior del elemento.
+ */
+export function detectCountertopExtensionToWallOrPillar(
+  flankWorld: [number, number],
+  runRot: number,
+  isLeftFlank: boolean,
+  walls: { id: string; start: [number, number]; end: [number, number]; thickness?: number }[] = [],
+  architecturalElements: ArchitecturalElement[] = [],
+  maxGapCm = 50,
+  roomConfig?: any,
+  allCabinets: CabinetType[] = [],
+  runCabIds: Set<string> = new Set()
+): number {
+  const effectiveWalls = getEffectiveWallsFromInputs(walls, roomConfig);
+  const cos = Math.cos(runRot);
+  const sin = Math.sin(runRot);
+  // Vector apuntando hacia afuera del flanco (en plano XZ de Three.js):
+  // Local +X rotado por runRot es [cos, -sin] (extremo derecho)
+  // Local -X rotado por runRot es [-cos, sin] (extremo izquierdo)
+  const outwardDir: [number, number] = isLeftFlank ? [-cos, sin] : [cos, -sin];
+
+  let minGapCm = Infinity;
+
+  // 1. Verificar muros perpendiculares u oblicuos en la trayectoria del rayo
+  if (effectiveWalls.length > 0) {
+    for (const w of effectiveWalls) {
+      const wdx = w.end[0] - w.start[0];
+      const wdz = w.end[1] - w.start[1];
+      const wLen = Math.hypot(wdx, wdz);
+      if (wLen < 5) continue;
+
+      const wallDir: [number, number] = [wdx / wLen, wdz / wLen];
+
+      // Intersección de rayo desde flankWorld a lo largo de outwardDir con la recta del muro:
+      // flankWorld + t * outwardDir = w.start + s * wallDir
+      const denom = outwardDir[0] * wallDir[1] - outwardDir[1] * wallDir[0];
+      if (Math.abs(denom) > 1e-4) {
+        const dx = w.start[0] - flankWorld[0];
+        const dz = w.start[1] - flankWorld[1];
+        const t = (dx * wallDir[1] - dz * wallDir[0]) / denom;
+        const s = (dx * outwardDir[1] - dz * outwardDir[0]) / denom;
+
+        const halfThick = (w.thickness || 20) / 2;
+        // Distancia neta hasta la cara interior del muro (descontando el semi-espesor proyectado)
+        const tFace = t - (halfThick / Math.abs(denom));
+
+        // s es la posición a lo largo del segmento de muro en cm (desde 0 en w.start hasta wLen en w.end).
+        // Aceptamos intersecciones dentro de la extensión del muro con margen por su espesor:
+        if (tFace > 0.5 && tFace <= maxGapCm && s >= -halfThick && s <= wLen + halfThick) {
+          if (tFace < minGapCm) {
+            minGapCm = tFace;
+          }
+        }
+      }
+    }
+  }
+
+  // 2. Verificar pilares arquitectónicos
+  if (architecturalElements && architecturalElements.length > 0) {
+    const pillarBoxes = getPillarsBox2D(architecturalElements, effectiveWalls);
+    for (const pBox of pillarBoxes) {
+      const uX = pBox.axes[0];
+      const uZ = pBox.axes[1];
+      const maxSteps = Math.min(maxGapCm, 300);
+      for (let t = 1; t <= maxSteps; t += 1) {
+        const ptX = flankWorld[0] + t * outwardDir[0];
+        const ptZ = flankWorld[1] + t * outwardDir[1];
+        const localX = (ptX - pBox.center[0]) * uX[0] + (ptZ - pBox.center[1]) * uX[1];
+        const localZ = (ptX - pBox.center[0]) * uZ[0] + (ptZ - pBox.center[1]) * uZ[1];
+        if (
+          Math.abs(localX) <= pBox.width / 2 + 0.5 &&
+          Math.abs(localZ) <= pBox.depth / 2 + 0.5
+        ) {
+          if (t < minGapCm) {
+            minGapCm = t;
+          }
+          break;
+        }
+      }
+    }
+  }
+
+  // 3. Verificar gabinetes adyacentes a través del vano (ej. vano de lavavajillas o columna)
+  if (allCabinets && allCabinets.length > 0) {
+    for (const other of allCabinets) {
+      if (runCabIds.has(other.id)) continue;
+      const otherRot = other.rotation || 0;
+      const oCos = Math.cos(otherRot);
+      const oSin = Math.sin(otherRot);
+      const oWidth = other.width || 60;
+      const oDepth = other.depth || 60;
+      const oX = other.position[0];
+      const oZ = other.position[2];
+
+      const maxSteps = Math.min(maxGapCm, minGapCm === Infinity ? maxGapCm : minGapCm);
+      for (let t = 2; t <= maxSteps; t += 2) {
+        const ptX = flankWorld[0] + t * outwardDir[0];
+        const ptZ = flankWorld[1] + t * outwardDir[1];
+        const relX = ptX - oX;
+        const relZ = ptZ - oZ;
+        const localX = relX * oCos - relZ * oSin;
+        const localZ = relX * oSin + relZ * oCos;
+        if (Math.abs(localX) <= oWidth / 2 + 0.5 && Math.abs(localZ) <= oDepth / 2 + 0.5) {
+          if (t < minGapCm) {
+            minGapCm = t;
+          }
+          break;
+        }
+      }
+    }
+  }
+
+  if (minGapCm === Infinity || minGapCm <= 0.5) return 0;
+  return Math.round(minGapCm * 10);
 }
 
 /**
@@ -206,7 +397,9 @@ export function detectCornerBacksplashExtension(
 export function detectContinuousCabinetRuns(
   cabinets: CabinetType[],
   config?: CountertopConfig,
-  walls?: { id: string; start: [number, number]; end: [number, number]; thickness?: number }[]
+  walls?: { id: string; start: [number, number]; end: [number, number]; thickness?: number }[],
+  architecturalElements?: ArchitecturalElement[],
+  roomConfig?: any
 ): ContinuousRunInfo[] {
   const eligible = cabinets.filter(
     (c) => (c.type === 'base' || c.type === 'island') && !c.variant?.startsWith('deco_')
@@ -292,7 +485,13 @@ export function detectContinuousCabinetRuns(
       const overhangFront = 2;
       const overhangRear = isIsland ? (config?.islandOverhangCm ?? 30) : 0;
       const depthMm = ((chain[0].depth || 60) + overhangFront + overhangRear) * 10;
-      const heightMm = ((chain[0].height || 85) + 2) * 10;
+      // Altura exacta de la cara superior de los gabinetes de la corrida (apoyo real sin flotar)
+      const cabTopCm = Math.max(
+        ...chain.map((c) =>
+          c.position ? c.position[1] + c.height / 2 : c.height || 85
+        )
+      );
+      const heightMm = Math.round(cabTopCm * 10);
       const totalLengthMm = Math.round(chain.reduce((acc, c) => acc + c.width * 10, 0));
 
       const firstFlanks = getFlanks(chain[0]);
@@ -303,11 +502,13 @@ export function detectContinuousCabinetRuns(
       // Detección de bloqueos de cascada
       const isLeftBlockedByTall = isFlankBlockedByTall(firstFlanks.left, cabinets);
       const isLeftBlockedByAny = isFlankBlockedByAnyCabinet(firstFlanks.left, runCabIds, cabinets);
+      const isLeftBlockedByPillar = isFlankBlockedByPillar(firstFlanks.left, architecturalElements, walls);
       const isRightBlockedByTall = isFlankBlockedByTall(lastFlanks.right, cabinets);
       const isRightBlockedByAny = isFlankBlockedByAnyCabinet(lastFlanks.right, runCabIds, cabinets);
+      const isRightBlockedByPillar = isFlankBlockedByPillar(lastFlanks.right, architecturalElements, walls);
 
-      const canWaterfallLeft = !isLeftBlockedByTall && !isLeftBlockedByAny;
-      const canWaterfallRight = !isRightBlockedByTall && !isRightBlockedByAny;
+      const canWaterfallLeft = !isLeftBlockedByTall && !isLeftBlockedByAny && !isLeftBlockedByPillar;
+      const canWaterfallRight = !isRightBlockedByTall && !isRightBlockedByAny && !isRightBlockedByPillar;
 
       // Detección de extensión de respaldo en esquinas L
       const cornerExtLeftMm = detectCornerBacksplashExtension(
@@ -316,7 +517,8 @@ export function detectContinuousCabinetRuns(
         true,
         runCabIds,
         cabinets,
-        walls
+        walls,
+        architecturalElements
       );
       const cornerExtRightMm = detectCornerBacksplashExtension(
         lastFlanks.right,
@@ -324,8 +526,42 @@ export function detectContinuousCabinetRuns(
         false,
         runCabIds,
         cabinets,
-        walls
+        walls,
+        architecturalElements
       );
+
+      // Extensión seleccionable por usuario hacia muro o pilar:
+      const maxGapCm = config?.extendToWallMaxGapCm ?? 50;
+      const shouldExtendLeft = !!config?.extendToWallLeft && (!isIsland || !config?.extendBaseOnly);
+      const shouldExtendRight = !!config?.extendToWallRight && (!isIsland || !config?.extendBaseOnly);
+
+      const extWallLeftMm = shouldExtendLeft
+        ? detectCountertopExtensionToWallOrPillar(
+            firstFlanks.left,
+            runRot,
+            true,
+            walls,
+            architecturalElements,
+            maxGapCm,
+            roomConfig,
+            cabinets,
+            runCabIds
+          )
+        : 0;
+
+      const extWallRightMm = shouldExtendRight
+        ? detectCountertopExtensionToWallOrPillar(
+            lastFlanks.right,
+            runRot,
+            false,
+            walls,
+            architecturalElements,
+            maxGapCm,
+            roomConfig,
+            cabinets,
+            runCabIds
+          )
+        : 0;
 
       // Segmentación según criterio logístico de transporte (Casa <= 2500mm, Edificio <= 2000mm)
       let segmentLengthsMm: number[] = [];
@@ -364,10 +600,12 @@ export function detectContinuousCabinetRuns(
         endFlankWorld: lastFlanks.right,
         centerWorld,
         rotation: runRot,
-        canWaterfallLeft,
-        canWaterfallRight,
+        canWaterfallLeft: canWaterfallLeft && extWallLeftMm === 0,
+        canWaterfallRight: canWaterfallRight && extWallRightMm === 0,
         cornerExtensionLeftMm: cornerExtLeftMm,
         cornerExtensionRightMm: cornerExtRightMm,
+        extensionToWallLeftMm: extWallLeftMm,
+        extensionToWallRightMm: extWallRightMm,
       });
     }
   }
@@ -378,7 +616,8 @@ export function detectContinuousCabinetRuns(
     visited.add(cab.id);
     const isIsland = cab.type === 'island';
     const depthMm = ((cab.depth || 60) + 2 + (isIsland ? (config?.islandOverhangCm ?? 30) : 0)) * 10;
-    const heightMm = ((cab.height || 85) + 2) * 10;
+    const cabTopCm = cab.position ? cab.position[1] + cab.height / 2 : cab.height || 85;
+    const heightMm = Math.round(cabTopCm * 10);
     const totalLengthMm = Math.round(cab.width * 10);
     const flanks = getFlanks(cab);
     const cabRot = cab.rotation || 0;
@@ -386,8 +625,10 @@ export function detectContinuousCabinetRuns(
 
     const isLeftBlockedByTall = isFlankBlockedByTall(flanks.left, cabinets);
     const isLeftBlockedByAny = isFlankBlockedByAnyCabinet(flanks.left, cabIds, cabinets);
+    const isLeftBlockedByPillar = isFlankBlockedByPillar(flanks.left, architecturalElements, walls);
     const isRightBlockedByTall = isFlankBlockedByTall(flanks.right, cabinets);
     const isRightBlockedByAny = isFlankBlockedByAnyCabinet(flanks.right, cabIds, cabinets);
+    const isRightBlockedByPillar = isFlankBlockedByPillar(flanks.right, architecturalElements, walls);
 
     const cornerExtLeftMm = detectCornerBacksplashExtension(
       flanks.left,
@@ -395,7 +636,8 @@ export function detectContinuousCabinetRuns(
       true,
       cabIds,
       cabinets,
-      walls
+      walls,
+      architecturalElements
     );
     const cornerExtRightMm = detectCornerBacksplashExtension(
       flanks.right,
@@ -403,8 +645,35 @@ export function detectContinuousCabinetRuns(
       false,
       cabIds,
       cabinets,
-      walls
+      walls,
+      architecturalElements
     );
+
+    const maxGapCm = config?.extendToWallMaxGapCm ?? 50;
+    const shouldExtendLeft = !!config?.extendToWallLeft && (!isIsland || !config?.extendBaseOnly);
+    const shouldExtendRight = !!config?.extendToWallRight && (!isIsland || !config?.extendBaseOnly);
+
+    const extWallLeftMm = shouldExtendLeft
+      ? detectCountertopExtensionToWallOrPillar(
+          flanks.left,
+          cabRot,
+          true,
+          walls,
+          architecturalElements,
+          maxGapCm
+        )
+      : 0;
+
+    const extWallRightMm = shouldExtendRight
+      ? detectCountertopExtensionToWallOrPillar(
+          flanks.right,
+          cabRot,
+          false,
+          walls,
+          architecturalElements,
+          maxGapCm
+        )
+      : 0;
 
     runs.push({
       id: `${isIsland ? 'ISL' : 'BASE'}-RUN-${runs.length + 1}`,
@@ -422,10 +691,12 @@ export function detectContinuousCabinetRuns(
       endFlankWorld: flanks.right,
       centerWorld: [cab.position[0], cab.position[1] + cab.height / 2, cab.position[2]],
       rotation: cabRot,
-      canWaterfallLeft: !isLeftBlockedByTall && !isLeftBlockedByAny,
-      canWaterfallRight: !isRightBlockedByTall && !isRightBlockedByAny,
+      canWaterfallLeft: !isLeftBlockedByTall && !isLeftBlockedByAny && !isLeftBlockedByPillar && extWallLeftMm === 0,
+      canWaterfallRight: !isRightBlockedByTall && !isRightBlockedByAny && !isRightBlockedByPillar && extWallRightMm === 0,
       cornerExtensionLeftMm: cornerExtLeftMm,
       cornerExtensionRightMm: cornerExtRightMm,
+      extensionToWallLeftMm: extWallLeftMm,
+      extensionToWallRightMm: extWallRightMm,
     });
   }
 
@@ -622,7 +893,11 @@ export function packPiecesIntoSlabs(
 export function generateCountertopPieces(
   cabinets: CabinetType[],
   config: CountertopConfig,
-  catalog: QstoneProductItem[] = DEFAULT_QSTONE_CATALOG
+  catalog: QstoneProductItem[] = DEFAULT_QSTONE_CATALOG,
+  islandBackConfig?: IslandBackConfig,
+  walls?: { id: string; start: [number, number]; end: [number, number]; thickness?: number }[],
+  architecturalElements?: ArchitecturalElement[],
+  roomConfig?: any
 ): CountertopBOM | null {
   if (!config.enabled) return null;
 
@@ -630,7 +905,7 @@ export function generateCountertopPieces(
   const maxSegmentLengthMm = config.buildingType === 'edificio' ? 2000 : 2500;
   const pieces: CountertopPiece[] = [];
 
-  const continuousRuns = detectContinuousCabinetRuns(cabinets, config);
+  const continuousRuns = detectContinuousCabinetRuns(cabinets, config, walls, architecturalElements, roomConfig);
   if (continuousRuns.length === 0) return null;
 
   let pieceCounter = 1;
@@ -649,9 +924,15 @@ export function generateCountertopPieces(
       const pieceId = `${prefix}-TOP-${pieceCounter}`;
       const isSingleSegment = run.segmentLengthsMm.length === 1;
 
-      const extraCornerLeft = segIdx === 0 ? (run.cornerExtensionLeftMm || 0) : 0;
-      const extraCornerRight = segIdx === run.segmentLengthsMm.length - 1 ? (run.cornerExtensionRightMm || 0) : 0;
-      const totalSlabLengthMm = segLengthMm + extraCornerLeft + extraCornerRight;
+      const extraLeft =
+        segIdx === 0
+          ? (run.cornerExtensionLeftMm || 0) + (run.extensionToWallLeftMm || 0)
+          : 0;
+      const extraRight =
+        segIdx === run.segmentLengthsMm.length - 1
+          ? (run.cornerExtensionRightMm || 0) + (run.extensionToWallRightMm || 0)
+          : 0;
+      const totalSlabLengthMm = segLengthMm + extraLeft + extraRight;
 
       const slabName = isSingleSegment
         ? `Tramo Cubierta Corrida ${pieceId} (${totalSlabLengthMm}x${run.depthMm}mm)`
@@ -661,7 +942,7 @@ export function generateCountertopPieces(
       if (hasSinkInRun && segIdx === 0) cutoutType = 'sink';
       else if (hasCooktopInRun) cutoutType = 'cooktop';
 
-      // 1. Tramo horizontal de cubierta (cubre la totalidad de la superficie hasta el muro en esquinas)
+      // 1. Tramo horizontal de cubierta (cubre la totalidad de la superficie hasta el muro/pilar)
       pieces.push({
         id: pieceId,
         name: slabName,
@@ -674,8 +955,8 @@ export function generateCountertopPieces(
           (totalSlabLengthMm + (segIdx === 0 || segIdx === run.segmentLengthsMm.length - 1 ? run.depthMm : 0)) /
           1000,
         notes: isSingleSegment
-          ? `Tramo continuo entero sin uniones intermedias (${config.buildingType === 'casa' ? 'Casa: máx 2500mm' : 'Edificio: máx 2000mm'})${extraCornerLeft || extraCornerRight ? ' (incluye extensión completa a muro en esquina)' : ''}.`
-          : `Junta ortogonal a 90° rectificada con disco diamantado kerf 3.5mm${extraCornerLeft || extraCornerRight ? ' (incluye extensión a muro)' : ''}.`,
+          ? `Tramo continuo entero sin uniones intermedias (${config.buildingType === 'casa' ? 'Casa: máx 2500mm' : 'Edificio: máx 2000mm'})${extraLeft || extraRight ? ' (incluye extensión a muro/pilar)' : ''}.`
+          : `Junta ortogonal a 90° rectificada con disco diamantado kerf 3.5mm${extraLeft || extraRight ? ' (incluye extensión a muro/pilar)' : ''}.`,
         runId: run.id,
         hasCutout: cutoutType,
       });
@@ -683,15 +964,16 @@ export function generateCountertopPieces(
       // 2. Faldón Delantero / Regrueso
       if (config.regruesoCm > 0) {
         const apronHeightMm = Math.round(config.regruesoCm * 10);
+        const apronLengthMm = segLengthMm + extraLeft + extraRight;
         pieces.push({
           id: `${pieceId}-FALDON`,
-          name: `Faldón Delantero ${pieceId} (${segLengthMm}x${apronHeightMm}mm)`,
+          name: `Faldón Delantero ${pieceId} (${apronLengthMm}x${apronHeightMm}mm)`,
           type: 'apron',
-          lengthMm: segLengthMm,
+          lengthMm: apronLengthMm,
           widthMm: apronHeightMm,
           thicknessMm: product.thicknessMm,
-          areaM2: (segLengthMm * apronHeightMm) / 1000000,
-          edgePolishingM: segLengthMm / 1000,
+          areaM2: (apronLengthMm * apronHeightMm) / 1000000,
+          edgePolishingM: apronLengthMm / 1000,
           notes: `Tira de regrueso frontal ${config.regruesoCm}cm ingletada o a tope 90°.`,
           runId: run.id,
         });
@@ -703,9 +985,7 @@ export function generateCountertopPieces(
           config.backsplashMode === 'standard_5cm'
             ? Math.round(config.backsplashHeightCm * 10)
             : 550; // 55cm revestimiento completo
-        const extraCornerLeft = segIdx === 0 ? (run.cornerExtensionLeftMm || 0) : 0;
-        const extraCornerRight = segIdx === run.segmentLengthsMm.length - 1 ? (run.cornerExtensionRightMm || 0) : 0;
-        const totalBsLengthMm = segLengthMm + extraCornerLeft + extraCornerRight;
+        const totalBsLengthMm = segLengthMm + extraLeft + extraRight;
 
         pieces.push({
           id: `${pieceId}-RESPALDO`,
@@ -722,8 +1002,8 @@ export function generateCountertopPieces(
           edgePolishingM: totalBsLengthMm / 1000,
           notes:
             config.backsplashMode === 'standard_5cm'
-              ? `Zócalo de protección perimetral 50mm con canto superior pulido${extraCornerLeft || extraCornerRight ? ' (incluye extensión de esquina a muro)' : ''}`
-              : `Revestimiento de muro completo hasta muebles aéreos${extraCornerLeft || extraCornerRight ? ' (incluye extensión de esquina a muro)' : ''}`,
+              ? `Zócalo de protección perimetral 50mm con canto superior pulido${extraLeft || extraRight ? ' (incluye extensión a muro/pilar)' : ''}`
+              : `Revestimiento de muro completo hasta muebles aéreos${extraLeft || extraRight ? ' (incluye extensión a muro/pilar)' : ''}`,
           runId: run.id,
         });
       }
@@ -758,6 +1038,24 @@ export function generateCountertopPieces(
         areaM2: (run.heightMm * run.depthMm) / 1000000,
         edgePolishingM: (run.heightMm * 2 + run.depthMm) / 1000,
         notes: 'Bajada vertical a piso 90° con pulido de cantos (extremo libre)',
+        runId: run.id,
+      });
+    }
+
+    // 5. Panel Trasero Trasdosado Continuo de Isla (en material de cubierta, siempre a piso)
+    if (isIsland && islandBackConfig?.enabled && islandBackConfig.materialType === 'countertop') {
+      const panelLengthMm = run.totalLengthMm;
+      const panelHeightMm = run.heightMm; // estrictamente a piso
+      pieces.push({
+        id: `${prefix}-TRASERA-ISLA`,
+        name: `Panel Trasero Trasdosado Isla (${panelLengthMm}x${panelHeightMm}mm)`,
+        type: 'slab',
+        lengthMm: panelLengthMm,
+        widthMm: panelHeightMm,
+        thicknessMm: product.thicknessMm,
+        areaM2: (panelLengthMm * panelHeightMm) / 1000000,
+        edgePolishingM: (panelLengthMm * 2 + panelHeightMm * 2) / 1000,
+        notes: 'Panel trasero continuo a piso en piedra de cubierta (sin zócalo)',
         runId: run.id,
       });
     }

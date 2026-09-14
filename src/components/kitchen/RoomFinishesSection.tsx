@@ -9,9 +9,6 @@ export function RoomFinishesSection({ isLight = false }: { isLight?: boolean }) 
   const { wallColor, setWallColor, floorType, setFloorType } = useKitchenStore();
   const [activeTab, setActiveTab] = useState<'walls' | 'floors'>('walls');
 
-  const currentWall = WALL_COLOR_OPTIONS.find((w) => w.hex.toLowerCase() === wallColor?.toLowerCase()) || WALL_COLOR_OPTIONS[2];
-  const currentFloor = FLOOR_TYPE_OPTIONS.find((f) => f.id === floorType) || FLOOR_TYPE_OPTIONS[0];
-
   return (
     <div className={`mb-6 pb-6 border-b ${isLight ? 'border-slate-200' : 'border-white/10'}`}>
       <div className="flex items-center justify-between mb-3">
@@ -52,27 +49,6 @@ export function RoomFinishesSection({ isLight = false }: { isLight?: boolean }) 
 
       {activeTab === 'walls' && (
         <div className="flex flex-col gap-3">
-          <div className={`p-2.5 rounded-lg flex items-center justify-between border ${
-            isLight ? 'bg-slate-50 border-slate-200 shadow-sm' : 'bg-white/5 border-white/10'
-          }`}>
-            <div className="flex items-center gap-2.5">
-              <span
-                className={`w-5 h-5 rounded-full border shadow-inner shrink-0 ${
-                  isLight ? 'border-slate-400' : 'border-white/30'
-                }`}
-                style={{ backgroundColor: wallColor || '#E2E8F0' }}
-              />
-              <div className="flex flex-col">
-                <span className={`text-[11px] font-bold leading-none ${
-                  isLight ? 'text-slate-900' : 'text-white'
-                }`}>{currentWall.name}</span>
-                <span className={`text-[9px] font-mono mt-0.5 ${
-                  isLight ? 'text-slate-600 font-semibold' : 'text-slate-400'
-                }`}>{currentWall.category} • {currentWall.description}</span>
-              </div>
-            </div>
-          </div>
-
           <div className="grid grid-cols-5 gap-2">
             {WALL_COLOR_OPTIONS.map((opt) => {
               const isSelected = (wallColor || '').toLowerCase() === opt.hex.toLowerCase();
@@ -118,27 +94,6 @@ export function RoomFinishesSection({ isLight = false }: { isLight?: boolean }) 
 
       {activeTab === 'floors' && (
         <div className="flex flex-col gap-2.5">
-          <div className={`p-2.5 rounded-lg flex items-center justify-between border ${
-            isLight ? 'bg-slate-50 border-slate-200 shadow-sm' : 'bg-white/5 border-white/10'
-          }`}>
-            <div className="flex items-center gap-2.5">
-              <span
-                className={`w-5 h-5 rounded border shadow-inner shrink-0 ${
-                  isLight ? 'border-slate-400' : 'border-white/30'
-                }`}
-                style={{ backgroundColor: currentFloor.primaryColor }}
-              />
-              <div className="flex flex-col">
-                <span className={`text-[11px] font-bold leading-none ${
-                  isLight ? 'text-slate-900' : 'text-white'
-                }`}>{currentFloor.name}</span>
-                <span className={`text-[9px] mt-0.5 ${
-                  isLight ? 'text-slate-600 font-semibold' : 'text-slate-400'
-                }`}>{currentFloor.description}</span>
-              </div>
-            </div>
-          </div>
-
           <div className="grid grid-cols-2 gap-2 max-h-56 overflow-y-auto custom-scrollbar pr-1">
             {FLOOR_TYPE_OPTIONS.map((opt) => {
               const isSelected = floorType === opt.id;

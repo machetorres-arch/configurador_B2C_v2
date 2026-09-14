@@ -1,6 +1,8 @@
 import React, { useMemo } from 'react';
 import * as THREE from 'three';
+import { Edges } from '@react-three/drei';
 import { useKitchenStore, CabinetType } from '../../store/kitchenStore';
+import { useStore } from '../../store';
 import { QSTONE_SINKS, FDV_COOKTOPS, SinkSpec } from '../../types/countertop';
 import { detectContinuousCabinetRuns, ContinuousRunInfo } from '../../utils/countertopNesting';
 
@@ -8,55 +10,74 @@ import { detectContinuousCabinetRuns, ContinuousRunInfo } from '../../utils/coun
 // 3D MODEL: GRIFERÍA MONOMANDO DE ALTA GAMA (L-NECK MIXER FAUCET)
 // =========================================================================
 function DeckMixerFaucet3D({ position }: { position: [number, number, number] }) {
+  const isTransparent = useStore((s) => s.isTransparent);
+  const getMatProps = (color: string, metalness = 0.95, roughness = 0.18) => ({
+    color: isTransparent ? '#cbd5e1' : color,
+    metalness: isTransparent ? 0.05 : metalness,
+    roughness: isTransparent ? 0.1 : roughness,
+    transparent: isTransparent,
+    opacity: isTransparent ? 0.3 : 1,
+    depthWrite: !isTransparent,
+  });
+
   return (
     <group position={position}>
       {/* Base de fijación sobre cubierta */}
-      <mesh position={[0, 0.4, 0]}>
+      <mesh position={[0, 0.4, 0]} castShadow={!isTransparent} receiveShadow={!isTransparent}>
         <cylinderGeometry args={[2.5, 2.7, 0.8, 32]} />
-        <meshStandardMaterial color="#cbd5e1" metalness={0.96} roughness={0.16} />
+        <meshStandardMaterial {...getMatProps('#cbd5e1', 0.96, 0.16)} />
+        {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
       </mesh>
-      <mesh position={[0, 0.9, 0]}>
+      <mesh position={[0, 0.9, 0]} castShadow={!isTransparent} receiveShadow={!isTransparent}>
         <cylinderGeometry args={[2.0, 2.4, 0.4, 32]} />
-        <meshStandardMaterial color="#94a3b8" metalness={0.95} roughness={0.2} />
+        <meshStandardMaterial {...getMatProps('#94a3b8', 0.95, 0.2)} />
+        {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
       </mesh>
 
       {/* Columna vertical principal */}
-      <mesh position={[0, 9.5, 0]}>
+      <mesh position={[0, 9.5, 0]} castShadow={!isTransparent} receiveShadow={!isTransparent}>
         <cylinderGeometry args={[1.7, 1.7, 17, 32]} />
-        <meshStandardMaterial color="#e2e8f0" metalness={0.95} roughness={0.18} />
+        <meshStandardMaterial {...getMatProps('#e2e8f0', 0.95, 0.18)} />
+        {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
       </mesh>
 
       {/* Caño horizontal en L hacia el centro de la poza */}
-      <mesh position={[0, 18, 9]}>
+      <mesh position={[0, 18, 9]} castShadow={!isTransparent} receiveShadow={!isTransparent}>
         <cylinderGeometry args={[1.2, 1.2, 18, 24]} />
-        <meshStandardMaterial color="#e2e8f0" metalness={0.95} roughness={0.18} />
+        <meshStandardMaterial {...getMatProps('#e2e8f0', 0.95, 0.18)} />
+        {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
       </mesh>
 
       {/* Codo de unión 90° */}
-      <mesh position={[0, 18, 0]}>
+      <mesh position={[0, 18, 0]} castShadow={!isTransparent} receiveShadow={!isTransparent}>
         <sphereGeometry args={[1.6, 24, 24]} />
-        <meshStandardMaterial color="#e2e8f0" metalness={0.95} roughness={0.18} />
+        <meshStandardMaterial {...getMatProps('#e2e8f0', 0.95, 0.18)} />
+        {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
       </mesh>
 
       {/* Puntera / Aireador direccionador de agua */}
-      <mesh position={[0, 15.5, 17.5]}>
+      <mesh position={[0, 15.5, 17.5]} castShadow={!isTransparent} receiveShadow={!isTransparent}>
         <cylinderGeometry args={[1.1, 1.3, 4, 24]} />
-        <meshStandardMaterial color="#cbd5e1" metalness={0.96} roughness={0.15} />
+        <meshStandardMaterial {...getMatProps('#cbd5e1', 0.96, 0.15)} />
+        {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
       </mesh>
-      <mesh position={[0, 13.4, 17.5]}>
+      <mesh position={[0, 13.4, 17.5]} castShadow={!isTransparent} receiveShadow={!isTransparent}>
         <cylinderGeometry args={[1.0, 1.0, 0.3, 24]} />
-        <meshStandardMaterial color="#64748b" metalness={0.4} roughness={0.7} />
+        <meshStandardMaterial {...getMatProps('#64748b', 0.4, 0.7)} />
+        {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
       </mesh>
 
       {/* Manilla monomando lateral */}
       <group position={[2.2, 6.5, 0]} rotation={[0, 0, -0.25]}>
-        <mesh position={[0.6, 0, 0]} rotation={[0, 0, Math.PI / 2]}>
+        <mesh position={[0.6, 0, 0]} rotation={[0, 0, Math.PI / 2]} castShadow={!isTransparent} receiveShadow={!isTransparent}>
           <cylinderGeometry args={[1.2, 1.2, 1.2, 24]} />
-          <meshStandardMaterial color="#cbd5e1" metalness={0.95} roughness={0.2} />
+          <meshStandardMaterial {...getMatProps('#cbd5e1', 0.95, 0.2)} />
+          {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
         </mesh>
-        <mesh position={[0.6, 3.5, 0]}>
+        <mesh position={[0.6, 3.5, 0]} castShadow={!isTransparent} receiveShadow={!isTransparent}>
           <cylinderGeometry args={[0.5, 0.5, 7, 20]} />
-          <meshStandardMaterial color="#e2e8f0" metalness={0.97} roughness={0.15} />
+          <meshStandardMaterial {...getMatProps('#e2e8f0', 0.97, 0.15)} />
+          {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
         </mesh>
       </group>
     </group>
@@ -67,42 +88,62 @@ function DeckMixerFaucet3D({ position }: { position: [number, number, number] })
 // 3D MODEL: CESTA Y VÁLVULA DE DESAGÜE Ø90mm CON RANURAS RADIALES
 // =========================================================================
 function DrainBasketStrainer3D({ position }: { position: [number, number, number] }) {
+  const isTransparent = useStore((s) => s.isTransparent);
+  const getMatProps = (color: string, metalness = 0.92, roughness = 0.2) => ({
+    color: isTransparent ? '#cbd5e1' : color,
+    metalness: isTransparent ? 0.05 : metalness,
+    roughness: isTransparent ? 0.1 : roughness,
+    transparent: isTransparent,
+    opacity: isTransparent ? 0.3 : 1,
+    depthWrite: !isTransparent,
+  });
+
   return (
     <group position={position}>
       {/* Aro exterior cromado en el fondo */}
       <mesh position={[0, 0.05, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <ringGeometry args={[4.2, 5.8, 32]} />
-        <meshStandardMaterial color="#f1f5f9" metalness={0.98} roughness={0.12} side={THREE.DoubleSide} />
+        <meshStandardMaterial {...getMatProps('#f1f5f9', 0.98, 0.12)} side={THREE.DoubleSide} />
+        {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
       </mesh>
 
       {/* Copa de drenaje profunda */}
       <mesh position={[0, -0.8, 0]}>
         <cylinderGeometry args={[4.2, 3.6, 1.6, 32]} />
-        <meshStandardMaterial color="#64748b" metalness={0.88} roughness={0.25} />
+        <meshStandardMaterial {...getMatProps('#64748b', 0.88, 0.25)} />
+        {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
       </mesh>
 
       {/* Canastillo colador con fondo perforado */}
       <mesh position={[0, -0.4, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <circleGeometry args={[3.8, 32]} />
-        <meshStandardMaterial color="#94a3b8" metalness={0.92} roughness={0.2} />
+        <meshStandardMaterial {...getMatProps('#94a3b8', 0.92, 0.2)} />
+        {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
       </mesh>
 
       {/* Ranuras oscuras radiales simuladas del colador */}
       {[0, 45, 90, 135].map((angle, idx) => (
         <mesh key={idx} position={[0, -0.38, 0]} rotation={[-Math.PI / 2, 0, (angle * Math.PI) / 180]}>
           <planeGeometry args={[0.4, 2.6]} />
-          <meshBasicMaterial color="#1e293b" />
+          <meshBasicMaterial
+            color={isTransparent ? '#cbd5e1' : '#1e293b'}
+            transparent={isTransparent}
+            opacity={isTransparent ? 0.3 : 1}
+            depthWrite={!isTransparent}
+          />
         </mesh>
       ))}
 
       {/* Perilla central cilíndrica para jalar el tapón */}
       <mesh position={[0, 0.6, 0]}>
         <cylinderGeometry args={[0.45, 0.45, 1.8, 20]} />
-        <meshStandardMaterial color="#e2e8f0" metalness={0.98} roughness={0.12} />
+        <meshStandardMaterial {...getMatProps('#e2e8f0', 0.98, 0.12)} />
+        {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
       </mesh>
       <mesh position={[0, 1.6, 0]}>
         <sphereGeometry args={[0.65, 16, 16]} />
-        <meshStandardMaterial color="#e2e8f0" metalness={0.98} roughness={0.12} />
+        <meshStandardMaterial {...getMatProps('#e2e8f0', 0.98, 0.12)} />
+        {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
       </mesh>
     </group>
   );
@@ -112,18 +153,36 @@ function DrainBasketStrainer3D({ position }: { position: [number, number, number
 // 3D MODEL: REBOSADERO VERTICAL (OVERFLOW SLOTS)
 // =========================================================================
 function OverflowSlots3D({ position }: { position: [number, number, number] }) {
+  const isTransparent = useStore((s) => s.isTransparent);
   return (
     <group position={position}>
       {/* Placa posterior oscura */}
       <mesh position={[0, 0, -0.05]}>
         <boxGeometry args={[4.5, 2.2, 0.1]} />
-        <meshStandardMaterial color="#0f172a" roughness={0.8} />
+        <meshStandardMaterial
+          key={isTransparent ? 'transp' : 'solid'}
+          color={isTransparent ? '#cbd5e1' : '#0f172a'}
+          roughness={isTransparent ? 0.1 : 0.8}
+          transparent={isTransparent}
+          opacity={isTransparent ? 0.3 : 1}
+          depthWrite={!isTransparent}
+        />
+        {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
       </mesh>
       {/* 4 Ranuras verticales de acero inoxidable */}
       {[-1.5, -0.5, 0.5, 1.5].map((x, idx) => (
         <mesh key={idx} position={[x, 0, 0.05]}>
           <boxGeometry args={[0.35, 1.6, 0.1]} />
-          <meshStandardMaterial color="#e2e8f0" metalness={0.92} roughness={0.2} />
+          <meshStandardMaterial
+            key={isTransparent ? 'transp' : 'solid'}
+            color={isTransparent ? '#cbd5e1' : '#e2e8f0'}
+            metalness={isTransparent ? 0.05 : 0.92}
+            roughness={isTransparent ? 0.1 : 0.2}
+            transparent={isTransparent}
+            opacity={isTransparent ? 0.3 : 1}
+            depthWrite={!isTransparent}
+          />
+          {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
         </mesh>
       ))}
     </group>
@@ -140,30 +199,38 @@ function AlfaOnec3018Realistic({
   position: [number, number, number];
   stoneThicknessCm: number;
 }) {
+  const isTransparent = useStore((s) => s.isTransparent);
   const spec = QSTONE_SINKS.alfa_onec_3018!;
   const w = spec.cutoutWidthMm / 10; // 69.5 cm
   const d = spec.cutoutDepthMm / 10; // 40.0 cm
   const h = 22; // 22 cm profundidad de bacin
   const wallThick = 0.35; // 3.5mm acero
 
+  const getMatProps = (color: string, metalness = 0.94, roughness = 0.22) => ({
+    color: isTransparent ? '#cbd5e1' : color,
+    metalness: isTransparent ? 0.05 : metalness,
+    roughness: isTransparent ? 0.1 : roughness,
+    transparent: isTransparent,
+    opacity: isTransparent ? 0.3 : 1,
+    depthWrite: !isTransparent,
+  });
+
   return (
     <group position={position}>
       {/* Pestaña perimetral superior que se fija BAJO la piedra (undermount flange) */}
-      <mesh position={[0, -stoneThicknessCm - 0.15, 0]}>
+      <mesh position={[0, -stoneThicknessCm - 0.15, 0]} castShadow={!isTransparent} receiveShadow={!isTransparent}>
         <boxGeometry args={[w + 6, 0.3, d + 6]} />
-        <meshStandardMaterial color="#cbd5e1" metalness={0.95} roughness={0.2} />
+        <meshStandardMaterial {...getMatProps('#cbd5e1', 0.95, 0.2)} />
+        {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
       </mesh>
 
       {/* CUBA PRINCIPAL PROFUNDA */}
       <group position={[0, -stoneThicknessCm - h / 2, 0]}>
         {/* Fondo metálico de la poza con leve declive */}
-        <mesh position={[0, -h / 2 + wallThick / 2, 0]} receiveShadow>
+        <mesh position={[0, -h / 2 + wallThick / 2, 0]} receiveShadow={!isTransparent} castShadow={!isTransparent}>
           <boxGeometry args={[w, wallThick, d]} />
-          <meshStandardMaterial
-            color="#cbd5e1"
-            metalness={0.94}
-            roughness={0.22}
-          />
+          <meshStandardMaterial {...getMatProps('#cbd5e1', 0.94, 0.22)} />
+          {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
         </mesh>
 
         {/* Líneas en cruz prensadas en el fondo ("X" drainage channels) */}
@@ -174,32 +241,41 @@ function AlfaOnec3018Realistic({
             rotation={[-Math.PI / 2, 0, Math.atan2(d, w) * side]}
           >
             <planeGeometry args={[Math.hypot(w, d) * 0.88, 0.12]} />
-            <meshBasicMaterial color="#94a3b8" />
+            <meshBasicMaterial
+              color={isTransparent ? '#cbd5e1' : '#94a3b8'}
+              transparent={isTransparent}
+              opacity={isTransparent ? 0.3 : 1}
+              depthWrite={!isTransparent}
+            />
           </mesh>
         ))}
 
         {/* Pared trasera */}
-        <mesh position={[0, 0, -d / 2 + wallThick / 2]}>
+        <mesh position={[0, 0, -d / 2 + wallThick / 2]} castShadow={!isTransparent} receiveShadow={!isTransparent}>
           <boxGeometry args={[w, h, wallThick]} />
-          <meshStandardMaterial color="#e2e8f0" metalness={0.94} roughness={0.2} />
+          <meshStandardMaterial {...getMatProps('#e2e8f0', 0.94, 0.2)} />
+          {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
         </mesh>
 
         {/* Pared frontal */}
-        <mesh position={[0, 0, d / 2 - wallThick / 2]}>
+        <mesh position={[0, 0, d / 2 - wallThick / 2]} castShadow={!isTransparent} receiveShadow={!isTransparent}>
           <boxGeometry args={[w, h, wallThick]} />
-          <meshStandardMaterial color="#e2e8f0" metalness={0.94} roughness={0.2} />
+          <meshStandardMaterial {...getMatProps('#e2e8f0', 0.94, 0.2)} />
+          {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
         </mesh>
 
         {/* Pared lateral izquierda */}
-        <mesh position={[-w / 2 + wallThick / 2, 0, 0]}>
+        <mesh position={[-w / 2 + wallThick / 2, 0, 0]} castShadow={!isTransparent} receiveShadow={!isTransparent}>
           <boxGeometry args={[wallThick, h, d]} />
-          <meshStandardMaterial color="#cbd5e1" metalness={0.94} roughness={0.22} />
+          <meshStandardMaterial {...getMatProps('#cbd5e1', 0.94, 0.22)} />
+          {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
         </mesh>
 
         {/* Pared lateral derecha */}
-        <mesh position={[w / 2 - wallThick / 2, 0, 0]}>
+        <mesh position={[w / 2 - wallThick / 2, 0, 0]} castShadow={!isTransparent} receiveShadow={!isTransparent}>
           <boxGeometry args={[wallThick, h, d]} />
-          <meshStandardMaterial color="#cbd5e1" metalness={0.94} roughness={0.22} />
+          <meshStandardMaterial {...getMatProps('#cbd5e1', 0.94, 0.22)} />
+          {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
         </mesh>
 
         {/* Válvula y canastillo de desagüe en el fondo */}
@@ -225,6 +301,7 @@ function AlfaTwocF5858aRealistic({
   position: [number, number, number];
   stoneThicknessCm: number;
 }) {
+  const isTransparent = useStore((s) => s.isTransparent);
   const spec = QSTONE_SINKS.alfa_twoc_f5858a!;
   const w = spec.cutoutWidthMm / 10; // 73 cm
   const d = spec.cutoutDepthMm / 10; // 40 cm
@@ -232,58 +309,77 @@ function AlfaTwocF5858aRealistic({
   const bowlW = (w - 2.5) / 2; // ~35.2 cm por cuba
   const wallThick = 0.35;
 
+  const getMatProps = (color: string, metalness = 0.94, roughness = 0.22) => ({
+    color: isTransparent ? '#cbd5e1' : color,
+    metalness: isTransparent ? 0.05 : metalness,
+    roughness: isTransparent ? 0.1 : roughness,
+    transparent: isTransparent,
+    opacity: isTransparent ? 0.3 : 1,
+    depthWrite: !isTransparent,
+  });
+
   return (
     <group position={position}>
       {/* Pestaña perimetral superior */}
-      <mesh position={[0, -stoneThicknessCm - 0.15, 0]}>
+      <mesh position={[0, -stoneThicknessCm - 0.15, 0]} castShadow={!isTransparent} receiveShadow={!isTransparent}>
         <boxGeometry args={[w + 6, 0.3, d + 6]} />
-        <meshStandardMaterial color="#cbd5e1" metalness={0.95} roughness={0.2} />
+        <meshStandardMaterial {...getMatProps('#cbd5e1', 0.95, 0.2)} />
+        {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
       </mesh>
 
       {/* Puente divisor central entre las dos cubas */}
-      <mesh position={[0, -stoneThicknessCm - 1.5, 0]}>
+      <mesh position={[0, -stoneThicknessCm - 1.5, 0]} castShadow={!isTransparent} receiveShadow={!isTransparent}>
         <boxGeometry args={[2.5, 3, d]} />
-        <meshStandardMaterial color="#e2e8f0" metalness={0.95} roughness={0.18} />
+        <meshStandardMaterial {...getMatProps('#e2e8f0', 0.95, 0.18)} />
+        {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
       </mesh>
 
       {/* CUBA IZQUIERDA */}
       <group position={[-w / 2 + bowlW / 2, -stoneThicknessCm - h / 2, 0]}>
-        <mesh position={[0, -h / 2 + wallThick / 2, 0]} receiveShadow>
+        <mesh position={[0, -h / 2 + wallThick / 2, 0]} receiveShadow={!isTransparent} castShadow={!isTransparent}>
           <boxGeometry args={[bowlW, wallThick, d]} />
-          <meshStandardMaterial color="#cbd5e1" metalness={0.94} roughness={0.22} />
+          <meshStandardMaterial {...getMatProps('#cbd5e1', 0.94, 0.22)} />
+          {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
         </mesh>
-        <mesh position={[0, 0, -d / 2 + wallThick / 2]}>
+        <mesh position={[0, 0, -d / 2 + wallThick / 2]} castShadow={!isTransparent} receiveShadow={!isTransparent}>
           <boxGeometry args={[bowlW, h, wallThick]} />
-          <meshStandardMaterial color="#e2e8f0" metalness={0.94} roughness={0.2} />
+          <meshStandardMaterial {...getMatProps('#e2e8f0', 0.94, 0.2)} />
+          {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
         </mesh>
-        <mesh position={[0, 0, d / 2 - wallThick / 2]}>
+        <mesh position={[0, 0, d / 2 - wallThick / 2]} castShadow={!isTransparent} receiveShadow={!isTransparent}>
           <boxGeometry args={[bowlW, h, wallThick]} />
-          <meshStandardMaterial color="#e2e8f0" metalness={0.94} roughness={0.2} />
+          <meshStandardMaterial {...getMatProps('#e2e8f0', 0.94, 0.2)} />
+          {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
         </mesh>
-        <mesh position={[-bowlW / 2 + wallThick / 2, 0, 0]}>
+        <mesh position={[-bowlW / 2 + wallThick / 2, 0, 0]} castShadow={!isTransparent} receiveShadow={!isTransparent}>
           <boxGeometry args={[wallThick, h, d]} />
-          <meshStandardMaterial color="#cbd5e1" metalness={0.94} roughness={0.22} />
+          <meshStandardMaterial {...getMatProps('#cbd5e1', 0.94, 0.22)} />
+          {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
         </mesh>
         <DrainBasketStrainer3D position={[0, -h / 2 + wallThick + 0.05, -2]} />
       </group>
 
       {/* CUBA DERECHA */}
       <group position={[w / 2 - bowlW / 2, -stoneThicknessCm - h / 2, 0]}>
-        <mesh position={[0, -h / 2 + wallThick / 2, 0]} receiveShadow>
+        <mesh position={[0, -h / 2 + wallThick / 2, 0]} receiveShadow={!isTransparent} castShadow={!isTransparent}>
           <boxGeometry args={[bowlW, wallThick, d]} />
-          <meshStandardMaterial color="#cbd5e1" metalness={0.94} roughness={0.22} />
+          <meshStandardMaterial {...getMatProps('#cbd5e1', 0.94, 0.22)} />
+          {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
         </mesh>
-        <mesh position={[0, 0, -d / 2 + wallThick / 2]}>
+        <mesh position={[0, 0, -d / 2 + wallThick / 2]} castShadow={!isTransparent} receiveShadow={!isTransparent}>
           <boxGeometry args={[bowlW, h, wallThick]} />
-          <meshStandardMaterial color="#e2e8f0" metalness={0.94} roughness={0.2} />
+          <meshStandardMaterial {...getMatProps('#e2e8f0', 0.94, 0.2)} />
+          {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
         </mesh>
-        <mesh position={[0, 0, d / 2 - wallThick / 2]}>
+        <mesh position={[0, 0, d / 2 - wallThick / 2]} castShadow={!isTransparent} receiveShadow={!isTransparent}>
           <boxGeometry args={[bowlW, h, wallThick]} />
-          <meshStandardMaterial color="#e2e8f0" metalness={0.94} roughness={0.2} />
+          <meshStandardMaterial {...getMatProps('#e2e8f0', 0.94, 0.2)} />
+          {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
         </mesh>
-        <mesh position={[bowlW / 2 - wallThick / 2, 0, 0]}>
+        <mesh position={[bowlW / 2 - wallThick / 2, 0, 0]} castShadow={!isTransparent} receiveShadow={!isTransparent}>
           <boxGeometry args={[wallThick, h, d]} />
-          <meshStandardMaterial color="#cbd5e1" metalness={0.94} roughness={0.22} />
+          <meshStandardMaterial {...getMatProps('#cbd5e1', 0.94, 0.22)} />
+          {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
         </mesh>
         <DrainBasketStrainer3D position={[0, -h / 2 + wallThick + 0.05, -2]} />
         <OverflowSlots3D position={[0, h / 2 - 4.5, -d / 2 + wallThick + 0.05]} />
@@ -299,50 +395,68 @@ function AlfaTwocF5858aRealistic({
 // 3D MODEL: ENCIMERAS A GAS FDV (SOBRECUBIERTA)
 // =========================================================================
 function FdvDesign60Model({ position }: { position: [number, number, number] }) {
+  const isTransparent = useStore((s) => s.isTransparent);
+  const getMatProps = (color: string, metalness = 0.88, roughness = 0.2) => ({
+    color: isTransparent ? '#cbd5e1' : color,
+    metalness: isTransparent ? 0.05 : metalness,
+    roughness: isTransparent ? 0.1 : roughness,
+    transparent: isTransparent,
+    opacity: isTransparent ? 0.3 : 1,
+    depthWrite: !isTransparent,
+  });
+
   return (
     <group position={position}>
-      <mesh position={[0, 0.6, 0]}>
+      <mesh position={[0, 0.6, 0]} castShadow={!isTransparent} receiveShadow={!isTransparent}>
         <boxGeometry args={[58, 1.2, 50]} />
-        <meshStandardMaterial color="#e2e8f0" metalness={0.88} roughness={0.2} />
+        <meshStandardMaterial {...getMatProps('#e2e8f0', 0.88, 0.2)} />
+        {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
       </mesh>
-      <mesh position={[0, 1.25, 0]}>
+      <mesh position={[0, 1.25, 0]} castShadow={!isTransparent} receiveShadow={!isTransparent}>
         <boxGeometry args={[57.2, 0.1, 49.2]} />
-        <meshStandardMaterial color="#94a3b8" metalness={0.95} roughness={0.15} />
+        <meshStandardMaterial {...getMatProps('#94a3b8', 0.95, 0.15)} />
+        {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
       </mesh>
       {/* 4 Quemadores con parrillas */}
       <group position={[-15, 1.6, 12]}>
-        <mesh>
+        <mesh castShadow={!isTransparent} receiveShadow={!isTransparent}>
           <cylinderGeometry args={[5.5, 6, 0.6, 32]} />
-          <meshStandardMaterial color="#1e293b" metalness={0.2} roughness={0.8} />
+          <meshStandardMaterial {...getMatProps('#1e293b', 0.2, 0.8)} />
+          {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
         </mesh>
-        <mesh position={[0, 0.4, 0]}>
+        <mesh position={[0, 0.4, 0]} castShadow={!isTransparent} receiveShadow={!isTransparent}>
           <cylinderGeometry args={[2, 2, 0.8, 24]} />
-          <meshStandardMaterial color="#eab308" metalness={0.8} roughness={0.3} />
+          <meshStandardMaterial {...getMatProps('#eab308', 0.8, 0.3)} />
+          {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
         </mesh>
       </group>
       <group position={[-15, 1.6, -12]}>
-        <mesh>
+        <mesh castShadow={!isTransparent} receiveShadow={!isTransparent}>
           <cylinderGeometry args={[4, 4.5, 0.6, 24]} />
-          <meshStandardMaterial color="#1e293b" metalness={0.2} roughness={0.8} />
+          <meshStandardMaterial {...getMatProps('#1e293b', 0.2, 0.8)} />
+          {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
         </mesh>
       </group>
       <group position={[15, 1.6, -12]}>
-        <mesh>
+        <mesh castShadow={!isTransparent} receiveShadow={!isTransparent}>
           <cylinderGeometry args={[4.8, 5.2, 0.6, 24]} />
-          <meshStandardMaterial color="#1e293b" metalness={0.2} roughness={0.8} />
+          <meshStandardMaterial {...getMatProps('#1e293b', 0.2, 0.8)} />
+          {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
         </mesh>
       </group>
       <group position={[15, 1.6, 12]}>
-        <mesh>
+        <mesh castShadow={!isTransparent} receiveShadow={!isTransparent}>
           <cylinderGeometry args={[3.2, 3.8, 0.6, 24]} />
-          <meshStandardMaterial color="#1e293b" metalness={0.2} roughness={0.8} />
+          <meshStandardMaterial {...getMatProps('#1e293b', 0.2, 0.8)} />
+          {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
         </mesh>
       </group>
       {/* 4 Perillas de control */}
       {[-12, -4, 4, 12].map((x, idx) => (
-        <mesh key={idx} position={[x, 1.5, 20]} rotation={[0.2, 0, 0]}>
+        <mesh key={idx} position={[x, 1.5, 20]} rotation={[0.2, 0, 0]} castShadow={!isTransparent} receiveShadow={!isTransparent}>
           <cylinderGeometry args={[1.2, 1.2, 0.8, 16]} />
-          <meshStandardMaterial color="#cbd5e1" metalness={0.9} roughness={0.2} />
+          <meshStandardMaterial {...getMatProps('#cbd5e1', 0.9, 0.2)} />
+          {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
         </mesh>
       ))}
     </group>
@@ -350,53 +464,71 @@ function FdvDesign60Model({ position }: { position: [number, number, number] }) 
 }
 
 function FdvDesign90Model({ position }: { position: [number, number, number] }) {
+  const isTransparent = useStore((s) => s.isTransparent);
+  const getMatProps = (color: string, metalness = 0.88, roughness = 0.2) => ({
+    color: isTransparent ? '#cbd5e1' : color,
+    metalness: isTransparent ? 0.05 : metalness,
+    roughness: isTransparent ? 0.1 : roughness,
+    transparent: isTransparent,
+    opacity: isTransparent ? 0.3 : 1,
+    depthWrite: !isTransparent,
+  });
+
   return (
     <group position={position}>
-      <mesh position={[0, 0.7, 0]}>
+      <mesh position={[0, 0.7, 0]} castShadow={!isTransparent} receiveShadow={!isTransparent}>
         <boxGeometry args={[86, 1.4, 50]} />
-        <meshStandardMaterial color="#e2e8f0" metalness={0.88} roughness={0.2} />
+        <meshStandardMaterial {...getMatProps('#e2e8f0', 0.88, 0.2)} />
+        {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
       </mesh>
       {/* Quemador Wok central triple corona */}
       <group position={[0, 1.8, 0]}>
-        <mesh>
+        <mesh castShadow={!isTransparent} receiveShadow={!isTransparent}>
           <cylinderGeometry args={[6.5, 7.5, 0.8, 32]} />
-          <meshStandardMaterial color="#1e293b" metalness={0.2} roughness={0.8} />
+          <meshStandardMaterial {...getMatProps('#1e293b', 0.2, 0.8)} />
+          {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
         </mesh>
-        <mesh position={[0, 0.5, 0]}>
+        <mesh position={[0, 0.5, 0]} castShadow={!isTransparent} receiveShadow={!isTransparent}>
           <cylinderGeometry args={[2.5, 2.5, 1.0, 24]} />
-          <meshStandardMaterial color="#eab308" metalness={0.8} roughness={0.3} />
+          <meshStandardMaterial {...getMatProps('#eab308', 0.8, 0.3)} />
+          {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
         </mesh>
       </group>
       {/* 4 quemadores laterales */}
       <group position={[-28, 1.6, 12]}>
-        <mesh>
+        <mesh castShadow={!isTransparent} receiveShadow={!isTransparent}>
           <cylinderGeometry args={[4.2, 4.8, 0.6, 24]} />
-          <meshStandardMaterial color="#1e293b" metalness={0.2} roughness={0.8} />
+          <meshStandardMaterial {...getMatProps('#1e293b', 0.2, 0.8)} />
+          {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
         </mesh>
       </group>
       <group position={[-28, 1.6, -12]}>
-        <mesh>
+        <mesh castShadow={!isTransparent} receiveShadow={!isTransparent}>
           <cylinderGeometry args={[4.8, 5.2, 0.6, 24]} />
-          <meshStandardMaterial color="#1e293b" metalness={0.2} roughness={0.8} />
+          <meshStandardMaterial {...getMatProps('#1e293b', 0.2, 0.8)} />
+          {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
         </mesh>
       </group>
       <group position={[28, 1.6, 12]}>
-        <mesh>
+        <mesh castShadow={!isTransparent} receiveShadow={!isTransparent}>
           <cylinderGeometry args={[3.2, 3.8, 0.6, 24]} />
-          <meshStandardMaterial color="#1e293b" metalness={0.2} roughness={0.8} />
+          <meshStandardMaterial {...getMatProps('#1e293b', 0.2, 0.8)} />
+          {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
         </mesh>
       </group>
       <group position={[28, 1.6, -12]}>
-        <mesh>
+        <mesh castShadow={!isTransparent} receiveShadow={!isTransparent}>
           <cylinderGeometry args={[4.2, 4.8, 0.6, 24]} />
-          <meshStandardMaterial color="#1e293b" metalness={0.2} roughness={0.8} />
+          <meshStandardMaterial {...getMatProps('#1e293b', 0.2, 0.8)} />
+          {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
         </mesh>
       </group>
       {/* 5 Perillas frontales */}
       {[-16, -8, 0, 8, 16].map((x, idx) => (
-        <mesh key={idx} position={[x, 1.6, 20]} rotation={[0.2, 0, 0]}>
+        <mesh key={idx} position={[x, 1.6, 20]} rotation={[0.2, 0, 0]} castShadow={!isTransparent} receiveShadow={!isTransparent}>
           <cylinderGeometry args={[1.2, 1.2, 0.8, 16]} />
-          <meshStandardMaterial color="#cbd5e1" metalness={0.9} roughness={0.2} />
+          <meshStandardMaterial {...getMatProps('#cbd5e1', 0.9, 0.2)} />
+          {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
         </mesh>
       ))}
     </group>
@@ -407,7 +539,8 @@ function FdvDesign90Model({ position }: { position: [number, number, number] }) 
 // COMPONENTE PRINCIPAL: KITCHEN COUNTERTOP 3D (CONTINUOUS SLABS & UNDERMOUNT SINK)
 // =========================================================================
 export function KitchenCountertop3D() {
-  const { countertopConfig, qstoneCatalog, cabinets, walls } = useKitchenStore();
+  const isTransparent = useStore((state) => state.isTransparent);
+  const { countertopConfig, qstoneCatalog, cabinets, walls, architecturalElements, roomConfig } = useKitchenStore();
 
   const selectedProduct = useMemo(() => {
     return (
@@ -423,10 +556,19 @@ export function KitchenCountertop3D() {
   const roughness = selectedProduct.finish === 'Pulido Brillante' ? 0.08 : 0.25;
   const metalness = 0.04;
 
+  const getCountertopMatProps = () => ({
+    color: isTransparent ? '#cbd5e1' : stoneColor,
+    roughness: isTransparent ? 0.1 : roughness,
+    metalness: isTransparent ? 0.05 : metalness,
+    transparent: isTransparent,
+    opacity: isTransparent ? 0.3 : 1,
+    depthWrite: !isTransparent,
+  });
+
   // Agrupamiento geométrico en corridas continuas
   const continuousRuns = useMemo(() => {
-    return detectContinuousCabinetRuns(cabinets, countertopConfig, walls);
-  }, [cabinets, countertopConfig, walls]);
+    return detectContinuousCabinetRuns(cabinets, countertopConfig, walls, architecturalElements, roomConfig);
+  }, [cabinets, countertopConfig, walls, architecturalElements, roomConfig]);
 
   if (!countertopConfig.enabled || continuousRuns.length === 0) {
     return null;
@@ -495,6 +637,10 @@ export function KitchenCountertop3D() {
 
         // Renderizar los tramos de la corrida según segmentLengthsMm
         let currentSegStartCm = -totalRunLengthCm / 2;
+        const totalExtLeftCm =
+          ((run.cornerExtensionLeftMm || 0) + (run.extensionToWallLeftMm || 0)) / 10;
+        const totalExtRightCm =
+          ((run.cornerExtensionRightMm || 0) + (run.extensionToWallRightMm || 0)) / 10;
 
         return (
           <group
@@ -504,11 +650,9 @@ export function KitchenCountertop3D() {
           >
             {run.segmentLengthsMm.map((segLenMm, segIdx) => {
               const segLenCm = segLenMm / 10;
-              const extraCornerLeftCm = segIdx === 0 ? (run.cornerExtensionLeftMm || 0) / 10 : 0;
+              const extraCornerLeftCm = segIdx === 0 ? totalExtLeftCm : 0;
               const extraCornerRightCm =
-                segIdx === run.segmentLengthsMm.length - 1
-                  ? (run.cornerExtensionRightMm || 0) / 10
-                  : 0;
+                segIdx === run.segmentLengthsMm.length - 1 ? totalExtRightCm : 0;
               const totalSegSlabLenCm = segLenCm + extraCornerLeftCm + extraCornerRightCm;
               const segCornerShiftX = (extraCornerRightCm - extraCornerLeftCm) / 2;
 
@@ -555,15 +699,12 @@ export function KitchenCountertop3D() {
                                 slabCenterY,
                                 localZShift,
                               ]}
-                              castShadow
-                              receiveShadow
+                              castShadow={!isTransparent}
+                              receiveShadow={!isTransparent}
                             >
                               <boxGeometry args={[leftPartW, stoneThicknessCm, depthCm]} />
-                              <meshStandardMaterial
-                                color={stoneColor}
-                                roughness={roughness}
-                                metalness={metalness}
-                              />
+                              <meshStandardMaterial {...getCountertopMatProps()} />
+                              {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
                             </mesh>
                           )}
 
@@ -575,15 +716,12 @@ export function KitchenCountertop3D() {
                                 slabCenterY,
                                 localZShift,
                               ]}
-                              castShadow
-                              receiveShadow
+                              castShadow={!isTransparent}
+                              receiveShadow={!isTransparent}
                             >
                               <boxGeometry args={[rightPartW, stoneThicknessCm, depthCm]} />
-                              <meshStandardMaterial
-                                color={stoneColor}
-                                roughness={roughness}
-                                metalness={metalness}
-                              />
+                              <meshStandardMaterial {...getCountertopMatProps()} />
+                              {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
                             </mesh>
                           )}
 
@@ -595,15 +733,12 @@ export function KitchenCountertop3D() {
                                 slabCenterY,
                                 -depthCm / 2 + rearPartD / 2,
                               ]}
-                              castShadow
-                              receiveShadow
+                              castShadow={!isTransparent}
+                              receiveShadow={!isTransparent}
                             >
                               <boxGeometry args={[cutoutW, stoneThicknessCm, rearPartD]} />
-                              <meshStandardMaterial
-                                color={stoneColor}
-                                roughness={roughness}
-                                metalness={metalness}
-                              />
+                              <meshStandardMaterial {...getCountertopMatProps()} />
+                              {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
                             </mesh>
                           )}
 
@@ -615,15 +750,12 @@ export function KitchenCountertop3D() {
                                 slabCenterY,
                                 depthCm / 2 - frontPartD / 2,
                               ]}
-                              castShadow
-                              receiveShadow
+                              castShadow={!isTransparent}
+                              receiveShadow={!isTransparent}
                             >
                               <boxGeometry args={[cutoutW, stoneThicknessCm, frontPartD]} />
-                              <meshStandardMaterial
-                                color={stoneColor}
-                                roughness={roughness}
-                                metalness={metalness}
-                              />
+                              <meshStandardMaterial {...getCountertopMatProps()} />
+                              {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
                             </mesh>
                           )}
 
@@ -645,15 +777,12 @@ export function KitchenCountertop3D() {
                     })()
                   ) : (
                     /* SI NO TIENE LAVAPLATOS: Plancha corrida continua estándar cubriendo toda la superficie hasta el muro en esquinas */
-                    <mesh position={[0, slabCenterY, localZShift]} castShadow receiveShadow>
+                    <mesh position={[0, slabCenterY, localZShift]} castShadow={!isTransparent} receiveShadow={!isTransparent}>
                       <boxGeometry
                         args={[totalSegSlabLenCm - (isLastSeg ? 0 : 0.05), stoneThicknessCm, depthCm]}
                       />
-                      <meshStandardMaterial
-                        color={stoneColor}
-                        roughness={roughness}
-                        metalness={metalness}
-                      />
+                      <meshStandardMaterial {...getCountertopMatProps()} />
+                      {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
                     </mesh>
                   )}
 
@@ -661,7 +790,14 @@ export function KitchenCountertop3D() {
                   {!isLastSeg && (
                     <mesh position={[totalSegSlabLenCm / 2, slabCenterY, localZShift]}>
                       <boxGeometry args={[0.06, stoneThicknessCm + 0.02, depthCm + 0.02]} />
-                      <meshStandardMaterial color="#94a3b8" roughness={0.8} />
+                      <meshStandardMaterial
+                        key={isTransparent ? 'transp' : 'solid'}
+                        color={isTransparent ? '#cbd5e1' : '#94a3b8'}
+                        roughness={isTransparent ? 0.1 : 0.8}
+                        transparent={isTransparent}
+                        opacity={isTransparent ? 0.3 : 1}
+                        depthWrite={!isTransparent}
+                      />
                     </mesh>
                   )}
                 </group>
@@ -681,30 +817,30 @@ export function KitchenCountertop3D() {
             )}
 
             {/* Faldón Delantero / Regrueso Continuo (de 0 a 5 cm) */}
-            {regruesoCm > 0 && (
-              <mesh
-                position={[
-                  0,
-                  cabTopY + stoneThicknessCm - regruesoCm / 2,
-                  run.cabinets[0].depth / 2 + frontOverhang - stoneThicknessCm / 2,
-                ]}
-                castShadow
-              >
-                <boxGeometry args={[totalRunLengthCm, regruesoCm, stoneThicknessCm]} />
-                <meshStandardMaterial
-                  color={stoneColor}
-                  roughness={roughness}
-                  metalness={metalness}
-                />
-              </mesh>
-            )}
+            {regruesoCm > 0 && (() => {
+              const apronShiftX = (totalExtRightCm - totalExtLeftCm) / 2;
+              const apronLen = totalRunLengthCm + totalExtLeftCm + totalExtRightCm;
+              return (
+                <mesh
+                  position={[
+                    apronShiftX,
+                    cabTopY + stoneThicknessCm - regruesoCm / 2,
+                    run.cabinets[0].depth / 2 + frontOverhang - stoneThicknessCm / 2,
+                  ]}
+                  castShadow={!isTransparent}
+                  receiveShadow={!isTransparent}
+                >
+                  <boxGeometry args={[apronLen, regruesoCm, stoneThicknessCm]} />
+                  <meshStandardMaterial {...getCountertopMatProps()} />
+                  {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
+                </mesh>
+              );
+            })()}
 
             {/* Respaldo / Zócalo Posterior Continuo (solo en muebles base contra muro) */}
             {!isIsland && countertopConfig.backsplashMode !== 'none' && (() => {
-              const extLeftCm = (run.cornerExtensionLeftMm || 0) / 10;
-              const extRightCm = (run.cornerExtensionRightMm || 0) / 10;
-              const bsLenCm = totalRunLengthCm + extLeftCm + extRightCm;
-              const bsCenterShiftX = (extRightCm - extLeftCm) / 2;
+              const bsLenCm = totalRunLengthCm + totalExtLeftCm + totalExtRightCm;
+              const bsCenterShiftX = (totalExtRightCm - totalExtLeftCm) / 2;
 
               return (
                 <mesh
@@ -715,7 +851,8 @@ export function KitchenCountertop3D() {
                       (countertopConfig.backsplashMode === 'standard_5cm' ? 2.5 : 27.5),
                     -run.cabinets[0].depth / 2 + stoneThicknessCm / 2,
                   ]}
-                  castShadow
+                  castShadow={!isTransparent}
+                  receiveShadow={!isTransparent}
                 >
                   <boxGeometry
                     args={[
@@ -724,11 +861,8 @@ export function KitchenCountertop3D() {
                       stoneThicknessCm,
                     ]}
                   />
-                  <meshStandardMaterial
-                    color={stoneColor}
-                    roughness={roughness}
-                    metalness={metalness}
-                  />
+                  <meshStandardMaterial {...getCountertopMatProps()} />
+                  {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
                 </mesh>
               );
             })()}
@@ -741,16 +875,14 @@ export function KitchenCountertop3D() {
                   (cabTopY + stoneThicknessCm) / 2,
                   localZShift,
                 ]}
-                castShadow
+                castShadow={!isTransparent}
+                receiveShadow={!isTransparent}
               >
                 <boxGeometry
                   args={[stoneThicknessCm, cabTopY + stoneThicknessCm, depthCm]}
                 />
-                <meshStandardMaterial
-                  color={stoneColor}
-                  roughness={roughness}
-                  metalness={metalness}
-                />
+                <meshStandardMaterial {...getCountertopMatProps()} />
+                {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
               </mesh>
             )}
 
@@ -762,16 +894,14 @@ export function KitchenCountertop3D() {
                   (cabTopY + stoneThicknessCm) / 2,
                   localZShift,
                 ]}
-                castShadow
+                castShadow={!isTransparent}
+                receiveShadow={!isTransparent}
               >
                 <boxGeometry
                   args={[stoneThicknessCm, cabTopY + stoneThicknessCm, depthCm]}
                 />
-                <meshStandardMaterial
-                  color={stoneColor}
-                  roughness={roughness}
-                  metalness={metalness}
-                />
+                <meshStandardMaterial {...getCountertopMatProps()} />
+                {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
               </mesh>
             )}
           </group>

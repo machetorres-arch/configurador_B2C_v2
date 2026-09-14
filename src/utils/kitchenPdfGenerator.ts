@@ -238,7 +238,7 @@ export function exportKitchenPDF(cabinets: CabinetType[], state: any, filename =
   // PÁGINA 3: MARMOLERÍA TÉCNICA QSTONE (CUARZO & SINTERIZADO), CORTE & ENCASTRES
   // =========================================================================
   const kStore = useKitchenStore.getState();
-  const ctBOM = generateCountertopPieces(cabinets, kStore.countertopConfig, kStore.qstoneCatalog);
+  const ctBOM = generateCountertopPieces(cabinets, kStore.countertopConfig, kStore.qstoneCatalog, kStore.islandBackConfig, kStore.walls, kStore.architecturalElements, kStore.roomConfig);
 
   if (kStore.countertopConfig?.enabled && ctBOM && ctBOM.pieces.length > 0) {
     doc.addPage('a4', 'p');

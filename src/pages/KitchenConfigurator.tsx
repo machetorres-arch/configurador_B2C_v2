@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useKitchenStore, CabinetType } from '../store/kitchenStore';
+import { useKitchenStore, CabinetType, getCabinetLabel } from '../store/kitchenStore';
 import { useStore } from '../store';
 import { TexturesSection } from '../components/TexturesSection';
 import { KitchenBlueprint } from '../components/KitchenBlueprint';
@@ -9,48 +9,27 @@ import { KitchenScene } from '../components/kitchen/KitchenScene';
 import { RoomPlannerModal } from '../components/kitchen/RoomPlannerModal';
 import { ResetConfirmModal } from '../components/kitchen/ResetConfirmModal';
 import { RoomFinishesSection } from '../components/kitchen/RoomFinishesSection';
+import { IslandBackPanelConfigSection } from '../components/kitchen/IslandBackPanelConfigSection';
 import { KitchenModuleContextMenu } from '../components/kitchen/KitchenModuleContextMenu';
 import { SaveProjectModal } from '../components/common/SaveProjectModal';
 import { CountertopConfigModal } from '../components/kitchen/CountertopConfigModal';
 import { GolaRegruesoIncompatibilityModal } from '../components/kitchen/GolaRegruesoIncompatibilityModal';
 import { calculatePolygonArea } from '../utils/roomGeometry';
-import { ArrowLeft, Box, Square, Move3D, PenTool, LayoutGrid, Trash2, RotateCw, Flame, Refrigerator, Flower2, Info, Sparkles, Maximize2, Layers, Palette, ListOrdered, Save, Columns, Sliders, Sun, Moon } from 'lucide-react';
+import { ArrowLeft, Box, Square, Move3D, PenTool, LayoutGrid, Trash2, RotateCw, Flame, Refrigerator, Flower2, Info, Sparkles, Maximize2, Layers, Palette, ListOrdered, Save, Columns, Sliders, Sun, Moon, Wine } from 'lucide-react';
 
 const sectionTitle = "text-xs uppercase tracking-wider text-orange-400 font-bold mb-3 mt-4 first:mt-0";
 const labelClass = "text-xs uppercase tracking-wider text-slate-300 font-semibold";
 const btnClass = "w-full py-2 px-3 bg-white/5 border border-white/10 rounded-lg text-center cursor-pointer hover:border-orange-500/50 hover:bg-white/10 transition-colors text-xs font-medium text-slate-300";
 const activeBtnClass = "w-full py-2 px-3 bg-orange-500/20 border border-orange-500 rounded-lg text-center cursor-pointer text-orange-400 transition-colors text-xs font-bold shadow-[0_0_10px_rgba(249,115,22,0.15)]";
 
-function getCabinetLabel(cab: CabinetType, index: number) {
-  if (cab.variant === 'deco_hood') return 'Campana FDV Conic 90';
-  if (cab.variant === 'deco_stove') return 'Cocina FDV 90';
-  if (cab.variant === 'deco_fridge') return 'Refrigerador SBS 513L';
-  if (cab.variant === 'deco_plant') return 'Planta Interior';
-  if (cab.variant?.startsWith('corner_blind')) return 'Esquinero Ciego';
-  if (cab.variant === 'tall_1_door') return 'Despensa 1 Puerta Larga';
-  if (cab.variant === 'tall_split_2_doors') return 'Despensa 2 Puertas (Línea Base)';
-  if (cab.variant === 'tall_oven_micro') return 'Torre Horno + Micro';
-  if (cab.variant === 'tall_microwave_niche') return 'Torre Nicho Micro';
-  if (cab.variant === 'tall_open') return 'Despensa Abierta';
-  if (cab.variant === 'tall_2_doors') return 'Despensa 2 Puertas';
-  if (cab.variant === 'wall_1_door') return 'Aéreo 1 Puerta';
-  if (cab.variant === 'wall_2_doors') return 'Aéreo 2 Puertas';
-  if (cab.variant === 'wall_lift_up') return 'Aéreo Elevable Aventos';
-  if (cab.variant === 'wall_lift_up_double') return 'Aéreo Doble Elevable';
-  if (cab.variant === 'wall_microwave_niche') return 'Aéreo Nicho Micro';
-  if (cab.variant === 'wall_open') return 'Aéreo Abierto Repisas';
-  if (cab.variant === '1_door_1_drawer') return 'Base 1 Pta + 1 Cajón';
-  if (cab.variant === '4_drawers') return 'Base 4 Cajones';
-  if (cab.variant === '2_pot_drawers') return 'Base 2 Olleros';
-  if (cab.variant === 'spice_rack') return 'Base Especiero';
-  if (cab.variant === '2_doors') return 'Base 2 Puertas';
-  if (cab.variant === '1_door') return 'Base 1 Puerta';
-  if (cab.type === 'base') return 'Mueble Base';
-  if (cab.type === 'tall') return 'Torre / Despensa';
-  if (cab.type === 'wall') return 'Mueble Aéreo';
-  if (cab.type === 'island') return 'Isla Cocina';
-  return `Módulo ${index + 1}`;
-}
+export const DIMENSION_LEVEL_DATA: Record<number, { title: string; desc: string }> = {
+  1: { title: '1. Cotas Generales', desc: 'Largo total de corrida, alto y prof.' },
+  2: { title: '2. Módulos', desc: 'Ancho individual de cada cuerpo' },
+  3: { title: '3. Frentes', desc: 'Puertas y frentes ciegos' },
+  4: { title: '4. Cajoneras e Interiores', desc: 'Alturas de cajones y repisas' },
+  5: { title: '5. Identificación Módulos', desc: 'N° y nombre de muebles (MOD • Nombre)' },
+  6: { title: '6. Medidas Espaciales', desc: 'Muros, vanos, pilares y paso Isla-Base' },
+};
 
 const ToggleBtn = ({ active, onClick, label, isLight }: { active: boolean, onClick: () => void, label: string, isLight?: boolean }) => (
   <button 
@@ -111,7 +90,7 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
 
   const isLight = theme === 'light';
 
-  const { viewMode, setViewMode, toolMode, setToolMode, cabinets, activeCabinetId, updateCabinet, removeCabinet, setActiveCabinet, applyGlobalTexture, showSocle, setShowSocle, roomConfig, setRoomPlannerOpen, architecturalElements, activeArchElementId, addArchitecturalElement, updateArchitecturalElement, removeArchitecturalElement, setActiveArchElement, golaSystem, setGolaSystem, countertopConfig, qstoneCatalog } = useKitchenStore();
+  const { viewMode, setViewMode, toolMode, setToolMode, cabinets, activeCabinetId, updateCabinet, removeCabinet, setActiveCabinet, applyGlobalTexture, showSocle, setShowSocle, roomConfig, setRoomPlannerOpen, architecturalElements, activeArchElementId, addArchitecturalElement, updateArchitecturalElement, removeArchitecturalElement, setActiveArchElement, golaSystem, setGolaSystem, countertopConfig, qstoneCatalog, islandBackConfig, setIslandBackConfig } = useKitchenStore();
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
   const [isCountertopModalOpen, setIsCountertopModalOpen] = useState(false);
@@ -122,6 +101,11 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
   const currentAreaM2 = calculatePolygonArea(roomConfig?.vertices || []);
   const activeArchElement = architecturalElements.find(el => el.id === activeArchElementId);
 
+  // Requisito: Cuando se carguen los muebles, las cotas deben iniciar apagadas
+  useEffect(() => {
+    useStore.setState({ showDimensions: false });
+  }, []);
+
   // Auto-switch right tab to 'module' when an item is selected
   useEffect(() => {
     if (activeCabinetId || activeArchElementId) {
@@ -129,7 +113,7 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
     }
   }, [activeCabinetId, activeArchElementId]);
 
-  // Keyboard shortcut listener: Delete or Backspace to delete individual active cabinet
+  // Keyboard shortcut listener: Delete or Backspace to delete individual active cabinet or arch element
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const activeTag = (document.activeElement?.tagName || '').toLowerCase();
@@ -139,14 +123,18 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
       if ((e.key === 'Delete' || e.key === 'Backspace') && activeCabinetId) {
         e.preventDefault();
         removeCabinet(activeCabinetId);
+      } else if ((e.key === 'Delete' || e.key === 'Backspace') && activeArchElementId) {
+        e.preventDefault();
+        removeArchitecturalElement(activeArchElementId);
       } else if (e.key === 'Escape') {
         setActiveCabinet(null);
+        setActiveArchElement(null);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeCabinetId, removeCabinet, setActiveCabinet]);
+  }, [activeCabinetId, activeArchElementId, removeCabinet, removeArchitecturalElement, setActiveCabinet, setActiveArchElement]);
 
   const handleTextureSelect = (url: string, mat: string) => {
     if (!activeCabinetId) return;
@@ -172,6 +160,15 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
 
   const handleGlobalTextureSelect = (url: string, mat: string) => {
     const part = globalState.targetPart;
+    if (part === 'islandBack') {
+      setIslandBackConfig({
+        enabled: true,
+        materialType: 'decorative',
+        decorativeColor: url,
+        decorativeMaterial: mat as any,
+      });
+      return;
+    }
     applyGlobalTexture(part, url, mat as any);
     if (part === 'structure' || part === 'all') {
       globalState.setStructureColor(url);
@@ -399,6 +396,7 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                        <ToolButton isLight={isLight} active={toolMode === 'place_base_4_drawers'} onClick={() => { setToolMode('place_base_4_drawers'); setViewMode('3d'); }} icon={<Box size={14}/>} label="4 Cajones" />
                        <ToolButton isLight={isLight} active={toolMode === 'place_base_2_pot_drawers'} onClick={() => { setToolMode('place_base_2_pot_drawers'); setViewMode('3d'); }} icon={<Box size={14}/>} label="2 Olleros" />
                        <ToolButton isLight={isLight} active={toolMode === 'place_base_spice_rack'} onClick={() => { setToolMode('place_base_spice_rack'); setViewMode('3d'); }} icon={<Box size={14}/>} label="Especiero" />
+                       <ToolButton isLight={isLight} active={toolMode === 'place_base_wine_rack'} onClick={() => { setToolMode('place_base_wine_rack'); setViewMode('3d'); }} icon={<Wine size={14}/>} label="Botellero Base" />
                        <ToolButton isLight={isLight} active={toolMode === 'place_base_corner_blind'} onClick={() => { setToolMode('place_base_corner_blind'); setViewMode('3d'); }} icon={<Box size={14}/>} label="Esquinero Ciego" />
                     </div>
                     
@@ -409,6 +407,7 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                        <ToolButton isLight={isLight} active={toolMode === 'place_tall_oven_micro'} onClick={() => { setToolMode('place_tall_oven_micro'); setViewMode('3d'); }} icon={<LayoutGrid size={14}/>} label="Torre Horno + Micro Empotrado" />
                        <ToolButton isLight={isLight} active={toolMode === 'place_tall_microwave_niche'} onClick={() => { setToolMode('place_tall_microwave_niche'); setViewMode('3d'); }} icon={<LayoutGrid size={14}/>} label="Nicho Micro Portátil" />
                        <ToolButton isLight={isLight} active={toolMode === 'place_tall_open'} onClick={() => { setToolMode('place_tall_open'); setViewMode('3d'); }} icon={<LayoutGrid size={14}/>} label="Repisas a la Vista" />
+                       <ToolButton isLight={isLight} active={toolMode === 'place_tall_wine_rack'} onClick={() => { setToolMode('place_tall_wine_rack'); setViewMode('3d'); }} icon={<Wine size={14}/>} label="Botellero Despensa" />
                        <ToolButton isLight={isLight} active={toolMode === 'place_tall_2_doors'} onClick={() => { setToolMode('place_tall_2_doors'); setViewMode('3d'); }} icon={<LayoutGrid size={14}/>} label="Despensa 2 Puertas" />
                     </div>
 
@@ -420,6 +419,9 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                        <ToolButton isLight={isLight} active={toolMode === 'place_wall_lift_up_double'} onClick={() => { setToolMode('place_wall_lift_up_double'); setViewMode('3d'); }} icon={<Square size={14}/>} label="4. Doble Pta Elevable" />
                        <ToolButton isLight={isLight} active={toolMode === 'place_wall_microwave_niche'} onClick={() => { setToolMode('place_wall_microwave_niche'); setViewMode('3d'); }} icon={<Square size={14}/>} label="5. Nicho Micro + Pta Sup" />
                        <ToolButton isLight={isLight} active={toolMode === 'place_wall_open'} onClick={() => { setToolMode('place_wall_open'); setViewMode('3d'); }} icon={<Square size={14}/>} label="6. Repisas a la Vista" />
+                       <ToolButton isLight={isLight} active={toolMode === 'place_wall_corner_blind'} onClick={() => { setToolMode('place_wall_corner_blind'); setViewMode('3d'); }} icon={<Square size={14}/>} label="7. Aéreo Esquinero Ciego" />
+                       <ToolButton isLight={isLight} active={toolMode === 'place_wall_wine_rack'} onClick={() => { setToolMode('place_wall_wine_rack'); setViewMode('3d'); }} icon={<Wine size={14}/>} label="8. Botellero Aéreo" />
+                       <ToolButton isLight={isLight} active={toolMode === 'place_island_wine_rack'} onClick={() => { setToolMode('place_island_wine_rack'); setViewMode('3d'); }} icon={<Wine size={14}/>} label="Botellero Isla" />
                        <ToolButton isLight={isLight} active={toolMode === 'place_island'} onClick={() => { setToolMode('place_island'); setViewMode('3d'); }} icon={<Box size={14}/>} label="Isla Libre" />
                     </div>
 
@@ -656,6 +658,17 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                     <div className="flex items-center gap-2 shrink-0">
                       <button
                         onClick={() => {
+                          setToolMode('move_active');
+                          setViewMode('3d');
+                        }}
+                        className="text-xs text-amber-500 hover:text-amber-600 flex items-center gap-1 font-semibold cursor-pointer"
+                        title="Mover elemento"
+                      >
+                        <Move3D size={13} />
+                        <span>Mover</span>
+                      </button>
+                      <button
+                        onClick={() => {
                           const currentRot = activeArchElement.rotation || 0;
                           const nextRot = (currentRot + Math.PI / 2) % (Math.PI * 2);
                           updateArchitecturalElement(activeArchElement.id, { rotation: nextRot });
@@ -665,6 +678,13 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                       >
                         <RotateCw size={13} />
                         <span>Girar</span>
+                      </button>
+                      <button
+                        onClick={() => setActiveArchElement(null)}
+                        className={`text-xs flex items-center gap-1 font-semibold cursor-pointer ${isLight ? 'text-slate-500 hover:text-slate-700' : 'text-slate-400 hover:text-slate-200'}`}
+                        title="Deseleccionar"
+                      >
+                        <span>Soltar</span>
                       </button>
                       <button
                         onClick={() => removeArchitecturalElement(activeArchElement.id)}
@@ -677,15 +697,21 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                     </div>
                   </div>
 
-                  <div className={`grid grid-cols-2 gap-2 p-2.5 rounded-lg border text-center ${isLight ? 'bg-slate-100 border-slate-300' : 'bg-black/40 border-white/10'}`}>
+                  <div className={`grid ${activeArchElement.type === 'pillar' ? 'grid-cols-3' : 'grid-cols-2'} gap-2 p-2.5 rounded-lg border text-center ${isLight ? 'bg-slate-100 border-slate-300' : 'bg-black/40 border-white/10'}`}>
                     <div>
-                      <div className={`text-xs uppercase tracking-wider font-semibold ${isLight ? 'text-slate-700' : 'text-slate-400'}`}>Ancho</div>
+                      <div className={`text-[10px] uppercase tracking-wider font-semibold ${isLight ? 'text-slate-700' : 'text-slate-400'}`}>Ancho</div>
                       <div className={`font-mono text-sm font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>{activeArchElement.width} cm</div>
                     </div>
                     <div>
-                      <div className={`text-xs uppercase tracking-wider font-semibold ${isLight ? 'text-slate-700' : 'text-slate-400'}`}>Alto</div>
+                      <div className={`text-[10px] uppercase tracking-wider font-semibold ${isLight ? 'text-slate-700' : 'text-slate-400'}`}>Alto</div>
                       <div className={`font-mono text-sm font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>{activeArchElement.height} cm</div>
                     </div>
+                    {activeArchElement.type === 'pillar' && (
+                      <div>
+                        <div className={`text-[10px] uppercase tracking-wider font-semibold ${isLight ? 'text-slate-700' : 'text-slate-400'}`}>Prof.</div>
+                        <div className={`font-mono text-sm font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>{activeArchElement.depth || 30} cm</div>
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex flex-col gap-3 pt-2">
@@ -706,6 +732,17 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                       max={300}
                       step={5}
                       onChange={(val) => updateArchitecturalElement(activeArchElement.id, { height: val })}
+                    />
+
+                    {/* Ajuste milimétrico de posición en el muro */}
+                    <SliderControl
+                      isLight={isLight}
+                      label="Posición en Muro (Desplazamiento cm)"
+                      value={Math.round(activeArchElement.offset || 0)}
+                      min={-250}
+                      max={250}
+                      step={1}
+                      onChange={(val) => updateArchitecturalElement(activeArchElement.id, { offset: val })}
                     />
 
                     {activeArchElement.type === 'window' && (
@@ -731,6 +768,29 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                         onChange={(val) => updateArchitecturalElement(activeArchElement.id, { depth: val })}
                       />
                     )}
+
+                    <div className="flex gap-2 pt-2">
+                      <button
+                        onClick={() => {
+                          setToolMode('move_active');
+                          setViewMode('3d');
+                        }}
+                        className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 bg-amber-500 hover:bg-amber-600 text-black font-bold rounded-lg text-xs uppercase tracking-wider transition-all cursor-pointer shadow-sm"
+                      >
+                        <Move3D size={14} />
+                        Reubicar / Mover
+                      </button>
+                      <button
+                        onClick={() => setActiveArchElement(null)}
+                        className={`px-3 py-2.5 rounded-lg text-xs font-semibold cursor-pointer border ${
+                          isLight
+                            ? 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100'
+                            : 'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'
+                        }`}
+                      >
+                        Deseleccionar
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -961,18 +1021,20 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                       </div>
                     )}
 
-                    {(activeCabinet.variant?.startsWith('corner_blind') || activeCabinet.variant === 'corner_blind') && (
+                    {(activeCabinet.variant?.startsWith('corner_blind') || activeCabinet.variant === 'corner_blind' || activeCabinet.variant?.startsWith('wall_corner_blind')) && (
                       <div className={`flex flex-col gap-2 p-2.5 rounded-lg border ${isLight ? 'bg-slate-100/90 border-slate-300' : 'bg-black/40 border-white/10'}`}>
                         <label className={isLight ? "text-xs uppercase tracking-wider text-slate-800 font-bold" : labelClass}>Mano / Orientación Esquinero</label>
                         <div className="grid grid-cols-2 gap-2 mt-1">
                           <button
-                            onClick={() => updateCabinet(activeCabinet.id, { variant: 'corner_blind_right' })}
+                            onClick={() => updateCabinet(activeCabinet.id, { 
+                              variant: activeCabinet.type === 'wall' ? 'wall_corner_blind_right' : 'corner_blind_right' 
+                            })}
                             className={`py-2 px-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
                               isLight
-                                ? ((activeCabinet.variant !== 'corner_blind_left')
+                                ? ((!activeCabinet.variant.endsWith('_left'))
                                     ? 'bg-orange-500 text-black shadow-sm'
                                     : 'bg-white text-slate-800 border border-slate-300 hover:border-orange-500 hover:text-black shadow-sm')
-                                : ((activeCabinet.variant !== 'corner_blind_left')
+                                : ((!activeCabinet.variant.endsWith('_left'))
                                     ? 'bg-orange-500 text-black shadow-[0_0_10px_rgba(249,115,22,0.2)]'
                                     : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50')
                             }`}
@@ -980,13 +1042,15 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                             Derecho (Ciego Der)
                           </button>
                           <button
-                            onClick={() => updateCabinet(activeCabinet.id, { variant: 'corner_blind_left' })}
+                            onClick={() => updateCabinet(activeCabinet.id, { 
+                              variant: activeCabinet.type === 'wall' ? 'wall_corner_blind_left' : 'corner_blind_left' 
+                            })}
                             className={`py-2 px-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
                               isLight
-                                ? ((activeCabinet.variant === 'corner_blind_left')
+                                ? ((activeCabinet.variant.endsWith('_left'))
                                     ? 'bg-orange-500 text-black shadow-sm'
                                     : 'bg-white text-slate-800 border border-slate-300 hover:border-orange-500 hover:text-black shadow-sm')
-                                : ((activeCabinet.variant === 'corner_blind_left')
+                                : ((activeCabinet.variant.endsWith('_left'))
                                     ? 'bg-orange-500 text-black shadow-[0_0_10px_rgba(249,115,22,0.2)]'
                                     : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50')
                             }`}
@@ -1015,8 +1079,55 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                         />
                       </div>
                     )}
+
+                    {activeCabinet.variant?.includes('wine_rack') && (() => {
+                      const innerW = activeCabinet.width - 3.6;
+                      const cols = Math.min(5, Math.max(1, Math.floor((innerW + 1.8) / (10.5 + 1.8))));
+                      const colW = (innerW - (cols - 1) * 1.8) / cols;
+                      return (
+                        <div className={`p-2.5 rounded-lg border text-xs ${isLight ? 'bg-orange-50 border-orange-200 text-orange-950' : 'bg-orange-950/20 border-orange-500/30 text-orange-200'}`}>
+                          <div className="font-bold mb-1 flex items-center justify-between">
+                            <span>Distribución Botellero:</span>
+                            <span className="text-orange-500 font-extrabold">{cols} {cols === 1 ? 'Corrida' : 'Corridas'} (Máx 5)</span>
+                          </div>
+                          <div className="text-[11px] opacity-90 leading-relaxed">
+                            • Ancho libre por celda: <span className="font-mono font-bold">{colW.toFixed(1)} cm</span> (Mín. 10.5 cm)<br/>
+                            • Fondo Falso Estándar: <span className="font-mono font-bold">32.0 cm</span> útiles (cámara técnica posterior)
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {activeCabinet.variant?.startsWith('wall_corner_blind') && (
+                      <div className={`p-2.5 rounded-lg border text-xs ${isLight ? 'bg-slate-100 border-slate-300 text-slate-800' : 'bg-white/5 border-white/10 text-slate-300'}`}>
+                        <div className="font-bold mb-1">Aéreo Esquinero Ciego (Lámina Técnica):</div>
+                        <div className="text-[11px] opacity-90 leading-relaxed">
+                          • Tapa esquinero frontal: <span className="font-mono font-bold">55 mm</span><br/>
+                          • Regleta interior en L: <span className="font-mono font-bold">55 mm</span><br/>
+                          • Puerta batiente con bisagras en lateral opuesto
+                        </div>
+                      </div>
+                    )}
                     
-                    <SliderControl isLight={isLight} label="Ancho del Módulo" value={activeCabinet.width} min={activeCabinet.variant === "spice_rack" ? 15 : (activeCabinet.variant?.startsWith('corner_blind') ? 80 : 30)} max={activeCabinet.variant?.startsWith('corner_blind') ? 130 : 120} step={5} unit="cm" onChange={(v) => updateCabinet(activeCabinet.id, { width: v })} />
+                    <SliderControl 
+                      isLight={isLight} 
+                      label="Ancho del Módulo" 
+                      value={activeCabinet.width} 
+                      min={
+                        activeCabinet.variant === "spice_rack" ? 15 : 
+                        activeCabinet.variant?.includes('wine_rack') ? 15 :
+                        activeCabinet.variant?.startsWith('wall_corner_blind') ? 60 :
+                        (activeCabinet.variant?.startsWith('corner_blind') ? 80 : 30)
+                      } 
+                      max={
+                        activeCabinet.variant?.includes('wine_rack') ? 65 :
+                        activeCabinet.variant?.startsWith('wall_corner_blind') ? 100 :
+                        (activeCabinet.variant?.startsWith('corner_blind') ? 130 : 120)
+                      } 
+                      step={5} 
+                      unit="cm" 
+                      onChange={(v) => updateCabinet(activeCabinet.id, { width: v })} 
+                    />
                     <SliderControl isLight={isLight} label="Alto Total" value={activeCabinet.height} min={activeCabinet.type === 'tall' ? 140 : (activeCabinet.type === 'base' ? 70 : 30)} max={activeCabinet.type === 'tall' ? 240 : (activeCabinet.type === 'wall' ? 120 : 100)} step={5} unit="cm" onChange={(v) => updateCabinet(activeCabinet.id, { height: v })} />
                     <SliderControl isLight={isLight} label="Profundidad" value={activeCabinet.depth} min={25} max={80} step={5} unit="cm" onChange={(v) => updateCabinet(activeCabinet.id, { depth: v })} />
 
@@ -1060,6 +1171,39 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                         </div>
                       )}
                     </div>
+
+                    {/* Acceso directo a Revestimiento Trasero de Isla */}
+                    {activeCabinet.type === 'island' && (
+                      <div className={`mt-3 pt-3 border-t ${isLight ? 'border-slate-200' : 'border-white/10'}`}>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <div className="flex items-center gap-1.5">
+                            <Layers size={14} className={isLight ? 'text-orange-600' : 'text-orange-400'} />
+                            <span className={`text-xs font-bold uppercase tracking-wider ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                              Trasera Continua Isla
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => setRightTab('materials')}
+                            className="text-[11px] font-bold text-orange-500 hover:text-orange-600 cursor-pointer underline"
+                          >
+                            Configurar
+                          </button>
+                        </div>
+                        <div className={`p-2 rounded-lg text-[11px] leading-relaxed border ${
+                          isLight ? 'bg-slate-100/80 border-slate-200 text-slate-600' : 'bg-white/5 border-white/10 text-slate-300'
+                        }`}>
+                          {islandBackConfig.enabled ? (
+                            <span>
+                              Estado: <strong className="text-emerald-500">Activo</strong> ({islandBackConfig.materialType === 'countertop' ? 'Piedra de Cubierta a piso' : `Decorativo ${islandBackConfig.heightMode === 'to_floor' ? 'a piso' : 'con zócalo'}`}).
+                            </span>
+                          ) : (
+                            <span>
+                              Estado: <strong className="text-slate-400">Inactivo</strong>. Puedes forrar la parte trasera completa de la isla con decorativo o piedra de cubierta.
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )
@@ -1085,18 +1229,31 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                     <div className="flex flex-col gap-1">
                       <ToggleBtn isLight={isLight} active={globalState.showDimensions} onClick={globalState.toggleDimensions} label="Mostrar Cotas" />
                       {globalState.showDimensions && (
-                        <input 
-                          type="range" 
-                          min={1} 
-                          max={5} 
-                          step={1}
-                          value={globalState.dimensionLevel} 
-                          onChange={(e) => globalState.setDimensionLevel(Number(e.target.value))}
-                          className={`w-full h-2 mt-2 rounded-lg appearance-none cursor-pointer accent-orange-500 hover:accent-orange-400 transition-all ${
-                            isLight ? 'bg-slate-300' : 'bg-white/10'
-                          }`}
-                          title="Nivel de Detalle de Cotas"
-                        />
+                        <div className="mt-2 flex flex-col gap-1.5 p-2 rounded-lg bg-black/20 border border-white/5">
+                          <div className="flex items-center justify-between text-[11px] font-bold">
+                            <span className={isLight ? "text-slate-700" : "text-slate-200"}>
+                              {DIMENSION_LEVEL_DATA[globalState.dimensionLevel]?.title || `Nivel ${globalState.dimensionLevel}`}
+                            </span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-400 font-mono font-bold border border-orange-500/30">
+                              {globalState.dimensionLevel}/6
+                            </span>
+                          </div>
+                          <input 
+                            type="range" 
+                            min={1} 
+                            max={6} 
+                            step={1}
+                            value={globalState.dimensionLevel} 
+                            onChange={(e) => globalState.setDimensionLevel(Number(e.target.value))}
+                            className={`w-full h-2 rounded-lg appearance-none cursor-pointer accent-orange-500 hover:accent-orange-400 transition-all ${
+                              isLight ? 'bg-slate-300' : 'bg-white/10'
+                            }`}
+                            title="Nivel de Detalle de Cotas"
+                          />
+                          <p className={`text-[10px] leading-snug ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                            {DIMENSION_LEVEL_DATA[globalState.dimensionLevel]?.desc}
+                          </p>
+                        </div>
                       )}
                     </div>
                     <div className="grid grid-cols-2 gap-2">
@@ -1179,6 +1336,7 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
 
         {rightTab === 'materials' && (
           <div className="flex flex-col gap-4">
+            <IslandBackPanelConfigSection isLight={isLight} />
             <RoomFinishesSection isLight={isLight} />
             <div className={`mt-2 pt-4 border-t ${isLight ? 'border-slate-200' : 'border-white/10'}`}>
               <TexturesSection 
@@ -1373,18 +1531,31 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                 <div className="flex flex-col gap-1">
                   <ToggleBtn isLight={isLight} active={globalState.showDimensions} onClick={globalState.toggleDimensions} label="Mostrar Cotas" />
                   {globalState.showDimensions && (
-                    <input 
-                      type="range" 
-                      min={1} 
-                      max={5} 
-                      step={1}
-                      value={globalState.dimensionLevel} 
-                      onChange={(e) => globalState.setDimensionLevel(Number(e.target.value))}
-                      className={`w-full h-2 mt-1.5 rounded-lg appearance-none cursor-pointer accent-orange-500 hover:accent-orange-400 transition-all ${
-                        isLight ? 'bg-slate-300' : 'bg-white/10'
-                      }`}
-                      title="Nivel de Detalle de Cotas"
-                    />
+                    <div className="mt-1.5 flex flex-col gap-1 p-2 rounded-lg bg-black/20 border border-white/5">
+                      <div className="flex items-center justify-between text-[11px] font-bold">
+                        <span className={isLight ? "text-slate-700" : "text-slate-200"}>
+                          {DIMENSION_LEVEL_DATA[globalState.dimensionLevel]?.title || `Nivel ${globalState.dimensionLevel}`}
+                        </span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-400 font-mono font-bold border border-orange-500/30">
+                          {globalState.dimensionLevel}/6
+                        </span>
+                      </div>
+                      <input 
+                        type="range" 
+                        min={1} 
+                        max={6} 
+                        step={1}
+                        value={globalState.dimensionLevel} 
+                        onChange={(e) => globalState.setDimensionLevel(Number(e.target.value))}
+                        className={`w-full h-2 rounded-lg appearance-none cursor-pointer accent-orange-500 hover:accent-orange-400 transition-all ${
+                          isLight ? 'bg-slate-300' : 'bg-white/10'
+                        }`}
+                        title="Nivel de Detalle de Cotas"
+                      />
+                      <p className={`text-[10px] leading-snug ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                        {DIMENSION_LEVEL_DATA[globalState.dimensionLevel]?.desc}
+                      </p>
+                    </div>
                   )}
                 </div>
                 <div className="flex flex-col gap-2">
@@ -1449,10 +1620,11 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
    <CountertopConfigModal
      isOpen={isCountertopModalOpen}
      onClose={() => setIsCountertopModalOpen(false)}
+     isLight={isLight}
    />
 
    {/* Modal Popup Alerta Incompatibilidad Riel Gola vs Regrueso */}
-   <GolaRegruesoIncompatibilityModal />
+   <GolaRegruesoIncompatibilityModal isLight={isLight} />
     </div>
   );
 }

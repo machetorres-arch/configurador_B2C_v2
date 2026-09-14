@@ -6,9 +6,19 @@ import { FLOOR_TYPE_OPTIONS, generateFloorCanvasTexture } from '../../utils/kitc
 import { getWallInwardNormal } from '../../utils/kitchenCollision';
 import { Text, Line } from '@react-three/drei';
 
-export function RoomFloorAndDimensions() {
+export function RoomFloorAndDimensions({ onPointerDown }: { onPointerDown?: (e: any) => void }) {
   const { roomConfig, viewMode, floorType } = useKitchenStore();
-  const vertices = roomConfig?.vertices || [];
+  const vertices = useMemo(() => {
+    if (roomConfig?.vertices && roomConfig.vertices.length >= 3) {
+      return roomConfig.vertices;
+    }
+    return [
+      { id: 'v1', x: -250, y: -200 },
+      { id: 'v2', x: 250, y: -200 },
+      { id: 'v3', x: 250, y: 200 },
+      { id: 'v4', x: -250, y: 200 },
+    ];
+  }, [roomConfig?.vertices]);
   const is2D = viewMode === '2d';
 
   const currentFloorOption = useMemo(() => {
@@ -86,8 +96,19 @@ export function RoomFloorAndDimensions() {
       <mesh
         geometry={floorGeometry}
         rotation={[-Math.PI / 2, 0, 0]}
-        position={[0, 0, 0]}
+        position={[0, 0.05, 0]}
         receiveShadow
+        onPointerDown={(e) => {
+          if (onPointerDown) {
+            onPointerDown(e);
+          } else {
+            const state = useKitchenStore.getState();
+            if (state.toolMode === 'select') {
+              state.setActiveCabinet(null);
+              state.setActiveArchElement(null);
+            }
+          }
+        }}
       >
         <meshStandardMaterial
           map={floorTexture || undefined}
@@ -98,6 +119,7 @@ export function RoomFloorAndDimensions() {
           polygonOffsetFactor={-1}
           polygonOffsetUnits={-1}
           depthWrite={true}
+          side={THREE.DoubleSide}
         />
       </mesh>
 

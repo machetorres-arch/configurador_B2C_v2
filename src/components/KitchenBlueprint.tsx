@@ -209,7 +209,7 @@ export function KitchenBlueprint() {
     });
   });
 
-  const ctBOM = generateCountertopPieces(kState.cabinets, kState.countertopConfig, kState.qstoneCatalog);
+  const ctBOM = generateCountertopPieces(kState.cabinets, kState.countertopConfig, kState.qstoneCatalog, kState.islandBackConfig, kState.walls, kState.architecturalElements, kState.roomConfig);
   const stonePagesCount = (kState.countertopConfig?.enabled && ctBOM && ctBOM.pieces.length > 0) ? ctBOM.slabsLayout.length : 0;
 
   const totalDocPages = 1 + printPages.length + boardResults.length + stonePagesCount + 1;
@@ -1006,8 +1006,13 @@ export function KitchenBlueprint() {
                 <g>
                   {/* Rebaje CNC 58mm alto x 26mm fondo */}
                   <rect x={cabD - 26} y={0} width={26} height={58} fill="#fef3c7" stroke="#d97706" strokeWidth={strokeL} strokeDasharray="3,2" />
-                  {/* Perfil Gola L Provelcar x175 en sección */}
-                  <path d={`M ${cabD - 26} 0 L ${cabD - 26} 35 L ${cabD - 2} 35 L ${cabD - 2} 0 Z`} fill={golaColorHex} stroke="#0f172a" strokeWidth={strokeL * 0.8} />
+                  {/* Perfil Gola L Provelcar x175 en sección oficial Tipo J */}
+                  <path 
+                    d={`M ${cabD - 1} 0 L ${cabD - 26} 0 L ${cabD - 26} 38 Q ${cabD - 26} 55 ${cabD - 13} 55 Q ${cabD - 3.5} 55 ${cabD - 3.5} 33 L ${cabD - 5} 33 Q ${cabD - 5} 53.5 ${cabD - 13} 53.5 Q ${cabD - 24.5} 53.5 ${cabD - 24.5} 38 L ${cabD - 24.5} 1.5 L ${cabD - 1} 1.5 Z`} 
+                    fill={golaColorHex} 
+                    stroke="#0f172a" 
+                    strokeWidth={strokeL * 0.8} 
+                  />
                   
                   {/* Cota fondo de rebaje 26mm */}
                   <line x1={cabD - 26} y1={68} x2={cabD} y2={68} stroke="#d97706" strokeWidth={strokeL * 0.8} />
@@ -1025,8 +1030,13 @@ export function KitchenBlueprint() {
                 <g>
                   {/* Rebaje CNC 68mm alto x 26mm fondo */}
                   <rect x={cabD - 26} y={golaCY_lat - 34} width={26} height={68} fill="#fef3c7" stroke="#d97706" strokeWidth={strokeL} strokeDasharray="3,2" />
-                  {/* Perfil Gola C Provelcar x176 en sección */}
-                  <path d={`M ${cabD - 26} ${golaCY_lat - 20} L ${cabD - 26} ${golaCY_lat + 20} L ${cabD - 2} ${golaCY_lat + 20} L ${cabD - 2} ${golaCY_lat - 20} Z`} fill={golaColorHex} stroke="#0f172a" strokeWidth={strokeL * 0.8} />
+                  {/* Perfil Gola C Provelcar x176 en sección oficial Tipo C / U */}
+                  <path 
+                    d={`M ${cabD - 3.5} ${golaCY_lat - 28} Q ${cabD - 9} ${golaCY_lat - 14} ${cabD - 26} ${golaCY_lat - 24} L ${cabD - 26} ${golaCY_lat + 24} Q ${cabD - 9} ${golaCY_lat + 14} ${cabD - 3.5} ${golaCY_lat + 28} L ${cabD - 5} ${golaCY_lat + 28} Q ${cabD - 10} ${golaCY_lat + 15.5} ${cabD - 24.5} ${golaCY_lat + 24} L ${cabD - 24.5} ${golaCY_lat - 24} Q ${cabD - 10} ${golaCY_lat - 15.5} ${cabD - 5} ${golaCY_lat - 28} Z`} 
+                    fill={golaColorHex} 
+                    stroke="#0f172a" 
+                    strokeWidth={strokeL * 0.8} 
+                  />
                   
                   {/* Cota alto de rebaje C 68mm */}
                   <line x1={cabD - 36} y1={golaCY_lat - 34} x2={cabD - 36} y2={golaCY_lat + 34} stroke="#d97706" strokeWidth={strokeL * 0.8} />

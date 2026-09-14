@@ -19,6 +19,7 @@ export function Wall({ id, start, end, thickness, height }: WallType & { id?: st
    const activeArchElementId = useKitchenStore((s) => s.activeArchElementId);
    const setActiveArchElement = useKitchenStore((s) => s.setActiveArchElement);
    const setDraggingArchElementId = useKitchenStore((s) => s.setDraggingArchElementId);
+   const toolMode = useKitchenStore((s) => s.toolMode);
 
    const groupRef = useRef<THREE.Group>(null);
 
@@ -29,6 +30,10 @@ export function Wall({ id, start, end, thickness, height }: WallType & { id?: st
          return !el.wallId && dist < length / 2 + 30;
       });
    }, [architecturalElements, id, cx, cz, length]);
+
+   const wallOpenings = useMemo(() => {
+      return wallElements.filter(el => el.type === 'door' || el.type === 'window');
+   }, [wallElements]);
 
    // Vector normal hacia el interior de la habitación
    const inwardNormal = useMemo(() => {
@@ -56,7 +61,7 @@ export function Wall({ id, start, end, thickness, height }: WallType & { id?: st
 
    return (
      <group ref={groupRef} name="wallGroup" position={[cx, height/2, cz]} rotation={[0, rotY, 0]}>
-       {wallElements.length === 0 ? (
+       {wallOpenings.length === 0 ? (
          <mesh name="wall" castShadow receiveShadow>
            <boxGeometry args={[thickness, height, length]} />
            <meshStandardMaterial color={wallColor} roughness={0.85} metalness={0.05} />
@@ -65,11 +70,11 @@ export function Wall({ id, start, end, thickness, height }: WallType & { id?: st
        ) : (
          <group name="segmentedWall">
            {(() => {
-             const el = wallElements[0];
+             const el = wallOpenings[0];
              const elWidth = el.width;
              const elHeight = el.height;
              const elElev = el.elevation || 0;
-             const offset = el.offset || 0;
+             const offset = -(el.offset || 0);
 
              const wStart = offset - elWidth / 2;
              const wEnd = offset + elWidth / 2;
@@ -117,9 +122,10 @@ export function Wall({ id, start, end, thickness, height }: WallType & { id?: st
        )}
 
        {wallElements.map((el) => {
+         if (toolMode === 'move_active' && el.id === activeArchElementId) return null;
          const isSelected = el.id === activeArchElementId;
          const yLocal = el.elevation + el.height / 2 - height / 2;
-         const zLocal = el.offset !== undefined ? el.offset : 0;
+         const zLocal = el.offset !== undefined ? -el.offset : 0;
          const elDepth = el.type === 'pillar' ? (el.depth ?? thickness) : thickness;
          const inwardSign = (-(end[1] - start[1]) * inwardNormal[0] + (end[0] - start[0]) * inwardNormal[1]) >= 0 ? 1 : -1;
          const pillarZ = el.type === 'pillar' ? (inwardSign * (elDepth - thickness) / 2) : 0;
@@ -259,10 +265,24 @@ export function Wall({ id, start, end, thickness, height }: WallType & { id?: st
              )}
 
              {isSelected && (
-               <mesh position={[0, -el.height / 2 + 1, pillarZ]} rotation={[-Math.PI / 2, 0, 0]}>
-                 <ringGeometry args={[Math.max(el.width, elDepth) / 2 + 3, Math.max(el.width, elDepth) / 2 + 6, 32]} />
-                 <meshBasicMaterial color="#0284c7" side={2} />
-               </mesh>
+               <group position={[0, -el.height / 2 + 0.5, pillarZ]}>
+                 <mesh position={[0, 0, (elDepth + 1.6) / 2]}>
+                   <boxGeometry args={[el.width + 2, 0.4, 0.8]} />
+                   <meshBasicMaterial color="#0284c7" />
+                 </mesh>
+                 <mesh position={[0, 0, -(elDepth + 1.6) / 2]}>
+                   <boxGeometry args={[el.width + 2, 0.4, 0.8]} />
+                   <meshBasicMaterial color="#0284c7" />
+                 </mesh>
+                 <mesh position={[-(el.width + 1.6) / 2, 0, 0]}>
+                   <boxGeometry args={[0.8, 0.4, elDepth + 0.8]} />
+                   <meshBasicMaterial color="#0284c7" />
+                 </mesh>
+                 <mesh position={[(el.width + 1.6) / 2, 0, 0]}>
+                   <boxGeometry args={[0.8, 0.4, elDepth + 0.8]} />
+                   <meshBasicMaterial color="#0284c7" />
+                 </mesh>
+               </group>
              )}
            </group>
          );

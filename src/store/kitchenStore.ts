@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { RoomConfig, getPresetRoomVertices, generateWallsFromRoom } from '../utils/roomGeometry';
-import { constrainInsideRoomAndWalls, repositionCabinetsOnRoomChange } from '../utils/kitchenCollision';
+import { constrainInsideRoomAndWalls, repositionCabinetsOnRoomChange, resolveCabinetsAgainstPillars } from '../utils/kitchenCollision';
 import { 
   CountertopConfig, 
   DEFAULT_COUNTERTOP_CONFIG, 
@@ -9,8 +9,14 @@ import {
   SinkModelId, 
   CooktopModelId,
   QSTONE_SINKS,
-  FDV_COOKTOPS
+  FDV_COOKTOPS,
+  IslandBackConfig,
+  DEFAULT_ISLAND_BACK_CONFIG
 } from '../types/countertop';
+
+export type { IslandBackConfig };
+export { DEFAULT_ISLAND_BACK_CONFIG };
+
 
 export type GolaSystem = 'none' | 'aluminum' | 'black';
 
@@ -25,6 +31,7 @@ export type ToolMode =
   | 'place_base_2_pot_drawers' 
   | 'place_base_spice_rack' 
   | 'place_base_corner_blind' 
+  | 'place_base_wine_rack'
   | 'place_wall' 
   | 'place_wall_1_door'
   | 'place_wall_2_doors'
@@ -32,6 +39,8 @@ export type ToolMode =
   | 'place_wall_lift_up_double'
   | 'place_wall_microwave_niche'
   | 'place_wall_open'
+  | 'place_wall_corner_blind'
+  | 'place_wall_wine_rack'
   | 'place_tall' 
   | 'place_tall_1_door'
   | 'place_tall_split_2_doors'
@@ -39,7 +48,9 @@ export type ToolMode =
   | 'place_tall_microwave_niche'
   | 'place_tall_open'
   | 'place_tall_2_doors'
+  | 'place_tall_wine_rack'
   | 'place_island' 
+  | 'place_island_wine_rack'
   | 'place_deco_stove'
   | 'place_deco_fridge'
   | 'place_deco_hood'
@@ -110,6 +121,43 @@ export interface GolaIncompatibilityAlert {
   attemptedAction: 'gola' | 'regrueso';
 }
 
+export function getCabinetLabel(cab: Partial<CabinetType>, index: number): string {
+  if (cab.variant === 'deco_hood') return 'Campana FDV Conic 90';
+  if (cab.variant === 'deco_stove') return 'Cocina FDV 90';
+  if (cab.variant === 'deco_fridge') return 'Refrigerador SBS 513L';
+  if (cab.variant === 'deco_plant') return 'Planta Interior';
+  if (cab.variant?.startsWith('wall_corner_blind')) return 'Aéreo Esquinero Ciego';
+  if (cab.variant?.startsWith('corner_blind')) return 'Esquinero Ciego';
+  if (cab.variant === 'base_wine_rack' || (cab.type === 'base' && cab.variant === 'wine_rack')) return 'Botellero Base';
+  if (cab.variant === 'wall_wine_rack' || (cab.type === 'wall' && cab.variant === 'wine_rack')) return 'Botellero Aéreo';
+  if (cab.variant === 'tall_wine_rack' || (cab.type === 'tall' && cab.variant === 'wine_rack')) return 'Botellero Despensa';
+  if (cab.variant === 'island_wine_rack' || (cab.type === 'island' && cab.variant === 'wine_rack')) return 'Botellero Isla';
+  if (cab.variant === 'wine_rack') return 'Botellero';
+  if (cab.variant === 'tall_1_door') return 'Despensa 1 Puerta Larga';
+  if (cab.variant === 'tall_split_2_doors') return 'Despensa 2 Puertas (Línea Base)';
+  if (cab.variant === 'tall_oven_micro') return 'Torre Horno + Micro';
+  if (cab.variant === 'tall_microwave_niche') return 'Torre Nicho Micro';
+  if (cab.variant === 'tall_open') return 'Despensa Abierta';
+  if (cab.variant === 'tall_2_doors') return 'Despensa 2 Puertas';
+  if (cab.variant === 'wall_1_door') return 'Aéreo 1 Puerta';
+  if (cab.variant === 'wall_2_doors') return 'Aéreo 2 Puertas';
+  if (cab.variant === 'wall_lift_up') return 'Aéreo Elevable Aventos';
+  if (cab.variant === 'wall_lift_up_double') return 'Aéreo Doble Elevable';
+  if (cab.variant === 'wall_microwave_niche') return 'Aéreo Nicho Micro';
+  if (cab.variant === 'wall_open') return 'Aéreo Abierto Repisas';
+  if (cab.variant === '1_door_1_drawer') return 'Base 1 Pta + 1 Cajón';
+  if (cab.variant === '4_drawers') return 'Base 4 Cajones';
+  if (cab.variant === '2_pot_drawers') return 'Base 2 Olleros';
+  if (cab.variant === 'spice_rack') return 'Base Especiero';
+  if (cab.variant === '2_doors') return 'Base 2 Puertas';
+  if (cab.variant === '1_door') return 'Base 1 Puerta';
+  if (cab.type === 'base') return 'Mueble Base';
+  if (cab.type === 'tall') return 'Torre / Despensa';
+  if (cab.type === 'wall') return 'Mueble Aéreo';
+  if (cab.type === 'island') return 'Isla Cocina';
+  return `Módulo ${index + 1}`;
+}
+
 interface KitchenState {
   viewMode: ViewMode;
   toolMode: ToolMode;
@@ -129,6 +177,7 @@ interface KitchenState {
   draggingArchElementId: string | null;
   draggingCabinetId: string | null;
   countertopConfig: CountertopConfig;
+  islandBackConfig: IslandBackConfig;
   qstoneCatalog: QstoneProductItem[];
 
   setViewMode: (mode: ViewMode) => void;
@@ -153,8 +202,9 @@ interface KitchenState {
   setRoomConfig: (config: RoomConfig) => void;
   setWallColor: (color: string) => void;
   setFloorType: (floorType: string) => void;
-  applyGlobalTexture: (part: 'structure' | 'doors' | 'drawerFronts' | 'drawerInner' | 'shelves' | 'back' | 'socle' | 'all', url: string, mat: 'melamina' | 'hpl') => void;
+  applyGlobalTexture: (part: 'structure' | 'doors' | 'drawerFronts' | 'drawerInner' | 'shelves' | 'back' | 'socle' | 'islandBack' | 'all', url: string, mat: 'melamina' | 'hpl') => void;
   setCountertopConfig: (config: Partial<CountertopConfig>) => void;
+  setIslandBackConfig: (updates: Partial<IslandBackConfig>) => void;
   setCountertopSink: (model: SinkModelId, cabinetId?: string | null) => { success: boolean; error?: string };
   setCountertopCooktop: (model: CooktopModelId, cabinetId?: string | null) => { success: boolean; error?: string };
   updateQstoneCatalogItemPrice: (id: string, priceM2Clp: number) => void;
@@ -180,31 +230,6 @@ function resolveCabinetsWithResize(
   
   // Apply direct updates
   Object.assign(updatedTarget, updates);
-
-  // If height changed and position wasn't explicitly overridden, recalculate Y so it never separates from floor
-  if (updates.height !== undefined && (!updates.position || updates.position[1] === undefined)) {
-    const newHeight = updates.height;
-    if (updatedTarget.type === 'base' || updatedTarget.type === 'tall' || updatedTarget.type === 'island') {
-      updatedTarget.position = [updatedTarget.position[0], newHeight / 2, updatedTarget.position[2]];
-    } else if (updatedTarget.type === 'wall' || updatedTarget.variant === 'deco_hood') {
-      const currentBottom = target.position[1] - target.height / 2;
-      updatedTarget.position = [updatedTarget.position[0], currentBottom + newHeight / 2, updatedTarget.position[2]];
-    }
-  }
-
-  // If width is NOT changing, return updated list
-  if (updates.width === undefined || updates.width === target.width) {
-    return nextCabinets;
-  }
-
-  const oldWidth = target.width;
-  const newWidth = updates.width;
-  const deltaW = newWidth - oldWidth;
-
-  const rot = target.rotation || 0;
-  const cos = Math.cos(rot);
-  const sin = Math.sin(rot);
-  const u: [number, number] = [cos, sin];
 
   // Helper to get left and right flanks in XZ
   const getFlanks = (cab: CabinetType) => {
@@ -244,6 +269,54 @@ function resolveCabinetsWithResize(
       return dist(right, otherFlanks.left) < 4;
     });
   };
+
+  // If height changed and position wasn't explicitly overridden, recalculate Y so it never separates from floor
+  if (updates.height !== undefined && (!updates.position || updates.position[1] === undefined)) {
+    const newHeight = updates.height;
+    if (updatedTarget.type === 'base' || updatedTarget.type === 'tall' || updatedTarget.type === 'island') {
+      updatedTarget.position = [updatedTarget.position[0], newHeight / 2, updatedTarget.position[2]];
+
+      // Sincronizar altura de gabinetes contiguos en la misma corrida continua (base o isla) para mantener la cubierta apoyada y plana
+      if (updatedTarget.type === 'base' || updatedTarget.type === 'island') {
+        const visitedChain = new Set<string>([updatedTarget.id]);
+        const queue: CabinetType[] = [updatedTarget];
+        while (queue.length > 0) {
+          const curr = queue.shift()!;
+          const lNeighbor = findLeftNeighbor(curr, nextCabinets);
+          if (lNeighbor && (lNeighbor.type === 'base' || lNeighbor.type === 'island') && !visitedChain.has(lNeighbor.id)) {
+            visitedChain.add(lNeighbor.id);
+            lNeighbor.height = newHeight;
+            lNeighbor.position = [lNeighbor.position[0], newHeight / 2, lNeighbor.position[2]];
+            queue.push(lNeighbor);
+          }
+          const rNeighbor = findRightNeighbor(curr, nextCabinets);
+          if (rNeighbor && (rNeighbor.type === 'base' || rNeighbor.type === 'island') && !visitedChain.has(rNeighbor.id)) {
+            visitedChain.add(rNeighbor.id);
+            rNeighbor.height = newHeight;
+            rNeighbor.position = [rNeighbor.position[0], newHeight / 2, rNeighbor.position[2]];
+            queue.push(rNeighbor);
+          }
+        }
+      }
+    } else if (updatedTarget.type === 'wall' || updatedTarget.variant === 'deco_hood') {
+      const currentBottom = target.position[1] - target.height / 2;
+      updatedTarget.position = [updatedTarget.position[0], currentBottom + newHeight / 2, updatedTarget.position[2]];
+    }
+  }
+
+  // If width is NOT changing, return updated list
+  if (updates.width === undefined || updates.width === target.width) {
+    return nextCabinets;
+  }
+
+  const oldWidth = target.width;
+  const newWidth = updates.width;
+  const deltaW = newWidth - oldWidth;
+
+  const rot = target.rotation || 0;
+  const cos = Math.cos(rot);
+  const sin = Math.sin(rot);
+  const u: [number, number] = [cos, sin];
 
   // Build left chain (all continuous neighbors to the left)
   const leftChain: CabinetType[] = [];
@@ -344,6 +417,7 @@ export const useKitchenStore = create<KitchenState>((set) => ({
   draggingArchElementId: null,
   draggingCabinetId: null,
   countertopConfig: DEFAULT_COUNTERTOP_CONFIG,
+  islandBackConfig: DEFAULT_ISLAND_BACK_CONFIG,
   qstoneCatalog: DEFAULT_QSTONE_CATALOG,
   golaIncompatibilityAlert: null,
 
@@ -362,7 +436,8 @@ export const useKitchenStore = create<KitchenState>((set) => ({
         cabinet.depth,
         cabinet.height,
         walls,
-        roomPoly
+        roomPoly,
+        state.architecturalElements
       );
       return { cabinets: [...state.cabinets, { ...cabinet, position: constrainedPos }] };
     }),
@@ -371,17 +446,68 @@ export const useKitchenStore = create<KitchenState>((set) => ({
       cabinets: state.cabinets.filter((c) => c.id !== id),
       activeCabinetId: state.activeCabinetId === id ? null : state.activeCabinetId,
     })),
-  setActiveCabinet: (id) => set({ activeCabinetId: id }),
-  addArchitecturalElement: (el) => set((state) => ({ architecturalElements: [...state.architecturalElements, el] })),
-  updateArchitecturalElement: (id, updates) => set((state) => ({
-    architecturalElements: state.architecturalElements.map(el => el.id === id ? { ...el, ...updates } : el)
-  })),
+  setActiveCabinet: (id) =>
+    set((state) => ({
+      activeCabinetId: id,
+      activeArchElementId: id ? null : state.activeArchElementId,
+    })),
+  addArchitecturalElement: (el) =>
+    set((state) => {
+      const architecturalElements = [...state.architecturalElements, el];
+      if (el.type === 'pillar') {
+        const roomPoly = state.roomConfig?.vertices?.map((v) => [v.x, v.y] as [number, number]) || [];
+        const resolvedCabinets = resolveCabinetsAgainstPillars(state.cabinets, architecturalElements, state.walls, roomPoly);
+        return { architecturalElements, cabinets: resolvedCabinets, activeArchElementId: el.id, activeCabinetId: null };
+      }
+      return { architecturalElements, activeArchElementId: el.id, activeCabinetId: null };
+    }),
+  updateArchitecturalElement: (id, updates) =>
+    set((state) => {
+      const architecturalElements = state.architecturalElements.map((el) => {
+        if (el.id !== id) return el;
+        const merged = { ...el, ...updates };
+        if (updates.offset !== undefined && updates.position === undefined) {
+          const effectiveWalls = state.walls && state.walls.length > 0 ? state.walls : (state.roomConfig?.vertices && state.roomConfig.vertices.length >= 3 ? state.roomConfig.vertices.map((v, i, arr) => {
+             const next = arr[(i + 1) % arr.length];
+             return { id: `wall_v_${i}`, start: [v.x, v.y], end: [next.x, next.y], thickness: 20, height: 240 };
+          }) : []);
+          const wall = effectiveWalls.find((w) => w.id === merged.wallId) || effectiveWalls[0];
+          if (wall) {
+             const [x1, z1] = wall.start;
+             const [x2, z2] = wall.end;
+             const wLen = Math.hypot(x2 - x1, z2 - z1);
+             if (wLen >= 10) {
+               const uX = (x2 - x1) / wLen;
+               const uZ = (z2 - z1) / wLen;
+               const sClamped = Math.max(merged.width / 2 + 2, Math.min(wLen - merged.width / 2 - 2, updates.offset + wLen / 2));
+               const pX = x1 + sClamped * uX;
+               const pZ = z1 + sClamped * uZ;
+               merged.offset = sClamped - wLen / 2;
+               merged.position = [pX, merged.elevation + merged.height / 2, pZ];
+               merged.rotation = Math.atan2(x1 - x2, z1 - z2);
+             }
+          }
+        }
+        return merged;
+      });
+      const updatedEl = architecturalElements.find((el) => el.id === id);
+      if (updatedEl?.type === 'pillar') {
+        const roomPoly = state.roomConfig?.vertices?.map((v) => [v.x, v.y] as [number, number]) || [];
+        const resolvedCabinets = resolveCabinetsAgainstPillars(state.cabinets, architecturalElements, state.walls, roomPoly);
+        return { architecturalElements, cabinets: resolvedCabinets };
+      }
+      return { architecturalElements };
+    }),
   removeArchitecturalElement: (id) => set((state) => ({
     architecturalElements: state.architecturalElements.filter(el => el.id !== id),
     activeArchElementId: state.activeArchElementId === id ? null : state.activeArchElementId,
     draggingArchElementId: state.draggingArchElementId === id ? null : state.draggingArchElementId
   })),
-  setActiveArchElement: (id) => set({ activeArchElementId: id }),
+  setActiveArchElement: (id) =>
+    set((state) => ({
+      activeArchElementId: id,
+      activeCabinetId: id ? null : state.activeCabinetId,
+    })),
   setDraggingArchElementId: (id) => set({ draggingArchElementId: id }),
   setDraggingCabinetId: (id) => set({ draggingCabinetId: id }),
   setDrawingStart: (pos) => set({ drawingStart: pos }),
@@ -421,7 +547,8 @@ export const useKitchenStore = create<KitchenState>((set) => ({
           c.depth,
           c.height,
           walls,
-          roomPoly
+          roomPoly,
+          state.architecturalElements
         ),
       }));
       return { cabinets: clamped };
@@ -446,6 +573,17 @@ export const useKitchenStore = create<KitchenState>((set) => ({
   setFloorType: (floorType) => set({ floorType }),
   applyGlobalTexture: (part, url, mat) =>
     set((state) => {
+      if (part === 'islandBack') {
+        return {
+          islandBackConfig: {
+            ...state.islandBackConfig,
+            enabled: true,
+            materialType: 'decorative',
+            decorativeColor: url,
+            decorativeMaterial: mat,
+          },
+        };
+      }
       const updatedCabinets = state.cabinets.map((c) => {
         if (c.type === 'decoration') return c;
         const updates: Partial<CabinetType> = {};
@@ -508,6 +646,15 @@ export const useKitchenStore = create<KitchenState>((set) => ({
       countertopConfig: { ...s.countertopConfig, ...updates },
     }));
   },
+  setIslandBackConfig: (updates) =>
+    set((state) => {
+      const next = { ...state.islandBackConfig, ...updates };
+      // Regla estricta: si es material de cubierta, solo hasta el piso (sin zócalo)
+      if (next.materialType === 'countertop') {
+        next.heightMode = 'to_floor';
+      }
+      return { islandBackConfig: next };
+    }),
   updateQstoneCatalogItemPrice: (id, priceM2Clp) =>
     set((state) => ({
       qstoneCatalog: state.qstoneCatalog.map((item) =>
@@ -634,6 +781,7 @@ export const useKitchenStore = create<KitchenState>((set) => ({
       golaSystem: 'none',
       drawingStart: null,
       countertopConfig: DEFAULT_COUNTERTOP_CONFIG,
+      islandBackConfig: DEFAULT_ISLAND_BACK_CONFIG,
     });
   },
 }));

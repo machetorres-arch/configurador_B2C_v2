@@ -316,12 +316,115 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
             edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
             notes: '5 repisas vistas distribuidas simétricamente'
         });
+    } else if (cab.variant?.includes('wine_rack')) {
+        const usefulDepth = Math.min(d - 2, 32);
+        const innerH = cabH - thickness * 2;
+        // Fondo falso estructural a 32cm útiles del frente
+        parts.push({
+            name: `Fondo Falso Botellero ${cabName}`,
+            moduleId: cab.id,
+            moduleIndex: index,
+            qty: 1,
+            length: innerW * 10,
+            width: innerH * 10,
+            thickness: thickness * 10,
+            material: cab.structureColor || state.structureColor,
+            edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
+            notes: 'Fondo falso vertical a 320mm para tope de botellas estándar'
+        });
+
+        // Celdas paramétricas (mínimo 10.5 cm por celda, máximo 5 corridas)
+        const minClearance = 10.5;
+        const cols = Math.min(5, Math.max(1, Math.floor((innerW + thickness) / (minClearance + thickness))));
+        const rows = Math.max(2, Math.floor(innerH / 12.5));
+
+        if (cols > 1) {
+            parts.push({
+                name: `Divisor Vertical Botellero ${cabName}`,
+                moduleId: cab.id,
+                moduleIndex: index,
+                qty: cols - 1,
+                length: innerH * 10,
+                width: usefulDepth * 10,
+                thickness: thickness * 10,
+                material: cab.shelfColor || cab.structureColor || state.structureColor,
+                edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
+                notes: `Montante vertical separador de ${cols} corridas`
+            });
+        }
+
+        if (rows > 1) {
+            parts.push({
+                name: `Repisa Horizontal Botellero ${cabName}`,
+                moduleId: cab.id,
+                moduleIndex: index,
+                qty: rows - 1,
+                length: (innerW - 0.2) * 10,
+                width: usefulDepth * 10,
+                thickness: thickness * 10,
+                material: cab.shelfColor || cab.structureColor || state.structureColor,
+                edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
+                notes: `Repisa horizontal separadora de ${rows} niveles`
+            });
+        }
+    } else if (cab.variant?.startsWith('wall_corner_blind')) {
+        parts.push({
+            name: `Repisa Interior ${cabName}`,
+            moduleId: cab.id,
+            moduleIndex: index,
+            qty: 1,
+            length: (innerW - 0.2) * 10,
+            width: (d - 4) * 10,
+            thickness: thickness * 10,
+            material: cab.shelfColor || state.structureColor,
+            edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
+            notes: 'Repisa interior módulo aéreo esquinero'
+        });
     }
 
     // 6. Frentes (Doors/Drawers)
     const gap = 0.3; // 3mm gap
     const frontMat = cab.doorColor || state.doorColor;
-    if (cab.variant?.startsWith('corner_blind') || cab.variant === 'corner_blind') {
+    if (cab.variant?.startsWith('wall_corner_blind')) {
+        const stripW = 5.5; // 55 mm según lámina técnica PDF
+        const doorW = w - stripW - gap * 3;
+        parts.push({
+            name: `Tapa Esquinero Frontal ${cabName}`,
+            moduleId: cab.id,
+            moduleIndex: index,
+            qty: 1,
+            length: (cabH - gap * 2) * 10,
+            width: stripW * 10,
+            thickness: thickness * 10,
+            material: cab.structureColor || state.structureColor,
+            edgeL1: true, edgeL2: true, edgeW1: true, edgeW2: true,
+            notes: 'Regleta frontal tapa esquinero 55mm según lámina 3 PDF'
+        });
+        parts.push({
+            name: `Regleta Retorno Esquina Interior ${cabName}`,
+            moduleId: cab.id,
+            moduleIndex: index,
+            qty: 1,
+            length: (cabH - gap * 2) * 10,
+            width: stripW * 10,
+            thickness: thickness * 10,
+            material: cab.structureColor || state.structureColor,
+            edgeL1: true, edgeL2: true, edgeW1: true, edgeW2: true,
+            notes: 'Regleta perpendicular interior escuadra unión esquinero'
+        });
+        parts.push({
+            name: `Puerta Frontal Batiente ${cabName}`,
+            moduleId: cab.id,
+            moduleIndex: index,
+            qty: 1,
+            length: (cabH - gap * 2) * 10,
+            width: doorW * 10,
+            thickness: thickness * 10,
+            material: frontMat,
+            edgeL1: true, edgeL2: true, edgeW1: true, edgeW2: true,
+            notes: 'Puerta batiente para mueble aéreo esquinero'
+        });
+    } else if (cab.variant?.startsWith('corner_blind') || cab.variant === 'corner_blind') {
         const blindW = Math.max(35, w / 2);
         const doorW = w - blindW - gap * 2;
         parts.push({
@@ -695,7 +798,7 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
                 notes: 'Fondo ranurado/clavado 3mm'
             });
         }
-    } else if (cab.variant !== 'wall_open' && cab.variant !== 'tall_open' && cab.variant !== 'open') {
+    } else if (cab.variant !== 'wall_open' && cab.variant !== 'tall_open' && cab.variant !== 'open' && !cab.variant?.includes('wine_rack') && !cab.variant?.startsWith('wall_corner_blind')) {
         // Fallback estándar para puertas batientes en cualquier variante base, mural o torre
         const isGola = (kState.golaSystem === 'aluminum' || kState.golaSystem === 'black') && (cab.type === 'base' || cab.type === 'island');
         const isDouble = w > 60;
@@ -932,7 +1035,7 @@ export function generateKitchenHardwareList(cabinets: CabinetType[]) {
         }
 
         // Bisagras y Sistemas Elevadores
-        if (cab.variant === '1_door' || cab.variant === 'spice_rack' || cab.variant === '1_door_1_drawer' || cab.variant?.startsWith('corner_blind') || cab.variant === 'corner_blind') {
+        if (cab.variant === '1_door' || cab.variant === 'spice_rack' || cab.variant === '1_door_1_drawer' || cab.variant?.startsWith('corner_blind') || cab.variant === 'corner_blind' || cab.variant?.startsWith('wall_corner_blind')) {
             totalHinges += 2;
         } else if (cab.variant === '2_doors') {
             totalHinges += 4;

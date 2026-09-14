@@ -3,7 +3,7 @@ import { useStore } from '../store';
 import { useKitchenStore } from '../store/kitchenStore';
 import { generateKitchenPartsList, generateKitchenHardwareList, HARDWARE_SPECS } from './kitchenManufacturing';
 import { generateEdgeBandingList } from './manufacturing';
-import { generateCountertopPieces } from './countertopNesting';
+import { generateCountertopPieces, detectContinuousCabinetRuns } from './countertopNesting';
 
 export const exportKitchenToExcel = () => {
   try {
@@ -90,6 +90,55 @@ export const exportKitchenToExcel = () => {
         Notas: p.notes || ''
       });
     });
+
+    // Panel Trasero Continuo de Isla (en Melamina o HPL decorativo)
+    if (kState.islandBackConfig?.enabled && kState.islandBackConfig.materialType === 'decorative') {
+      const runs = detectContinuousCabinetRuns(cabinets, kState.countertopConfig, kState.walls, kState.architecturalElements, kState.roomConfig);
+      const islandRuns = runs.filter(r => r.type === 'island');
+      const decorName = getTextureName(kState.islandBackConfig.decorativeColor);
+      const isHPL = kState.islandBackConfig.decorativeMaterial === 'hpl';
+      const socleGapMm = (kState.socleHeight ?? 10) * 10;
+
+      islandRuns.forEach((run, rIdx) => {
+        const totalLenMm = run.totalLengthMm;
+        const hMm = kState.islandBackConfig.heightMode === 'to_floor' ? run.heightMm : (run.heightMm - socleGapMm);
+        const maxLenMm = 2440;
+        const segmentCount = Math.ceil(totalLenMm / maxLenMm);
+        const segLenMm = totalLenMm / segmentCount;
+
+        for (let s = 0; s < segmentCount; s++) {
+          if (isHPL) {
+            dataHPL.push({
+              Gabinete: `Isla ${rIdx + 1}`,
+              Pieza: `Panel Trasero Trasdosado (${segmentCount > 1 ? `Tramo ${s + 1}/${segmentCount}` : 'Monolítico'})`,
+              Material: 'HPL / Laminado Alta Presión',
+              Decorativo: decorName,
+              'Largo Corte HPL (mm)': (segLenMm + hplOversize).toFixed(1),
+              'Ancho Corte HPL (mm)': (hMm + hplOversize).toFixed(1),
+              Cantidad: 1
+            });
+          }
+
+          dataPlacas.push({
+            Gabinete: `Isla ${rIdx + 1}`,
+            Pieza: `Panel Trasero Trasdosado Isla (${segmentCount > 1 ? `Tramo ${s + 1}/${segmentCount}` : 'Monolítico'})`,
+            Material: isHPL ? 'MDF Desnudo (Sustrato HPL)' : 'Melamina Estándar',
+            Decorativo: decorName,
+            'Cortes Totales': 1,
+            Cantidad: 1,
+            'Largo (mm)': segLenMm.toFixed(1),
+            'Ancho (mm)': hMm.toFixed(1),
+            'Veta (Orientación)': 'Horizontal',
+            'Espesor (mm)': '18.0',
+            'Tapacanto Largo 1': 'Sí',
+            'Tapacanto Largo 2': 'Sí',
+            'Tapacanto Ancho 1': 'Sí',
+            'Tapacanto Ancho 2': 'Sí',
+            Notas: `Revestimiento continuo isla (${kState.islandBackConfig.heightMode === 'to_floor' ? 'a piso' : 'con zócalo'})`
+          });
+        }
+      });
+    }
 
     // M² calculations
     const placasByMaterial: Record<string, { name: string; m2: number }> = {};
@@ -211,7 +260,7 @@ export const exportKitchenToExcel = () => {
 
     // Hoja 4: Marmolería y Cubiertas Qstone
     if (kState.countertopConfig?.enabled) {
-      const ctBOM = generateCountertopPieces(cabinets, kState.countertopConfig, kState.qstoneCatalog);
+      const ctBOM = generateCountertopPieces(cabinets, kState.countertopConfig, kState.qstoneCatalog, kState.islandBackConfig, kState.walls, kState.architecturalElements, kState.roomConfig);
       if (ctBOM && ctBOM.pieces.length > 0) {
         const dataStone = ctBOM.pieces.map(p => ({
           'Código': p.id,

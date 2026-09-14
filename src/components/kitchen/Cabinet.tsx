@@ -1,12 +1,13 @@
 import React, { useRef, useState, useMemo } from 'react';
-import { CabinetType, useKitchenStore } from '../../store/kitchenStore';
+import { CabinetType, useKitchenStore, getCabinetLabel } from '../../store/kitchenStore';
 import { useStore } from '../../store';
-import { Edges, Line, Text } from '@react-three/drei';
+import { Edges, Line, Text, Billboard } from '@react-three/drei';
 import { Board } from '../Board';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { useCursor } from '@react-three/drei';
 import { getNominalSlideLength } from '../../utils/manufacturing';
+import { getProvelcarX175Geometry, getProvelcarX176Geometry } from '../../utils/kitchenGola3D';
 import { StoveFDVUnique90 } from './decoration/StoveFDVUnique90';
 import { FridgeFDVSignatureSBS } from './decoration/FridgeFDVSignatureSBS';
 import { PlantDecoration } from './decoration/PlantDecoration';
@@ -97,6 +98,8 @@ export function AssemblyJoint({
 
 export function AnimatedDrawer({ children, openZOffset, forceOpen, onClickAction }: { children: React.ReactNode, openZOffset: number, forceOpen?: boolean, onClickAction?: () => void }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  useCursor(hovered);
   const groupRef = useRef<THREE.Group>(null);
 
   React.useEffect(() => {
@@ -112,13 +115,22 @@ export function AnimatedDrawer({ children, openZOffset, forceOpen, onClickAction
 
   const handleClick = (e: any) => {
     e.stopPropagation();
-    if (onClickAction) onClickAction();
+    if (onClickAction) {
+      onClickAction();
+    } else {
+      setIsOpen((prev) => !prev);
+    }
   };
 
   return (
     <group 
       ref={groupRef}
       onClick={handleClick}
+      onPointerOver={(e) => {
+        e.stopPropagation();
+        setHovered(true);
+      }}
+      onPointerOut={() => setHovered(false)}
     >
       {children}
     </group>
@@ -147,6 +159,8 @@ export function AnimatedDoor({
   globalPosition?: [number, number, number];
 }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  useCursor(hovered);
   const groupRef = useRef<THREE.Group>(null);
 
   React.useEffect(() => {
@@ -171,7 +185,11 @@ export function AnimatedDoor({
 
   const handleClick = (e: any) => {
     e.stopPropagation();
-    if (onClickAction) onClickAction();
+    if (onClickAction) {
+      onClickAction();
+    } else {
+      setIsOpen((prev) => !prev);
+    }
   };
 
   return (
@@ -179,6 +197,11 @@ export function AnimatedDoor({
       position={[position[0] + hingeXOffset, position[1], position[2] - thickness / 2]}
       ref={groupRef}
       onClick={handleClick}
+      onPointerOver={(e) => {
+        e.stopPropagation();
+        setHovered(true);
+      }}
+      onPointerOut={() => setHovered(false)}
     >
       {/* Front Door Board */}
       <Board
@@ -235,6 +258,8 @@ export function AnimatedLiftUpDoor({
   innerDepth?: number;
 }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  useCursor(hovered);
   const groupRef = useRef<THREE.Group>(null);
 
   React.useEffect(() => {
@@ -250,7 +275,11 @@ export function AnimatedLiftUpDoor({
 
   const handleClick = (e: any) => {
     e.stopPropagation();
-    if (onClickAction) onClickAction();
+    if (onClickAction) {
+      onClickAction();
+    } else {
+      setIsOpen((prev) => !prev);
+    }
   };
 
   const topHingeY = doorH / 2;
@@ -260,6 +289,11 @@ export function AnimatedLiftUpDoor({
       position={[position[0], position[1] + topHingeY, position[2] - thickness / 2]}
       ref={groupRef}
       onClick={handleClick}
+      onPointerOver={(e) => {
+        e.stopPropagation();
+        setHovered(true);
+      }}
+      onPointerOut={() => setHovered(false)}
     >
       {/* Front Door Board */}
       <Board
@@ -676,7 +710,11 @@ export function PortableMicrowave({ width, height, depth }: { width: number; hei
   );
 }
 
-export function Cabinet({ id, type, variant, width, height, depth, position, rotation, color, structureColor, doorColor, drawerFrontColor, drawerInnerColor, shelfColor, backColor, socleColor, structureMaterial, doorMaterial, drawerFrontMaterial, drawerInnerMaterial, shelfMaterial, backMaterial, socleMaterial, grainDirection, grainElements, hplBalancer, isOpen, openElements }: CabinetType) {
+interface CabinetProps extends CabinetType {
+  index?: number;
+}
+
+export function Cabinet({ id, type, variant, width, height, depth, position, rotation, color, structureColor, doorColor, drawerFrontColor, drawerInnerColor, shelfColor, backColor, socleColor, structureMaterial, doorMaterial, drawerFrontMaterial, drawerInnerMaterial, shelfMaterial, backMaterial, socleMaterial, grainDirection, grainElements, hplBalancer, isOpen, openElements, index }: CabinetProps) {
    const cStructure = structureColor || color || '#f8fafc';
    const cDoors = doorColor || color || '#f8fafc';
    const cDrawers = drawerFrontColor || doorColor || color || '#f8fafc';
@@ -685,6 +723,7 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
    const cSocle = socleColor || '#111';
 
    const { activeCabinetId, setActiveCabinet, setDraggingCabinetId, setToolMode, showSocle, cabinets, viewMode, golaSystem, countertopConfig, qstoneCatalog } = useKitchenStore();
+   const cabinetIndex = typeof index === 'number' ? index : cabinets.findIndex((c) => c.id === id);
    const isBaseOrIsland = type === 'base' || type === 'island';
    const isGolaActive = (golaSystem === 'aluminum' || golaSystem === 'black') && isBaseOrIsland;
    const golaColor = golaSystem === 'black' ? '#18181b' : '#d1d5db';
@@ -903,40 +942,28 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
 
          const renderGolaL = () => (
             <group key="gola-l-profile">
-               {/* Perfil Gola L Provelcar x175 Superior */}
-               <mesh position={[golaCenterX, legsHeight + cabH - 1.75, depth / 2 - 2.5]}>
-                  <boxGeometry args={[golaSpan, 3.5, 0.2]} />
-                  <meshStandardMaterial color={golaColor} metalness={golaMetalness} roughness={golaRoughness} />
-               </mesh>
-               <mesh position={[golaCenterX, legsHeight + cabH - 3.5 + 0.1, depth / 2 - 1.25]}>
-                  <boxGeometry args={[golaSpan, 0.2, 2.5]} />
-                  <meshStandardMaterial color={golaColor} metalness={golaMetalness} roughness={golaRoughness} />
-               </mesh>
-               <mesh position={[golaCenterX, legsHeight + cabH - 0.2, depth / 2 - 0.1]}>
-                  <boxGeometry args={[golaSpan, 0.4, 0.2]} />
-                  <meshStandardMaterial color={golaColor} metalness={golaMetalness} roughness={golaRoughness} />
+               {/* Perfil Gola Superior Tipo J Provelcar x175 Oficial */}
+               <mesh 
+                  geometry={getProvelcarX175Geometry(golaSpan)} 
+                  position={[-golaSpan / 2, legsHeight + cabH, depth / 2]} 
+                  rotation={[0, Math.PI / 2, 0]}
+                  castShadow
+               >
+                  <meshStandardMaterial color={golaColor} metalness={golaMetalness} roughness={golaRoughness} side={THREE.DoubleSide} />
                </mesh>
             </group>
          );
 
          const renderGolaC = (yPos: number) => (
             <group key={`gola-c-profile-${yPos}`}>
-               {/* Perfil Gola C Provelcar x176 Intermedio */}
-               <mesh position={[golaCenterX, yPos, depth / 2 - 2.5]}>
-                  <boxGeometry args={[golaSpan, 4.0, 0.2]} />
-                  <meshStandardMaterial color={golaColor} metalness={golaMetalness} roughness={golaRoughness} />
-               </mesh>
-               <mesh position={[golaCenterX, yPos + 2.0 - 0.1, depth / 2 - 1.25]}>
-                  <boxGeometry args={[golaSpan, 0.2, 2.5]} />
-                  <meshStandardMaterial color={golaColor} metalness={golaMetalness} roughness={golaRoughness} />
-               </mesh>
-               <mesh position={[golaCenterX, yPos - 2.0 + 0.1, depth / 2 - 1.25]}>
-                  <boxGeometry args={[golaSpan, 0.2, 2.5]} />
-                  <meshStandardMaterial color={golaColor} metalness={golaMetalness} roughness={golaRoughness} />
-               </mesh>
-               <mesh position={[golaCenterX, yPos, depth / 2 - 0.1]}>
-                  <boxGeometry args={[golaSpan, 0.4, 0.2]} />
-                  <meshStandardMaterial color={golaColor} metalness={golaMetalness} roughness={golaRoughness} />
+               {/* Perfil Gola Intermedio Tipo C / U Provelcar x176 Oficial */}
+               <mesh 
+                  geometry={getProvelcarX176Geometry(golaSpan)} 
+                  position={[-golaSpan / 2, yPos, depth / 2]} 
+                  rotation={[0, Math.PI / 2, 0]}
+                  castShadow
+               >
+                  <meshStandardMaterial color={golaColor} metalness={golaMetalness} roughness={golaRoughness} side={THREE.DoubleSide} />
                </mesh>
             </group>
          );
@@ -1374,6 +1401,147 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
             );
          }
 
+         if (effectiveVariant === 'wall_corner_blind_right' || effectiveVariant === 'wall_corner_blind_left' || effectiveVariant === 'wall_corner_blind') {
+            const isRight = effectiveVariant !== 'wall_corner_blind_left';
+            const stripW = 5.5; // 55 mm según detalle técnico del PDF
+            const doorW = width - stripW - gap * 3;
+            const doorH = cabH - gap * 2;
+            const doorY = legsHeight + gap + doorH / 2;
+
+            const stripX = isRight ? (width / 2 - stripW / 2 - gap) : (-width / 2 + stripW / 2 + gap);
+            const returnX = isRight ? (width / 2 - stripW + thickness / 2) : (-width / 2 + stripW - thickness / 2);
+            const doorX = isRight ? (-width / 2 + gap + doorW / 2) : (width / 2 - gap - doorW / 2);
+
+            return (
+               <>
+                  {/* Tapa Esquinero Frontal (Regleta exterior de esquina) */}
+                  <Board
+                     position={[stripX, doorY, frontZ]}
+                     args={[stripW, doorH, thickness]}
+                     {...parseColor(cStructure, structureMaterial, 'corner_strip')}
+                     isFrontPanel={false}
+                     globalPosition={[position[0] + stripX, position[1] + doorY, position[2] + frontZ]}
+                  />
+
+                  {/* Regleta Retorno / Pieza de Unión L Interior según lámina técnica PDF */}
+                  <Board
+                     position={[returnX, doorY, frontZ - stripW / 2 - thickness / 2]}
+                     args={[thickness, doorH, stripW]}
+                     {...parseColor(cStructure, structureMaterial, 'corner_return')}
+                     isFrontPanel={false}
+                  />
+
+                  {/* Puerta Batiente con bisagras en el extremo exterior opuesto */}
+                  <AnimatedDoor
+                     position={[doorX, doorY, frontZ]}
+                     doorW={doorW}
+                     doorH={doorH}
+                     thickness={thickness}
+                     isRightHinge={!isRight}
+                     colorProps={parseColor(cDoors, doorMaterial, 'door-0')}
+                     forceOpen={isElementOpen('door-0')}
+                     globalPosition={[position[0] + doorX, position[1] + doorY, position[2] + frontZ]}
+                  />
+
+                  {/* Repisa Interior Regulable a media altura */}
+                  <Board
+                     position={[0, legsHeight + cabH / 2, 0]}
+                     args={[innerW, thickness, depth - 4]}
+                     {...parseColor(shelfColor || cStructure, shelfMaterial)}
+                  />
+               </>
+            );
+         }
+
+         if (effectiveVariant === 'wine_rack' || effectiveVariant === 'base_wine_rack' || effectiveVariant === 'wall_wine_rack' || effectiveVariant === 'tall_wine_rack' || effectiveVariant === 'island_wine_rack') {
+            const usefulDepth = Math.min(depth - 2, 32); // Fondo útil para botellas estándar 32cm
+            const falseBackZ = depth / 2 - usefulDepth - thickness / 2;
+            const cellsZ = depth / 2 - usefulDepth / 2;
+
+            // Cálculo paramétrico de columnas: Mínimo 10.5 cm libres por botella, máximo 5 corridas
+            const minClearance = 10.5;
+            const maxColsPossible = Math.floor((innerW + thickness) / (minClearance + thickness));
+            const cols = Math.min(5, Math.max(1, maxColsPossible));
+            const colWidth = (innerW - (cols - 1) * thickness) / cols;
+
+            // Filas según altura del mueble (~12.5 cm por corrida de botella)
+            const availableH = cabH - thickness * 2;
+            const rows = Math.max(2, Math.floor(availableH / 12.5));
+            const rowHeight = (availableH - (rows - 1) * thickness) / rows;
+
+            const bottles: { x: number; y: number; key: string }[] = [];
+            for (let c = 0; c < cols; c++) {
+               const bX = -innerW / 2 + c * (colWidth + thickness) + colWidth / 2;
+               for (let r = 0; r < rows; r++) {
+                  const bY = legsHeight + thickness + r * (rowHeight + thickness) + rowHeight / 2;
+                  bottles.push({ x: bX, y: bY, key: `bot-${c}-${r}` });
+               }
+            }
+
+            return (
+               <>
+                  {/* Fondo Falso Vertical Estructural a 32cm útiles del frente */}
+                  <Board
+                     position={[0, legsHeight + cabH / 2, falseBackZ]}
+                     args={[innerW, cabH - thickness * 2, thickness]}
+                     {...parseColor(cStructure, structureMaterial, 'false_back')}
+                  />
+
+                  {/* Divisores Verticales de Celdas (entre columnas) */}
+                  {cols > 1 && Array.from({ length: cols - 1 }).map((_, i) => {
+                     const divX = -innerW / 2 + (i + 1) * (colWidth + thickness) - thickness / 2;
+                     return (
+                        <Board
+                           key={`wine-vdiv-${i}`}
+                           position={[divX, legsHeight + cabH / 2, cellsZ]}
+                           args={[thickness, cabH - thickness * 2, usefulDepth]}
+                           {...parseColor(shelfColor || cStructure, shelfMaterial)}
+                        />
+                     );
+                  })}
+
+                  {/* Repisas Horizontales de Celdas (entre filas) */}
+                  {rows > 1 && Array.from({ length: rows - 1 }).map((_, j) => {
+                     const divY = legsHeight + thickness + (j + 1) * (rowHeight + thickness) - thickness / 2;
+                     return (
+                        <Board
+                           key={`wine-hdiv-${j}`}
+                           position={[0, divY, cellsZ]}
+                           args={[innerW, thickness, usefulDepth]}
+                           {...parseColor(shelfColor || cStructure, shelfMaterial)}
+                        />
+                     );
+                  })}
+
+                  {/* Botellas de Vino 3D en los nichos */}
+                  {bottles.map(b => (
+                     <group key={b.key} position={[b.x, b.y, cellsZ]} rotation={[Math.PI / 2, 0, 0]}>
+                        {/* Cuerpo de botella cilíndrica */}
+                        <mesh position={[0, 0, 0]}>
+                           <cylinderGeometry args={[3.6, 3.6, 17, 14]} />
+                           <meshStandardMaterial color="#1a2f1a" roughness={0.2} metalness={0.15} />
+                        </mesh>
+                        {/* Hombro cónico */}
+                        <mesh position={[0, 10, 0]}>
+                           <cylinderGeometry args={[1.5, 3.6, 3, 14]} />
+                           <meshStandardMaterial color="#1a2f1a" roughness={0.2} metalness={0.15} />
+                        </mesh>
+                        {/* Cuello */}
+                        <mesh position={[0, 13.5, 0]}>
+                           <cylinderGeometry args={[1.35, 1.35, 4, 14]} />
+                           <meshStandardMaterial color="#1a2f1a" roughness={0.2} metalness={0.15} />
+                        </mesh>
+                        {/* Cápsula de botella burdeos */}
+                        <mesh position={[0, 14.8, 0]}>
+                           <cylinderGeometry args={[1.4, 1.4, 2.4, 14]} />
+                           <meshStandardMaterial color="#7f1d1d" roughness={0.3} metalness={0.7} />
+                        </mesh>
+                     </group>
+                  ))}
+               </>
+            );
+         }
+
          if (effectiveVariant === 'wall_lift_up') {
             const doorW = width - gap * 2;
             const doorH = cabH - gap * 2;
@@ -1646,9 +1814,14 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
    const renderDimensions = () => {
       if (!showDimensions) return null;
 
-      const isCornerBlind = variant?.startsWith('corner_blind') || variant === 'corner_blind';
+      const isCornerBlind = variant?.startsWith('corner_blind') || variant === 'corner_blind' || variant?.startsWith('wall_corner_blind');
+      const isWineRack = variant?.includes('wine_rack');
       const doorCount = variant === '2_doors' ? 2 : (variant === '1_door' || variant === 'spice_rack' || isCornerBlind ? 1 : 0);
-      const doorW = doorCount === 2 ? (width - gap*3) / 2 : (isCornerBlind ? (width - Math.max(35, width/2) - gap*2) : (width - gap*2));
+      const doorW = doorCount === 2 
+         ? (width - gap*3) / 2 
+         : (variant?.startsWith('wall_corner_blind')
+            ? (width - 5.5 - gap*3)
+            : (isCornerBlind ? (width - Math.max(35, width/2) - gap*2) : (width - gap*2)));
       const doorH = variant === '1_door_1_drawer' ? cabH - 15 - gap*3 : cabH - gap*2;
 
       return (
@@ -1700,6 +1873,8 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                   {variant === 'deco_stove' ? 'COCINA FDV 90' :
                    variant === 'deco_fridge' ? 'REFRIGERADOR SBS' :
                    variant === 'deco_plant' ? 'PLANTA INTERIOR' :
+                   variant?.startsWith('wall_corner_blind') ? 'AÉREO ESQUINERO' :
+                   variant?.includes('wine_rack') ? 'BOTELLERO' :
                    (variant ? variant.replace(/_/g, ' ').toUpperCase() : type.toUpperCase())}
                </Text>
             )}
@@ -1845,11 +2020,67 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                </>
             )}
 
-            {/* --- NIVEL >= 5: Cotas de Interiores / Repisas (Morado) --- */}
-            {dimensionLevel >= 5 && (
+            {/* --- NIVEL >= 4: Cotas de Interiores / Repisas (Morado) --- */}
+            {dimensionLevel >= 4 && (
                <group position={[0, -height / 2 + legsHeight + cabH / 2, frontZ + 2]}>
                   <Line points={[[0, -cabH / 4, 0], [0, cabH / 4, 0]]} color="#8b5cf6" lineWidth={1} depthTest={false} renderOrder={999} />
                   <Text position={[3, 0, 0]} fontSize={4} color="#8b5cf6" anchorX="left" anchorY="middle" material-depthTest={false} material-toneMapped={false} renderOrder={1000}>{(cabH / 2).toFixed(1)}</Text>
+               </group>
+            )}
+
+            {/* --- NIVEL >= 5: Identificación BIM de Módulos (N° y Nombre idéntico al Menú de Escena) --- */}
+            {dimensionLevel >= 5 && cabinetIndex >= 0 && (
+               <group position={[0, height / 2 + 10, 0]} renderOrder={1000}>
+                  {/* Línea conectora hacia la cubierta / cuerpo del mueble */}
+                  <Line points={[[0, 0, 0], [0, -8, 0]]} color={isActive ? "#f97316" : "#38bdf8"} lineWidth={1.6} dashed dashScale={1} depthTest={false} renderOrder={999} />
+
+                  {/* Badge Flotante con Orientación Billboard hacia la Cámara */}
+                  <Billboard follow={true} lockX={false} lockY={false} lockZ={false}>
+                     {(() => {
+                        const cabLabel = getCabinetLabel({ type, variant, width, height, depth }, cabinetIndex);
+                        const fullText = `MOD ${cabinetIndex + 1} • ${cabLabel}`;
+                        const badgeW = Math.max(30, fullText.length * 2.3 + 8);
+                        return (
+                           <group>
+                              {/* Placa de fondo de alto contraste */}
+                              <mesh position={[0, 0, -0.05]} renderOrder={999}>
+                                 <planeGeometry args={[badgeW, 9]} />
+                                 <meshBasicMaterial color={isActive ? "#0f172a" : "#1e293b"} transparent opacity={0.92} depthTest={false} />
+                              </mesh>
+
+                              {/* Borde perimetral técnico */}
+                              <Line
+                                 points={[
+                                    [-badgeW / 2, -4.5, 0], [badgeW / 2, -4.5, 0],
+                                    [badgeW / 2, 4.5, 0], [-badgeW / 2, 4.5, 0],
+                                    [-badgeW / 2, -4.5, 0]
+                                 ]}
+                                 color={isActive ? "#f97316" : "#0284c7"}
+                                 lineWidth={1.8}
+                                 depthTest={false}
+                                 renderOrder={1000}
+                              />
+
+                              {/* Texto Identificador Exacto del Menú de Escena */}
+                              <Text
+                                 position={[0, 0, 0.05]}
+                                 fontSize={4.6}
+                                 color={isActive ? "#fb923c" : "#f8fafc"}
+                                 anchorX="center"
+                                 anchorY="middle"
+                                 fontWeight="bold"
+                                 outlineWidth={0.4}
+                                 outlineColor="#000000"
+                                 material-depthTest={false}
+                                 material-toneMapped={false}
+                                 renderOrder={1001}
+                              >
+                                 {fullText}
+                              </Text>
+                           </group>
+                        );
+                     })()}
+                  </Billboard>
                </group>
             )}
             </>

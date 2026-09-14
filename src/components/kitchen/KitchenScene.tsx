@@ -8,13 +8,15 @@ import { Wall } from './Wall';
 import { Cabinet } from './Cabinet';
 import { KitchenSocle } from './KitchenSocle';
 import { KitchenRunDimensions } from './KitchenRunDimensions';
+import { KitchenSpatialDimensions } from './KitchenSpatialDimensions';
 import { RoomFloorAndDimensions } from './RoomFloorAndDimensions';
 import { ArchitecturalElementsRenderer } from './ArchitecturalElementsRenderer';
 import { KitchenCountertop3D } from './KitchenCountertop3D';
+import { KitchenIslandBackPanel } from './KitchenIslandBackPanel';
 import { resolvePlacement } from '../../utils/kitchenCollision';
 
 function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
-  const { viewMode, toolMode, walls, cabinets, addWall, drawingStart, setDrawingStart, addCabinet, setToolMode, setActiveCabinet, roomConfig, activeCabinetId, addArchitecturalElement, draggingArchElementId } = useKitchenStore();
+  const { viewMode, toolMode, walls, cabinets, addWall, drawingStart, setDrawingStart, addCabinet, setToolMode, setActiveCabinet, roomConfig, activeCabinetId, addArchitecturalElement, draggingArchElementId, architecturalElements, activeArchElementId, setActiveArchElement } = useKitchenStore();
   const [currentMousePos, setCurrentMousePos] = useState<[number, number] | null>(null);
   const [ghostCabinet, setGhostCabinet] = useState<{pos: [number,number,number], rot: number, isColliding?: boolean} | null>(null);
   const { camera, raycaster, pointer, scene } = useThree();
@@ -22,6 +24,23 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
   const is2D = viewMode === '2d';
   const groundPlaneMath = React.useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), []);
   const intersectPoint = React.useMemo(() => new THREE.Vector3(), []);
+
+  const effectiveWalls = React.useMemo(() => {
+    if (walls && walls.length > 0) return walls;
+    if (roomConfig?.vertices && roomConfig.vertices.length >= 3) {
+      return roomConfig.vertices.map((v, i, arr) => {
+        const next = arr[(i + 1) % arr.length];
+        return {
+          id: `wall_v_${i}`,
+          start: [v.x, v.y] as [number, number],
+          end: [next.x, next.y] as [number, number],
+          thickness: roomConfig.wallThickness || 20,
+          height: roomConfig.wallHeight || 250,
+        };
+      });
+    }
+    return [];
+  }, [walls, roomConfig]);
 
   // Al activar la herramienta "Mover", situar de inmediato el ghost y la flecha sobre el mueble activo
   useEffect(() => {
@@ -36,25 +55,42 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
   }, []);
 
   useEffect(() => {
-    if (toolMode === 'move_active' && activeCabinetId) {
-      const activeCab = useKitchenStore.getState().cabinets.find(c => c.id === activeCabinetId);
-      if (activeCab && Array.isArray(activeCab.position)) {
-        setGhostCabinet({
-          pos: [Number(activeCab.position[0]) || 0, Number(activeCab.position[1]) || 40, Number(activeCab.position[2]) || 0],
-          rot: Number(activeCab.rotation) || 0,
-          isColliding: false,
-        });
-      } else {
-        setGhostCabinet({
-          pos: [0, 40, 0],
-          rot: 0,
-          isColliding: false,
-        });
+    if (toolMode === 'move_active') {
+      if (activeCabinetId) {
+        const activeCab = useKitchenStore.getState().cabinets.find(c => c.id === activeCabinetId);
+        if (activeCab && Array.isArray(activeCab.position)) {
+          setGhostCabinet({
+            pos: [Number(activeCab.position[0]) || 0, Number(activeCab.position[1]) || 40, Number(activeCab.position[2]) || 0],
+            rot: Number(activeCab.rotation) || 0,
+            isColliding: false,
+          });
+        } else {
+          setGhostCabinet({
+            pos: [0, 40, 0],
+            rot: 0,
+            isColliding: false,
+          });
+        }
+      } else if (activeArchElementId) {
+        const activeArch = useKitchenStore.getState().architecturalElements.find(a => a.id === activeArchElementId);
+        if (activeArch && Array.isArray(activeArch.position)) {
+          setGhostCabinet({
+            pos: [Number(activeArch.position[0]) || 0, Number(activeArch.position[1]) || (activeArch.elevation + activeArch.height / 2), Number(activeArch.position[2]) || 0],
+            rot: Number(activeArch.rotation) || 0,
+            isColliding: false,
+          });
+        } else {
+          setGhostCabinet({
+            pos: [0, 120, 0],
+            rot: 0,
+            isColliding: false,
+          });
+        }
       }
     } else if (!toolMode.startsWith('place_')) {
       setGhostCabinet(null);
     }
-  }, [toolMode, activeCabinetId]);
+  }, [toolMode, activeCabinetId, activeArchElementId]);
 
   const dragInfoRef = useRef<{ id: string; startPointerX: number; startOffset: number } | null>(null);
 
@@ -159,8 +195,55 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
       let cabRot = 0;
       let customY: number | undefined = undefined;
       const activeCabId = useKitchenStore.getState().activeCabinetId;
+      const activeArchId = useKitchenStore.getState().activeArchElementId;
       
       if (toolMode === 'move_active') {
+         if (activeArchId) {
+            const activeArch = architecturalElements.find(e => e.id === activeArchId);
+            if (activeArch) {
+               const archWidth = activeArch.width;
+               const archHeight = activeArch.height;
+               const archElevation = activeArch.elevation || 0;
+               const defaultY = archElevation + archHeight / 2;
+
+               let bestPos: [number, number, number] = [rawX, defaultY, rawZ];
+               let bestRot = activeArch.rotation || 0;
+
+               const effectiveWalls = walls && walls.length > 0 ? walls : (roomConfig?.vertices && roomConfig.vertices.length >= 3 ? roomConfig.vertices.map((v, i, arr) => {
+                  const next = arr[(i + 1) % arr.length];
+                  return { start: [v.x, v.y], end: [next.x, next.y], thickness: 20, height: 240 };
+               }) : []);
+
+               let minDist = Infinity;
+               if (effectiveWalls.length > 0) {
+                  for (const w of effectiveWalls) {
+                     const [x1, z1] = w.start;
+                     const [x2, z2] = w.end;
+                     const wLen = Math.hypot(x2 - x1, z2 - z1);
+                     if (wLen < 10) continue;
+                     const uX = (x2 - x1) / wLen;
+                     const uZ = (z2 - z1) / wLen;
+
+                     const s = (rawX - x1) * uX + (rawZ - z1) * uZ;
+                     const sClamped = Math.max(archWidth / 2 + 2, Math.min(wLen - archWidth / 2 - 2, s));
+
+                     const pX = x1 + sClamped * uX;
+                     const pZ = z1 + sClamped * uZ;
+                     const dist = Math.hypot(rawX - pX, rawZ - pZ);
+
+                     if (dist < minDist) {
+                        minDist = dist;
+                        bestRot = Math.atan2(x1 - x2, z1 - z2);
+                        bestPos = [pX, defaultY, pZ];
+                     }
+                  }
+               }
+
+               setGhostCabinet({ pos: bestPos, rot: bestRot, isColliding: false });
+               return;
+            }
+         }
+
          const activeCab = cabinets.find(c => c.id === activeCabId) || null;
          if (activeCab) {
             cabWidth = Number(activeCab.width) || 60;
@@ -186,6 +269,7 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
            ignoreId: activeCabId,
            walls,
            roomVertices: roomConfig?.vertices,
+           architecturalElements,
          });
 
          setGhostCabinet({ pos: result.position, rot: result.rotation, isColliding: result.isColliding });
@@ -241,12 +325,16 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
             const v = toolMode.replace('place_base_', '');
             cabVariant = v;
             if (v === 'spice_rack') cabWidth = 15;
+            if (v === 'wine_rack') cabWidth = 20;
             if (v === '2_doors' || v === '2_pot_drawers') cabWidth = 80;
             if (v === 'corner_blind') cabWidth = 100;
          } else if (isTall) {
             cabType = 'tall';
             cabHeight = 215;
-            if (toolMode === 'place_tall_2_doors') cabWidth = 80;
+            if (toolMode === 'place_tall_wine_rack') {
+               cabVariant = 'tall_wine_rack';
+               cabWidth = 30;
+            } else if (toolMode === 'place_tall_2_doors') cabWidth = 80;
             else cabWidth = 60;
          } else if (isWall) {
             cabType = 'wall';
@@ -258,6 +346,14 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
             } else if (toolMode === 'place_wall_2_doors' || toolMode === 'place_wall') {
                cabVariant = '2_doors';
                cabWidth = 80;
+               cabHeight = 70;
+            } else if (toolMode === 'place_wall_corner_blind') {
+               cabVariant = 'wall_corner_blind_right';
+               cabWidth = 70;
+               cabHeight = 70;
+            } else if (toolMode === 'place_wall_wine_rack') {
+               cabVariant = 'wall_wine_rack';
+               cabWidth = 20;
                cabHeight = 70;
             } else if (toolMode === 'place_wall_lift_up') {
                cabVariant = 'wall_lift_up';
@@ -277,11 +373,19 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
                cabWidth = 60;
                cabHeight = 70;
             }
-         } else if (toolMode === 'place_island') {
+         } else if (toolMode === 'place_island' || toolMode === 'place_island_wine_rack') {
             cabType = 'island';
-            cabHeight = 80;
-            cabWidth = 90;
-            cabDepth = 80;
+            if (toolMode === 'place_island_wine_rack') {
+               cabVariant = 'wine_rack';
+               cabHeight = 80;
+               cabWidth = 25;
+               cabDepth = 60;
+            } else {
+               cabVariant = '2_pot_drawers';
+               cabHeight = 80;
+               cabWidth = 90;
+               cabDepth = 80;
+            }
          } else if (toolMode === 'place_deco_stove') {
             cabType = 'decoration';
             cabVariant = 'deco_stove';
@@ -323,6 +427,7 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
         ignoreId: null,
         walls,
         roomVertices: roomConfig?.vertices,
+        architecturalElements,
       });
 
       setGhostCabinet({ pos: result.position, rot: result.rotation, isColliding: result.isColliding });
@@ -332,6 +437,7 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
   const handlePointerDown = (e: any) => {
     if (toolMode === 'select') {
       setActiveCabinet(null);
+      setActiveArchElement(null);
       return;
     }
     e.stopPropagation();
@@ -408,6 +514,7 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
       setToolMode('select');
     } else if (toolMode === 'move_active' && ghostCabinet && ghostCabinet.pos) {
         const activeCabId = useKitchenStore.getState().activeCabinetId;
+        const activeArchId = useKitchenStore.getState().activeArchElementId;
         if (activeCabId) {
            const safePosX = Number(ghostCabinet.pos[0]) || 0;
            const safePosY = Number(ghostCabinet.pos[1]) || 40;
@@ -417,13 +524,52 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
              position: [safePosX, safePosY, safePosZ],
              rotation: safeRot,
            });
+        } else if (activeArchId) {
+           const activeArch = useKitchenStore.getState().architecturalElements.find(e => e.id === activeArchId);
+           if (activeArch) {
+              const effectiveWalls = walls && walls.length > 0 ? walls : (roomConfig?.vertices && roomConfig.vertices.length >= 3 ? roomConfig.vertices.map((v, i, arr) => {
+                 const next = arr[(i + 1) % arr.length];
+                 return { id: `wall_v_${i}`, start: [v.x, v.y], end: [next.x, next.y], thickness: 20, height: 240 };
+              }) : []);
+
+              let bestWallId = effectiveWalls[0]?.id || 'wall_0';
+              let bestOffset = 0;
+              let minDist = Infinity;
+
+              for (const w of effectiveWalls) {
+                 const [x1, z1] = w.start;
+                 const [x2, z2] = w.end;
+                 const wLen = Math.hypot(x2 - x1, z2 - z1);
+                 if (wLen < 10) continue;
+                 const uX = (x2 - x1) / wLen;
+                 const uZ = (z2 - z1) / wLen;
+                 const s = (ghostCabinet.pos[0] - x1) * uX + (ghostCabinet.pos[2] - z1) * uZ;
+                 const sClamped = Math.max(activeArch.width / 2 + 2, Math.min(wLen - activeArch.width / 2 - 2, s));
+                 const pX = x1 + sClamped * uX;
+                 const pZ = z1 + sClamped * uZ;
+                 const dist = Math.hypot(ghostCabinet.pos[0] - pX, ghostCabinet.pos[2] - pZ);
+
+                 if (dist < minDist) {
+                    minDist = dist;
+                    bestWallId = w.id || `wall_${Math.random()}`;
+                    bestOffset = sClamped - wLen / 2;
+                 }
+              }
+
+              useKitchenStore.getState().updateArchitecturalElement(activeArchId, {
+                position: ghostCabinet.pos as [number, number, number],
+                rotation: ghostCabinet.rot,
+                wallId: bestWallId,
+                offset: bestOffset,
+              });
+           }
         }
         setToolMode('select');
     } else if (toolMode.startsWith('place_') && ghostCabinet) {
       const isBase = toolMode.startsWith('place_base_');
       const isTall = toolMode.startsWith('place_tall_') || toolMode === 'place_tall';
       const isWall = toolMode.startsWith('place_wall_') || toolMode === 'place_wall';
-      const isIsland = toolMode === 'place_island';
+      const isIsland = toolMode === 'place_island' || toolMode === 'place_island_wine_rack';
       
       let cabType: 'base' | 'wall' | 'tall' | 'island' | 'decoration' = 'base';
       let cabVariant = '1_door';
@@ -435,6 +581,7 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
          cabType = 'base';
          cabVariant = toolMode.replace('place_base_', '');
          if (cabVariant === 'spice_rack') cabWidth = 15;
+         if (cabVariant === 'wine_rack') cabWidth = 20;
          if (cabVariant === '2_doors' || cabVariant === '2_pot_drawers') cabWidth = 80;
          if (cabVariant === 'corner_blind') {
             cabWidth = 100;
@@ -447,6 +594,9 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
          if (toolMode === 'place_tall_1_door' || toolMode === 'place_tall') {
             cabVariant = 'tall_1_door';
             cabWidth = 60;
+         } else if (toolMode === 'place_tall_wine_rack') {
+            cabVariant = 'tall_wine_rack';
+            cabWidth = 30;
          } else if (toolMode === 'place_tall_split_2_doors') {
             cabVariant = 'tall_split_2_doors';
             cabWidth = 60;
@@ -474,6 +624,14 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
             cabVariant = '2_doors';
             cabWidth = 80;
             cabHeight = 70;
+         } else if (toolMode === 'place_wall_corner_blind') {
+            cabVariant = 'wall_corner_blind_right';
+            cabWidth = 70;
+            cabHeight = 70;
+         } else if (toolMode === 'place_wall_wine_rack') {
+            cabVariant = 'wall_wine_rack';
+            cabWidth = 20;
+            cabHeight = 70;
          } else if (toolMode === 'place_wall_lift_up') {
             cabVariant = 'wall_lift_up';
             cabWidth = 80;
@@ -494,10 +652,17 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
          }
       } else if (isIsland) {
          cabType = 'island';
-         cabVariant = '2_pot_drawers';
-         cabHeight = 80;
-         cabWidth = 90;
-         cabDepth = 80;
+         if (toolMode === 'place_island_wine_rack') {
+            cabVariant = 'wine_rack';
+            cabHeight = 80;
+            cabWidth = 25;
+            cabDepth = 60;
+         } else {
+            cabVariant = '2_pot_drawers';
+            cabHeight = 80;
+            cabWidth = 90;
+            cabDepth = 80;
+         }
       } else if (toolMode === 'place_deco_stove') {
          cabType = 'decoration';
          cabVariant = 'deco_stove';
@@ -591,7 +756,8 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
         shadow-camera-top={500}
         shadow-camera-bottom={-500}
       />
-      <Environment preset="city" />
+      <directionalLight position={[-250, 250, -200]} intensity={0.4} />
+      <hemisphereLight args={[isLight ? '#f8fafc' : '#e0f2fe', isLight ? '#94a3b8' : '#334155', 0.55]} />
 
       {is2D ? (
         <OrthographicCamera makeDefault position={[0, 1000, 0]} rotation={[-Math.PI/2, 0, 0]} zoom={2.5} near={1} far={3000} />
@@ -619,15 +785,17 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
           <Grid position={[0, 0.1, 0]} args={[2000, 2000]} infiniteGrid fadeDistance={1500} sectionColor={isLight ? '#94a3b8' : '#666'} cellColor={isLight ? '#cbd5e1' : '#333'} />
         )}
 
-        <RoomFloorAndDimensions />
-        {walls.map(wall => <Wall key={wall.id} {...wall} />)}
-        {cabinets.map(cab => {
+        <RoomFloorAndDimensions onPointerDown={handlePointerDown} />
+        {effectiveWalls.map(wall => <Wall key={wall.id} {...wall} />)}
+        {cabinets.map((cab, idx) => {
           if (toolMode === 'move_active' && cab.id === useKitchenStore.getState().activeCabinetId) return null;
-          return <Cabinet key={cab.id} {...cab} />;
+          return <Cabinet key={cab.id} {...cab} index={idx} />;
         })}
         <KitchenSocle />
         <KitchenCountertop3D />
+        <KitchenIslandBackPanel />
         <KitchenRunDimensions />
+        <KitchenSpatialDimensions />
         <ArchitecturalElementsRenderer />
 
         {/* Drawing Preview */}
@@ -645,10 +813,17 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
            let archType = '';
 
            const activeCab = useKitchenStore.getState().cabinets.find(c => c.id === useKitchenStore.getState().activeCabinetId);
+           const activeArch = useKitchenStore.getState().architecturalElements.find(a => a.id === useKitchenStore.getState().activeArchElementId);
            if (toolMode === 'move_active' && activeCab) {
               previewW = activeCab.width;
               previewH = activeCab.height;
               previewD = activeCab.depth;
+           } else if (toolMode === 'move_active' && activeArch) {
+              isArch = true;
+              archType = activeArch.type;
+              previewW = activeArch.width;
+              previewH = activeArch.height;
+              previewD = activeArch.type === 'pillar' ? (activeArch.depth ?? 20) : (activeArch.depth ?? 16);
            } else if (toolMode.startsWith('place_arch_')) {
               isArch = true;
               archType = toolMode === 'place_arch_door' ? 'door' : toolMode === 'place_arch_window' ? 'window' : 'pillar';
@@ -758,8 +933,17 @@ export function KitchenScene({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
         antialias: true, 
         powerPreference: 'high-performance',
       }}
+      onPointerMissed={() => {
+        const state = useKitchenStore.getState();
+        if (state.toolMode === 'select') {
+          state.setActiveCabinet(null);
+          state.setActiveArchElement(null);
+        }
+      }}
     >
-      <SceneContent theme={theme} />
+      <React.Suspense fallback={null}>
+        <SceneContent theme={theme} />
+      </React.Suspense>
     </Canvas>
   )
 }

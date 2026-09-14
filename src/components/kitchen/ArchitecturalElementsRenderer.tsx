@@ -3,7 +3,7 @@ import { useKitchenStore, ArchitecturalElement } from '../../store/kitchenStore'
 import { Edges } from '@react-three/drei';
 
 export function ArchitecturalElementsRenderer() {
-  const { architecturalElements, activeArchElementId, setActiveArchElement, setDraggingArchElementId, wallColor } = useKitchenStore();
+  const { architecturalElements, activeArchElementId, setActiveArchElement, setDraggingArchElementId, wallColor, toolMode } = useKitchenStore();
 
   // Elements with wallId are rendered inside Wall components
   const standaloneElements = architecturalElements?.filter(el => !el.wallId) || [];
@@ -13,6 +13,7 @@ export function ArchitecturalElementsRenderer() {
   return (
     <group name="architecturalElementsGroup">
       {standaloneElements.map((el) => {
+        if (toolMode === 'move_active' && el.id === activeArchElementId) return null;
         const isSelected = el.id === activeArchElementId;
         const [x, , z] = el.position;
         const y = el.elevation + el.height / 2;
@@ -159,12 +160,26 @@ export function ArchitecturalElementsRenderer() {
               </group>
             )}
 
-            {/* Anillo o Indicador de Selección sutil */}
+            {/* Indicador de Selección rectangular sutil */ }
             {isSelected && (
-              <mesh position={[0, -el.height / 2 + 1, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-                <ringGeometry args={[Math.max(el.width, depth) / 2 + 3, Math.max(el.width, depth) / 2 + 6, 32]} />
-                <meshBasicMaterial color="#0284c7" side={2} />
-              </mesh>
+              <group position={[0, -el.height / 2 + 0.5, 0]}>
+                <mesh position={[0, 0, (depth + 1.6) / 2]}>
+                  <boxGeometry args={[el.width + 2, 0.4, 0.8]} />
+                  <meshBasicMaterial color="#0284c7" />
+                </mesh>
+                <mesh position={[0, 0, -(depth + 1.6) / 2]}>
+                  <boxGeometry args={[el.width + 2, 0.4, 0.8]} />
+                  <meshBasicMaterial color="#0284c7" />
+                </mesh>
+                <mesh position={[-(el.width + 1.6) / 2, 0, 0]}>
+                  <boxGeometry args={[0.8, 0.4, depth + 0.8]} />
+                  <meshBasicMaterial color="#0284c7" />
+                </mesh>
+                <mesh position={[(el.width + 1.6) / 2, 0, 0]}>
+                  <boxGeometry args={[0.8, 0.4, depth + 0.8]} />
+                  <meshBasicMaterial color="#0284c7" />
+                </mesh>
+              </group>
             )}
           </group>
         );
