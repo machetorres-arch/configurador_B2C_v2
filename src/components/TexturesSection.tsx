@@ -21,6 +21,34 @@ export const TexturesSection = ({
   const state = useStore();
   const adminTextures = useAdminStore((s) => s.textures);
   const hasIslands = useKitchenStore((s) => s.cabinets?.some((c) => c.type === 'island'));
+  const { countertopConfig, setCountertopConfig, qstoneCatalog, addQstoneCatalogItem } = useKitchenStore();
+
+  const handleSelectQstone = (tex: any) => {
+    const matched = qstoneCatalog.find(
+      (p) => p.id === tex.id || p.textureUrl === tex.url || p.name.toLowerCase() === tex.name.toLowerCase()
+    );
+    if (matched) {
+      setCountertopConfig({ selectedProductId: matched.id, enabled: true });
+    } else {
+      const isSintered = tex.name.toLowerCase().includes('sinteriz') || tex.category === 'piedras_marmoles';
+      addQstoneCatalogItem({
+        id: tex.id,
+        code: tex.code || 'QS-CUSTOM',
+        name: tex.name,
+        materialType: isSintered ? 'sinterizado' : 'quarzo',
+        thicknessMm: tex.name.includes('20') ? 20 : (tex.name.includes('18') ? 18 : 12),
+        priceM2Clp: tex.priceM2Clp || 280000,
+        sheetWidthMm: 3200,
+        sheetHeightMm: 1600,
+        colorHex: tex.url && tex.url.startsWith('#') ? tex.url : '#F8FAFC',
+        textureUrl: tex.url,
+        finish: tex.finish || 'Pulido Seda',
+        description: `${tex.brand || 'Sysprotec'} - Formato Placa`,
+        active: true,
+      });
+      setCountertopConfig({ selectedProductId: tex.id, enabled: true });
+    }
+  };
 
   const applyTexture = (url: string, name: string) => {
     const nameLower = name.toLowerCase();
@@ -197,11 +225,63 @@ export const TexturesSection = ({
 
       {qstoneTextures.length > 0 && (
         <div className="mb-4">
-          <label className={`text-[10px] uppercase tracking-widest font-bold block mb-2 ${
-            isLight ? 'text-slate-700' : 'text-slate-400'
-          }`}>3. Sysprotec / Qstone (Piedras & Cuarzos)</label>
+          <div className="flex items-center justify-between mb-2">
+            <label className={`text-[10px] uppercase tracking-widest font-bold ${
+              isLight ? 'text-slate-700' : 'text-slate-400'
+            }`}>
+              3. Sysprotec / Qstone (Cubiertas Técnicas)
+            </label>
+            <span className={`text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border ${
+              isLight
+                ? 'bg-amber-100 text-amber-900 border-amber-300'
+                : 'bg-amber-500/20 text-amber-400 border-amber-500/30'
+            }`}>
+              Solo Cubiertas
+            </span>
+          </div>
           <div className="grid grid-cols-3 gap-2">
-            {qstoneTextures.map(t => renderTextureButton(t))}
+            {qstoneTextures.map((t) => {
+              const isSelected =
+                countertopConfig?.enabled &&
+                (countertopConfig.selectedProductId === t.id ||
+                  qstoneCatalog.find((p) => p.id === countertopConfig.selectedProductId)?.textureUrl === t.url ||
+                  qstoneCatalog.find((p) => p.id === countertopConfig.selectedProductId)?.name.toLowerCase() === t.name.toLowerCase());
+
+              return (
+                <div key={t.id} className="relative group">
+                  <button
+                    onClick={() => handleSelectQstone(t)}
+                    className={`flex flex-col items-center gap-1 p-1 rounded-lg transition-all w-full cursor-pointer relative ${
+                      isSelected
+                        ? 'bg-amber-500/15 border-2 border-amber-500 shadow-[0_0_12px_rgba(245,158,11,0.35)]'
+                        : isLight
+                        ? 'bg-white border border-slate-300 hover:border-amber-500 shadow-sm'
+                        : 'bg-white/5 border border-white/10 hover:border-amber-500/50'
+                    }`}
+                    title={`${t.name} (Aplica exclusivamente a la Cubierta)`}
+                  >
+                    {isSelected && (
+                      <span className="absolute top-1 right-1 bg-amber-500 text-slate-950 text-[7px] font-extrabold px-1 rounded shadow">
+                        ACTIVO
+                      </span>
+                    )}
+                    <div
+                      className={`w-full aspect-square rounded border group-hover:shadow-[0_0_10px_rgba(245,158,11,0.3)] bg-cover bg-center ${
+                        isSelected ? 'border-amber-500' : isLight ? 'border-slate-200' : 'border-white/20'
+                      }`}
+                      style={t.url.startsWith('#') ? { backgroundColor: t.url } : { backgroundImage: `url('${t.url}')` }}
+                    />
+                    <span
+                      className={`text-[8px] uppercase tracking-wider font-bold truncate w-full text-center ${
+                        isSelected ? 'text-amber-500 font-extrabold' : isLight ? 'text-slate-800' : 'text-slate-400'
+                      }`}
+                    >
+                      {t.name.length > 15 ? t.name.substring(0, 15) + '...' : t.name}
+                    </span>
+                  </button>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

@@ -182,14 +182,39 @@ export function TexturesManagerTab({ currentProviderId, isSuperAdmin = true }: T
       approvalStatus: initialApprovalStatus
     });
 
-    // Inyectar en el store de Clóset / TexturesSection sólo si está aprobado
+    // Inyectar en el store de Clóset / TexturesSection sólo si está aprobado Y NO es piedra
+    const isStoneNew =
+      category === 'piedras_marmoles' ||
+      currentSelectedProvider.name.toLowerCase().includes('qstone') ||
+      currentSelectedProvider.name.toLowerCase().includes('sysprotec') ||
+      name.toLowerCase().includes('qstone');
+
     if (initialApprovalStatus === 'approved') {
-      const closetStore = useClosetStore.getState();
-      if (closetStore.customTextures) {
-        closetStore.setCustomTextures([
-          ...closetStore.customTextures,
-          { id: newId, name: name.trim(), url: previewUrl },
-        ]);
+      if (!isStoneNew) {
+        const closetStore = useClosetStore.getState();
+        if (closetStore.customTextures) {
+          closetStore.setCustomTextures([
+            ...closetStore.customTextures,
+            { id: newId, name: name.trim(), url: previewUrl },
+          ]);
+        }
+      } else {
+        const isSintered = name.toLowerCase().includes('sinteriz') || category === 'piedras_marmoles';
+        useKitchenStore.getState().addQstoneCatalogItem({
+          id: newId,
+          code: code.trim() || 'QS-CUSTOM',
+          name: name.trim(),
+          materialType: isSintered ? 'sinterizado' : 'quarzo',
+          thicknessMm: name.includes('20') ? 20 : (name.includes('18') ? 18 : 12),
+          priceM2Clp: priceM2Clp || Math.round(priceSheetClp / 3.965) || 280000,
+          sheetWidthMm: 3200,
+          sheetHeightMm: 1600,
+          colorHex: previewUrl.startsWith('#') ? previewUrl : '#F5F5F7',
+          textureUrl: previewUrl,
+          finish: finish || 'Pulido Seda',
+          description: `${currentSelectedProvider.name} - Formato Placa`,
+          active: true,
+        });
       }
       showToast(`Terminación "${name}" creada y aprobada de inmediato.`, 'success');
     } else {
@@ -207,15 +232,6 @@ export function TexturesManagerTab({ currentProviderId, isSuperAdmin = true }: T
     // Inyectar al catálogo 3D activo
     const target = textures.find((t) => t.id === id);
     if (target) {
-      const closetStore = useClosetStore.getState();
-      if (closetStore.customTextures) {
-        closetStore.setCustomTextures([
-          ...closetStore.customTextures.filter((t) => t.id !== target.id),
-          { id: target.id, name: target.name, url: target.url },
-        ]);
-      }
-
-      // Sincronizar catálogo Cocina Qstone si es piedra / qstone
       const isStone = 
         target.category === 'piedras_marmoles' ||
         target.brand?.toLowerCase().includes('qstone') ||
@@ -224,6 +240,21 @@ export function TexturesManagerTab({ currentProviderId, isSuperAdmin = true }: T
         target.providerName?.toLowerCase().includes('qstone') ||
         target.providerName?.toLowerCase().includes('sysprotec');
 
+      const closetStore = useClosetStore.getState();
+      if (closetStore.customTextures) {
+        if (!isStone) {
+          closetStore.setCustomTextures([
+            ...closetStore.customTextures.filter((t) => t.id !== target.id),
+            { id: target.id, name: target.name, url: target.url },
+          ]);
+        } else {
+          closetStore.setCustomTextures(
+            closetStore.customTextures.filter((t) => t.id !== target.id)
+          );
+        }
+      }
+
+      // Sincronizar catálogo Cocina Qstone si es piedra / qstone
       if (isStone) {
         const isSintered =
           target.name.toLowerCase().includes('sinteriz') ||

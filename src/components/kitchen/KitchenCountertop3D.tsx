@@ -556,8 +556,20 @@ export function KitchenCountertop3D() {
   const roughness = selectedProduct.finish === 'Pulido Brillante' ? 0.08 : 0.25;
   const metalness = 0.04;
 
+  const stoneTexture = useMemo(() => {
+    if (!selectedProduct.textureUrl || selectedProduct.textureUrl.startsWith('#')) return null;
+    const loader = new THREE.TextureLoader();
+    loader.setCrossOrigin('anonymous');
+    const tex = loader.load(selectedProduct.textureUrl);
+    tex.wrapS = THREE.MirroredRepeatWrapping;
+    tex.wrapT = THREE.MirroredRepeatWrapping;
+    tex.repeat.set(1.5, 1.5);
+    return tex;
+  }, [selectedProduct.textureUrl]);
+
   const getCountertopMatProps = () => ({
-    color: isTransparent ? '#cbd5e1' : stoneColor,
+    color: isTransparent ? '#cbd5e1' : (stoneTexture ? '#ffffff' : stoneColor),
+    map: isTransparent ? null : stoneTexture,
     roughness: isTransparent ? 0.1 : roughness,
     metalness: isTransparent ? 0.05 : metalness,
     transparent: isTransparent,

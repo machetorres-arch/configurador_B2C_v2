@@ -715,14 +715,26 @@ interface CabinetProps extends CabinetType {
 }
 
 export function Cabinet({ id, type, variant, width, height, depth, position, rotation, color, structureColor, doorColor, drawerFrontColor, drawerInnerColor, shelfColor, backColor, socleColor, structureMaterial, doorMaterial, drawerFrontMaterial, drawerInnerMaterial, shelfMaterial, backMaterial, socleMaterial, grainDirection, grainElements, hplBalancer, isOpen, openElements, index }: CabinetProps) {
-   const cStructure = structureColor || color || '#f8fafc';
-   const cDoors = doorColor || color || '#f8fafc';
-   const cDrawers = drawerFrontColor || doorColor || color || '#f8fafc';
-   const cInner = drawerInnerColor || color || '#f8fafc';
-   const cBack = backColor || color || '#f8fafc';
-   const cSocle = socleColor || '#111';
-
    const { activeCabinetId, setActiveCabinet, setDraggingCabinetId, setToolMode, showSocle, cabinets, viewMode, golaSystem, countertopConfig, qstoneCatalog } = useKitchenStore();
+
+   // Sanitización estricta: Piedras y cuarzos Qstone aplican ÚNICAMENTE a la cubierta.
+   // Si por error se asignó una textura de piedra a un gabinete, revertir al color base de melamina.
+   const isStoneUrl = (u?: string) => {
+     if (!u) return false;
+     return qstoneCatalog?.some((q) => q.textureUrl === u || q.id === u || (q.colorHex === u && !u.startsWith('#')));
+   };
+
+   const safeStructureColor = isStoneUrl(structureColor) ? undefined : structureColor;
+   const safeDoorColor = isStoneUrl(doorColor) ? undefined : doorColor;
+   const safeDrawerFrontColor = isStoneUrl(drawerFrontColor) ? undefined : drawerFrontColor;
+   const safeColor = isStoneUrl(color) ? undefined : color;
+
+   const cStructure = safeStructureColor || safeColor || '#f8fafc';
+   const cDoors = safeDoorColor || safeColor || '#f8fafc';
+   const cDrawers = safeDrawerFrontColor || safeDoorColor || safeColor || '#f8fafc';
+   const cInner = drawerInnerColor || safeColor || '#f8fafc';
+   const cBack = backColor || safeColor || '#f8fafc';
+   const cSocle = socleColor || '#111';
    const cabinetIndex = typeof index === 'number' ? index : cabinets.findIndex((c) => c.id === id);
    const isBaseOrIsland = type === 'base' || type === 'island';
    const isGolaActive = (golaSystem === 'aluminum' || golaSystem === 'black') && isBaseOrIsland;

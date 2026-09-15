@@ -90,7 +90,7 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
 
   const isLight = theme === 'light';
 
-  const { viewMode, setViewMode, toolMode, setToolMode, cabinets, activeCabinetId, updateCabinet, removeCabinet, setActiveCabinet, applyGlobalTexture, showSocle, setShowSocle, roomConfig, setRoomPlannerOpen, architecturalElements, activeArchElementId, addArchitecturalElement, updateArchitecturalElement, removeArchitecturalElement, setActiveArchElement, golaSystem, setGolaSystem, countertopConfig, qstoneCatalog, islandBackConfig, setIslandBackConfig } = useKitchenStore();
+  const { viewMode, setViewMode, toolMode, setToolMode, cabinets, activeCabinetId, updateCabinet, removeCabinet, setActiveCabinet, applyGlobalTexture, showSocle, setShowSocle, roomConfig, setRoomPlannerOpen, architecturalElements, activeArchElementId, addArchitecturalElement, updateArchitecturalElement, removeArchitecturalElement, setActiveArchElement, golaSystem, setGolaSystem, countertopConfig, setCountertopConfig, qstoneCatalog, islandBackConfig, setIslandBackConfig } = useKitchenStore();
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
   const [isCountertopModalOpen, setIsCountertopModalOpen] = useState(false);
@@ -137,6 +137,23 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
   }, [activeCabinetId, activeArchElementId, removeCabinet, removeArchitecturalElement, setActiveCabinet, setActiveArchElement]);
 
   const handleTextureSelect = (url: string, mat: string) => {
+    // Protección estricta: Piedras y cuarzos Qstone aplican ÚNICAMENTE a cubiertas
+    const isStone =
+      mat === 'cuarzo' ||
+      mat === 'sinterizado' ||
+      mat === 'granito' ||
+      mat === 'marmol' ||
+      qstoneCatalog.some((p) => p.textureUrl === url || p.id === url || (p.colorHex === url && !url.startsWith('#')));
+
+    if (isStone) {
+      const matchedProd =
+        qstoneCatalog.find((p) => p.textureUrl === url || p.id === url) || qstoneCatalog[0];
+      if (matchedProd) {
+        setCountertopConfig({ selectedProductId: matchedProd.id, enabled: true });
+      }
+      return;
+    }
+
     if (!activeCabinetId) return;
     const part = globalState.targetPart;
     if (part === 'all') {
@@ -159,6 +176,23 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
   };
 
   const handleGlobalTextureSelect = (url: string, mat: string) => {
+    // Protección estricta: Piedras y cuarzos Qstone aplican ÚNICAMENTE a cubiertas
+    const isStone =
+      mat === 'cuarzo' ||
+      mat === 'sinterizado' ||
+      mat === 'granito' ||
+      mat === 'marmol' ||
+      qstoneCatalog.some((p) => p.textureUrl === url || p.id === url || (p.colorHex === url && !url.startsWith('#')));
+
+    if (isStone) {
+      const matchedProd =
+        qstoneCatalog.find((p) => p.textureUrl === url || p.id === url) || qstoneCatalog[0];
+      if (matchedProd) {
+        setCountertopConfig({ selectedProductId: matchedProd.id, enabled: true });
+      }
+      return;
+    }
+
     const part = globalState.targetPart;
     if (part === 'islandBack') {
       setIslandBackConfig({

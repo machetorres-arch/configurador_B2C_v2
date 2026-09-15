@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import * as THREE from 'three';
 import { useKitchenStore } from '../../store/kitchenStore';
 import { useStore } from '../../store';
 import { detectContinuousCabinetRuns } from '../../utils/countertopNesting';
@@ -33,6 +34,17 @@ export function KitchenIslandBackPanel() {
   const stoneColor = product?.colorHex || '#F4F5F8';
   const stoneRoughness = product?.materialType === 'quarzo' ? 0.18 : 0.4;
   const stoneThicknessCm = (product?.thicknessMm || 20) / 10;
+
+  const stoneTexture = useMemo(() => {
+    if (!product?.textureUrl || product.textureUrl.startsWith('#')) return null;
+    const loader = new THREE.TextureLoader();
+    loader.setCrossOrigin('anonymous');
+    const tex = loader.load(product.textureUrl);
+    tex.wrapS = THREE.MirroredRepeatWrapping;
+    tex.wrapT = THREE.MirroredRepeatWrapping;
+    tex.repeat.set(1.5, 1.5);
+    return tex;
+  }, [product?.textureUrl]);
 
   return (
     <group name="kitchenIslandBackPanels">
@@ -88,7 +100,8 @@ export function KitchenIslandBackPanel() {
                           <boxGeometry args={[segLen - 0.04, panelHeightCm, thicknessCm]} />
                           <meshStandardMaterial
                             key={isTransparent ? 'transp' : 'solid'}
-                            color={isTransparent ? '#cbd5e1' : stoneColor}
+                            color={isTransparent ? '#cbd5e1' : (stoneTexture ? '#ffffff' : stoneColor)}
+                            map={isTransparent ? null : stoneTexture}
                             roughness={isTransparent ? 0.1 : stoneRoughness}
                             metalness={0.05}
                             transparent={isTransparent}
@@ -107,7 +120,8 @@ export function KitchenIslandBackPanel() {
                   <boxGeometry args={[totalLengthCm, panelHeightCm, thicknessCm]} />
                   <meshStandardMaterial
                     key={isTransparent ? 'transp' : 'solid'}
-                    color={isTransparent ? '#cbd5e1' : stoneColor}
+                    color={isTransparent ? '#cbd5e1' : (stoneTexture ? '#ffffff' : stoneColor)}
+                    map={isTransparent ? null : stoneTexture}
                     roughness={isTransparent ? 0.1 : stoneRoughness}
                     metalness={0.05}
                     transparent={isTransparent}

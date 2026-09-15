@@ -264,6 +264,12 @@ export function KitchenModuleContextMenu({ isLight: propIsLight }: { isLight?: b
 
   const approvedBackofficeTextures = (adminTextures || [])
     .filter((t) => t.active && (t.approvalStatus === 'approved' || !t.approvalStatus))
+    .filter((t) => {
+      // Excluir piedras, cuarzos y marmolería Qstone del menú contextual de piezas de gabinetes
+      const n = t.name.toLowerCase();
+      const b = (t.brand || '').toLowerCase();
+      return !n.includes('qstone') && !b.includes('qstone') && !b.includes('sysprotec') && t.category !== 'piedras_marmoles';
+    })
     .map((t) => ({
       id: t.id,
       name: `${t.brand ? t.brand + ' ' : ''}${t.name}`,

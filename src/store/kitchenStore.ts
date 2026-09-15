@@ -573,6 +573,30 @@ export const useKitchenStore = create<KitchenState>((set) => ({
   setFloorType: (floorType) => set({ floorType }),
   applyGlobalTexture: (part, url, mat) =>
     set((state) => {
+      // Si la textura o material corresponde a cuarzo, sinterizado o piedra Qstone de marmolería,
+      // DEBE aplicarse ÚNICAMENTE a las cubiertas y nunca a gabinetes/puertas/cajones.
+      const isStone =
+        (mat as any) === 'cuarzo' ||
+        (mat as any) === 'sinterizado' ||
+        (mat as any) === 'granito' ||
+        (mat as any) === 'marmol' ||
+        state.qstoneCatalog.some((p) => p.textureUrl === url || p.id === url);
+
+      if (isStone) {
+        const matchedProd =
+          state.qstoneCatalog.find((p) => p.textureUrl === url || p.id === url) ||
+          state.qstoneCatalog[0];
+        if (matchedProd) {
+          setTimeout(() => {
+            useKitchenStore.getState().setCountertopConfig({
+              selectedProductId: matchedProd.id,
+              enabled: true,
+            });
+          }, 0);
+        }
+        return state; // No modificar gabinetes
+      }
+
       if (part === 'islandBack') {
         return {
           islandBackConfig: {

@@ -1635,7 +1635,7 @@ function syncTextureToKitchenStore(tex: CustomTextureItem) {
         code: tex.code || 'QS-CUSTOM',
         name: tex.name,
         materialType: isSintered ? 'sinterizado' : 'quarzo',
-        thicknessMm: tex.name.includes('20') ? 20 : (tex.name.includes('18') ? 18 : 12),
+        thicknessMm: (tex as any).thicknessMm || (tex.name.includes('20') ? 20 : (tex.name.includes('18') ? 18 : 12)),
         priceM2Clp: priceM2,
         sheetWidthMm: 3200,
         sheetHeightMm: 1600,
