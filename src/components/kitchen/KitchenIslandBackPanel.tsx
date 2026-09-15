@@ -22,18 +22,9 @@ export function KitchenIslandBackPanel() {
       .filter((r) => r.type === 'island');
   }, [cabinets, countertopConfig, islandBackConfig?.enabled, walls, architecturalElements, roomConfig]);
 
-  if (!islandBackConfig?.enabled || islandRuns.length === 0) {
-    return null;
-  }
-
-  const isCountertopMaterial = islandBackConfig.materialType === 'countertop';
-  // Regla estricta: Si es cubierta, forzar hasta el piso
-  const effectiveHeightMode = isCountertopMaterial ? 'to_floor' : islandBackConfig.heightMode;
-
-  const product = qstoneCatalog.find((p) => p.id === countertopConfig.selectedProductId) || qstoneCatalog[0];
-  const stoneColor = product?.colorHex || '#F4F5F8';
-  const stoneRoughness = product?.materialType === 'quarzo' ? 0.18 : 0.4;
-  const stoneThicknessCm = (product?.thicknessMm || 20) / 10;
+  const product = useMemo(() => {
+    return qstoneCatalog.find((p) => p.id === countertopConfig.selectedProductId) || qstoneCatalog[0];
+  }, [qstoneCatalog, countertopConfig.selectedProductId]);
 
   const stoneTexture = useMemo(() => {
     if (!product?.textureUrl || product.textureUrl.startsWith('#')) return null;
@@ -45,6 +36,18 @@ export function KitchenIslandBackPanel() {
     tex.repeat.set(1.5, 1.5);
     return tex;
   }, [product?.textureUrl]);
+
+  if (!islandBackConfig?.enabled || islandRuns.length === 0) {
+    return null;
+  }
+
+  const isCountertopMaterial = islandBackConfig.materialType === 'countertop';
+  // Regla estricta: Si es cubierta, forzar hasta el piso
+  const effectiveHeightMode = isCountertopMaterial ? 'to_floor' : islandBackConfig.heightMode;
+
+  const stoneColor = product?.colorHex || '#F4F5F8';
+  const stoneRoughness = product?.materialType === 'quarzo' ? 0.18 : 0.4;
+  const stoneThicknessCm = (product?.thicknessMm || 20) / 10;
 
   return (
     <group name="kitchenIslandBackPanels">
