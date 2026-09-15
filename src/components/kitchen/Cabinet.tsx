@@ -1454,9 +1454,11 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
          }
 
          if (effectiveVariant === 'wine_rack' || effectiveVariant === 'base_wine_rack' || effectiveVariant === 'wall_wine_rack' || effectiveVariant === 'tall_wine_rack' || effectiveVariant === 'island_wine_rack') {
+            // Opción A: Fabricación a disco (escuadradora/panelera) con frente enrasado a plomo con puertas/cajones
+            const frontPlaneZ = depth / 2 + thickness;
             const usefulDepth = Math.min(depth - 2, 32); // Fondo útil para botellas estándar 32cm
-            const falseBackZ = depth / 2 - usefulDepth - thickness / 2;
-            const cellsZ = depth / 2 - usefulDepth / 2;
+            const falseBackZ = frontPlaneZ - usefulDepth - thickness / 2;
+            const cellsZ = frontPlaneZ - usefulDepth / 2;
 
             // Cálculo paramétrico de columnas: Mínimo 10.5 cm libres por botella, máximo 5 corridas
             const minClearance = 10.5;
@@ -1670,9 +1672,24 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
             
             {/* Renderizado de Laterales con Rebaje CNC para paso continuo de Riel Gola */}
             {(() => {
+               const isWineRack = variant?.includes('wine_rack') || variant === 'base_wine_rack' || variant === 'wall_wine_rack' || variant === 'tall_wine_rack' || variant === 'island_wine_rack';
                const renderLateral = (isLeft: boolean) => {
                   const xPos = isLeft ? -width/2 + thickness/2 : width/2 - thickness/2;
                   const key = isLeft ? 'left' : 'right';
+
+                  // Opción A: Botellero con laterales prolongados a escuadra (corte a disco) para enrasar a plomo con puertas/cajones contiguos
+                  if (isWineRack) {
+                     const wineDepth = depth + thickness;
+                     const wineZ = thickness / 2;
+                     return (
+                        <Board 
+                           key={`lat-${key}`}
+                           position={[xPos, legsHeight + cabH/2, wineZ]} 
+                           args={[thickness, cabH, wineDepth]} 
+                           {...parseColor(cStructure, structureMaterial, key)} 
+                        />
+                     );
+                  }
 
                   // Si Gola no está activo, el lateral se mantiene cerrado y completo al ras
                   if (!isGolaActive) {
@@ -1770,30 +1787,46 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                   </>
                );
             })()}
-            <Board position={[0, legsHeight + thickness/2, 0]} args={[innerW, thickness, depth]} {...parseColor(cStructure, structureMaterial, 'bottom')} />
-            <Board position={[0, legsHeight + cabH/2, -depth/2 + thickness/2]} args={[innerW, cabH - thickness*2, thickness]} {...parseColor(cBack, backMaterial, 'back')} />
-            
-            {/* Uniones estructurales de Base a Laterales */}
-            <AssemblyJoint position={[-innerW/2, legsHeight + thickness/2, 0]} length={depth} axis="z" pointing="right" thickness={thickness} count={2} />
-            <AssemblyJoint position={[innerW/2, legsHeight + thickness/2, 0]} length={depth} axis="z" pointing="left" thickness={thickness} count={2} />
-
+            {(() => {
+               const isWineRack = variant?.includes('wine_rack') || variant === 'base_wine_rack' || variant === 'wall_wine_rack' || variant === 'tall_wine_rack' || variant === 'island_wine_rack';
+               const botDepth = isWineRack ? depth + thickness : depth;
+               const botZ = isWineRack ? thickness / 2 : 0;
+               return (
+                  <>
+                     <Board position={[0, legsHeight + thickness/2, botZ]} args={[innerW, thickness, botDepth]} {...parseColor(cStructure, structureMaterial, 'bottom')} />
+                     <Board position={[0, legsHeight + cabH/2, -depth/2 + thickness/2]} args={[innerW, cabH - thickness*2, thickness]} {...parseColor(cBack, backMaterial, 'back')} />
+                     
+                     {/* Uniones estructurales de Base a Laterales */}
+                     <AssemblyJoint position={[-innerW/2, legsHeight + thickness/2, botZ]} length={botDepth} axis="z" pointing="right" thickness={thickness} count={2} />
+                     <AssemblyJoint position={[innerW/2, legsHeight + thickness/2, botZ]} length={botDepth} axis="z" pointing="left" thickness={thickness} count={2} />
+                  </>
+               );
+            })()}
             {type === 'base' || type === 'island' ? (
                <>
-                  <Board 
-                     position={[0, height - thickness/2, isGolaActive ? depth/2 - 2.8 - 5 : depth/2 - 5]} 
-                     args={[innerW, thickness, 10]} 
-                     {...parseColor(cStructure, structureMaterial, 'top')} 
-                  />
-                  <Board position={[0, height - 5, -depth/2 + thickness * 1.5]} args={[innerW, 10, thickness]} {...parseColor(cStructure, structureMaterial, 'top')} />
-                  {/* Amarres frontales y traseros a laterales */}
-                  <AssemblyJoint 
-                     position={[-innerW/2, height - thickness/2, isGolaActive ? depth/2 - 2.8 - 5 : depth/2 - 5]} 
-                     length={10} axis="z" pointing="right" thickness={thickness} count={1} 
-                  />
-                  <AssemblyJoint 
-                     position={[innerW/2, height - thickness/2, isGolaActive ? depth/2 - 2.8 - 5 : depth/2 - 5]} 
-                     length={10} axis="z" pointing="left" thickness={thickness} count={1} 
-                  />
+                  {(() => {
+                     const isWineRack = variant?.includes('wine_rack') || variant === 'base_wine_rack' || variant === 'wall_wine_rack' || variant === 'tall_wine_rack' || variant === 'island_wine_rack';
+                     const frontRailZ = isWineRack ? depth/2 + thickness - 5 : (isGolaActive ? depth/2 - 2.8 - 5 : depth/2 - 5);
+                     return (
+                        <>
+                           <Board 
+                              position={[0, height - thickness/2, frontRailZ]} 
+                              args={[innerW, thickness, 10]} 
+                              {...parseColor(cStructure, structureMaterial, 'top')} 
+                           />
+                           <Board position={[0, height - 5, -depth/2 + thickness * 1.5]} args={[innerW, 10, thickness]} {...parseColor(cStructure, structureMaterial, 'top')} />
+                           {/* Amarres frontales y traseros a laterales */}
+                           <AssemblyJoint 
+                              position={[-innerW/2, height - thickness/2, frontRailZ]} 
+                              length={10} axis="z" pointing="right" thickness={thickness} count={1} 
+                           />
+                           <AssemblyJoint 
+                              position={[innerW/2, height - thickness/2, frontRailZ]} 
+                              length={10} axis="z" pointing="left" thickness={thickness} count={1} 
+                           />
+                        </>
+                     );
+                  })()}
                   <AssemblyJoint position={[-innerW/2, height - 5, -depth/2 + thickness * 1.5]} length={10} axis="y" pointing="right" thickness={thickness} count={1} />
                   <AssemblyJoint position={[innerW/2, height - 5, -depth/2 + thickness * 1.5]} length={10} axis="y" pointing="left" thickness={thickness} count={1} />
                </>

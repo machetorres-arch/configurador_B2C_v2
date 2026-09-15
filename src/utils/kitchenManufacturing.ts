@@ -59,9 +59,13 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
     // 1. Laterales (Sides)
     const isBaseGola = (kState.golaSystem === 'aluminum' || kState.golaSystem === 'black') && (cab.type === 'base' || cab.type === 'island');
     const hasGolaC = isBaseGola && (cab.variant === '1_door_1_drawer' || cab.variant === '2_pot_drawers' || cab.variant === '4_drawers');
-    const lateralNotes = isBaseGola
-      ? (hasGolaC ? 'Mecanizado CNC: Destaje Gola L Superior 58x26mm + Gola C Intermedio 68x26mm (Paso continuo)' : 'Mecanizado CNC: Destaje Gola L Superior 58x26mm (Paso continuo)')
-      : 'Laterales del gabinete';
+    const isWineRack = cab.variant?.includes('wine_rack') || cab.variant === 'base_wine_rack' || cab.variant === 'wall_wine_rack' || cab.variant === 'tall_wine_rack' || cab.variant === 'island_wine_rack';
+    const effectiveDepth = isWineRack ? (d + thickness) : d;
+    const lateralNotes = isWineRack
+      ? 'Opción A: Lateral botellero prolongado a plomo con frentes contiguos (Corte recto con disco en escuadradora/panelera/celco)'
+      : (isBaseGola
+        ? (hasGolaC ? 'Mecanizado CNC: Destaje Gola L Superior 58x26mm + Gola C Intermedio 68x26mm (Paso continuo)' : 'Mecanizado CNC: Destaje Gola L Superior 58x26mm (Paso continuo)')
+        : 'Laterales del gabinete');
 
     parts.push({
       name: `Lateral ${cabName}`,
@@ -69,7 +73,7 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
       moduleIndex: index,
       qty: 2,
       length: cabH * 10,
-      width: d * 10,
+      width: effectiveDepth * 10,
       thickness: thickness * 10,
       material: cab.structureColor || state.structureColor,
       edgeL1: true, edgeL2: false, edgeW1: true, edgeW2: true,
@@ -83,11 +87,13 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
       moduleIndex: index,
       qty: 1,
       length: innerW * 10,
-      width: d * 10,
+      width: effectiveDepth * 10,
       thickness: thickness * 10,
       material: cab.structureColor || state.structureColor,
       edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
-      notes: 'Piso del gabinete'
+      notes: isWineRack
+        ? 'Opción A: Piso botellero prolongado a plomo con frentes contiguos (Corte recto con disco en escuadradora/panelera/celco)'
+        : 'Piso del gabinete'
     });
 
     // 3. Techo o Barras de Armado

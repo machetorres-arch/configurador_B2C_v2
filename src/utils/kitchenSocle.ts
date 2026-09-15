@@ -129,7 +129,8 @@ export function calculateSocleSystem(
 
         // Check that their front planes or centerlines are aligned along depth axis
         const depthOffset = (otherGeo.cx - curGeo.cx) * curGeo.uZ[0] + (otherGeo.cz - curGeo.cz) * curGeo.uZ[1];
-        if (Math.abs(depthOffset) > 15) continue; // Not on the same run line
+        const maxAllowedDepthOffset = (current.type === 'island' || other.type === 'island') ? 25 : 15;
+        if (Math.abs(depthOffset) > maxAllowedDepthOffset) continue; // Not on the same run line
 
         // Check if their width spans touch or overlap along the uX axis
         const isTouching =

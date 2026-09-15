@@ -375,16 +375,19 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
             }
          } else if (toolMode === 'place_island' || toolMode === 'place_island_wine_rack') {
             cabType = 'island';
+            const existingIsland = cabinets.find((c) => c.type === 'island');
+            const defaultIslandDepth = existingIsland?.depth || 80;
+            const defaultIslandHeight = existingIsland?.height || 80;
             if (toolMode === 'place_island_wine_rack') {
                cabVariant = 'wine_rack';
-               cabHeight = 80;
+               cabHeight = defaultIslandHeight;
                cabWidth = 25;
-               cabDepth = 60;
+               cabDepth = defaultIslandDepth;
             } else {
                cabVariant = '2_pot_drawers';
-               cabHeight = 80;
+               cabHeight = defaultIslandHeight;
                cabWidth = 90;
-               cabDepth = 80;
+               cabDepth = defaultIslandDepth;
             }
          } else if (toolMode === 'place_deco_stove') {
             cabType = 'decoration';
@@ -652,16 +655,19 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
          }
       } else if (isIsland) {
          cabType = 'island';
+         const existingIsland = cabinets.find((c) => c.type === 'island');
+         const defaultIslandDepth = existingIsland?.depth || 80;
+         const defaultIslandHeight = existingIsland?.height || 80;
          if (toolMode === 'place_island_wine_rack') {
             cabVariant = 'wine_rack';
-            cabHeight = 80;
+            cabHeight = defaultIslandHeight;
             cabWidth = 25;
-            cabDepth = 60;
+            cabDepth = defaultIslandDepth;
          } else {
             cabVariant = '2_pot_drawers';
-            cabHeight = 80;
+            cabHeight = defaultIslandHeight;
             cabWidth = 90;
-            cabDepth = 80;
+            cabDepth = defaultIslandDepth;
          }
       } else if (toolMode === 'place_deco_stove') {
          cabType = 'decoration';
@@ -843,10 +849,11 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
               previewH = 60;
               previewW = 80;
               previewD = 35;
-           } else if (toolMode === 'place_island') {
-              previewH = 80;
-              previewW = 90;
-              previewD = 80;
+           } else if (toolMode === 'place_island' || toolMode === 'place_island_wine_rack') {
+              const existingIsland = cabinets.find((c) => c.type === 'island');
+              previewH = existingIsland?.height || 80;
+              previewW = toolMode === 'place_island_wine_rack' ? 25 : 90;
+              previewD = existingIsland?.depth || 80;
            } else if (toolMode === 'place_deco_stove') {
               previewW = 90;
               previewH = 90;
