@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { useAdminStore, CustomTextureItem, ProviderItem } from '../../store/adminStore';
 import { useStore as useClosetStore } from '../../store';
+import { useKitchenStore } from '../../store/kitchenStore';
 
 interface TexturesManagerTabProps {
   currentProviderId?: string; // Si se encuentra en sesión de proveedor
@@ -46,6 +47,7 @@ export function TexturesManagerTab({ currentProviderId, isSuperAdmin = true }: T
   const [selectedProviderFilter, setSelectedProviderFilter] = useState<string>(currentProviderId || 'all');
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [toastMsg, setToastMsg] = useState<{ type: 'success' | 'warning' | 'info'; text: string } | null>(null);
+  const [approvalMode, setApprovalMode] = useState<'approved' | 'pending'>(isSuperAdmin ? 'approved' : 'pending');
 
   // Form State para nueva terminación
   const [name, setName] = useState('');
@@ -159,8 +161,7 @@ export function TexturesManagerTab({ currentProviderId, isSuperAdmin = true }: T
     }
 
     // Si quien crea es un proveedor o superadmin especificando flujo de aprobación:
-    // El requerimiento dice: "al hacer los cambios, antes de introducirse en el configurador, debe tener el VB del super administrador, por lo que debiera aparecer pendiente hasta que el super administrador dé el VB"
-    const initialApprovalStatus = isSuperAdmin ? 'approved' : 'pending';
+    const initialApprovalStatus = isSuperAdmin ? approvalMode : 'pending';
 
     const newId = addTexture({
       name: name.trim(),
@@ -209,12 +210,46 @@ export function TexturesManagerTab({ currentProviderId, isSuperAdmin = true }: T
       const closetStore = useClosetStore.getState();
       if (closetStore.customTextures) {
         closetStore.setCustomTextures([
-          ...closetStore.customTextures,
+          ...closetStore.customTextures.filter((t) => t.id !== target.id),
           { id: target.id, name: target.name, url: target.url },
         ]);
       }
+
+      // Sincronizar catálogo Cocina Qstone si es piedra / qstone
+      const isStone = 
+        target.category === 'piedras_marmoles' ||
+        target.brand?.toLowerCase().includes('qstone') ||
+        target.brand?.toLowerCase().includes('sysprotec') ||
+        target.name.toLowerCase().includes('qstone') ||
+        target.providerName?.toLowerCase().includes('qstone') ||
+        target.providerName?.toLowerCase().includes('sysprotec');
+
+      if (isStone) {
+        const isSintered =
+          target.name.toLowerCase().includes('sinteriz') ||
+          target.finish?.toLowerCase().includes('sinteriz') ||
+          target.category === 'piedras_marmoles';
+
+        const priceM2 = target.priceM2Clp || Math.round((target.priceSheetClp || 280000) / 3.965) || 280000;
+
+        useKitchenStore.getState().addQstoneCatalogItem({
+          id: target.id,
+          code: target.code || 'QS-CUSTOM',
+          name: target.name,
+          materialType: isSintered ? 'sinterizado' : 'quarzo',
+          thicknessMm: target.name.includes('20') ? 20 : (target.name.includes('18') ? 18 : 12),
+          priceM2Clp: priceM2,
+          sheetWidthMm: 3200,
+          sheetHeightMm: 1600,
+          colorHex: target.url && target.url.startsWith('#') ? target.url : '#F5F5F7',
+          textureUrl: target.url || target.previewUrl,
+          finish: target.finish || 'Pulido Seda',
+          description: `${target.brand || 'SYSPROTEC (QSTONE)'} - ${target.finish || 'Formato Placa'}`,
+          active: true,
+        });
+      }
     }
-    showToast(`¡VB otorgado! "${texName}" ahora se mostrará en el configurador 3D.`, 'success');
+    showToast(`¡VB otorgado con éxito! "${texName}" ya está activo en el configurador 3D y catálogo de cubiertas.`, 'success');
   };
 
   const handleReject = (id: string, texName: string) => {
@@ -602,11 +637,23 @@ export function TexturesManagerTab({ currentProviderId, isSuperAdmin = true }: T
           </div>
 
           <div className="flex items-center justify-between gap-3 pt-3 border-t border-zinc-800">
-            <span className="text-xs text-zinc-400">
-              {isSuperAdmin
-                ? 'Como Superadministrador, esta terminación quedará aprobada inmediatamente.'
-                : 'Esta terminación quedará pendiente de VB del Superadministrador antes de publicarse.'}
-            </span>
+            {isSuperAdmin ? (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-zinc-400 font-medium">Estado inicial:</span>
+                <select
+                  value={approvalMode}
+                  onChange={(e) => setApprovalMode(e.target.value as any)}
+                  className="bg-zinc-800 border border-zinc-700 text-xs text-zinc-200 rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-orange-500 cursor-pointer"
+                >
+                  <option value="approved">✓ Aprobado 3D (Publicar de inmediato)</option>
+                  <option value="pending">⏳ Pendiente de VB (Para revisar y dar VB)</option>
+                </select>
+              </div>
+            ) : (
+              <span className="text-xs text-zinc-400">
+                Esta terminación quedará pendiente de VB del Superadministrador antes de publicarse.
+              </span>
+            )}
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -745,23 +792,22 @@ export function TexturesManagerTab({ currentProviderId, isSuperAdmin = true }: T
                         {tex.active ? 'Pausar' : 'Activar'}
                       </button>
 
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1.5">
                         {isSuperAdmin && !isPending && (
                           <button
                             onClick={() => {
-                              const newStatus = isApproved ? 'pending' : 'approved';
-                              updateTexture(tex.id, { approvalStatus: newStatus });
-                              showToast(`Estado de aprobación cambiado.`);
+                              updateTexture(tex.id, { approvalStatus: 'pending', active: false });
+                              showToast(`Terminación "${tex.name}" cambiada a Pendiente de VB.`, 'warning');
                             }}
-                            className="p-1.5 text-zinc-400 hover:text-amber-300 rounded-lg"
-                            title="Cambiar estado de VB"
+                            className="px-2 py-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-lg text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                            title="Pasar a Pendiente de VB para revisar o volver a dar VB"
                           >
-                            <Clock size={13} />
+                            <Clock size={11} /> Reabrir VB
                           </button>
                         )}
                         <button
                           onClick={() => handleDelete(tex.id, tex.name)}
-                          className="p-1.5 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                          className="p-1.5 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer"
                           title="Eliminar decorativo"
                         >
                           <Trash2 size={13} />

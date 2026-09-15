@@ -1608,6 +1608,51 @@ const saveToLocalStorage = (state: {
   }
 };
 
+function syncTextureToKitchenStore(tex: CustomTextureItem) {
+  const isStone =
+    tex.category === 'piedras_marmoles' ||
+    tex.brand?.toLowerCase().includes('qstone') ||
+    tex.brand?.toLowerCase().includes('sysprotec') ||
+    tex.name.toLowerCase().includes('qstone') ||
+    tex.providerName?.toLowerCase().includes('qstone') ||
+    tex.providerName?.toLowerCase().includes('sysprotec');
+
+  if (!isStone) return;
+
+  try {
+    const isApproved = tex.active && (tex.approvalStatus === 'approved' || !tex.approvalStatus);
+    if (isApproved) {
+      const isSintered =
+        tex.name.toLowerCase().includes('sinteriz') ||
+        tex.finish?.toLowerCase().includes('sinteriz') ||
+        tex.category === 'piedras_marmoles' ||
+        tex.sheetFormat?.toLowerCase().includes('3.2');
+
+      const priceM2 = tex.priceM2Clp || Math.round((tex.priceSheetClp || 280000) / 3.965) || 280000;
+
+      useKitchenStore.getState().addQstoneCatalogItem({
+        id: tex.id,
+        code: tex.code || 'QS-CUSTOM',
+        name: tex.name,
+        materialType: isSintered ? 'sinterizado' : 'quarzo',
+        thicknessMm: tex.name.includes('20') ? 20 : (tex.name.includes('18') ? 18 : 12),
+        priceM2Clp: priceM2,
+        sheetWidthMm: 3200,
+        sheetHeightMm: 1600,
+        colorHex: tex.url && tex.url.startsWith('#') ? tex.url : '#F5F5F7',
+        textureUrl: tex.url || tex.previewUrl,
+        finish: tex.finish || 'Pulido Seda',
+        description: `${tex.brand || 'SYSPROTEC (QSTONE)'} - ${tex.finish || 'Formato Placa'}`,
+        active: true,
+      });
+    } else {
+      useKitchenStore.getState().removeQstoneCatalogItem(tex.id);
+    }
+  } catch (e) {
+    console.warn('Error sincronizando textura con kitchenStore:', e);
+  }
+}
+
 export const useAdminStore = create<AdminState>((set, get) => {
   const initial = getInitialState();
 
@@ -2017,17 +2062,22 @@ export const useAdminStore = create<AdminState>((set, get) => {
       };
       const currentTextures = get().textures;
       persist({ textures: [newTex, ...currentTextures] });
+      syncTextureToKitchenStore(newTex);
       return newId;
     },
 
     updateTexture: (id, updates) => {
       const currentTextures = get().textures.map((t) => (t.id === id ? { ...t, ...updates } : t));
       persist({ textures: currentTextures });
+      const updated = currentTextures.find((t) => t.id === id);
+      if (updated) syncTextureToKitchenStore(updated);
     },
 
     toggleTextureActive: (id) => {
       const currentTextures = get().textures.map((t) => (t.id === id ? { ...t, active: !t.active } : t));
       persist({ textures: currentTextures });
+      const updated = currentTextures.find((t) => t.id === id);
+      if (updated) syncTextureToKitchenStore(updated);
     },
 
     approveTexture: (id) => {
@@ -2035,6 +2085,8 @@ export const useAdminStore = create<AdminState>((set, get) => {
         t.id === id ? { ...t, approvalStatus: 'approved' as const, active: true, rejectionReason: undefined } : t
       );
       persist({ textures: currentTextures });
+      const updated = currentTextures.find((t) => t.id === id);
+      if (updated) syncTextureToKitchenStore(updated);
     },
 
     rejectTexture: (id, reason) => {
@@ -2042,15 +2094,34 @@ export const useAdminStore = create<AdminState>((set, get) => {
         t.id === id ? { ...t, approvalStatus: 'rejected' as const, active: false, rejectionReason: reason } : t
       );
       persist({ textures: currentTextures });
+      try {
+        useKitchenStore.getState().removeQstoneCatalogItem(id);
+      } catch (e) {}
     },
 
     deleteTexture: (id) => {
       const currentTextures = get().textures.filter((t) => t.id !== id);
       persist({ textures: currentTextures });
+      try {
+        useKitchenStore.getState().removeQstoneCatalogItem(id);
+      } catch (e) {}
     },
 
     resetTexturesToDefault: () => {
       persist({ textures: DEFAULT_CUSTOM_TEXTURES });
+      try {
+        DEFAULT_CUSTOM_TEXTURES.forEach(syncTextureToKitchenStore);
+      } catch (e) {}
     },
   };
 });
+
+// Sincronización diferida inicial de texturas aprobadas con el catálogo de cubiertas
+if (typeof window !== 'undefined') {
+  setTimeout(() => {
+    try {
+      const storedTextures = useAdminStore.getState().textures || [];
+      storedTextures.forEach(syncTextureToKitchenStore);
+    } catch (e) {}
+  }, 150);
+}

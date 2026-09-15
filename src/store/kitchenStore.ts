@@ -663,7 +663,10 @@ export const useKitchenStore = create<KitchenState>((set) => ({
     })),
   addQstoneCatalogItem: (item) =>
     set((state) => ({
-      qstoneCatalog: [...state.qstoneCatalog, item],
+      qstoneCatalog: [
+        ...state.qstoneCatalog.filter((c) => c.id !== item.id),
+        item,
+      ],
     })),
   updateQstoneCatalogItem: (id, updates) =>
     set((state) => ({

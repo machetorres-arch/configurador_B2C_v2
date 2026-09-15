@@ -16,6 +16,7 @@ import {
   Search
 } from 'lucide-react';
 import { useKitchenStore } from '../../store/kitchenStore';
+import { useAdminStore } from '../../store/adminStore';
 import { QSTONE_SINKS, FDV_COOKTOPS, SinkModelId, CooktopModelId } from '../../types/countertop';
 import { generateCountertopPieces, detectContinuousCabinetRuns } from '../../utils/countertopNesting';
 
@@ -47,27 +48,67 @@ export function CountertopConfigModal({ isOpen, onClose, isLight: isLightProp }:
     roomConfig,
   } = useKitchenStore();
 
+  const adminTextures = useAdminStore((s) => s.textures);
+
+  const fullCatalog = useMemo(() => {
+    const list = [...qstoneCatalog];
+    const existingIds = new Set(list.map((p) => p.id));
+
+    (adminTextures || [])
+      .filter((t) => t.active && (t.approvalStatus === 'approved' || !t.approvalStatus))
+      .filter((t) => {
+        const cat = t.category;
+        const n = t.name.toLowerCase();
+        const b = (t.brand || t.providerName || '').toLowerCase();
+        return cat === 'piedras_marmoles' || n.includes('qstone') || b.includes('qstone') || b.includes('sysprotec');
+      })
+      .forEach((t) => {
+        if (!existingIds.has(t.id)) {
+          const isSintered =
+            t.name.toLowerCase().includes('sinteriz') ||
+            (t.finish && t.finish.toLowerCase().includes('sinteriz')) ||
+            t.category === 'piedras_marmoles';
+          list.push({
+            id: t.id,
+            code: t.code || 'QS-CUSTOM',
+            name: t.name,
+            materialType: isSintered ? 'sinterizado' : 'quarzo',
+            thicknessMm: t.name.includes('20') ? 20 : (t.name.includes('18') ? 18 : 12),
+            priceM2Clp: t.priceM2Clp || Math.round((t.priceSheetClp || 280000) / 3.965) || 280000,
+            sheetWidthMm: 3200,
+            sheetHeightMm: 1600,
+            colorHex: t.url && t.url.startsWith('#') ? t.url : '#F5F5F7',
+            textureUrl: t.url || t.previewUrl,
+            finish: t.finish || 'Pulido Seda',
+            description: `${t.brand || 'SYSPROTEC (QSTONE)'} - ${t.finish || 'Formato Placa'}`,
+            active: true,
+          });
+        }
+      });
+    return list;
+  }, [qstoneCatalog, adminTextures]);
+
   const [activeTab, setActiveTab] = useState<'material' | 'dimensions' | 'appliances' | 'nesting'>('material');
   const [applianceError, setApplianceError] = useState<string | null>(null);
   const [materialFilter, setMaterialFilter] = useState<'all' | 'quarzo' | 'sinterizado'>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
   const filteredCatalog = useMemo(() => {
-    return qstoneCatalog.filter((product) => {
+    return fullCatalog.filter((product) => {
       const matchesType = materialFilter === 'all' || product.materialType === materialFilter;
       const q = searchQuery.toLowerCase().trim();
       const matchesSearch = !q || product.name.toLowerCase().includes(q) || product.code.toLowerCase().includes(q);
       return matchesType && matchesSearch;
     });
-  }, [qstoneCatalog, materialFilter, searchQuery]);
+  }, [fullCatalog, materialFilter, searchQuery]);
 
   const selectedProduct = useMemo(() => {
-    return qstoneCatalog.find((p) => p.id === countertopConfig.selectedProductId) || qstoneCatalog[0];
-  }, [countertopConfig.selectedProductId, qstoneCatalog]);
+    return fullCatalog.find((p) => p.id === countertopConfig.selectedProductId) || fullCatalog[0];
+  }, [countertopConfig.selectedProductId, fullCatalog]);
 
   const nestingBOM = useMemo(() => {
-    return generateCountertopPieces(cabinets, countertopConfig, qstoneCatalog, islandBackConfig, walls, architecturalElements, roomConfig);
-  }, [cabinets, countertopConfig, qstoneCatalog, islandBackConfig, walls, architecturalElements, roomConfig]);
+    return generateCountertopPieces(cabinets, countertopConfig, fullCatalog, islandBackConfig, walls, architecturalElements, roomConfig);
+  }, [cabinets, countertopConfig, fullCatalog, islandBackConfig, walls, architecturalElements, roomConfig]);
 
   const continuousRuns = useMemo(() => {
     return detectContinuousCabinetRuns(cabinets, countertopConfig, walls, architecturalElements, roomConfig);
@@ -326,7 +367,7 @@ export function CountertopConfigModal({ isOpen, onClose, isLight: isLightProp }:
                         : isLight ? 'text-slate-600 hover:bg-slate-100' : 'text-slate-300 hover:bg-slate-800'
                     }`}
                   >
-                    Todos ({qstoneCatalog.length})
+                    Todos ({fullCatalog.length})
                   </button>
                   <button
                     type="button"
@@ -337,7 +378,7 @@ export function CountertopConfigModal({ isOpen, onClose, isLight: isLightProp }:
                         : isLight ? 'text-slate-600 hover:bg-slate-100' : 'text-slate-300 hover:bg-slate-800'
                     }`}
                   >
-                    Cuarzo ({qstoneCatalog.filter((p) => p.materialType === 'quarzo').length})
+                    Cuarzo ({fullCatalog.filter((p) => p.materialType === 'quarzo').length})
                   </button>
                   <button
                     type="button"
@@ -348,7 +389,7 @@ export function CountertopConfigModal({ isOpen, onClose, isLight: isLightProp }:
                         : isLight ? 'text-slate-600 hover:bg-slate-100' : 'text-slate-300 hover:bg-slate-800'
                     }`}
                   >
-                    Sinterizado ({qstoneCatalog.filter((p) => p.materialType === 'sinterizado').length})
+                    Sinterizado ({fullCatalog.filter((p) => p.materialType === 'sinterizado').length})
                   </button>
                 </div>
 

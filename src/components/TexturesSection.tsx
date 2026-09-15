@@ -75,15 +75,23 @@ export const TexturesSection = ({
   const allTextures = Array.from(combinedMap.values());
   
   const masisaTextures = allTextures.filter(t => t.name.toLowerCase().includes('masisa') || t.brand?.toLowerCase() === 'masisa');
+  const qstoneTextures = allTextures.filter(t => {
+    const n = t.name.toLowerCase();
+    const b = (t.brand || '').toLowerCase();
+    return n.includes('qstone') || b.includes('qstone') || b.includes('sysprotec') || t.category === 'piedras_marmoles';
+  });
   const abetTextures = allTextures.filter(t => {
     const n = t.name.toLowerCase();
-    return n.includes('abet') || n.includes('laminati') || n.includes('hpl') || t.category === 'hpl_autor' || t.brand?.toLowerCase() === 'abet laminati';
+    const b = (t.brand || '').toLowerCase();
+    return n.includes('abet') || n.includes('laminati') || n.includes('hpl') || t.category === 'hpl_autor' || b.includes('abet');
   });
   const otherTextures = allTextures.filter(t => {
     const n = t.name.toLowerCase();
-    const isMasisa = n.includes('masisa') || t.brand?.toLowerCase() === 'masisa';
-    const isAbet = n.includes('abet') || n.includes('laminati') || n.includes('hpl') || t.category === 'hpl_autor' || t.brand?.toLowerCase() === 'abet laminati';
-    return !isMasisa && !isAbet;
+    const b = (t.brand || '').toLowerCase();
+    const isMasisa = n.includes('masisa') || b.includes('masisa');
+    const isQstone = n.includes('qstone') || b.includes('qstone') || b.includes('sysprotec') || t.category === 'piedras_marmoles';
+    const isAbet = n.includes('abet') || n.includes('laminati') || n.includes('hpl') || t.category === 'hpl_autor' || b.includes('abet');
+    return !isMasisa && !isQstone && !isAbet;
   });
 
   const renderTextureButton = (tex: any) => (
@@ -187,13 +195,35 @@ export const TexturesSection = ({
         </div>
       )}
 
+      {qstoneTextures.length > 0 && (
+        <div className="mb-4">
+          <label className={`text-[10px] uppercase tracking-widest font-bold block mb-2 ${
+            isLight ? 'text-slate-700' : 'text-slate-400'
+          }`}>3. Sysprotec / Qstone (Piedras & Cuarzos)</label>
+          <div className="grid grid-cols-3 gap-2">
+            {qstoneTextures.map(t => renderTextureButton(t))}
+          </div>
+        </div>
+      )}
+
       {abetTextures.length > 0 && (
         <div className="mb-4">
           <label className={`text-[10px] uppercase tracking-widest font-bold block mb-2 ${
             isLight ? 'text-slate-700' : 'text-slate-400'
-          }`}>3. Abet Laminati (HPL)</label>
+          }`}>4. Abet Laminati (HPL)</label>
           <div className="grid grid-cols-3 gap-2">
             {abetTextures.map(t => renderTextureButton(t))}
+          </div>
+        </div>
+      )}
+
+      {otherTextures.length > 0 && (
+        <div className="mb-4">
+          <label className={`text-[10px] uppercase tracking-widest font-bold block mb-2 ${
+            isLight ? 'text-slate-700' : 'text-slate-400'
+          }`}>5. Otros Proveedores Homologados</label>
+          <div className="grid grid-cols-3 gap-2">
+            {otherTextures.map(t => renderTextureButton(t))}
           </div>
         </div>
       )}
