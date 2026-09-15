@@ -1,5 +1,15 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { RoomVertex, WallSegmentData, analyzeRoomWalls, calculatePolygonArea, calculatePolygonPerimeter, distanceBetween } from '../../utils/roomGeometry';
+import {
+  RoomVertex,
+  WallSegmentData,
+  analyzeRoomWalls,
+  calculatePolygonArea,
+  calculatePolygonPerimeter,
+  distanceBetween,
+  moveWallSegmentOrthogonal,
+  moveVertexOrthogonal,
+  orthogonalizePolygon,
+} from '../../utils/roomGeometry';
 
 interface RoomPlannerCanvasProps {
   vertices: RoomVertex[];
@@ -22,6 +32,9 @@ export function RoomPlannerCanvas({
 }: RoomPlannerCanvasProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [draggingVertexIndex, setDraggingVertexIndex] = useState<number | null>(null);
+  const [draggingWallIndex, setDraggingWallIndex] = useState<number | null>(null);
+  const [hoveredWallIndex, setHoveredWallIndex] = useState<number | null>(null);
+  const [orthoMode, setOrthoMode] = useState<boolean>(true);
   const [freehandHoverPos, setFreehandHoverPos] = useState<{ x: number; y: number } | null>(null);
 
   // Dimensiones del SVG y escala
@@ -89,31 +102,51 @@ export function RoomPlannerCanvas({
     };
   };
 
-  // Manejadores de arrastre
-  const handleMouseDown = (index: number, e: React.MouseEvent) => {
+  // Manejadores de arrastre de vértice
+  const handleVertexMouseDown = (index: number, e: React.MouseEvent) => {
     e.stopPropagation();
     setDraggingVertexIndex(index);
     onSelectVertexIndex(index);
   };
 
+  // Manejador de arrastre de pared completa
+  const handleWallMouseDown = (index: number, e: React.MouseEvent) => {
+    if (isFreehandMode) return;
+    e.stopPropagation();
+    setDraggingWallIndex(index);
+    onSelectVertexIndex(index);
+  };
+
   const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
-    if (draggingVertexIndex !== null) {
-      const cmPos = toCmCoords(e);
-      const updated = [...vertices];
-      updated[draggingVertexIndex] = {
-        ...updated[draggingVertexIndex],
-        x: cmPos.x,
-        y: cmPos.y,
-      };
+    const cmPos = toCmCoords(e);
+
+    if (draggingWallIndex !== null) {
+      // Arrastre directo de muro a 90°
+      const updated = moveWallSegmentOrthogonal(vertices, draggingWallIndex, cmPos, 5);
+      onVerticesChange(updated);
+    } else if (draggingVertexIndex !== null) {
+      let updated: RoomVertex[];
+      if (orthoMode && !isFreehandMode && vertices.length >= 3) {
+        // En modo ORTHO, mueve el vértice preservando las escuadras de los muros vecinos
+        updated = moveVertexOrthogonal(vertices, draggingVertexIndex, cmPos, 5);
+      } else {
+        // Arrastre libre con rejilla
+        updated = [...vertices];
+        updated[draggingVertexIndex] = {
+          ...updated[draggingVertexIndex],
+          x: cmPos.x,
+          y: cmPos.y,
+        };
+      }
       onVerticesChange(updated);
     } else if (isFreehandMode) {
-      const cmPos = toCmCoords(e);
       setFreehandHoverPos(cmPos);
     }
   };
 
   const handleMouseUp = () => {
     setDraggingVertexIndex(null);
+    setDraggingWallIndex(null);
   };
 
   // Manejador de click en modo diseño libre para añadir puntos
@@ -211,7 +244,7 @@ export function RoomPlannerCanvas({
           <path d={polygonPath} fill="#FFFFFF" stroke="none" fillOpacity={0.95} />
         )}
 
-        {/* 1. Muros Dobles con Grosor */}
+        {/* 1. Muros Dobles con Grosor y Arrastre Directo de Pared (Edge Dragging) */}
         {wallSegments.map((seg) => {
           const p1 = toSvgPoint(seg.start);
           const p2 = toSvgPoint(seg.end);
@@ -236,10 +269,48 @@ export function RoomPlannerCanvas({
 
           const wallPath = `M ${cornerA.x} ${cornerA.y} L ${cornerB.x} ${cornerB.y} L ${cornerC.x} ${cornerC.y} L ${cornerD.x} ${cornerD.y} Z`;
 
+          const isHorizontal = Math.abs(dx) >= Math.abs(dy);
+          const isHovered = hoveredWallIndex === seg.index;
+          const isDraggingThis = draggingWallIndex === seg.index;
+
+          const midWallX = (p1.x + p2.x) / 2;
+          const midWallY = (p1.y + p2.y) / 2;
+
           return (
-            <g key={`wall_poly_${seg.index}`}>
+            <g
+              key={`wall_poly_${seg.index}`}
+              className={`cursor-${isHorizontal ? 'ns' : 'ew'}-resize group`}
+              onMouseEnter={() => setHoveredWallIndex(seg.index)}
+              onMouseLeave={() => setHoveredWallIndex(null)}
+              onMouseDown={(e) => handleWallMouseDown(seg.index, e)}
+            >
               {/* Relleno del muro constructivo */}
-              <path d={wallPath} fill="#F8FAFC" stroke="#334155" strokeWidth="2.2" strokeLinejoin="round" />
+              <path
+                d={wallPath}
+                fill={isDraggingThis ? '#FEF08A' : isHovered ? '#FEF9C3' : '#F8FAFC'}
+                stroke={isDraggingThis ? '#EA580C' : isHovered ? '#2563EB' : '#334155'}
+                strokeWidth={isHovered || isDraggingThis ? 3 : 2.2}
+                strokeLinejoin="round"
+                className="transition-colors duration-100"
+              />
+
+              {/* Indicador visual de arrastre de muro al pasar el mouse */}
+              {(isHovered || isDraggingThis) && (
+                <g transform={`translate(${midWallX}, ${midWallY})`} className="pointer-events-none">
+                  <circle r="13" fill="#2563EB" fillOpacity="0.9" />
+                  {isHorizontal ? (
+                    <>
+                      <polygon points="0,-7 -4,-2 4,-2" fill="#FFFFFF" />
+                      <polygon points="0,7 -4,2 4,2" fill="#FFFFFF" />
+                    </>
+                  ) : (
+                    <>
+                      <polygon points="-7,0 -2,-4 -2,4" fill="#FFFFFF" />
+                      <polygon points="7,0 2,-4 2,4" fill="#FFFFFF" />
+                    </>
+                  )}
+                </g>
+              )}
             </g>
           );
         })}
@@ -434,7 +505,7 @@ export function RoomPlannerCanvas({
               key={v.id}
               transform={`translate(${pt.x}, ${pt.y})`}
               className="cursor-move group"
-              onMouseDown={(e) => handleMouseDown(i, e)}
+              onMouseDown={(e) => handleVertexMouseDown(i, e)}
             >
               {/* Halo exterior al pasar el ratón o seleccionar */}
               <circle
@@ -504,14 +575,45 @@ export function RoomPlannerCanvas({
         )}
       </svg>
 
-      {/* Guía inferior sutil */}
-      <div className="absolute bottom-3 right-4 bg-white/90 backdrop-blur-sm border border-slate-200 shadow-sm px-3 py-1.5 rounded-md text-[11px] text-slate-600 flex items-center gap-3">
-        <span className="flex items-center gap-1">
-          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block"></span>
-          Arrastra los nodos verdes para ajustar dimensiones
-        </span>
-        <span className="text-slate-300">|</span>
-        <span>Rejilla imantada a 5 cm</span>
+      {/* Barra de control inferior: Estado de ortogonalidad, escuadras y ayuda */}
+      <div className="absolute bottom-3 left-4 right-4 flex items-center justify-between pointer-events-none">
+        <div className="pointer-events-auto bg-white/95 backdrop-blur-sm border border-slate-200 shadow-md px-3 py-1.5 rounded-lg text-xs text-slate-700 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setOrthoMode(!orthoMode)}
+            className={`px-2.5 py-1 rounded font-bold text-[11px] transition-colors flex items-center gap-1.5 ${
+              orthoMode
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+            }`}
+            title="Bloquea los muros y vértices a ángulos rectos de 90° sin deformar las esquinas"
+          >
+            <span>{orthoMode ? '🔒 MODO ORTOGONAL (90° ACTIVO)' : '🔓 MODO LIBRE'}</span>
+          </button>
+          <span className="text-slate-300">|</span>
+          <button
+            type="button"
+            onClick={() => onVerticesChange(orthogonalizePolygon(vertices, 5))}
+            className="px-2.5 py-1 rounded font-bold text-[11px] bg-slate-100 hover:bg-amber-100 text-slate-800 hover:text-amber-800 transition-colors border border-slate-200"
+            title="Alinear y cuadrar automáticamente todos los muros a 90°"
+          >
+            📐 Restaurar Escuadras (90°)
+          </button>
+        </div>
+
+        <div className="bg-white/90 backdrop-blur-sm border border-slate-200 shadow-sm px-3 py-1.5 rounded-md text-[11px] text-slate-600 flex items-center gap-3">
+          <span className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-blue-600 inline-block"></span>
+            Arrastra muros directamente
+          </span>
+          <span className="text-slate-300">|</span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block"></span>
+            Nodos esquineros
+          </span>
+          <span className="text-slate-300">|</span>
+          <span>Rejilla a 5 cm</span>
+        </div>
       </div>
     </div>
   );

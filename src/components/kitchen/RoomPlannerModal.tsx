@@ -10,6 +10,8 @@ import {
   calculatePolygonArea,
   calculatePolygonPerimeter,
   distanceBetween,
+  adjustWallLengthOrthogonal,
+  orthogonalizePolygon,
 } from '../../utils/roomGeometry';
 import { RoomPlannerCanvas } from './RoomPlannerCanvas';
 import {
@@ -29,6 +31,53 @@ import {
   Sparkles,
   LayoutGrid,
 } from 'lucide-react';
+
+interface WallLengthInputProps {
+  initialLength: number;
+  onCommit: (newVal: number) => void;
+}
+
+function WallLengthInput({ initialLength, onCommit }: WallLengthInputProps) {
+  const [val, setVal] = useState<string>(String(Math.round(initialLength)));
+
+  useEffect(() => {
+    setVal(String(Math.round(initialLength)));
+  }, [initialLength]);
+
+  const handleBlurOrEnter = () => {
+    const num = parseFloat(val);
+    if (!isNaN(num) && num >= 30 && num <= 3500) {
+      onCommit(num);
+    } else {
+      setVal(String(Math.round(initialLength)));
+    }
+  };
+
+  return (
+    <input
+      type="number"
+      value={val}
+      min={30}
+      max={3500}
+      step={5}
+      onChange={(e) => {
+        setVal(e.target.value);
+        const num = parseFloat(e.target.value);
+        if (!isNaN(num) && num >= 50 && num <= 3500) {
+          onCommit(num);
+        }
+      }}
+      onBlur={handleBlurOrEnter}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          handleBlurOrEnter();
+          (e.target as HTMLInputElement).blur();
+        }
+      }}
+      className="w-full bg-white border border-slate-300 rounded px-2.5 py-1 text-right font-mono font-bold text-sm text-slate-900 focus:outline-none focus:border-orange-500 shadow-inner"
+    />
+  );
+}
 
 interface ShapeCardOption {
   type: RoomShapeType;
@@ -70,31 +119,16 @@ export function RoomPlannerModal() {
     setStep('edit_dimensions');
   };
 
-  // Modificar longitud de una pared numéricamente
+  // Modificar longitud de una pared numéricamente manteniendo ortogonalidad estricta (90°)
   const handleWallLengthChange = (segmentIndex: number, newLength: number) => {
-    if (newLength <= 10 || isNaN(newLength)) return;
-    const n = vertices.length;
-    const p1 = vertices[segmentIndex];
-    const p2 = vertices[(segmentIndex + 1) % n];
-
-    const currentLen = distanceBetween(p1, p2);
-    if (currentLen === 0) return;
-
-    const ratio = newLength / currentLen;
-    const dx = (p2.x - p1.x) * ratio;
-    const dy = (p2.y - p1.y) * ratio;
-
-    const deltaX = p1.x + dx - p2.x;
-    const deltaY = p1.y + dy - p2.y;
-
-    const updated = vertices.map((v, i) => {
-      if (i === (segmentIndex + 1) % n) {
-        return { ...v, x: Math.round((p1.x + dx) * 10) / 10, y: Math.round((p1.y + dy) * 10) / 10 };
-      }
-      return v;
-    });
-
+    if (newLength < 30 || isNaN(newLength)) return;
+    const updated = adjustWallLengthOrthogonal(vertices, segmentIndex, newLength, 5);
     setVertices(updated);
+  };
+
+  // Restaurar escuadras y ortogonalidad estricta a 90°
+  const handleRestoreSquares = () => {
+    setVertices(orthogonalizePolygon(vertices, 5));
   };
 
   // Modificar ángulo en una esquina
@@ -400,14 +434,9 @@ export function RoomPlannerModal() {
                       {/* Input de Longitud (cm) */}
                       <div className="col-span-5">
                         <div className="relative">
-                          <input
-                            type="number"
-                            value={Math.round(seg.length)}
-                            min={20}
-                            max={2500}
-                            step={5}
-                            onChange={(e) => handleWallLengthChange(seg.index, Number(e.target.value))}
-                            className="w-full bg-white border border-slate-300 rounded px-2.5 py-1 text-right font-mono font-bold text-sm text-slate-900 focus:outline-none focus:border-orange-500 shadow-inner"
+                          <WallLengthInput
+                            initialLength={seg.length}
+                            onCommit={(val) => handleWallLengthChange(seg.index, val)}
                           />
                         </div>
                       </div>
@@ -499,13 +528,25 @@ export function RoomPlannerModal() {
                     </button>
                   </div>
 
-                  <button
-                    onClick={handleCenter}
-                    className="py-2 px-3 bg-white hover:bg-slate-50 border border-slate-300 rounded text-xs font-bold text-slate-700 flex items-center justify-center gap-1.5 transition-colors shadow-sm"
-                  >
-                    <RotateCcw size={14} />
-                    <span>Centrar en el Plano</span>
-                  </button>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={handleRestoreSquares}
+                      className="py-2 px-2.5 bg-white hover:bg-amber-50 border border-slate-300 rounded text-xs font-bold text-slate-800 flex items-center justify-center gap-1.5 transition-colors shadow-sm"
+                      title="Endereza y alinea todas las paredes a 90°"
+                    >
+                      <LayoutGrid size={14} className="text-blue-600" />
+                      <span>Escuadras 90°</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCenter}
+                      className="py-2 px-2.5 bg-white hover:bg-slate-50 border border-slate-300 rounded text-xs font-bold text-slate-700 flex items-center justify-center gap-1.5 transition-colors shadow-sm"
+                    >
+                      <RotateCcw size={14} />
+                      <span>Centrar</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             </aside>

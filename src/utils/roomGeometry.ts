@@ -226,7 +226,7 @@ export function moveVertexOrthogonal(
   vertices: RoomVertex[],
   vertexIndex: number,
   targetPos: { x: number; y: number },
-  snapStepCm: number = 122
+  snapStepCm: number = 5
 ): RoomVertex[] {
   const n = vertices.length;
   if (n < 3 || vertexIndex < 0 || vertexIndex >= n) return vertices;
@@ -274,10 +274,10 @@ export function adjustWallLengthOrthogonal(
   vertices: RoomVertex[],
   segmentIndex: number,
   newLengthCm: number,
-  snapStepCm: number = 122
+  snapStepCm: number = 5
 ): RoomVertex[] {
   const n = vertices.length;
-  if (n < 3 || segmentIndex < 0 || segmentIndex >= n || newLengthCm <= 50) return vertices;
+  if (n < 3 || segmentIndex < 0 || segmentIndex >= n || newLengthCm <= 20) return vertices;
 
   const p1Idx = segmentIndex;
   const p2Idx = (segmentIndex + 1) % n;
@@ -316,6 +316,17 @@ export function adjustWallLengthOrthogonal(
     ];
   }
 
+  // Si es un segmento diagonal (ochava / chaflán a 45°)
+  const len = Math.hypot(dx, dy);
+  if (Math.abs(dx) > 15 && Math.abs(dy) > 15 && Math.abs(Math.abs(dx) - Math.abs(dy)) < 30) {
+    const ratio = newLengthCm / (len || 1);
+    const newDx = dx * ratio;
+    const newDy = dy * ratio;
+    updated[p2Idx].x = Math.round((p1.x + newDx) * 10) / 10;
+    updated[p2Idx].y = Math.round((p1.y + newDy) * 10) / 10;
+    return updated;
+  }
+
   if (isHorizontal) {
     const dirX = dx >= 0 ? 1 : -1;
     const currentLen = Math.abs(dx) || 1;
@@ -333,8 +344,8 @@ export function adjustWallLengthOrthogonal(
   return updated;
 }
 
-// Endereza cualquier polígono a ángulos estrictos de 90° y modulación SIP
-export function orthogonalizePolygon(vertices: RoomVertex[], snapModuleCm = 122): RoomVertex[] {
+// Endereza cualquier polígono a ángulos estrictos de 90°
+export function orthogonalizePolygon(vertices: RoomVertex[], snapModuleCm = 5): RoomVertex[] {
   const n = vertices.length;
   if (n < 3) return vertices;
 
@@ -362,7 +373,7 @@ export function orthogonalizePolygon(vertices: RoomVertex[], snapModuleCm = 122)
     ];
   }
 
-  // Si es una casa en L (6 vértices)
+  // Si es una forma en L (6 vértices)
   if (n === 6) {
     let minX = Infinity;
     let maxX = -Infinity;
@@ -423,7 +434,7 @@ export function moveWallSegmentOrthogonal(
   vertices: RoomVertex[],
   segmentIndex: number,
   targetCm: { x: number; y: number },
-  snapStepCm: number = 122
+  snapStepCm: number = 5
 ): RoomVertex[] {
   const n = vertices.length;
   if (n < 3 || segmentIndex < 0 || segmentIndex >= n) return vertices;
@@ -435,20 +446,36 @@ export function moveWallSegmentOrthogonal(
 
   const dx = p2.x - p1.x;
   const dy = p2.y - p1.y;
-  const isHorizontal = Math.abs(dx) >= Math.abs(dy);
+  const len = Math.hypot(dx, dy);
+  if (len === 0) return vertices;
+
+  const isPureHorizontal = Math.abs(dy) <= 5 || Math.abs(dx) >= Math.abs(dy) * 2;
+  const isPureVertical = Math.abs(dx) <= 5 || Math.abs(dy) >= Math.abs(dx) * 2;
 
   const updated = vertices.map((v) => ({ ...v }));
 
-  if (isHorizontal) {
+  if (isPureHorizontal) {
     // La pared es horizontal -> se mueve verticalmente (en Y)
     const snappedY = Math.round(targetCm.y / snapStepCm) * snapStepCm;
     updated[p1Idx].y = snappedY;
     updated[p2Idx].y = snappedY;
-  } else {
+  } else if (isPureVertical) {
     // La pared es vertical -> se mueve horizontalmente (en X)
     const snappedX = Math.round(targetCm.x / snapStepCm) * snapStepCm;
     updated[p1Idx].x = snappedX;
     updated[p2Idx].x = snappedX;
+  } else {
+    // Pared diagonal (chaflán a 45° o similar) -> traslación a lo largo de su vector normal
+    const midX = (p1.x + p2.x) / 2;
+    const midY = (p1.y + p2.y) / 2;
+    const nx = -dy / len;
+    const ny = dx / len;
+    const proj = (targetCm.x - midX) * nx + (targetCm.y - midY) * ny;
+    const snappedProj = Math.round(proj / snapStepCm) * snapStepCm;
+    updated[p1Idx].x = Math.round((p1.x + nx * snappedProj) * 10) / 10;
+    updated[p1Idx].y = Math.round((p1.y + ny * snappedProj) * 10) / 10;
+    updated[p2Idx].x = Math.round((p2.x + nx * snappedProj) * 10) / 10;
+    updated[p2Idx].y = Math.round((p2.y + ny * snappedProj) * 10) / 10;
   }
 
   return updated;
