@@ -4,7 +4,8 @@ import { useStore } from '../store';
 import { TexturesSection } from '../components/TexturesSection';
 import { KitchenBlueprint } from '../components/KitchenBlueprint';
 import { exportKitchenToExcel } from '../utils/kitchenExcelGenerator';
-import { FileSpreadsheet, FileText, RotateCcw } from 'lucide-react';
+import { exportKitchenLabelsPDF } from '../utils/kitchenLabelsPdfGenerator';
+import { FileSpreadsheet, FileText, RotateCcw, QrCode, Loader2 } from 'lucide-react';
 import { KitchenScene } from '../components/kitchen/KitchenScene';
 import { RoomPlannerModal } from '../components/kitchen/RoomPlannerModal';
 import { ResetConfirmModal } from '../components/kitchen/ResetConfirmModal';
@@ -14,8 +15,11 @@ import { KitchenModuleContextMenu } from '../components/kitchen/KitchenModuleCon
 import { SaveProjectModal } from '../components/common/SaveProjectModal';
 import { CountertopConfigModal } from '../components/kitchen/CountertopConfigModal';
 import { GolaRegruesoIncompatibilityModal } from '../components/kitchen/GolaRegruesoIncompatibilityModal';
+import { KitchenB2BQuoteModal } from '../components/kitchen/KitchenB2BQuoteModal';
 import { calculatePolygonArea } from '../utils/roomGeometry';
-import { ArrowLeft, Box, Square, Move3D, PenTool, LayoutGrid, Trash2, RotateCw, Flame, Refrigerator, Flower2, Info, Sparkles, Maximize2, Layers, Palette, ListOrdered, Save, Columns, Sliders, Sun, Moon, Wine } from 'lucide-react';
+import { KitchenMepPanel } from '../components/kitchen/KitchenMepPanel';
+import { detectMepClashes } from '../utils/mepClashDetection';
+import { ArrowLeft, Box, Square, Move3D, PenTool, LayoutGrid, Trash2, RotateCw, Flame, Refrigerator, Flower2, Info, Sparkles, Maximize2, Layers, Palette, ListOrdered, Save, Columns, Sliders, Sun, Moon, Wine, Wrench, DollarSign } from 'lucide-react';
 
 const sectionTitle = "text-xs uppercase tracking-wider text-orange-400 font-bold mb-3 mt-4 first:mt-0";
 const labelClass = "text-xs uppercase tracking-wider text-slate-300 font-semibold";
@@ -90,16 +94,34 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
 
   const isLight = theme === 'light';
 
-  const { viewMode, setViewMode, toolMode, setToolMode, cabinets, activeCabinetId, updateCabinet, removeCabinet, setActiveCabinet, applyGlobalTexture, showSocle, setShowSocle, roomConfig, setRoomPlannerOpen, architecturalElements, activeArchElementId, addArchitecturalElement, updateArchitecturalElement, removeArchitecturalElement, setActiveArchElement, golaSystem, setGolaSystem, countertopConfig, setCountertopConfig, qstoneCatalog, islandBackConfig, setIslandBackConfig } = useKitchenStore();
+  const { viewMode, setViewMode, toolMode, setToolMode, cabinets, activeCabinetId, updateCabinet, removeCabinet, setActiveCabinet, applyGlobalTexture, showSocle, setShowSocle, roomConfig, setRoomPlannerOpen, architecturalElements, activeArchElementId, addArchitecturalElement, updateArchitecturalElement, removeArchitecturalElement, setActiveArchElement, golaSystem, setGolaSystem, countertopConfig, setCountertopConfig, qstoneCatalog, islandBackConfig, setIslandBackConfig, mepPoints } = useKitchenStore();
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
   const [isCountertopModalOpen, setIsCountertopModalOpen] = useState(false);
+  const [isB2BQuoteOpen, setIsB2BQuoteOpen] = useState(false);
+  const [isExportingLabels, setIsExportingLabels] = useState(false);
   const [leftTab, setLeftTab] = useState<'modules' | 'placed' | 'decorations'>('modules');
-  const [rightTab, setRightTab] = useState<'module' | 'materials' | 'engineering'>('module');
+  const [rightTab, setRightTab] = useState<'module' | 'materials' | 'engineering' | 'mep'>('module');
   const [showIndividualMaterial, setShowIndividualMaterial] = useState(false);
   const globalState = useStore();
   const currentAreaM2 = calculatePolygonArea(roomConfig?.vertices || []);
   const activeArchElement = architecturalElements.find(el => el.id === activeArchElementId);
+
+  const mepClashes = React.useMemo(() => {
+    return detectMepClashes(mepPoints, cabinets, countertopConfig);
+  }, [mepPoints, cabinets, countertopConfig]);
+
+  const handleExportLabels = async () => {
+    setIsExportingLabels(true);
+    try {
+      await exportKitchenLabelsPDF(cabinets, globalState);
+    } catch (err) {
+      console.error('Error al exportar etiquetas', err);
+      alert('Error al generar las etiquetas de producción.');
+    } finally {
+      setIsExportingLabels(false);
+    }
+  };
 
   // Requisito: Cuando se carguen los muebles, las cotas deben iniciar apagadas
   useEffect(() => {
@@ -311,6 +333,19 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
           </button>
 
           <button
+            onClick={() => setIsB2BQuoteOpen(true)}
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 border rounded-lg transition-all text-xs font-bold uppercase tracking-wider shadow-sm cursor-pointer ${
+              isLight
+                ? 'bg-amber-50 hover:bg-amber-100 border-amber-300 text-amber-900'
+                : 'bg-amber-500/15 hover:bg-amber-500/25 border-amber-500/40 text-amber-400 hover:text-amber-300'
+            }`}
+            title="Cotización Comercial Dual (Costo Fábrica B2B vs Venta Cliente Final)"
+          >
+            <DollarSign size={14} className="text-amber-500" />
+            <span>Cotización B2B</span>
+          </button>
+
+          <button
             onClick={() => setIsSaveModalOpen(true)}
             className="flex items-center gap-1.5 px-3.5 py-1.5 bg-orange-600 hover:bg-orange-500 text-white rounded-lg transition-all text-xs font-bold uppercase tracking-wider shadow-md shadow-orange-600/20 cursor-pointer"
             title="Guardar diseño actual en el Backoffice"
@@ -429,9 +464,11 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                        <ToolButton isLight={isLight} active={toolMode === 'place_base_2_doors'} onClick={() => { setToolMode('place_base_2_doors'); setViewMode('3d'); }} icon={<Box size={14}/>} label="2 Puertas" />
                        <ToolButton isLight={isLight} active={toolMode === 'place_base_4_drawers'} onClick={() => { setToolMode('place_base_4_drawers'); setViewMode('3d'); }} icon={<Box size={14}/>} label="4 Cajones" />
                        <ToolButton isLight={isLight} active={toolMode === 'place_base_2_pot_drawers'} onClick={() => { setToolMode('place_base_2_pot_drawers'); setViewMode('3d'); }} icon={<Box size={14}/>} label="2 Olleros" />
+                       <ToolButton isLight={isLight} active={toolMode === 'place_base_sink_u_drawer'} onClick={() => { setToolMode('place_base_sink_u_drawer'); setViewMode('3d'); }} icon={<Box size={14}/>} label="Fregadero Cajón en U" />
                        <ToolButton isLight={isLight} active={toolMode === 'place_base_spice_rack'} onClick={() => { setToolMode('place_base_spice_rack'); setViewMode('3d'); }} icon={<Box size={14}/>} label="Especiero" />
                        <ToolButton isLight={isLight} active={toolMode === 'place_base_wine_rack'} onClick={() => { setToolMode('place_base_wine_rack'); setViewMode('3d'); }} icon={<Wine size={14}/>} label="Botellero Base" />
                        <ToolButton isLight={isLight} active={toolMode === 'place_base_corner_blind'} onClick={() => { setToolMode('place_base_corner_blind'); setViewMode('3d'); }} icon={<Box size={14}/>} label="Esquinero Ciego" />
+                       <ToolButton isLight={isLight} active={toolMode === 'place_base_corner_l'} onClick={() => { setToolMode('place_base_corner_l'); setViewMode('3d'); }} icon={<Box size={14}/>} label="Esquinero en L (90x90)" />
                     </div>
                     
                     <h3 className={`text-xs uppercase tracking-wider font-bold mb-2 ${isLight ? 'text-orange-600' : 'text-orange-400'}`}>Torres & Despensas</h3>
@@ -439,6 +476,8 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                        <ToolButton isLight={isLight} active={toolMode === 'place_tall_1_door'} onClick={() => { setToolMode('place_tall_1_door'); setViewMode('3d'); }} icon={<LayoutGrid size={14}/>} label="1 Pta Larga (Repisas)" />
                        <ToolButton isLight={isLight} active={toolMode === 'place_tall_split_2_doors'} onClick={() => { setToolMode('place_tall_split_2_doors'); setViewMode('3d'); }} icon={<LayoutGrid size={14}/>} label="2 Ptas (Línea Base + Alta)" />
                        <ToolButton isLight={isLight} active={toolMode === 'place_tall_oven_micro'} onClick={() => { setToolMode('place_tall_oven_micro'); setViewMode('3d'); }} icon={<LayoutGrid size={14}/>} label="Torre Horno + Micro Empotrado" />
+                       <ToolButton isLight={isLight} active={toolMode === 'place_tall_oven_vent'} onClick={() => { setToolMode('place_tall_oven_vent'); setViewMode('3d'); }} icon={<LayoutGrid size={14}/>} label="Torre Hornos Vent. Técnica" />
+                       <ToolButton isLight={isLight} active={toolMode === 'place_tall_inner_drawers'} onClick={() => { setToolMode('place_tall_inner_drawers'); setViewMode('3d'); }} icon={<LayoutGrid size={14}/>} label="Despensa Cajones Interiores" />
                        <ToolButton isLight={isLight} active={toolMode === 'place_tall_microwave_niche'} onClick={() => { setToolMode('place_tall_microwave_niche'); setViewMode('3d'); }} icon={<LayoutGrid size={14}/>} label="Nicho Micro Portátil" />
                        <ToolButton isLight={isLight} active={toolMode === 'place_tall_open'} onClick={() => { setToolMode('place_tall_open'); setViewMode('3d'); }} icon={<LayoutGrid size={14}/>} label="Repisas a la Vista" />
                        <ToolButton isLight={isLight} active={toolMode === 'place_tall_wine_rack'} onClick={() => { setToolMode('place_tall_wine_rack'); setViewMode('3d'); }} icon={<Wine size={14}/>} label="Botellero Despensa" />
@@ -631,12 +670,12 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
       isLight ? 'bg-white/95 border-slate-200 shadow-slate-200 text-slate-800' : 'bg-black/70 border-white/10 text-slate-200'
     }`}>
       {/* Selector de Pestañas Superior */}
-      <div className={`grid grid-cols-3 border-b p-2 gap-1.5 shrink-0 transition-colors ${
+      <div className={`grid grid-cols-4 border-b p-1.5 gap-1 shrink-0 transition-colors ${
         isLight ? 'border-slate-200 bg-slate-50' : 'border-white/10 bg-black/60'
       }`}>
         <button
           onClick={() => setRightTab('module')}
-          className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
+          className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
             rightTab === 'module'
               ? 'bg-orange-500 text-black shadow-[0_0_12px_rgba(249,115,22,0.25)]'
               : isLight
@@ -649,7 +688,7 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
         </button>
         <button
           onClick={() => setRightTab('materials')}
-          className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
+          className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
             rightTab === 'materials'
               ? 'bg-orange-500 text-black shadow-[0_0_12px_rgba(249,115,22,0.25)]'
               : isLight
@@ -662,7 +701,7 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
         </button>
         <button
           onClick={() => setRightTab('engineering')}
-          className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
+          className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
             rightTab === 'engineering'
               ? 'bg-orange-500 text-black shadow-[0_0_12px_rgba(249,115,22,0.25)]'
               : isLight
@@ -672,6 +711,25 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
         >
           <Sliders size={14} />
           <span>Herrajes</span>
+        </button>
+        <button
+          onClick={() => setRightTab('mep')}
+          className={`relative flex items-center justify-center gap-1.5 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
+            rightTab === 'mep'
+              ? 'bg-cyan-600 text-white shadow-[0_0_12px_rgba(6,182,212,0.35)]'
+              : isLight
+                ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
+                : 'text-slate-400 hover:text-white hover:bg-white/5'
+          }`}
+          title="Trazado MEP & Interferencias"
+        >
+          <Wrench size={14} />
+          <span>MEP</span>
+          {mepClashes.length > 0 && (
+            <span className="absolute -top-1 -right-1 w-4 h-4 bg-rose-600 text-white rounded-full text-[9px] font-black flex items-center justify-center border border-white animate-pulse">
+              {mepClashes.length}
+            </span>
+          )}
         </button>
       </div>
 
@@ -1600,6 +1658,12 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
             </div>
           </div>
         )}
+
+        {rightTab === 'mep' && (
+          <div className="h-full">
+            <KitchenMepPanel isLight={isLight} />
+          </div>
+        )}
       </div>
 
       {/* Dock de Fabricación Fijo Inferior (Siempre visible) */}
@@ -1607,8 +1671,16 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
         isLight ? 'border-slate-200 bg-slate-50/95 shadow-lg' : 'border-white/10 bg-black/90'
       }`}>
         <button 
+          onClick={() => setIsB2BQuoteOpen(true)}
+          className="flex items-center justify-center gap-2.5 w-full py-3 px-4 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white rounded-xl transition-all text-xs uppercase tracking-wider font-bold shadow-lg shadow-orange-600/20 active:scale-[0.99] cursor-pointer"
+        >
+          <DollarSign size={16} />
+          <span>Cotización Dual B2B & Retail</span>
+        </button>
+
+        <button 
           onClick={exportKitchenToExcel} 
-          className="flex items-center justify-center gap-2.5 w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl transition-all text-xs uppercase tracking-wider font-bold shadow-lg shadow-emerald-600/20 active:scale-[0.99] cursor-pointer"
+          className="flex items-center justify-center gap-2.5 w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl transition-all text-xs uppercase tracking-wider font-bold shadow-md shadow-emerald-600/20 active:scale-[0.99] cursor-pointer"
         >
           <FileSpreadsheet size={16} />
           <span>Exportar Excel CAD/CAM</span>
@@ -1624,6 +1696,29 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
         >
           <FileText size={15} />
           <span>Planos de Fabricación (PDF)</span>
+        </button>
+
+        <button 
+          onClick={handleExportLabels}
+          disabled={isExportingLabels}
+          className={`flex items-center justify-center gap-2 w-full py-2.5 px-4 rounded-xl transition-all text-xs uppercase tracking-wider font-bold cursor-pointer active:scale-[0.99] disabled:opacity-50 ${
+            isLight
+              ? 'bg-purple-50 border border-purple-200 hover:bg-purple-100 text-purple-700'
+              : 'bg-purple-600/20 border border-purple-500/40 hover:bg-purple-600/30 text-purple-300 hover:text-white'
+          }`}
+          title="Descargar PDF con etiquetas adhesivas y códigos QR de trazabilidad para cada pieza"
+        >
+          {isExportingLabels ? (
+            <>
+              <Loader2 size={15} className="animate-spin text-purple-400" />
+              <span>Generando Etiquetas...</span>
+            </>
+          ) : (
+            <>
+              <QrCode size={15} />
+              <span>Etiquetas CNC (QR)</span>
+            </>
+          )}
         </button>
       </div>
 
@@ -1659,6 +1754,12 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
 
    {/* Modal Popup Alerta Incompatibilidad Riel Gola vs Regrueso */}
    <GolaRegruesoIncompatibilityModal isLight={isLight} />
+
+   {/* Modal Cotización Comercial Dual B2B (Fábrica vs Cliente PVP) */}
+   <KitchenB2BQuoteModal
+     isOpen={isB2BQuoteOpen}
+     onClose={() => setIsB2BQuoteOpen(false)}
+   />
     </div>
   );
 }

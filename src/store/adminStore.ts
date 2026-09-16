@@ -33,6 +33,22 @@ export interface SupplyItem {
 
 export type TextureApprovalStatus = 'pending' | 'approved' | 'rejected';
 
+export interface ManufacturingRateConfig {
+  manufacturingPricePerM2: number; // Tarifa base de manufactura CLP/m² neto procesado (corte + canteado + mecanizado CNC)
+  preAssemblyPricePerCabinet: number; // Tarifa opcional de pre-armado por mueble/módulo
+  enablePreAssembly: boolean; // Si el pre-armado en fábrica está activo por defecto
+  minifixMachiningPrice: number; // Tarifa opcional de perforación minifix por mueble
+  defaultDesignerMarginPercent: number; // Margen comercial sugerido al diseñador/arquitecto (ej: 35%)
+}
+
+export const DEFAULT_MANUFACTURING_RATES: ManufacturingRateConfig = {
+  manufacturingPricePerM2: 14500, // $14.500 CLP por m² de panel neto (sin mermas)
+  preAssemblyPricePerCabinet: 8500, // $8.500 CLP por módulo armado
+  enablePreAssembly: false,
+  minifixMachiningPrice: 2500,
+  defaultDesignerMarginPercent: 35, // 35% de margen comercial sobre costo B2B
+};
+
 export interface CustomTextureItem {
   id: string;
   name: string;
@@ -137,6 +153,11 @@ export interface AdminState {
   rejectTexture: (id: string, reason?: string) => void;
   deleteTexture: (id: string) => void;
   resetTexturesToDefault: () => void;
+
+  // Tarifas de Manufactura B2B
+  manufacturingRates: ManufacturingRateConfig;
+  updateManufacturingRates: (updates: Partial<ManufacturingRateConfig>) => void;
+  resetManufacturingRates: () => void;
 }
 
 export const DEFAULT_SUPPLIES: SupplyItem[] = [
@@ -1576,6 +1597,9 @@ const getInitialState = () => {
             approvalStatus: t.approvalStatus || 'approved'
           }));
         })(),
+        manufacturingRates: parsed.manufacturingRates
+          ? { ...DEFAULT_MANUFACTURING_RATES, ...parsed.manufacturingRates }
+          : DEFAULT_MANUFACTURING_RATES,
       };
     }
   } catch (e) {
@@ -1589,6 +1613,7 @@ const getInitialState = () => {
     projects: DEFAULT_PROJECTS,
     supplies: DEFAULT_SUPPLIES,
     textures: DEFAULT_CUSTOM_TEXTURES,
+    manufacturingRates: DEFAULT_MANUFACTURING_RATES,
   };
 };
 
@@ -1600,6 +1625,7 @@ const saveToLocalStorage = (state: {
   projects: ProjectItem[];
   supplies: SupplyItem[];
   textures: CustomTextureItem[];
+  manufacturingRates?: ManufacturingRateConfig;
 }) => {
   try {
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(state));
@@ -1667,6 +1693,7 @@ export const useAdminStore = create<AdminState>((set, get) => {
         projects: updated.projects,
         supplies: updated.supplies,
         textures: updated.textures,
+        manufacturingRates: updated.manufacturingRates,
       });
       return updated;
     });
@@ -2112,6 +2139,16 @@ export const useAdminStore = create<AdminState>((set, get) => {
       try {
         DEFAULT_CUSTOM_TEXTURES.forEach(syncTextureToKitchenStore);
       } catch (e) {}
+    },
+
+    // Tarifas de Manufactura B2B
+    manufacturingRates: initial.manufacturingRates || DEFAULT_MANUFACTURING_RATES,
+    updateManufacturingRates: (updates) => {
+      const current = get().manufacturingRates;
+      persist({ manufacturingRates: { ...current, ...updates } });
+    },
+    resetManufacturingRates: () => {
+      persist({ manufacturingRates: DEFAULT_MANUFACTURING_RATES });
     },
   };
 });

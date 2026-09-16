@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Printer, Download, X, HelpCircle, FileText, CheckCircle2, Loader2 } from 'lucide-react';
+import { Printer, Download, X, HelpCircle, FileText, CheckCircle2, Loader2, QrCode, Cpu } from 'lucide-react';
 import { useStore } from '../store';
 import { useKitchenStore, CabinetType } from '../store/kitchenStore';
 import { analyzeRoomWalls } from '../utils/roomGeometry';
@@ -11,15 +11,84 @@ import { exportKitchenPDF } from '../utils/kitchenPdfGenerator';
 import { exportBlueprintDomToPdf } from '../utils/blueprintPdfExport';
 import { getFriendlyColorName } from '../utils/colorNames';
 import { generateCountertopPieces } from '../utils/countertopNesting';
+import { calculateCncMachiningForPart } from '../utils/kitchenCncMachining';
+import { downloadPartDxfFile, downloadAllPartsDxf, downloadKitchenDxfZip } from '../utils/kitchenCncDxf';
+import { exportKitchenLabelsPDF } from '../utils/kitchenLabelsPdfGenerator';
+import { KitchenMepBlueprintSheet } from './kitchen/KitchenMepBlueprintSheet';
 
 export function KitchenBlueprint() {
   const state = useStore();
   const kState = useKitchenStore();
   const [isExportingA3, setIsExportingA3] = useState(false);
+  const [isExportingLabels, setIsExportingLabels] = useState(false);
+  const [isExportingDxf, setIsExportingDxf] = useState(false);
   const [exportProgress, setExportProgress] = useState<{ current: number; total: number } | null>(null);
   const [generatedPdfUrl, setGeneratedPdfUrl] = useState<string | null>(null);
 
   if (!state.isPrinting) return null;
+
+  const handleExportLabels = async () => {
+    setIsExportingLabels(true);
+    try {
+      await exportKitchenLabelsPDF(kState.cabinets, state);
+    } catch (err) {
+      console.error('Error exportando etiquetas:', err);
+      alert('Ocurrió un error al compilar las etiquetas de producción.');
+    } finally {
+      setIsExportingLabels(false);
+    }
+  };
+
+  const handleExportAllDxf = async () => {
+    setIsExportingDxf(true);
+    try {
+      const realCabs = kState.cabinets.filter(c => c.type !== 'decoration' && !c.variant?.startsWith('deco_'));
+      const allParts = generateKitchenPartsList(realCabs);
+      
+      const getTypeName = (cab: CabinetType) => {
+        if (cab.type === 'wall') return 'AEREO';
+        if (cab.type === 'tall') return 'TORRE';
+        if (cab.type === 'island') return 'ISLA';
+        return 'BASE';
+      };
+
+      const groups = realCabs.map((cab, index) => {
+        const cabParts = allParts.filter(p => p.moduleId === cab.id);
+        const tagPrefix = cab.type === 'wall' ? 'A' : cab.type === 'tall' ? 'T' : cab.type === 'island' ? 'I' : 'B';
+        const identTag = `${tagPrefix}-${index + 1}`;
+        const typeName = getTypeName(cab);
+        const wCm = Math.round(cab.width);
+        const hCm = Math.round(cab.height);
+        const dCm = Math.round(cab.depth);
+        const numStr = (index + 1).toString().padStart(2, '0');
+        const folderName = `${numStr}_MUEBLE_${typeName}_${wCm}x${hCm}x${dCm}cm_${identTag}`;
+
+        const cncParts = cabParts.map(p => {
+          return calculateCncMachiningForPart(
+            p, 
+            cab, 
+            state.drawerHardware === 'Hafele' ? 'Hafele' : 'Provelcar', 
+            state.assemblyType === 'minifix' ? 'minifix' : 'spax', 
+            kState.golaSystem
+          );
+        });
+
+        return {
+          folderName,
+          cabinetTag: identTag,
+          cabinetName: `${typeName} ${wCm}x${hCm}x${dCm}cm`,
+          parts: cncParts
+        };
+      }).filter(g => g.parts.length > 0);
+
+      await downloadKitchenDxfZip(groups, 'Cocina_Modular_Planos_CNC');
+    } catch (err) {
+      console.error('Error exportando paquete DXF:', err);
+      alert('Ocurrió un error al compilar el paquete ZIP de archivos DXF.');
+    } finally {
+      setIsExportingDxf(false);
+    }
+  };
 
   const handleExportA3 = async () => {
     setIsExportingA3(true);
@@ -211,8 +280,10 @@ export function KitchenBlueprint() {
 
   const ctBOM = generateCountertopPieces(kState.cabinets, kState.countertopConfig, kState.qstoneCatalog, kState.islandBackConfig, kState.walls, kState.architecturalElements, kState.roomConfig);
   const stonePagesCount = (kState.countertopConfig?.enabled && ctBOM && ctBOM.pieces.length > 0) ? ctBOM.slabsLayout.length : 0;
+  const hasMepPage = kState.mepPoints && kState.mepPoints.length > 0;
+  const mepPagesCount = hasMepPage ? 1 : 0;
 
-  const totalDocPages = 1 + printPages.length + boardResults.length + stonePagesCount + 1;
+  const totalDocPages = 1 + mepPagesCount + printPages.length + boardResults.length + stonePagesCount + 1;
 
   const getCabinetTypeName = (cab: CabinetType) => {
     if (cab.type === 'wall') return 'MUEBLE AÉREO / MURAL';
@@ -1254,7 +1325,47 @@ export function KitchenBlueprint() {
           title="Descargar archivo PDF con despiece de corte, resumen de cubicación y herrajes"
         >
           <FileText size={15} />
-          <span>Ficha Técnica PDF (Despiece / BOM)</span>
+          <span>Ficha Técnica PDF (BOM)</span>
+        </button>
+
+        {/* Botón Industria 4.0: Etiquetas de Producción con Código QR */}
+        <button 
+          onClick={handleExportLabels}
+          disabled={isExportingLabels}
+          className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50 active:scale-95 text-white px-4 py-2 rounded-xl font-bold uppercase text-xs tracking-wider shadow-lg flex items-center gap-2 transition-all cursor-pointer"
+          title="Generar hoja de etiquetas adhesivas de corte y mecanizado con código QR y cantos"
+        >
+          {isExportingLabels ? (
+            <>
+              <Loader2 size={15} className="animate-spin text-white" />
+              <span>Generando...</span>
+            </>
+          ) : (
+            <>
+              <QrCode size={15} />
+              <span>Etiquetas QR (PDF)</span>
+            </>
+          )}
+        </button>
+
+        {/* Botón Industria 4.0: Exportar Paquete DXF para CNC */}
+        <button 
+          onClick={handleExportAllDxf}
+          disabled={isExportingDxf}
+          className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 active:scale-95 text-white px-3.5 py-2 rounded-xl font-bold uppercase text-xs tracking-wider shadow-lg flex items-center gap-2 transition-all cursor-pointer"
+          title="Descargar paquete ZIP con subcarpetas por mueble y archivos DXF con capas CNC para centros de corte"
+        >
+          {isExportingDxf ? (
+            <>
+              <Loader2 size={15} className="animate-spin text-white" />
+              <span>Generando ZIP DXF...</span>
+            </>
+          ) : (
+            <>
+              <Cpu size={15} />
+              <span>Exportar DXF CNC (.ZIP)</span>
+            </>
+          )}
         </button>
 
         {/* Botón Terciario: Cuadro de Impresión Nativo */}
@@ -1865,9 +1976,14 @@ export function KitchenBlueprint() {
         );
       })()}
 
+      {/* LÁMINA TÉCNICA DE INSTALACIONES MEP (AGUA, DESAGÜE, GAS, FUERZA) */}
+      {hasMepPage && (
+        <KitchenMepBlueprintSheet pageNum={2} />
+      )}
+
       {/* 2. LÁMINAS TÉCNICAS DE FABRICACIÓN POR MÓDULO (Estilo Plano de Referencia) */}
       {printPages.map((page, pIdx) => {
-        const pageNum = pIdx + 2;
+        const pageNum = pIdx + 2 + mepPagesCount;
         const cab = page.cab;
 
         // Escala consistente para el despiece de piezas del módulo
@@ -1943,6 +2059,25 @@ export function KitchenBlueprint() {
                       <div className="w-full flex items-center justify-center p-0.5">
                         {renderUnifiedPartSVG(part, cab)}
                       </div>
+
+                      {/* Botón CNC DXF por pieza individual */}
+                      <button
+                        onClick={() => {
+                          const cncPart = calculateCncMachiningForPart(
+                            part, 
+                            cab, 
+                            state.drawerHardware === 'Hafele' ? 'Hafele' : 'Provelcar', 
+                            state.assemblyType === 'minifix' ? 'minifix' : 'spax', 
+                            kState.golaSystem
+                          );
+                          downloadPartDxfFile(cncPart);
+                        }}
+                        className="print:hidden mt-2 px-2.5 py-1 bg-slate-800 hover:bg-orange-600 active:scale-95 text-white rounded text-[9px] font-mono font-bold flex items-center gap-1 transition-all cursor-pointer shadow-xs"
+                        title={`Descargar archivo DXF CNC para ${part.name}`}
+                      >
+                        <Download size={10} />
+                        <span>DXF CNC</span>
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -2032,7 +2167,7 @@ export function KitchenBlueprint() {
 
       {/* 3. PLANOS DE OPTIMIZACIÓN DE CORTE (NESTING) */}
       {boardResults.map((board, bIndex) => {
-        const pageNum = 1 + printPages.length + bIndex + 1;
+        const pageNum = 1 + mepPagesCount + printPages.length + bIndex + 1;
 
         return (
           <div key={'board-' + bIndex} className="blueprint-page border border-black/10 flex flex-col justify-between p-8 pb-32 bg-white relative">
@@ -2138,7 +2273,7 @@ export function KitchenBlueprint() {
 
       {/* 3.1. PLANOS DE OPTIMIZACIÓN DE CORTE EN PLANCHA QSTONE (3200 x 1600 mm) */}
       {kState.countertopConfig?.enabled && ctBOM && ctBOM.slabsLayout.map((slab, sIndex) => {
-        const pageNum = 1 + printPages.length + boardResults.length + sIndex + 1;
+        const pageNum = 1 + mepPagesCount + printPages.length + boardResults.length + sIndex + 1;
         const bType = kState.countertopConfig.buildingType === 'edificio' ? 'Edificio (máx 2000 mm)' : 'Casa (máx 2500 mm)';
 
         return (

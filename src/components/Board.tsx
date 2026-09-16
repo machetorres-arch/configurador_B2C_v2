@@ -73,8 +73,8 @@ export function Board({ position, args, color, textureUrl, materialType, transpa
           // or find the min X of all cabinets.
           let closetLeftX = -totalWidth / 2;
           if (kitchenCabinets.length > 0 && closetModules.length === 0) {
-             const minX = Math.min(...kitchenCabinets.map(c => c.position[0] - c.width/2));
-             closetLeftX = minX;
+             const minX = Math.min(...kitchenCabinets.map(c => (c.position?.[0] ?? 0) - c.width/2));
+             closetLeftX = isFinite(minX) ? minX : -totalWidth / 2;
           }
 
           const closetBottomY = 10;

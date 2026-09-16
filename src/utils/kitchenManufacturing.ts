@@ -17,9 +17,9 @@ export const HARDWARE_SPECS = {
     maxSideThickness: 18 // Espesor máximo admitido para el lateral del cajón
   },
   Hafele: {
-    // Referencia estándar Häfele Matrix / Moovit
+    // Gama Alta Industrial Häfele Matrix Runner / Moovit
     slideClearanceTotal: 42, 
-    slideName: 'Corredera Oculta Häfele (Cierre Suave)',
+    slideName: 'Corredera Oculta Häfele Matrix Runner Ext. Total (Cierre Suave Premium Smuso)',
     drawerLengthDeduction: 0,
     maxSideThickness: 16
   }
@@ -432,6 +432,7 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
         });
     } else if (cab.variant?.startsWith('corner_blind') || cab.variant === 'corner_blind') {
         const blindW = Math.max(35, w / 2);
+        const stripW = 6.5; // Regleta de ajuste frontal traslapada de 65 mm (evita colisiones con tiradores a 90°)
         const doorW = w - blindW - gap * 2;
         parts.push({
             name: `Panel Ciego ${cabName}`,
@@ -444,6 +445,18 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
             material: cab.structureColor || state.structureColor,
             edgeL1: true, edgeL2: true, edgeW1: true, edgeW2: true,
             notes: 'Panel ciego frontal esquinero (mismo tono estructura/paredes)'
+        });
+        parts.push({
+            name: `Regleta de Ajuste Frontal Traslapada ${cabName}`,
+            moduleId: cab.id,
+            moduleIndex: index,
+            qty: 1,
+            length: (cabH - gap * 2) * 10,
+            width: stripW * 10,
+            thickness: thickness * 10,
+            material: frontMat,
+            edgeL1: true, edgeL2: true, edgeW1: true, edgeW2: true,
+            notes: 'Regleta de ajuste traslapada 65mm para evitar colisión de tiradores a 90°'
         });
         parts.push({
             name: `Puerta Frontal ${cabName}`,
@@ -468,6 +481,358 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
             material: cab.structureColor || state.structureColor,
             edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
             notes: 'Regleta vertical de fijación'
+        });
+        parts.push({
+            name: `Repisa Interior ${cabName}`,
+            moduleId: cab.id,
+            moduleIndex: index,
+            qty: 1,
+            length: (innerW - 0.2) * 10,
+            width: (d - 4) * 10,
+            thickness: thickness * 10,
+            material: cab.shelfColor || state.structureColor,
+            edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
+            notes: 'Repisa interior de vano ciego'
+        });
+    } else if (cab.variant === 'corner_l' || cab.variant === 'base_corner_l') {
+        // Módulo esquinero en L articulado (900x900 mm)
+        const doorW = 30 - gap * 2;
+        parts.push({
+            name: `Puerta Bi-Fold Hoja 1 ${cabName}`,
+            moduleId: cab.id,
+            moduleIndex: index,
+            qty: 1,
+            length: (cabH - gap * 2) * 10,
+            width: doorW * 10,
+            thickness: thickness * 10,
+            material: frontMat,
+            edgeL1: true, edgeL2: true, edgeW1: true, edgeW2: true,
+            notes: 'Hoja principal anclada a lateral de mueble con bisagra 170°'
+        });
+        parts.push({
+            name: `Puerta Bi-Fold Hoja 2 ${cabName}`,
+            moduleId: cab.id,
+            moduleIndex: index,
+            qty: 1,
+            length: (cabH - gap * 2) * 10,
+            width: doorW * 10,
+            thickness: thickness * 10,
+            material: frontMat,
+            edgeL1: true, edgeL2: true, edgeW1: true, edgeW2: true,
+            notes: 'Hoja secundaria articulada solidaria con bisagra de rincón bi-fold'
+        });
+        parts.push({
+            name: `Repisa en L - Tramo Principal ${cabName}`,
+            moduleId: cab.id,
+            moduleIndex: index,
+            qty: 1,
+            length: (w - 30 - 2) * 10,
+            width: (d - 4) * 10,
+            thickness: thickness * 10,
+            material: cab.shelfColor || state.structureColor,
+            edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
+            notes: 'Tramo A de repisa continua a escuadra'
+        });
+        parts.push({
+            name: `Repisa en L - Retorno Escuadra ${cabName}`,
+            moduleId: cab.id,
+            moduleIndex: index,
+            qty: 1,
+            length: (30 - 2) * 10,
+            width: (d - 30 - 4) * 10,
+            thickness: thickness * 10,
+            material: cab.shelfColor || state.structureColor,
+            edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
+            notes: 'Tramo B de repisa continua a escuadra'
+        });
+    } else if (cab.variant === 'tall_oven_vent') {
+        const baseH = 70;
+        const ovenH = 60;
+        const microH = 38;
+        const topH = Math.max(10, cabH - (baseH + ovenH + microH));
+        const lowerDoorH = baseH - gap * 2;
+        const topDoorH = topH - gap * 2;
+
+        parts.push({
+            name: `Puerta Inferior Base ${cabName}`,
+            moduleId: cab.id,
+            moduleIndex: index,
+            qty: 1,
+            length: lowerDoorH * 10,
+            width: (w - gap * 2) * 10,
+            thickness: thickness * 10,
+            material: frontMat,
+            edgeL1: true, edgeL2: true, edgeW1: true, edgeW2: true,
+            notes: 'Puerta inferior despensero a cota de 700mm'
+        });
+        if (topDoorH > 10) {
+            parts.push({
+                name: `Puerta Superior Despensa ${cabName}`,
+                moduleId: cab.id,
+                moduleIndex: index,
+                qty: 1,
+                length: topDoorH * 10,
+                width: (w - gap * 2) * 10,
+                thickness: thickness * 10,
+                material: frontMat,
+                edgeL1: true, edgeL2: true, edgeW1: true, edgeW2: true,
+                notes: 'Puerta superior torre de hornos'
+            });
+        }
+        parts.push({
+            name: `Base Soporte Horno c/ Chimenea ${cabName}`,
+            moduleId: cab.id,
+            moduleIndex: index,
+            qty: 1,
+            length: innerW * 10,
+            width: (d - 5) * 10,
+            thickness: thickness * 10,
+            material: cab.shelfColor || state.structureColor,
+            edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
+            notes: 'Base soporte reforzada horno (retranqueo técnico 50mm para chimenea térmica)'
+        });
+        parts.push({
+            name: `Divisor Horno / Micro c/ Convección ${cabName}`,
+            moduleId: cab.id,
+            moduleIndex: index,
+            qty: 1,
+            length: innerW * 10,
+            width: (d - 5) * 10,
+            thickness: thickness * 10,
+            material: cab.shelfColor || state.structureColor,
+            edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
+            notes: 'Divisor intermedio con paso libre de aire caliente posterior'
+        });
+        parts.push({
+            name: `Techo Nicho Horno c/ Escape Aire ${cabName}`,
+            moduleId: cab.id,
+            moduleIndex: index,
+            qty: 1,
+            length: innerW * 10,
+            width: (d - 5) * 10,
+            thickness: thickness * 10,
+            material: cab.shelfColor || state.structureColor,
+            edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
+            notes: 'Techo superior nicho de electrodomésticos con evacuación térmica'
+        });
+        parts.push({
+            name: `Repisa Interior ${cabName}`,
+            moduleId: cab.id,
+            moduleIndex: index,
+            qty: 2,
+            length: (innerW - 0.2) * 10,
+            width: (d - 4) * 10,
+            thickness: thickness * 10,
+            material: cab.shelfColor || state.structureColor,
+            edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
+            notes: '1 repisa en módulo inferior + 1 repisa en módulo superior'
+        });
+    } else if (cab.variant === 'tall_inner_drawers') {
+        // Puerta exterior única de gran altura
+        parts.push({
+            name: `Puerta Frontal Alta Continua ${cabName}`,
+            moduleId: cab.id,
+            moduleIndex: index,
+            qty: 1,
+            length: (cabH - gap * 2) * 10,
+            width: (w - gap * 2) * 10,
+            thickness: thickness * 10,
+            material: frontMat,
+            edgeL1: true, edgeL2: true, edgeW1: true, edgeW2: true,
+            notes: 'Puerta exterior despensero continuo. Requiere bisagras 165° con ángulo cero invasión'
+        });
+
+        // 4 Gavetas Interiores (Cajones ingleses)
+        const innerDepthMm = (d - 5) * 10;
+        const nominalLength = getNominalSlideLength(innerDepthMm);
+        const drawerBoxLength = nominalLength - hwSpec.drawerLengthDeduction;
+        const drawerBoxOuterWidth = innerW * 10 - hwSpec.slideClearanceTotal;
+        const drawerFrontBackLength = drawerBoxOuterWidth - (2 * thickness * 10);
+        const innerDrawerH = 140; // 140 mm
+        const cInnerMat = cab.drawerInnerColor || state.structureColor;
+
+        for (let i = 0; i < 4; i++) {
+            // Frente interior con uñero fresado CNC
+            parts.push({
+                name: `Frente Cajón Interior ${i + 1} ${cabName}`,
+                moduleId: cab.id,
+                moduleIndex: index,
+                qty: 1,
+                length: drawerBoxOuterWidth,
+                width: innerDrawerH,
+                thickness: thickness * 10,
+                material: cab.drawerFrontColor || frontMat,
+                edgeL1: true, edgeL2: true, edgeW1: true, edgeW2: true,
+                notes: 'Frente interior de melamina con uñero fresado CNC en centro superior'
+            });
+            // Laterales de cajón interior
+            parts.push({
+                name: `Lateral Cajón Interior ${i + 1} ${cabName}`,
+                moduleId: cab.id,
+                moduleIndex: index,
+                qty: 2,
+                length: drawerBoxLength,
+                width: 120,
+                thickness: thickness * 10,
+                material: cInnerMat,
+                edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
+                notes: `P/ ${hwSpec.slideName} (NL=${nominalLength}mm)`
+            });
+            // Trasera de cajón interior
+            parts.push({
+                name: `Trasera Cajón Interior ${i + 1} ${cabName}`,
+                moduleId: cab.id,
+                moduleIndex: index,
+                qty: 1,
+                length: drawerFrontBackLength,
+                width: 120,
+                thickness: thickness * 10,
+                material: cInnerMat,
+                edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
+                notes: `P/ ${hwSpec.slideName}`
+            });
+            // Fondo de cajón 3mm
+            parts.push({
+                name: `Fondo Cajón Interior ${i + 1} ${cabName}`,
+                moduleId: cab.id,
+                moduleIndex: index,
+                qty: 1,
+                length: drawerBoxLength,
+                width: drawerBoxOuterWidth,
+                thickness: 3,
+                material: cab.backColor || '#dddddd',
+                edgeL1: false, edgeL2: false, edgeW1: false, edgeW2: false,
+                notes: 'Fondo ranurado/clavado 3mm'
+            });
+        }
+
+        // 3 Repisas superiores fijas/regulables
+        parts.push({
+            name: `Repisas Interiores Superiores ${cabName}`,
+            moduleId: cab.id,
+            moduleIndex: index,
+            qty: 3,
+            length: (innerW - 0.2) * 10,
+            width: (d - 2) * 10,
+            thickness: thickness * 10,
+            material: cab.shelfColor || state.structureColor,
+            edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
+            notes: 'Repisas despensero superior sobre gavetas interiores'
+        });
+    } else if (cab.variant === 'sink_u_drawer') {
+        const isGola = (kState.golaSystem === 'aluminum' || kState.golaSystem === 'black') && (cab.type === 'base' || cab.type === 'island');
+        const regruesoCm = (ctConfig?.enabled && (cab.type === 'base' || cab.type === 'island')) ? (ctConfig.regruesoCm || 0) : 0;
+        const regruesoDeduction = isGola ? Math.max(0, regruesoCm - 3.5) : regruesoCm;
+        
+        let lowerH = (cabH - gap * 3) / 2;
+        let upperH = (cabH - gap * 3) / 2;
+        if (isGola) {
+            const availH = Math.max(20, cabH - 3.5 - 4.0 - gap * 3);
+            lowerH = availH / 2;
+            upperH = availH / 2;
+        }
+        if (regruesoDeduction > 0) {
+            upperH = Math.max(8, Number((upperH - regruesoDeduction).toFixed(1)));
+        }
+
+        // Frentes exteriores
+        parts.push({
+            name: `Frente Cajón Inferior Ollero ${cabName}`,
+            moduleId: cab.id,
+            moduleIndex: index,
+            qty: 1,
+            length: (w - gap * 2) * 10,
+            width: lowerH * 10,
+            thickness: thickness * 10,
+            material: cab.drawerFrontColor || frontMat,
+            edgeL1: true, edgeL2: true, edgeW1: true, edgeW2: true,
+            notes: 'Frente exterior cajón ollero inferior'
+        });
+        parts.push({
+            name: `Frente Cajón Superior en U ${cabName}`,
+            moduleId: cab.id,
+            moduleIndex: index,
+            qty: 1,
+            length: (w - gap * 2) * 10,
+            width: upperH * 10,
+            thickness: thickness * 10,
+            material: cab.drawerFrontColor || frontMat,
+            edgeL1: true, edgeL2: true, edgeW1: true, edgeW2: true,
+            notes: 'Frente exterior cajón superior lavaplatos (aloja cajón en U)'
+        });
+
+        const innerDepthMm = (d - 5) * 10;
+        const nominalLength = getNominalSlideLength(innerDepthMm);
+        const drawerBoxLength = nominalLength - hwSpec.drawerLengthDeduction;
+        const drawerBoxOuterWidth = innerW * 10 - hwSpec.slideClearanceTotal;
+        const drawerFrontBackLength = drawerBoxOuterWidth - (2 * thickness * 10);
+        const cInnerMat = cab.drawerInnerColor || state.structureColor;
+
+        // Cajón 1: Inferior estándar
+        parts.push({
+            name: `Lateral Cajón Inferior ${cabName}`,
+            moduleId: cab.id, moduleIndex: index, qty: 2,
+            length: drawerBoxLength, width: 180, thickness: thickness * 10, material: cInnerMat,
+            edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
+            notes: `P/ ${hwSpec.slideName} (NL=${nominalLength}mm)`
+        });
+        parts.push({
+            name: `Tr/Fr Cajón Inferior ${cabName}`,
+            moduleId: cab.id, moduleIndex: index, qty: 2,
+            length: drawerFrontBackLength, width: 180, thickness: thickness * 10, material: cInnerMat,
+            edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
+            notes: `P/ ${hwSpec.slideName}`
+        });
+        parts.push({
+            name: `Fondo Cajón Inferior ${cabName}`,
+            moduleId: cab.id, moduleIndex: index, qty: 1,
+            length: drawerBoxLength, width: drawerBoxOuterWidth, thickness: 3, material: cab.backColor || '#dddddd',
+            edgeL1: false, edgeL2: false, edgeW1: false, edgeW2: false,
+            notes: 'Fondo ranurado/clavado 3mm'
+        });
+
+        // Cajón 2: Superior en U para salvar sifón sanitario
+        const skw = drawerBoxOuterWidth / 10; // cm
+        const uCutoutW = Math.min(32, Math.max(22, w * 0.32)); // cm
+        const wingW = (skw - uCutoutW) / 2; // cm
+        const uCutoutLength = Math.max(16, (drawerBoxLength / 10) - 12); // cm
+        const frontBandLength = (drawerBoxLength / 10) - uCutoutLength; // cm
+        const sideH = 140;
+
+        parts.push({
+            name: `Costados Exteriores Cajón en U ${cabName}`,
+            moduleId: cab.id, moduleIndex: index, qty: 2,
+            length: drawerBoxLength, width: sideH, thickness: thickness * 10, material: cInnerMat,
+            edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
+            notes: 'Costados laterales exteriores del cajón en U'
+        });
+        parts.push({
+            name: `Traseras Alas Cajón en U ${cabName}`,
+            moduleId: cab.id, moduleIndex: index, qty: 2,
+            length: wingW * 10, width: sideH, thickness: thickness * 10, material: cInnerMat,
+            edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
+            notes: 'Traseras individuales de cada ala izquierda/derecha'
+        });
+        parts.push({
+            name: `Costados Interiores Divisorios Calado U ${cabName}`,
+            moduleId: cab.id, moduleIndex: index, qty: 2,
+            length: uCutoutLength * 10, width: sideH, thickness: thickness * 10, material: cInnerMat,
+            edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
+            notes: 'Paredes interiores que conforman el calado central del sifón'
+        });
+        parts.push({
+            name: `Fondo Alas Cajón en U (3mm) ${cabName}`,
+            moduleId: cab.id, moduleIndex: index, qty: 2,
+            length: drawerBoxLength, width: wingW * 10, thickness: 3, material: cab.backColor || '#dddddd',
+            edgeL1: false, edgeL2: false, edgeW1: false, edgeW2: false,
+            notes: 'Fondo de cada ala lateral del cajón en U'
+        });
+        parts.push({
+            name: `Fondo Banda Frontal Cajón en U (3mm) ${cabName}`,
+            moduleId: cab.id, moduleIndex: index, qty: 1,
+            length: frontBandLength * 10, width: uCutoutW * 10, thickness: 3, material: cab.backColor || '#dddddd',
+            edgeL1: false, edgeL2: false, edgeW1: false, edgeW2: false,
+            notes: 'Fondo de la unión frontal central del cajón en U'
         });
     } else if (cab.variant === '1_door' || cab.variant === 'spice_rack' || cab.variant === 'tall_1_door') {
         parts.push({
@@ -1014,6 +1379,11 @@ export function generateKitchenHardwareList(cabinets: CabinetType[]) {
     let plantDecoCount = 0;
     let wallCabinetsCount = 0;
     let liftUpPistonsCount = 0;
+    let zeroProtrusionHingesCount = 0;
+    let biFoldInterHingesCount = 0;
+    let biFoldPostHingesCount = 0;
+    let extraCornerLLegsCount = 0;
+    let ventGrillesCount = 0;
     
     const baseCabinets = cabinets.filter(c => c.type === 'base' || c.type === 'island' || c.type === 'tall');
     
@@ -1058,13 +1428,22 @@ export function generateKitchenHardwareList(cabinets: CabinetType[]) {
             totalHinges += 8;
         } else if (cab.variant === 'tall_split_2_doors') {
             totalHinges += 6; // 2 inferior + 4 superior
-        } else if (cab.variant === 'tall_oven_micro') {
+        } else if (cab.variant === 'tall_oven_micro' || cab.variant === 'tall_oven_vent') {
             totalHinges += 4; // 2 inferior + 2 superior
             builtInOvensCount += 1;
             builtInMicrowavesCount += 1;
+            if (cab.variant === 'tall_oven_vent') {
+                ventGrillesCount += 1;
+            }
         } else if (cab.variant === 'tall_microwave_niche') {
             totalHinges += 5; // 2 inferior + 3 superior
             portableMicrowavesCount += 1;
+        } else if (cab.variant === 'tall_inner_drawers') {
+            zeroProtrusionHingesCount += 5; // Bisagras 155° codo cero p/ apertura completa sin interferencia con cajones
+        } else if (cab.variant === 'corner_l' || cab.variant === 'base_corner_l') {
+            biFoldInterHingesCount += 2; // Bisagras intermedias entre hojas bi-fold
+            biFoldPostHingesCount += 2;  // Bisagras gran angular 170° a lateral
+            extraCornerLLegsCount += 1;  // Pata central de refuerzo en rincón
         }
         
         // Cajones
@@ -1072,6 +1451,8 @@ export function generateKitchenHardwareList(cabinets: CabinetType[]) {
         if (cab.variant === '4_drawers') cabDrawers = 4;
         if (cab.variant === '2_pot_drawers') cabDrawers = 2;
         if (cab.variant === '1_door_1_drawer') cabDrawers = 1;
+        if (cab.variant === 'sink_u_drawer') cabDrawers = 2;
+        if (cab.variant === 'tall_inner_drawers') cabDrawers = 4;
 
         if (cabDrawers > 0) {
             totalDrawers += cabDrawers;
@@ -1091,10 +1472,11 @@ export function generateKitchenHardwareList(cabinets: CabinetType[]) {
 
     // 1. HERRAJES DE ARMADO (Minifix, Tarugos, Tornillos)
     if (state.assemblyType === 'minifix' || totalDrawerMinifix > 0) {
+        const isHafele = state.drawerHardware === 'Hafele';
         const totalMinifix = totalStructureMinifix + totalDrawerMinifix;
         hardware.push({
             Categoria: 'Quincallería',
-            Item: 'Pernos Minifix + Cajas Excéntricas 15mm',
+            Item: isHafele ? 'Pernos Häfele Minifix + Cajas Excéntricas Häfele Minifix 15' : 'Pernos Minifix + Cajas Excéntricas 15mm',
             Cantidad: totalMinifix,
             Unidad: 'Juegos',
             Detalles: `Estructura (${totalStructureMinifix}) + Cajones (${totalDrawerMinifix})`
@@ -1183,14 +1565,20 @@ export function generateKitchenHardwareList(cabinets: CabinetType[]) {
         });
     });
 
+    const isHafele = kState.drawerHardware === 'Hafele';
+
     // 3. BISAGRAS Y SISTEMAS ELEVADORES (Quincallería)
     if (totalHinges > 0) {
         hardware.push({
             Categoria: 'Quincallería',
-            Item: 'Bisagras Cazoleta 35mm Rectas (Cierre Suave)',
+            Item: isHafele 
+                ? 'Bisagras Cazoleta Häfele Metalla 310/500 110° Rectas (Cierre Suave con Freno Integrado)'
+                : 'Bisagras Cazoleta 35mm Rectas (Cierre Suave)',
             Cantidad: totalHinges,
             Unidad: 'Unidades',
-            Detalles: 'Puertas exteriores de gabinetes y despensas'
+            Detalles: isHafele 
+                ? 'Puertas exteriores; incluye placa base en cruz Häfele con regulación 3D excéntrica'
+                : 'Puertas exteriores de gabinetes y despensas'
         });
         hardware.push({
             Categoria: 'Insumos',
@@ -1201,10 +1589,69 @@ export function generateKitchenHardwareList(cabinets: CabinetType[]) {
         });
     }
 
+    if (zeroProtrusionHingesCount > 0) {
+        hardware.push({
+            Categoria: 'Quincallería',
+            Item: isHafele
+                ? 'Bisagras Häfele Metalla 155° Codo Cero con Cierre Suave (Apertura Libre Gavetero)'
+                : 'Bisagras Especiales 155°/165° Codo Cero (Apertura Libre Gavetero)',
+            Cantidad: zeroProtrusionHingesCount,
+            Unidad: 'Unidades',
+            Detalles: 'Permite apertura de puerta a 155° dejando paso libre al 100% de los cajones interiores sin rozamiento'
+        });
+        hardware.push({
+            Categoria: 'Insumos',
+            Item: 'Tornillos Fijación Bisagras 3.5x16mm',
+            Cantidad: zeroProtrusionHingesCount * 4,
+            Unidad: 'Unidades',
+            Detalles: 'Para bases y cazoletas de bisagra 155° codo cero'
+        });
+    }
+
+    if (biFoldInterHingesCount > 0) {
+        hardware.push({
+            Categoria: 'Quincallería',
+            Item: isHafele 
+                ? 'Bisagras Rincón Häfele Bi-Fold Articuladas (Puerta Plegable Esquinero)'
+                : 'Bisagras Rincón Bi-Fold Articuladas (Puerta Plegable Esquinero)',
+            Cantidad: biFoldInterHingesCount,
+            Unidad: 'Unidades',
+            Detalles: 'Unión intermedia articulada entre las 2 hojas bi-fold del mueble esquinero en L'
+        });
+        hardware.push({
+            Categoria: 'Quincallería',
+            Item: isHafele 
+                ? 'Bisagras Gran Ángulo Häfele 165° Cierre Suave (Anclaje a Mueble)'
+                : 'Bisagras Gran Ángulo 170° Cierre Suave (Anclaje a Mueble)',
+            Cantidad: biFoldPostHingesCount,
+            Unidad: 'Unidades',
+            Detalles: 'Fijación de la hoja principal del mueble en L al lateral de la estructura'
+        });
+        hardware.push({
+            Categoria: 'Insumos',
+            Item: 'Tornillos Fijación Bisagras Bi-Fold 3.5x16mm',
+            Cantidad: (biFoldInterHingesCount + biFoldPostHingesCount) * 4,
+            Unidad: 'Unidades',
+            Detalles: 'Fijación de bisagras de rincón y gran ángulo'
+        });
+    }
+
+    if (ventGrillesCount > 0) {
+        hardware.push({
+            Categoria: 'Quincallería',
+            Item: 'Rejilla de Ventilación Técnica Aluminio Anodizado (Ranurada Convección)',
+            Cantidad: ventGrillesCount,
+            Unidad: 'Unidades',
+            Detalles: 'Ventilación técnica para torre de hornos empotrados y flujo convectivo'
+        });
+    }
+
     if (liftUpPistonsCount > 0) {
         hardware.push({
             Categoria: 'Quincallería',
-            Item: 'Pistones a Gas / Sistema Elevador Aventos (100N / Cierre Suave)',
+            Item: isHafele 
+                ? 'Sistema Elevable Häfele Free Flap / Free Fold (Amortiguación Soft-Close Multiposición)'
+                : 'Pistones a Gas / Sistema Elevador Aventos (100N / Cierre Suave)',
             Cantidad: liftUpPistonsCount,
             Unidad: 'Unidades',
             Detalles: `${liftUpPistonsCount / 2} juego(s) p/ puertas abatibles superiores de muebles aéreos`
@@ -1222,7 +1669,9 @@ export function generateKitchenHardwareList(cabinets: CabinetType[]) {
     if (wallCabinetsCount > 0) {
         hardware.push({
             Categoria: 'Quincallería',
-            Item: 'Colgadores Regulables Ocultos p/ Mueble Aéreo (Juego Izq/Der)',
+            Item: isHafele 
+                ? 'Colgadores Regulables Ocultos Häfele p/ Mueble Aéreo (Regulación 3D / 130kg por par)'
+                : 'Colgadores Regulables Ocultos p/ Mueble Aéreo (Juego Izq/Der)',
             Cantidad: wallCabinetsCount,
             Unidad: 'Juegos',
             Detalles: 'Capacidad 130kg por par con regulación 3D'
@@ -1238,17 +1687,18 @@ export function generateKitchenHardwareList(cabinets: CabinetType[]) {
 
     // 5. PATAS REGULABLES PARA MUEBLES BASE E ISLAS
     if (baseCabinets.length > 0) {
+        const totalLegs = (baseCabinets.length * 4) + extraCornerLLegsCount;
         hardware.push({
             Categoria: 'Quincallería',
             Item: 'Patas Regulables 10-15cm para Mueble Base',
-            Cantidad: baseCabinets.length * 4,
+            Cantidad: totalLegs,
             Unidad: 'Unidades',
-            Detalles: 'Soporte nivelable de gabinetes inferiores'
+            Detalles: `Soporte nivelable de gabinetes inferiores${extraCornerLLegsCount > 0 ? ` (incluye ${extraCornerLLegsCount} pata central de rincón en L)` : ''}`
         });
         hardware.push({
             Categoria: 'Insumos',
             Item: 'Tornillos Fijación Patas Regulables 3.5x16mm',
-            Cantidad: baseCabinets.length * 16,
+            Cantidad: totalLegs * 4,
             Unidad: 'Unidades',
             Detalles: '4 tornillos por base de pata'
         });

@@ -29,6 +29,8 @@ import { SuppliesPriceTab } from './SuppliesPriceTab';
 import { TexturesManagerTab } from './TexturesManagerTab';
 import { UsersAndProvidersTab } from './UsersAndProvidersTab';
 import { ProviderAnalyticsTab } from './ProviderAnalyticsTab';
+import { ManufacturingRatesTab } from './ManufacturingRatesTab';
+import { Wrench } from 'lucide-react';
 
 interface AdminBackofficeModalProps {
   isOpen: boolean;
@@ -41,7 +43,7 @@ export function AdminBackofficeModal({
   onClose,
   onNavigateToModule,
 }: AdminBackofficeModalProps) {
-  const [activeTab, setActiveTab] = useState<'projects' | 'supplies' | 'textures' | 'users' | 'analytics'>('projects');
+  const [activeTab, setActiveTab] = useState<'projects' | 'supplies' | 'textures' | 'users' | 'analytics' | 'manufacturing'>('projects');
   const { adminEmail, logout: localLogout, projects, supplies, textures, themeMode, toggleThemeMode } = useAdminStore();
   const { user: supabaseUser, tenant: supabaseTenant, logout: supabaseLogout } = useSupabaseAuthStore();
   const { fetchTenantData, materials, hardware, projects: cloudProjects } = useTenantDataStore();
@@ -314,6 +316,20 @@ export function AdminBackofficeModal({
             <Users size={15} />
             Usuarios & Proveedores
           </button>
+
+          <button
+            onClick={() => setActiveTab('manufacturing')}
+            className={`px-4 py-2.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all shrink-0 cursor-pointer ${
+              activeTab === 'manufacturing'
+                ? 'border-orange-500 text-orange-500 bg-orange-500/5'
+                : isLight
+                ? 'border-transparent text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
+                : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-zinc-900/50'
+            }`}
+          >
+            <Wrench size={15} />
+            Tarifas B2B & Manufactura
+          </button>
         </div>
 
         {/* Main Content Area */}
@@ -329,6 +345,7 @@ export function AdminBackofficeModal({
           {activeTab === 'textures' && <TexturesManagerTab />}
           {activeTab === 'analytics' && <ProviderAnalyticsTab />}
           {activeTab === 'users' && <UsersAndProvidersTab />}
+          {activeTab === 'manufacturing' && <ManufacturingRatesTab />}
         </div>
       </div>
     </div>

@@ -13,6 +13,7 @@ import { RoomFloorAndDimensions } from './RoomFloorAndDimensions';
 import { ArchitecturalElementsRenderer } from './ArchitecturalElementsRenderer';
 import { KitchenCountertop3D } from './KitchenCountertop3D';
 import { KitchenIslandBackPanel } from './KitchenIslandBackPanel';
+import { KitchenMepScene } from './KitchenMepScene';
 import { resolvePlacement } from '../../utils/kitchenCollision';
 
 function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
@@ -327,7 +328,12 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
             if (v === 'spice_rack') cabWidth = 15;
             if (v === 'wine_rack') cabWidth = 20;
             if (v === '2_doors' || v === '2_pot_drawers') cabWidth = 80;
+            if (v === 'sink_u_drawer') cabWidth = 90;
             if (v === 'corner_blind') cabWidth = 100;
+            if (v === 'corner_l') {
+               cabWidth = 90;
+               cabDepth = 90;
+            }
          } else if (isTall) {
             cabType = 'tall';
             cabHeight = 215;
@@ -335,7 +341,13 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
                cabVariant = 'tall_wine_rack';
                cabWidth = 30;
             } else if (toolMode === 'place_tall_2_doors') cabWidth = 80;
-            else cabWidth = 60;
+            else if (toolMode === 'place_tall_oven_vent') {
+               cabVariant = 'tall_oven_vent';
+               cabWidth = 60;
+            } else if (toolMode === 'place_tall_inner_drawers') {
+               cabVariant = 'tall_inner_drawers';
+               cabWidth = 60;
+            } else cabWidth = 60;
          } else if (isWall) {
             cabType = 'wall';
             cabDepth = 35;
@@ -586,9 +598,15 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
          if (cabVariant === 'spice_rack') cabWidth = 15;
          if (cabVariant === 'wine_rack') cabWidth = 20;
          if (cabVariant === '2_doors' || cabVariant === '2_pot_drawers') cabWidth = 80;
+         if (cabVariant === 'sink_u_drawer') cabWidth = 90;
          if (cabVariant === 'corner_blind') {
             cabWidth = 100;
             cabVariant = 'corner_blind_right';
+         }
+         if (cabVariant === 'corner_l') {
+            cabWidth = 90;
+            cabDepth = 90;
+            cabVariant = 'corner_l';
          }
       } else if (isTall) {
          cabType = 'tall';
@@ -605,6 +623,12 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
             cabWidth = 60;
          } else if (toolMode === 'place_tall_oven_micro') {
             cabVariant = 'tall_oven_micro';
+            cabWidth = 60;
+         } else if (toolMode === 'place_tall_oven_vent') {
+            cabVariant = 'tall_oven_vent';
+            cabWidth = 60;
+         } else if (toolMode === 'place_tall_inner_drawers') {
+            cabVariant = 'tall_inner_drawers';
             cabWidth = 60;
          } else if (toolMode === 'place_tall_microwave_niche') {
             cabVariant = 'tall_microwave_niche';
@@ -803,6 +827,7 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
         <KitchenRunDimensions />
         <KitchenSpatialDimensions />
         <ArchitecturalElementsRenderer />
+        <KitchenMepScene />
 
         {/* Drawing Preview */}
         {toolMode === 'draw_wall' && drawingStart && currentMousePos && (

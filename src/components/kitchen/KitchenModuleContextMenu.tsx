@@ -321,7 +321,19 @@ export function KitchenModuleContextMenu({ isLight: propIsLight }: { isLight?: b
       elements.push({ id: 'door-top', label: 'Pta. Superior Elevable', type: 'door' });
     } else if (isLiftUp) {
       elements.push({ id: 'door-lift', label: 'Puerta Elevable', type: 'door' });
-    } else if (isOvenMicro || variant === 'tall_microwave_niche') {
+    } else if (variant === 'corner_l' || variant === 'base_corner_l') {
+      elements.push({ id: 'door-0', label: 'Puerta Escuadra 1', type: 'door' });
+      elements.push({ id: 'door-1', label: 'Puerta Escuadra 2', type: 'door' });
+    } else if (variant === 'sink_u_drawer') {
+      elements.push({ id: 'drawer-0', label: 'Cajón en U (Sifón)', type: 'drawer' });
+      elements.push({ id: 'drawer-1', label: 'Cacerolero Inferior', type: 'drawer' });
+    } else if (variant === 'tall_inner_drawers') {
+      elements.push({ id: 'door-0', label: 'Puerta Despensa 155°', type: 'door' });
+      elements.push({ id: 'drawer-0', label: 'Cajón Interior 1 (Sup.)', type: 'drawer' });
+      elements.push({ id: 'drawer-1', label: 'Cajón Interior 2', type: 'drawer' });
+      elements.push({ id: 'drawer-2', label: 'Cajón Interior 3', type: 'drawer' });
+      elements.push({ id: 'drawer-3', label: 'Cajón Interior 4 (Inf.)', type: 'drawer' });
+    } else if (isOvenMicro || variant === 'tall_oven_vent' || variant === 'tall_microwave_niche') {
       elements.push({ id: 'door-lower', label: 'Puerta Inferior', type: 'door' });
       elements.push({ id: 'door-top', label: 'Puerta Superior', type: 'door' });
     } else if (is1Door1Drawer) {

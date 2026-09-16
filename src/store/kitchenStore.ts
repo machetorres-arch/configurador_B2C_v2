@@ -13,6 +13,8 @@ import {
   IslandBackConfig,
   DEFAULT_ISLAND_BACK_CONFIG
 } from '../types/countertop';
+import { MepPoint, MepClash, MepPresetType, MEP_PRESETS } from '../types/mep';
+import { generateDefaultMepPoints, calculateMepPositionOnWall } from '../utils/mepGeometry';
 
 export type { IslandBackConfig };
 export { DEFAULT_ISLAND_BACK_CONFIG };
@@ -32,6 +34,8 @@ export type ToolMode =
   | 'place_base_spice_rack' 
   | 'place_base_corner_blind' 
   | 'place_base_wine_rack'
+  | 'place_base_sink_u_drawer'
+  | 'place_base_corner_l'
   | 'place_wall' 
   | 'place_wall_1_door'
   | 'place_wall_2_doors'
@@ -45,10 +49,12 @@ export type ToolMode =
   | 'place_tall_1_door'
   | 'place_tall_split_2_doors'
   | 'place_tall_oven_micro'
+  | 'place_tall_oven_vent'
   | 'place_tall_microwave_niche'
   | 'place_tall_open'
   | 'place_tall_2_doors'
   | 'place_tall_wine_rack'
+  | 'place_tall_inner_drawers'
   | 'place_island' 
   | 'place_island_wine_rack'
   | 'place_deco_stove'
@@ -126,6 +132,8 @@ export function getCabinetLabel(cab: Partial<CabinetType>, index: number): strin
   if (cab.variant === 'deco_stove') return 'Cocina FDV 90';
   if (cab.variant === 'deco_fridge') return 'Refrigerador SBS 513L';
   if (cab.variant === 'deco_plant') return 'Planta Interior';
+  if (cab.variant === 'sink_u_drawer') return 'Fregadero Cajón en U';
+  if (cab.variant === 'corner_l' || cab.variant === 'base_corner_l') return 'Esquinero en L (90x90)';
   if (cab.variant?.startsWith('wall_corner_blind')) return 'Aéreo Esquinero Ciego';
   if (cab.variant?.startsWith('corner_blind')) return 'Esquinero Ciego';
   if (cab.variant === 'base_wine_rack' || (cab.type === 'base' && cab.variant === 'wine_rack')) return 'Botellero Base';
@@ -136,6 +144,8 @@ export function getCabinetLabel(cab: Partial<CabinetType>, index: number): strin
   if (cab.variant === 'tall_1_door') return 'Despensa 1 Puerta Larga';
   if (cab.variant === 'tall_split_2_doors') return 'Despensa 2 Puertas (Línea Base)';
   if (cab.variant === 'tall_oven_micro') return 'Torre Horno + Micro';
+  if (cab.variant === 'tall_oven_vent') return 'Torre Hornos Vent. Técnica';
+  if (cab.variant === 'tall_inner_drawers') return 'Despensa Cajones Interiores';
   if (cab.variant === 'tall_microwave_niche') return 'Torre Nicho Micro';
   if (cab.variant === 'tall_open') return 'Despensa Abierta';
   if (cab.variant === 'tall_2_doors') return 'Despensa 2 Puertas';
@@ -213,6 +223,21 @@ interface KitchenState {
   removeQstoneCatalogItem: (id: string) => void;
   validateCabinetForSink: (cab: CabinetType, sinkModel: SinkModelId) => { valid: boolean; minWidth: number; actualWidth: number; reason?: string };
   validateCabinetForCooktop: (cab: CabinetType, cooktopModel: CooktopModelId) => { valid: boolean; minWidth: number; actualWidth: number; reason?: string };
+  
+  // MEP & Detección de Interferencias
+  mepPoints: MepPoint[];
+  activeMepId: string | null;
+  showMep: boolean;
+  showMepClashes: boolean;
+  addMepPoint: (point: MepPoint) => void;
+  updateMepPoint: (id: string, updates: Partial<MepPoint>) => void;
+  removeMepPoint: (id: string) => void;
+  setActiveMepId: (id: string | null) => void;
+  setShowMep: (show: boolean) => void;
+  setShowMepClashes: (show: boolean) => void;
+  addMepPreset: (presetType: MepPresetType, wallId?: string, offsetCm?: number) => void;
+  autoFixClash: (clash: MepClash) => void;
+
   resetKitchen: () => void;
 }
 
@@ -420,6 +445,10 @@ export const useKitchenStore = create<KitchenState>((set) => ({
   islandBackConfig: DEFAULT_ISLAND_BACK_CONFIG,
   qstoneCatalog: DEFAULT_QSTONE_CATALOG,
   golaIncompatibilityAlert: null,
+  mepPoints: generateDefaultMepPoints(initialWalls),
+  activeMepId: null,
+  showMep: true,
+  showMepClashes: true,
 
   setViewMode: (mode) => set({ viewMode: mode }),
   setToolMode: (mode) => set({ toolMode: mode, drawingStart: null }),
@@ -787,6 +816,101 @@ export const useKitchenStore = create<KitchenState>((set) => ({
     }));
     return { success: true };
   },
+
+  addMepPoint: (point) => set((s) => ({ mepPoints: [...s.mepPoints, point], activeMepId: point.id })),
+  
+  updateMepPoint: (id, updates) => set((s) => {
+    const nextPoints = s.mepPoints.map((p) => {
+      if (p.id !== id) return p;
+      const merged = { ...p, ...updates };
+      if ((updates.wallOffset !== undefined || updates.elevation !== undefined) && merged.wallId) {
+        const wall = s.walls.find((w) => w.id === merged.wallId) || s.walls[0];
+        if (wall) {
+          const calc = calculateMepPositionOnWall(wall, merged.wallOffset || 0, merged.elevation);
+          merged.position = calc.position;
+          merged.rotation = calc.rotation;
+        }
+      }
+      return merged;
+    });
+    return { mepPoints: nextPoints };
+  }),
+
+  removeMepPoint: (id) => set((s) => ({
+    mepPoints: s.mepPoints.filter((p) => p.id !== id),
+    activeMepId: s.activeMepId === id ? null : s.activeMepId,
+  })),
+
+  setActiveMepId: (id) => set({ activeMepId: id, activeCabinetId: id ? null : undefined, activeArchElementId: id ? null : undefined }),
+  setShowMep: (show) => set({ showMep: show }),
+  setShowMepClashes: (show) => set({ showMepClashes: show }),
+
+  addMepPreset: (presetType, wallId, offsetCm) => set((s) => {
+    const preset = MEP_PRESETS.find((pr) => pr.id === presetType);
+    if (!preset || s.walls.length === 0) return {};
+    const targetWall = (wallId && s.walls.find((w) => w.id === wallId)) || s.walls[0];
+    const [x1, z1] = targetWall.start;
+    const [x2, z2] = targetWall.end;
+    const wLen = Math.hypot(x2 - x1, z2 - z1);
+    const baseOffset = offsetCm !== undefined ? offsetCm : wLen / 2;
+
+    const newPoints: MepPoint[] = preset.points.map((pt, idx) => {
+      const pointOffset = Math.max(10, Math.min(wLen - 10, baseOffset + pt.relativeOffsetCm));
+      const calc = calculateMepPositionOnWall(targetWall, pointOffset, pt.elevationCm);
+      return {
+        id: `mep-${preset.id}-${Date.now()}-${idx}`,
+        name: `${preset.name} (${idx + 1})`,
+        type: pt.type,
+        wallId: targetWall.id,
+        wallOffset: pointOffset,
+        elevation: pt.elevationCm,
+        position: calc.position,
+        rotation: calc.rotation,
+        specs: pt.specs,
+      };
+    });
+
+    return {
+      mepPoints: [...s.mepPoints, ...newPoints],
+      activeMepId: newPoints[0]?.id || s.activeMepId,
+    };
+  }),
+
+  autoFixClash: (clash) => set((s) => {
+    if (clash.autoFixAction === 'convert_to_u_drawer' && clash.cabinetId) {
+      return {
+        cabinets: s.cabinets.map((c) =>
+          c.id === clash.cabinetId ? { ...c, variant: 'sink_u_drawer' } : c
+        ),
+      };
+    }
+    if (clash.autoFixAction === 'add_sanitary_void' && clash.mepPointId) {
+      return {
+        mepPoints: s.mepPoints.map((p) =>
+          p.id === clash.mepPointId ? { ...p, hasSanitaryVoidRecess: true } : p
+        ),
+      };
+    }
+    if (clash.autoFixAction === 'shift_mep_clearance' && clash.relatedMepPointId) {
+      const targetPoint = s.mepPoints.find((p) => p.id === clash.relatedMepPointId);
+      if (targetPoint && targetPoint.wallId) {
+        const wall = s.walls.find((w) => w.id === targetPoint.wallId);
+        if (wall) {
+          const newOffset = (targetPoint.wallOffset || 50) + 55;
+          const calc = calculateMepPositionOnWall(wall, newOffset, targetPoint.elevation);
+          return {
+            mepPoints: s.mepPoints.map((p) =>
+              p.id === targetPoint.id
+                ? { ...p, wallOffset: newOffset, position: calc.position, rotation: calc.rotation }
+                : p
+            ),
+          };
+        }
+      }
+    }
+    return {};
+  }),
+
   resetKitchen: () => {
     const defaultRoom: RoomConfig = {
       type: 'rectangular',
@@ -809,6 +933,10 @@ export const useKitchenStore = create<KitchenState>((set) => ({
       drawingStart: null,
       countertopConfig: DEFAULT_COUNTERTOP_CONFIG,
       islandBackConfig: DEFAULT_ISLAND_BACK_CONFIG,
+      mepPoints: generateDefaultMepPoints(defaultWalls),
+      activeMepId: null,
+      showMep: true,
+      showMepClashes: true,
     });
   },
 }));
