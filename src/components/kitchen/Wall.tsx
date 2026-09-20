@@ -5,6 +5,7 @@ import { WallType, useKitchenStore } from '../../store/kitchenStore';
 import { useStore } from '../../store';
 import { Edges, Line, Text } from '@react-three/drei';
 import { getWallInwardNormal } from '../../utils/kitchenCollision';
+import { ArchitecturalDoor } from './ArchitecturalDoor';
 
 export function Wall({ id, start, end, thickness, height }: WallType & { id?: string }) {
    const length = Math.hypot(end[0] - start[0], end[1] - start[1]);
@@ -64,8 +65,8 @@ export function Wall({ id, start, end, thickness, height }: WallType & { id?: st
        {wallOpenings.length === 0 ? (
          <mesh name="wall" castShadow receiveShadow>
            <boxGeometry args={[thickness, height, length]} />
-           <meshStandardMaterial color={wallColor} roughness={0.85} metalness={0.05} />
-           <Edges scale={1} threshold={15} color="#94a3b8" />
+           <meshStandardMaterial color={viewMode === '2d' ? '#334155' : wallColor} roughness={0.85} metalness={0.05} />
+           <Edges scale={1} threshold={15} color={viewMode === '2d' ? '#0f172a' : '#94a3b8'} />
          </mesh>
        ) : (
          <group name="segmentedWall">
@@ -85,34 +86,37 @@ export function Wall({ id, start, end, thickness, height }: WallType & { id?: st
              const leftCenterZ = -length / 2 + leftLen / 2;
              const rightCenterZ = wEnd + rightLen / 2;
 
+             const effectiveColor = viewMode === '2d' ? '#334155' : wallColor;
+             const effectiveEdgeColor = viewMode === '2d' ? '#0f172a' : '#94a3b8';
+
              return (
                <>
                  {leftLen > 0.1 && (
                    <mesh position={[0, 0, leftCenterZ]} castShadow receiveShadow>
                      <boxGeometry args={[thickness, height, leftLen]} />
-                     <meshStandardMaterial color={wallColor} roughness={0.85} metalness={0.05} />
-                     <Edges scale={1} threshold={15} color="#94a3b8" />
+                     <meshStandardMaterial color={effectiveColor} roughness={0.85} metalness={0.05} />
+                     <Edges scale={1} threshold={15} color={effectiveEdgeColor} />
                    </mesh>
                  )}
                  {rightLen > 0.1 && (
                    <mesh position={[0, 0, rightCenterZ]} castShadow receiveShadow>
                      <boxGeometry args={[thickness, height, rightLen]} />
-                     <meshStandardMaterial color={wallColor} roughness={0.85} metalness={0.05} />
-                     <Edges scale={1} threshold={15} color="#94a3b8" />
+                     <meshStandardMaterial color={effectiveColor} roughness={0.85} metalness={0.05} />
+                     <Edges scale={1} threshold={15} color={effectiveEdgeColor} />
                    </mesh>
                  )}
                  {el.type === 'window' && elElev > 0 && (
                    <mesh position={[0, -height / 2 + elElev / 2, offset]} castShadow receiveShadow>
                      <boxGeometry args={[thickness, elElev, elWidth]} />
-                     <meshStandardMaterial color={wallColor} roughness={0.85} metalness={0.05} />
-                     <Edges scale={1} threshold={15} color="#94a3b8" />
+                     <meshStandardMaterial color={effectiveColor} roughness={0.85} metalness={0.05} />
+                     <Edges scale={1} threshold={15} color={effectiveEdgeColor} />
                    </mesh>
                  )}
                  {(height - (elElev + elHeight)) > 0.1 && (
                    <mesh position={[0, height / 2 - (height - (elElev + elHeight)) / 2, offset]} castShadow receiveShadow>
                      <boxGeometry args={[thickness, height - (elElev + elHeight), elWidth]} />
-                     <meshStandardMaterial color={wallColor} roughness={0.85} metalness={0.05} />
-                     <Edges scale={1} threshold={15} color="#94a3b8" />
+                     <meshStandardMaterial color={effectiveColor} roughness={0.85} metalness={0.05} />
+                     <Edges scale={1} threshold={15} color={effectiveEdgeColor} />
                    </mesh>
                  )}
                </>
@@ -147,57 +151,16 @@ export function Wall({ id, start, end, thickness, height }: WallType & { id?: st
                setActiveArchElement(el.id);
                setDraggingArchElementId(el.id);
              }}
-           >
-             {el.type === 'door' && (
-               <group name="archRealDoor">
-                 {/* Marco Gris Oscuro */}
-                 <mesh castShadow receiveShadow position={[0, 0, 0]}>
-                   <boxGeometry args={[el.width, el.height, elDepth]} />
-                   <meshStandardMaterial color="#475569" roughness={0.3} metalness={0.2} />
-                   <Edges scale={1} threshold={15} color={isSelected ? '#0284c7' : '#334155'} />
-                 </mesh>
-
-                 {/* Hoja de Puerta Gris Moderna Minimalista */}
-                 <group position={[0, 0, 0]}>
-                   <mesh position={[0, 0, 0]} castShadow receiveShadow>
-                     <boxGeometry args={[el.width - 6, el.height - 4, 3.8]} />
-                     <meshStandardMaterial color="#64748b" roughness={0.4} metalness={0.1} />
-                     <Edges scale={1} threshold={15} color="#475569" />
-                   </mesh>
-
-                   {/* Línea / Ranura Vertical Estilo Minimalista en el lado izquierdo */}
-                   <mesh position={[-el.width * 0.25, 0, 2.05]}>
-                     <boxGeometry args={[0.8, el.height - 10, 0.4]} />
-                     <meshStandardMaterial color="#334155" roughness={0.5} />
-                   </mesh>
-
-                   {/* Manilla y Roseta Negra Moderna */}
-                   <group position={[el.width / 2 - 12, -2, 2.3]}>
-                     {/* Roseta redonda negra */}
-                     <mesh position={[0, 0, 0]}>
-                       <cylinderGeometry args={[1.2, 1.2, 0.6, 16]} />
-                       <meshStandardMaterial color="#1e293b" roughness={0.2} metalness={0.8} />
-                     </mesh>
-                     {/* Manilla horizontal negra */}
-                     <mesh position={[-3, 0, 1.2]} rotation={[0, 0, Math.PI / 2]}>
-                       <cylinderGeometry args={[0.5, 0.5, 4.5, 16]} />
-                       <meshStandardMaterial color="#1e293b" roughness={0.2} metalness={0.8} />
-                     </mesh>
-                   </group>
-
-                   {/* Bisagras Negras en el lado derecho */}
-                   <group position={[-el.width / 2 + 3, el.height * 0.3, 2]}>
-                     <boxGeometry args={[1, 4, 0.5]} />
-                     <meshStandardMaterial color="#1e293b" metalness={0.9} />
-                   </group>
-                   <group position={[-el.width / 2 + 3, -el.height * 0.3, 2]}>
-                     <boxGeometry args={[1, 4, 0.5]} />
-                     <meshStandardMaterial color="#1e293b" metalness={0.9} />
-                   </group>
-                 </group>
-               </group>
-             )}
-
+            >
+              {el.type === 'door' && (
+                <ArchitecturalDoor
+                  width={el.width}
+                  height={el.height}
+                  depth={elDepth}
+                  isSelected={isSelected}
+                  viewMode={viewMode}
+                />
+              )}
              {el.type === 'window' && (
                <group name="archRealWindow">
                  {/* Marco Perimetral de PVC Blanco (4 Perfiles Huecos) */}
@@ -251,7 +214,16 @@ export function Wall({ id, start, end, thickness, height }: WallType & { id?: st
                      <meshStandardMaterial color="#94a3b8" metalness={0.95} roughness={0.1} />
                    </mesh>
                  </group>
+
+                  {/* Representacion 2D de Ventana: Doble Linea de Vidrio */}
+                  {viewMode === "2d" && (
+                    <group renderOrder={1005} position={[0, el.height / 2 + 2, 0]}>
+                      <Line points={[[-el.width / 2, 0, -elDepth / 4], [el.width / 2, 0, -elDepth / 4]]} color="#0284c7" lineWidth={2} depthTest={false} material-toneMapped={false} />
+                      <Line points={[[-el.width / 2, 0, elDepth / 4], [el.width / 2, 0, elDepth / 4]]} color="#0284c7" lineWidth={2} depthTest={false} material-toneMapped={false} />
+                    </group>
+                  )}
                </group>
+
              )}
 
              {el.type === 'pillar' && (
@@ -261,6 +233,14 @@ export function Wall({ id, start, end, thickness, height }: WallType & { id?: st
                    <meshStandardMaterial color={wallColor || '#cbd5e1'} roughness={0.7} metalness={0.05} />
                    <Edges scale={1} threshold={15} color={isSelected ? '#0284c7' : '#64748b'} />
                  </mesh>
+
+                  {/* Representacion 2D de Pilar: Aspa estructural en X */}
+                  {viewMode === "2d" && (
+                    <group renderOrder={1005} position={[0, el.height / 2 + 2, pillarZ]}>
+                      <Line points={[[-el.width / 2, 0, -elDepth / 2], [el.width / 2, 0, elDepth / 2]]} color="#64748b" lineWidth={1.5} depthTest={false} material-toneMapped={false} />
+                      <Line points={[[-el.width / 2, 0, elDepth / 2], [el.width / 2, 0, -elDepth / 2]]} color="#64748b" lineWidth={1.5} depthTest={false} material-toneMapped={false} />
+                    </group>
+                  )}
                </group>
              )}
 

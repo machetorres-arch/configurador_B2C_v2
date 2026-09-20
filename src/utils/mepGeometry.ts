@@ -1,5 +1,6 @@
 import { MepPoint, MepType, MEP_TYPE_CONFIGS, MEP_PRESETS, MepPresetType } from '../types/mep';
 import { WallType } from '../store/kitchenStore';
+import { getWallInwardNormal } from './kitchenCollision';
 
 /**
  * Calcula la posición 3D [x, y, z] y rotación en el plano de un punto MEP montado sobre un muro
@@ -7,7 +8,8 @@ import { WallType } from '../store/kitchenStore';
 export function calculateMepPositionOnWall(
   wall: WallType,
   offsetCm: number,
-  elevationCm: number
+  elevationCm: number,
+  roomPoly?: [number, number][]
 ): { position: [number, number, number]; rotation: number } {
   const [x1, z1] = wall.start;
   const [x2, z2] = wall.end;
@@ -23,15 +25,17 @@ export function calculateMepPositionOnWall(
   // Clampear offset para que no se salga de las esquinas del muro
   const clampedOffset = Math.max(10, Math.min(wLen - 10, offsetCm));
 
-  // Normal hacia el interior de la habitación (a 90 grados)
-  const normX = -uZ;
-  const normZ = uX;
+  // Normal hacia el interior de la habitación
+  const [normX, normZ] = getWallInwardNormal(x1, z1, x2, z2, roomPoly);
 
-  // Montado justo en la cara interior del muro (offset por semiespesor del muro + 0.5cm)
-  const halfThick = (wall.thickness || 20) / 2 + 0.5;
+  // Montado justo en la cara frontal interior del muro (frente del tabique visible al interior)
+  const wallThick = wall.thickness || 20;
+  const halfThick = wallThick / 2 + 0.1;
   const pX = x1 + clampedOffset * uX + normX * halfThick;
   const pZ = z1 + clampedOffset * uZ + normZ * halfThick;
-  const rotation = Math.atan2(uX, uZ) + Math.PI / 2;
+
+  // Rotación orientada hacia el interior de la estancia (+Z local apunta hacia el interior de la habitación)
+  const rotation = Math.atan2(normX, normZ);
 
   return {
     position: [pX, elevationCm, pZ],
@@ -42,7 +46,7 @@ export function calculateMepPositionOnWall(
 /**
  * Genera un conjunto predeterminado de puntos MEP para la pared principal de la cocina
  */
-export function generateDefaultMepPoints(walls: WallType[]): MepPoint[] {
+export function generateDefaultMepPoints(walls: WallType[], roomPoly?: [number, number][]): MepPoint[] {
   if (!walls || walls.length === 0) return [];
 
   const mainWall = walls[0];
@@ -57,7 +61,7 @@ export function generateDefaultMepPoints(walls: WallType[]): MepPoint[] {
   const sinkCenterOffset = Math.max(40, midOffset - 40);
   
   // Agua Caliente (AC)
-  const acPos = calculateMepPositionOnWall(mainWall, sinkCenterOffset - 10, 55);
+  const acPos = calculateMepPositionOnWall(mainWall, sinkCenterOffset - 10, 55, roomPoly);
   points.push({
     id: 'mep-ac-default',
     name: 'Agua Caliente (AC)',
@@ -72,7 +76,7 @@ export function generateDefaultMepPoints(walls: WallType[]): MepPoint[] {
   });
 
   // Desagüe Sanitario (DES)
-  const desPos = calculateMepPositionOnWall(mainWall, sinkCenterOffset, 45);
+  const desPos = calculateMepPositionOnWall(mainWall, sinkCenterOffset, 45, roomPoly);
   points.push({
     id: 'mep-des-default',
     name: 'Desagüe PVC Ø50 (DES)',
@@ -87,7 +91,7 @@ export function generateDefaultMepPoints(walls: WallType[]): MepPoint[] {
   });
 
   // Agua Fría (AF)
-  const afPos = calculateMepPositionOnWall(mainWall, sinkCenterOffset + 10, 55);
+  const afPos = calculateMepPositionOnWall(mainWall, sinkCenterOffset + 10, 55, roomPoly);
   points.push({
     id: 'mep-af-default',
     name: 'Agua Fría (AF)',
@@ -103,7 +107,7 @@ export function generateDefaultMepPoints(walls: WallType[]): MepPoint[] {
 
   // Enchufe doble sobre cubierta
   const socketOffset = Math.min(wLen - 40, midOffset + 50);
-  const sockPos = calculateMepPositionOnWall(mainWall, socketOffset, 110);
+  const sockPos = calculateMepPositionOnWall(mainWall, socketOffset, 110, roomPoly);
   points.push({
     id: 'mep-sock-default',
     name: 'Enchufe Sobre Cubierta 220V',
@@ -119,7 +123,7 @@ export function generateDefaultMepPoints(walls: WallType[]): MepPoint[] {
 
   // Enchufe de fuerza para horno empotrado
   const pwrOffset = Math.min(wLen - 20, midOffset + 110);
-  const pwrPos = calculateMepPositionOnWall(mainWall, pwrOffset, 35);
+  const pwrPos = calculateMepPositionOnWall(mainWall, pwrOffset, 35, roomPoly);
   points.push({
     id: 'mep-pwr-default',
     name: 'Enchufe Fuerza Horno 16A',
@@ -135,7 +139,7 @@ export function generateDefaultMepPoints(walls: WallType[]): MepPoint[] {
 
   // Llave de paso de Gas
   const gasOffset = Math.min(wLen - 20, midOffset + 175);
-  const gasPos = calculateMepPositionOnWall(mainWall, gasOffset, 75);
+  const gasPos = calculateMepPositionOnWall(mainWall, gasOffset, 75, roomPoly);
   points.push({
     id: 'mep-gas-default',
     name: 'Llave de Paso de Gas',

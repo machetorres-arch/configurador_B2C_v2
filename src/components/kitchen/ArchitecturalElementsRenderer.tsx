@@ -1,9 +1,10 @@
 import React from 'react';
 import { useKitchenStore, ArchitecturalElement } from '../../store/kitchenStore';
-import { Edges } from '@react-three/drei';
+import { Edges, Line } from '@react-three/drei';
+import { ArchitecturalDoor } from './ArchitecturalDoor';
 
 export function ArchitecturalElementsRenderer() {
-  const { architecturalElements, activeArchElementId, setActiveArchElement, setDraggingArchElementId, wallColor, toolMode } = useKitchenStore();
+  const { architecturalElements, activeArchElementId, setActiveArchElement, setDraggingArchElementId, wallColor, toolMode, viewMode } = useKitchenStore();
 
   // Elements with wallId are rendered inside Wall components
   const standaloneElements = architecturalElements?.filter(el => !el.wallId) || [];
@@ -39,51 +40,13 @@ export function ArchitecturalElementsRenderer() {
             }}
           >
             {el.type === 'door' && (
-              <group name="archRealDoor">
-                {/* Marco Gris Oscuro */}
-                <mesh castShadow receiveShadow position={[0, 0, 0]}>
-                  <boxGeometry args={[el.width, el.height, depth]} />
-                  <meshStandardMaterial color="#475569" roughness={0.3} metalness={0.2} />
-                  <Edges scale={1} threshold={15} color={isSelected ? '#0284c7' : '#334155'} />
-                </mesh>
-
-                {/* Hoja de Puerta Gris Moderna Minimalista */}
-                <group position={[0, 0, 0]}>
-                  <mesh position={[0, 0, 0]} castShadow receiveShadow>
-                    <boxGeometry args={[el.width - 6, el.height - 4, 3.8]} />
-                    <meshStandardMaterial color="#64748b" roughness={0.4} metalness={0.1} />
-                    <Edges scale={1} threshold={15} color="#475569" />
-                  </mesh>
-
-                  {/* Línea / Ranura Vertical Estilo Minimalista en el lado izquierdo */}
-                  <mesh position={[-el.width * 0.25, 0, 2.05]}>
-                    <boxGeometry args={[0.8, el.height - 10, 0.4]} />
-                    <meshStandardMaterial color="#334155" roughness={0.5} />
-                  </mesh>
-
-                  {/* Manilla y Roseta Negra Moderna */}
-                  <group position={[el.width / 2 - 12, -2, 2.3]}>
-                    <mesh position={[0, 0, 0]}>
-                      <cylinderGeometry args={[1.2, 1.2, 0.6, 16]} />
-                      <meshStandardMaterial color="#1e293b" roughness={0.2} metalness={0.8} />
-                    </mesh>
-                    <mesh position={[-3, 0, 1.2]} rotation={[0, 0, Math.PI / 2]}>
-                      <cylinderGeometry args={[0.5, 0.5, 4.5, 16]} />
-                      <meshStandardMaterial color="#1e293b" roughness={0.2} metalness={0.8} />
-                    </mesh>
-                  </group>
-
-                  {/* Bisagras Negras en el lado derecho */}
-                  <group position={[-el.width / 2 + 3, el.height * 0.3, 2]}>
-                    <boxGeometry args={[1, 4, 0.5]} />
-                    <meshStandardMaterial color="#1e293b" metalness={0.9} />
-                  </group>
-                  <group position={[-el.width / 2 + 3, -el.height * 0.3, 2]}>
-                    <boxGeometry args={[1, 4, 0.5]} />
-                    <meshStandardMaterial color="#1e293b" metalness={0.9} />
-                  </group>
-                </group>
-              </group>
+              <ArchitecturalDoor
+                width={el.width}
+                height={el.height}
+                depth={depth}
+                isSelected={isSelected}
+                viewMode={viewMode}
+              />
             )}
 
             {el.type === 'window' && (
@@ -143,6 +106,14 @@ export function ArchitecturalElementsRenderer() {
                     <meshStandardMaterial color="#94a3b8" metalness={0.95} roughness={0.1} />
                   </mesh>
                 </group>
+
+                {/* 2D Architectural Window Double Line */}
+                {viewMode === "2d" && (
+                  <group renderOrder={1005} position={[0, el.height / 2 + 2, 0]}>
+                    <Line points={[[-el.width / 2, 0, -depth / 4], [el.width / 2, 0, -depth / 4]]} color="#0284c7" lineWidth={2} depthTest={false} material-toneMapped={false} />
+                    <Line points={[[-el.width / 2, 0, depth / 4], [el.width / 2, 0, depth / 4]]} color="#0284c7" lineWidth={2} depthTest={false} material-toneMapped={false} />
+                  </group>
+                )}
               </group>
             )}
 

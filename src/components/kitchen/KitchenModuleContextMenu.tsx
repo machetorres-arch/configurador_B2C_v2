@@ -2,7 +2,9 @@ import React, { useState } from 'react';
 import { useKitchenStore, CabinetType } from '../../store/kitchenStore';
 import { useStore, PartType } from '../../store';
 import { useAdminStore } from '../../store/adminStore';
-import { SlidersHorizontal, X, RefreshCw, ArrowUpDown, ArrowLeftRight, RotateCw, Move3D, DoorOpen, DoorClosed, Layers, Trash2 } from 'lucide-react';
+import { isCabinetWithDoors, getDefaultShelvesCount, isCabinetWithSplitDoors, getSplitCabinetShelvesCounts } from '../../utils/kitchenManufacturing';
+import { SlidersHorizontal, X, RefreshCw, ArrowUpDown, ArrowLeftRight, RotateCw, Move3D, DoorOpen, DoorClosed, Layers, Trash2, Palette, Sparkles, Box, Info, Check, ShieldAlert } from 'lucide-react';
+import { HANDLE_CATALOG, FINISH_LABELS, FINISH_HEX, HandleModelId, HandleFinish, KitchenHandleConfig } from '../../types/handle';
 
 const DEFAULT_TEXTURES = [
   { id: 'def_mas_blanco', name: 'Masisa Blanco', url: '#FFFFFF' },
@@ -12,12 +14,21 @@ const DEFAULT_TEXTURES = [
   { id: 'def_wood_grain', name: 'Veta Madera Clara', url: '/textures/light-wood-grain.svg' }
 ];
 
-export function KitchenModuleContextMenu({ isLight: propIsLight }: { isLight?: boolean } = {}) {
-  const { activeCabinetId, cabinets, updateCabinet, removeCabinet, setActiveCabinet, setToolMode, setViewMode } = useKitchenStore();
+export function KitchenModuleContextMenu({ 
+  isLight: propIsLight,
+  inline = true,
+  onOpenIslandBack
+}: { 
+  isLight?: boolean; 
+  inline?: boolean;
+  onOpenIslandBack?: () => void;
+} = {}) {
+  const { activeCabinetId, cabinets, updateCabinet, removeCabinet, setActiveCabinet, setToolMode, setViewMode, handleConfig: globalHandleConfig, golaSystem } = useKitchenStore();
   const globalStore = useStore();
   const adminTextures = useAdminStore((s) => s.textures);
   const [showCatalog, setShowCatalog] = useState(false);
   const [targetZone, setTargetZone] = useState<PartType>('doors');
+  const [selectedDoorSection, setSelectedDoorSection] = useState<'lower' | 'upper'>('lower');
 
   const isLight = propIsLight !== undefined ? propIsLight : (() => {
     try {
@@ -41,33 +52,52 @@ export function KitchenModuleContextMenu({ isLight: propIsLight }: { isLight?: b
         ? 'Cocina FDV FS Unique 90'
         : activeCabinet.variant === 'deco_fridge'
         ? 'Refrigerador FDV SBS'
+        : activeCabinet.variant === 'deco_dishwasher'
+        ? 'Lavavajillas FDV Active 12C'
         : activeCabinet.variant === 'deco_plant'
         ? 'Planta Decorativa'
         : 'Elemento de Equipamiento';
 
     return (
-      <div className={`absolute top-6 right-6 w-80 backdrop-blur-xl border rounded-2xl overflow-hidden z-50 flex flex-col pointer-events-auto transition-colors ${
-        isLight
-          ? 'bg-white/95 border-slate-200 shadow-2xl shadow-slate-300 text-slate-800'
-          : 'bg-[#141416]/95 border-white/10 shadow-2xl shadow-black/80 text-white'
+      <div className={`w-full border rounded-2xl overflow-hidden flex flex-col transition-all mb-4 ${
+        inline
+          ? isLight
+            ? 'bg-white border-slate-200 shadow-sm text-slate-800'
+            : 'bg-white/[0.04] border-white/10 shadow-lg text-white'
+          : isLight
+            ? 'absolute top-6 right-6 w-80 backdrop-blur-xl bg-white/95 border-slate-200 shadow-2xl shadow-slate-300 text-slate-800 z-50'
+            : 'absolute top-6 right-6 w-80 backdrop-blur-xl bg-[#141416]/95 border-white/10 shadow-2xl shadow-black/80 text-white z-50'
       }`}>
         {/* Header */}
-        <div className={`px-4 py-3.5 border-b flex items-center justify-between shrink-0 ${
+        <div className={`px-4 py-3 border-b flex items-center justify-between shrink-0 ${
           isLight ? 'border-slate-200 bg-slate-50' : 'border-white/10 bg-black/40'
         }`}>
           <div className="flex items-center gap-2 text-cyan-600 font-bold text-xs uppercase tracking-wider truncate pr-2">
             <span className="w-2 h-2 rounded-full bg-cyan-500 shrink-0 animate-pulse"></span>
             <span className="truncate">{decoTitle}</span>
           </div>
-          <button
-            onClick={() => setActiveCabinet(null)}
-            className={`transition-colors p-1 rounded ${
-              isLight ? 'text-slate-400 hover:text-slate-800 hover:bg-slate-200' : 'text-zinc-400 hover:text-white hover:bg-white/5'
-            }`}
-            title="Deseleccionar"
-          >
-            <X size={16} />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => {
+                const currentRot = activeCabinet.rotation || 0;
+                const nextRot = (currentRot + Math.PI / 2) % (Math.PI * 2);
+                updateCabinet(activeCabinet.id, { rotation: nextRot });
+              }}
+              className="text-xs text-cyan-500 hover:text-cyan-600 p-1 rounded font-semibold cursor-pointer"
+              title="Girar 90°"
+            >
+              <RotateCw size={14} />
+            </button>
+            <button
+              onClick={() => setActiveCabinet(null)}
+              className={`transition-colors p-1 rounded ${
+                isLight ? 'text-slate-400 hover:text-slate-800 hover:bg-slate-200' : 'text-zinc-400 hover:text-white hover:bg-white/5'
+              }`}
+              title="Deseleccionar"
+            >
+              <X size={16} />
+            </button>
+          </div>
         </div>
 
         <div className="p-4 flex flex-col gap-3.5">
@@ -190,6 +220,7 @@ export function KitchenModuleContextMenu({ isLight: propIsLight }: { isLight?: b
       grainDirection: undefined,
       grainElements: undefined,
       hplBalancer: undefined,
+      handleConfig: undefined,
       isOpen: false,
       openElements: undefined
     });
@@ -223,7 +254,6 @@ export function KitchenModuleContextMenu({ isLight: propIsLight }: { isLight?: b
     const currentAnyOpen = getElementsList().some(el => isElementOpen(el.id));
     const nextState = !currentAnyOpen;
     
-    // Set all individual element states to match
     const newOpenElements: Record<string, boolean> = {};
     getElementsList().forEach(el => {
       newOpenElements[el.id] = nextState;
@@ -265,7 +295,6 @@ export function KitchenModuleContextMenu({ isLight: propIsLight }: { isLight?: b
   const approvedBackofficeTextures = (adminTextures || [])
     .filter((t) => t.active && (t.approvalStatus === 'approved' || !t.approvalStatus))
     .filter((t) => {
-      // Excluir piedras, cuarzos y marmolería Qstone del menú contextual de piezas de gabinetes
       const n = t.name.toLowerCase();
       const b = (t.brand || '').toLowerCase();
       return !n.includes('qstone') && !b.includes('qstone') && !b.includes('sysprotec') && t.category !== 'piedras_marmoles';
@@ -287,7 +316,6 @@ export function KitchenModuleContextMenu({ isLight: propIsLight }: { isLight?: b
     return !n.includes('masisa') && !n.includes('abet') && !n.includes('laminati') && !n.includes('hpl');
   });
 
-  // Determinar elementos configurables de piezas según la variante del mueble de cocina
   const variant = activeCabinet.variant || (activeCabinet.width > 60 ? '2_doors' : '1_door');
   const is4Drawers = variant === '4_drawers';
   const is2PotDrawers = variant === '2_pot_drawers';
@@ -361,7 +389,7 @@ export function KitchenModuleContextMenu({ isLight: propIsLight }: { isLight?: b
     <div key={tex.id} className="relative group">
       <button 
         onClick={() => handleApplyTexture(tex.url, tex.name)}
-        className={`flex flex-col items-center gap-1 p-1 rounded-lg transition-colors w-full border ${
+        className={`flex flex-col items-center gap-1 p-1 rounded-lg transition-colors w-full border cursor-pointer ${
           isLight
             ? 'bg-white border-slate-200 hover:border-orange-500 shadow-sm'
             : 'bg-white/5 border-white/10 hover:border-orange-500/60'
@@ -375,7 +403,7 @@ export function KitchenModuleContextMenu({ isLight: propIsLight }: { isLight?: b
           style={tex.url.startsWith('#') ? { backgroundColor: tex.url } : { backgroundImage: `url('${tex.url}')` }}
         />
         <span className={`text-[8px] uppercase tracking-wider truncate w-full text-center ${
-          isLight ? 'text-slate-600 font-medium' : 'text-slate-400'
+          isLight ? 'text-slate-600 font-bold' : 'text-slate-400'
         }`}>
           {tex.name.length > 14 ? tex.name.substring(0, 14) + '...' : tex.name}
         </span>
@@ -383,23 +411,44 @@ export function KitchenModuleContextMenu({ isLight: propIsLight }: { isLight?: b
     </div>
   );
 
+  const getModuleTitle = () => {
+    if (activeCabinet.variant?.startsWith('corner_blind')) return 'Esquinero Ciego';
+    if (activeCabinet.variant === 'tall_1_door') return 'Despensa 1 Puerta Larga';
+    if (activeCabinet.variant === 'tall_split_2_doors') return 'Despensa 2 Puertas (Línea Base)';
+    if (activeCabinet.variant === 'tall_oven_micro') return 'Torre Horno + Micro Empotrado';
+    if (activeCabinet.variant === 'tall_microwave_niche') return 'Torre Nicho Micro Portátil';
+    if (activeCabinet.variant === 'tall_open') return 'Despensa Abierta (Repisas)';
+    if (activeCabinet.variant === 'tall_2_doors') return 'Despensa 2 Puertas Batientes';
+    if (activeCabinet.variant === 'wall_1_door') return 'Mueble Aéreo 1 Puerta';
+    if (activeCabinet.variant === 'wall_2_doors') return 'Mueble Aéreo 2 Puertas';
+    if (activeCabinet.variant === 'wall_lift_up') return 'Aéreo Puerta Elevable Aventos';
+    if (activeCabinet.variant === 'wall_lift_up_double') return 'Aéreo Doble Puerta Elevable';
+    if (activeCabinet.variant === 'wall_microwave_niche') return 'Aéreo Nicho Micro + Puerta';
+    if (activeCabinet.variant === 'wall_open') return 'Aéreo Repisas a la Vista';
+    return activeCabinet.variant || activeCabinet.type;
+  };
+
   return (
-    <div className={`absolute top-6 right-6 w-80 max-h-[calc(100vh-100px)] backdrop-blur-xl border rounded-2xl overflow-hidden z-50 flex flex-col pointer-events-auto transition-colors ${
-      isLight
-        ? 'bg-white/95 border-slate-200 shadow-2xl shadow-slate-300 text-slate-800'
-        : 'bg-[#141416]/95 border-white/10 shadow-2xl shadow-black/80 text-white'
+    <div className={`w-full border rounded-2xl overflow-hidden flex flex-col transition-all mb-4 ${
+      inline
+        ? isLight
+          ? 'bg-slate-50/80 border-slate-200 shadow-sm text-slate-800'
+          : 'bg-white/[0.04] border-white/10 shadow-lg text-white'
+        : isLight
+          ? 'absolute top-6 right-6 w-80 max-h-[calc(100vh-100px)] backdrop-blur-xl bg-white/95 border-slate-200 shadow-2xl shadow-slate-300 text-slate-800 z-50'
+          : 'absolute top-6 right-6 w-80 max-h-[calc(100vh-100px)] backdrop-blur-xl bg-[#141416]/95 border-white/10 shadow-2xl shadow-black/80 text-white z-50'
     }`}>
       {/* Header */}
-      <div className={`px-4 py-3.5 border-b flex items-center justify-between shrink-0 ${
-        isLight ? 'border-slate-200 bg-slate-50' : 'border-white/10 bg-black/40'
+      <div className={`px-4 py-3 border-b flex items-center justify-between shrink-0 ${
+        isLight ? 'border-slate-200 bg-slate-100/70' : 'border-white/10 bg-black/40'
       }`}>
-        <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-wider">
-          <SlidersHorizontal size={16} className={isLight ? "text-orange-600" : "text-orange-500"} />
-          <span className={`${isLight ? 'text-orange-600' : 'text-orange-500'} tracking-wider`}>
-            MÓDULO ACTIVO {cabinetIndex >= 0 ? `(MOD ${cabinetIndex + 1})` : ''}
+        <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-wider min-w-0 pr-2">
+          <SlidersHorizontal size={15} className={isLight ? "text-orange-600" : "text-orange-500"} />
+          <span className={`truncate ${isLight ? 'text-orange-600' : 'text-orange-500'} tracking-wider`}>
+            {getModuleTitle()} {cabinetIndex >= 0 ? `(MOD ${cabinetIndex + 1})` : ''}
           </span>
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1 shrink-0">
           <button 
             onClick={() => {
               const currentRot = activeCabinet.rotation || 0;
@@ -407,45 +456,274 @@ export function KitchenModuleContextMenu({ isLight: propIsLight }: { isLight?: b
               updateCabinet(activeCabinet.id, { rotation: nextRot });
             }}
             title="Girar 90°"
-            className={`transition-colors p-1 rounded ${
-              isLight ? 'text-slate-500 hover:text-cyan-600 hover:bg-slate-200' : 'text-zinc-400 hover:text-cyan-400 hover:bg-white/5'
+            className={`transition-colors p-1.5 rounded cursor-pointer ${
+              isLight ? 'text-slate-600 hover:text-cyan-600 hover:bg-slate-200' : 'text-zinc-400 hover:text-cyan-400 hover:bg-white/5'
             }`}
           >
-            <RotateCw size={15} />
+            <RotateCw size={14} />
+          </button>
+          <button 
+            onClick={() => {
+              setToolMode('move_active');
+              setViewMode('3d');
+            }}
+            title="Mover posición"
+            className={`transition-colors p-1.5 rounded cursor-pointer ${
+              isLight ? 'text-slate-600 hover:text-orange-600 hover:bg-slate-200' : 'text-zinc-400 hover:text-orange-400 hover:bg-white/5'
+            }`}
+          >
+            <Move3D size={14} />
           </button>
           <button 
             onClick={() => removeCabinet(activeCabinet.id)} 
             title="Eliminar Módulo"
-            className={`transition-colors p-1 rounded ${
-              isLight ? 'text-slate-500 hover:text-rose-600 hover:bg-rose-100' : 'text-zinc-400 hover:text-rose-400 hover:bg-white/5'
+            className={`transition-colors p-1.5 rounded cursor-pointer ${
+              isLight ? 'text-slate-600 hover:text-rose-600 hover:bg-rose-100' : 'text-zinc-400 hover:text-rose-400 hover:bg-white/5'
             }`}
           >
-            <Trash2 size={15} />
+            <Trash2 size={14} />
           </button>
           <button 
             onClick={() => setActiveCabinet(null)} 
-            className={`transition-colors p-1 rounded ${
+            className={`transition-colors p-1.5 rounded cursor-pointer ${
               isLight ? 'text-slate-500 hover:text-slate-800 hover:bg-slate-200' : 'text-zinc-400 hover:text-white hover:bg-white/5'
             }`}
+            title="Deseleccionar Módulo"
           >
-            <X size={16} />
+            <X size={15} />
           </button>
         </div>
       </div>
 
       <div className="p-4 flex flex-col gap-4 overflow-y-auto flex-1 min-h-0 custom-scrollbar">
         
+        {/* SELECTOR DE VARIANTES SEGÚN EL TIPO DE MUEBLE */}
+        {activeCabinet.type === 'tall' && (
+          <div className={`flex flex-col gap-2 p-2.5 rounded-xl border ${isLight ? 'bg-white border-slate-200' : 'bg-black/30 border-white/5'}`}>
+            <label className={`text-[10px] uppercase tracking-wider font-bold ${isLight ? "text-slate-700" : "text-slate-300"}`}>
+              Variante de Torre / Despensa
+            </label>
+            <div className="grid grid-cols-2 gap-1.5">
+              {[
+                { id: 'tall_1_door', label: '1 Pta Larga' },
+                { id: 'tall_split_2_doors', label: '2 Ptas Línea Base' },
+                { id: 'tall_oven_micro', label: 'Horno + Micro' },
+                { id: 'tall_microwave_niche', label: 'Nicho Micro' },
+                { id: 'tall_open', label: 'Repisas Vistas' },
+                { id: 'tall_2_doors', label: '2 Puertas' },
+              ].map(t => (
+                <button
+                  key={t.id}
+                  onClick={() => updateCabinet(activeCabinet.id, { variant: t.id })}
+                  className={`py-1.5 px-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                    (activeCabinet.variant === t.id || (!activeCabinet.variant && t.id === 'tall_1_door'))
+                      ? 'bg-orange-500 text-black shadow-sm font-extrabold'
+                      : isLight
+                        ? 'bg-slate-50 text-slate-700 border border-slate-200 hover:border-orange-500'
+                        : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50'
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {activeCabinet.type === 'wall' && (
+          <div className={`flex flex-col gap-2 p-2.5 rounded-xl border ${isLight ? 'bg-white border-slate-200' : 'bg-black/30 border-white/5'}`}>
+            <label className={`text-[10px] uppercase tracking-wider font-bold ${isLight ? "text-slate-700" : "text-slate-300"}`}>
+              Variante de Mueble Aéreo
+            </label>
+            <div className="grid grid-cols-2 gap-1.5">
+              {[
+                { id: 'wall_1_door', label: '1 Puerta' },
+                { id: 'wall_2_doors', label: '2 Puertas' },
+                { id: 'wall_lift_up', label: 'Pta Elevable' },
+                { id: 'wall_lift_up_double', label: 'Doble Elevable' },
+                { id: 'wall_microwave_niche', label: 'Nicho Micro' },
+                { id: 'wall_open', label: 'Repisas Vistas' },
+              ].map(t => (
+                <button
+                  key={t.id}
+                  onClick={() => updateCabinet(activeCabinet.id, { variant: t.id })}
+                  className={`py-1.5 px-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                    (activeCabinet.variant === t.id || (!activeCabinet.variant && t.id === 'wall_1_door'))
+                      ? 'bg-orange-500 text-black shadow-sm font-extrabold'
+                      : isLight
+                        ? 'bg-slate-50 text-slate-700 border border-slate-200 hover:border-orange-500'
+                        : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50'
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {(activeCabinet.variant?.startsWith('corner_blind') || activeCabinet.variant === 'corner_blind' || activeCabinet.variant?.startsWith('wall_corner_blind')) && (
+          <div className={`flex flex-col gap-2 p-2.5 rounded-xl border ${isLight ? 'bg-white border-slate-200' : 'bg-black/30 border-white/5'}`}>
+            <label className={`text-[10px] uppercase tracking-wider font-bold ${isLight ? "text-slate-700" : "text-slate-300"}`}>
+              Mano / Orientación Esquinero
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => updateCabinet(activeCabinet.id, { 
+                  variant: activeCabinet.type === 'wall' ? 'wall_corner_blind_right' : 'corner_blind_right' 
+                })}
+                className={`py-1.5 px-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                  (!activeCabinet.variant.endsWith('_left'))
+                    ? 'bg-orange-500 text-black shadow-sm font-extrabold'
+                    : isLight
+                      ? 'bg-slate-50 text-slate-700 border border-slate-200 hover:border-orange-500'
+                      : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50'
+                }`}
+              >
+                Derecho (Ciego Der)
+              </button>
+              <button
+                onClick={() => updateCabinet(activeCabinet.id, { 
+                  variant: activeCabinet.type === 'wall' ? 'wall_corner_blind_left' : 'corner_blind_left' 
+                })}
+                className={`py-1.5 px-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                  (activeCabinet.variant.endsWith('_left'))
+                    ? 'bg-orange-500 text-black shadow-sm font-extrabold'
+                    : isLight
+                      ? 'bg-slate-50 text-slate-700 border border-slate-200 hover:border-orange-500'
+                      : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50'
+                }`}
+              >
+                Izquierdo (Ciego Izq)
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ELEVACIÓN EN MURO (MUEBLES AÉREOS) */}
+        {activeCabinet.type === 'wall' && (
+          <div className={`flex flex-col gap-1.5 p-2.5 rounded-xl border ${isLight ? 'bg-white border-slate-200' : 'bg-black/30 border-white/5'}`}>
+            <div className={`flex justify-between items-center text-xs tracking-wider ${isLight ? 'text-slate-900' : 'text-slate-300'}`}>
+              <span className={isLight ? "font-bold text-slate-800" : "font-semibold"}>Elevación en Muro (Cota Inf.)</span>
+              <span className={`font-mono font-bold text-xs ${isLight ? 'text-orange-600' : 'text-orange-500'}`}>
+                {Math.round(activeCabinet.position[1] - activeCabinet.height / 2)} cm
+              </span>
+            </div>
+            <input 
+              type="range" 
+              min={110} 
+              max={180} 
+              step={2}
+              value={Math.round(activeCabinet.position[1] - activeCabinet.height / 2)} 
+              onChange={(e) => {
+                const newBottom = Number(e.target.value);
+                updateCabinet(activeCabinet.id, {
+                  position: [activeCabinet.position[0], newBottom + activeCabinet.height / 2, activeCabinet.position[2]]
+                });
+              }}
+              className="w-full cursor-pointer accent-orange-500" 
+            />
+          </div>
+        )}
+
+        {/* DIMENSIONES DEL MÓDULO (SLIDERS) */}
+        <div className={`flex flex-col gap-2.5 p-3 rounded-xl border ${isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-black/30 border-white/5'}`}>
+          <div className={`text-[10px] uppercase font-bold tracking-widest flex items-center justify-between ${isLight ? 'text-slate-700' : 'text-zinc-300'}`}>
+            <span>Dimensiones del Módulo</span>
+            <span className="font-mono text-orange-500 font-extrabold">{activeCabinet.width} × {activeCabinet.height} × {activeCabinet.depth} cm</span>
+          </div>
+
+          {/* Ancho Slider */}
+          <div className="flex flex-col gap-1">
+            <div className="flex justify-between items-center text-xs">
+              <span className={`font-semibold ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>Ancho</span>
+              <span className="font-mono font-bold text-orange-500">{activeCabinet.width} cm</span>
+            </div>
+            <input 
+              type="range"
+              min={
+                activeCabinet.variant === "spice_rack" ? 15 : 
+                activeCabinet.variant?.includes('wine_rack') ? 15 :
+                activeCabinet.variant?.startsWith('wall_corner_blind') ? 60 :
+                (activeCabinet.variant?.startsWith('corner_blind') ? 80 : 30)
+              }
+              max={
+                activeCabinet.variant?.includes('wine_rack') ? 65 :
+                activeCabinet.variant?.startsWith('wall_corner_blind') ? 100 :
+                (activeCabinet.variant?.startsWith('corner_blind') ? 130 : 120)
+              }
+              step={5}
+              value={activeCabinet.width}
+              onChange={(e) => updateCabinet(activeCabinet.id, { width: Number(e.target.value) })}
+              className="w-full cursor-pointer accent-orange-500"
+            />
+          </div>
+
+          {/* Alto Slider */}
+          <div className="flex flex-col gap-1">
+            <div className="flex justify-between items-center text-xs">
+              <span className={`font-semibold ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>Alto Total</span>
+              <span className="font-mono font-bold text-orange-500">{activeCabinet.height} cm</span>
+            </div>
+            <input 
+              type="range"
+              min={activeCabinet.type === 'tall' ? 140 : (activeCabinet.type === 'base' ? 70 : 30)}
+              max={activeCabinet.type === 'tall' ? 240 : (activeCabinet.type === 'wall' ? 120 : 100)}
+              step={5}
+              value={activeCabinet.height}
+              onChange={(e) => updateCabinet(activeCabinet.id, { height: Number(e.target.value) })}
+              className="w-full cursor-pointer accent-orange-500"
+            />
+          </div>
+
+          {/* Profundidad Slider */}
+          <div className="flex flex-col gap-1">
+            <div className="flex justify-between items-center text-xs">
+              <span className={`font-semibold ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>Profundidad</span>
+              <span className="font-mono font-bold text-orange-500">{activeCabinet.depth} cm</span>
+            </div>
+            <input 
+              type="range"
+              min={activeCabinet.type === 'island' ? 30 : 25}
+              max={activeCabinet.type === 'island' ? 120 : 80}
+              step={5}
+              value={activeCabinet.depth}
+              onChange={(e) => updateCabinet(activeCabinet.id, { depth: Number(e.target.value) })}
+              className="w-full cursor-pointer accent-orange-500"
+            />
+          </div>
+        </div>
+
+        {/* INFO ESPECÍFICA BOTILLERO O ESQUINERO */}
+        {activeCabinet.variant?.includes('wine_rack') && (() => {
+          const innerW = activeCabinet.width - 3.6;
+          const cols = Math.min(5, Math.max(1, Math.floor((innerW + 1.8) / (10.5 + 1.8))));
+          const colW = (innerW - (cols - 1) * 1.8) / cols;
+          return (
+            <div className={`p-2.5 rounded-xl border text-xs ${isLight ? 'bg-orange-50 border-orange-200 text-orange-950' : 'bg-orange-950/20 border-orange-500/30 text-orange-200'}`}>
+              <div className="font-bold mb-1 flex items-center justify-between">
+                <span>Distribución Botellero:</span>
+                <span className="text-orange-500 font-extrabold">{cols} {cols === 1 ? 'Corrida' : 'Corridas'}</span>
+              </div>
+              <div className="text-[11px] opacity-90 leading-relaxed">
+                • Ancho libre por celda: <span className="font-mono font-bold">{colW.toFixed(1)} cm</span><br/>
+                • Fondo útil: <span className="font-mono font-bold">32.0 cm</span>
+              </div>
+            </div>
+          );
+        })()}
+        
         {/* SECCIÓN: APERTURA INDIVIDUAL DE PUERTAS Y CAJONES */}
         {hasInteractiveElements && (
           <div className={`flex flex-col gap-2 p-2.5 rounded-xl border ${
-            isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#1c1c1f] border-white/5'
+            isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-[#1c1c1f] border-white/5'
           }`}>
             <div className="flex items-center justify-between px-1">
               <div className={`text-[10px] uppercase font-bold tracking-widest flex items-center gap-1.5 ${
                 isLight ? 'text-slate-600' : 'text-zinc-400'
               }`}>
                 <DoorOpen size={13} className={isLight ? "text-orange-600" : "text-orange-400"} />
-                <span>Apertura de Puertas y Cajones</span>
+                <span>Apertura de Puertas / Cajones</span>
               </div>
               <button
                 onClick={toggleAllOpen}
@@ -470,7 +748,7 @@ export function KitchenModuleContextMenu({ isLight: propIsLight }: { isLight?: b
                     onClick={() => toggleElementOpen(el.id)}
                     className={`flex items-center justify-between px-3 py-2 rounded-lg transition-colors cursor-pointer group ${
                       isLight
-                        ? 'bg-white hover:bg-slate-100 border border-slate-200 shadow-sm'
+                        ? 'bg-slate-50 hover:bg-slate-100 border border-slate-200'
                         : 'bg-[#242428] hover:bg-[#2c2c31]'
                     }`}
                   >
@@ -482,13 +760,13 @@ export function KitchenModuleContextMenu({ isLight: propIsLight }: { isLight?: b
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className={`text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded transition-all ${
+                      <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded transition-all ${
                         open 
                           ? isLight
                             ? 'bg-emerald-100 text-emerald-700 border border-emerald-300'
                             : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-[0_0_8px_rgba(16,185,129,0.2)]'
                           : isLight
-                            ? 'bg-slate-100 text-slate-600 border border-slate-200'
+                            ? 'bg-slate-200 text-slate-600 border border-slate-300'
                             : 'bg-zinc-800 text-zinc-400 border border-white/5'
                       }`}>
                         {open ? 'Abierto' : 'Cerrado'}
@@ -504,7 +782,7 @@ export function KitchenModuleContextMenu({ isLight: propIsLight }: { isLight?: b
         {/* SECCIÓN: VETA (GRANO) POR PIEZA */}
         {hasInteractiveElements && (
           <div className={`flex flex-col gap-2 p-2.5 rounded-xl border ${
-            isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#1c1c1f] border-white/5'
+            isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-[#1c1c1f] border-white/5'
           }`}>
             <div className={`text-[10px] uppercase font-bold tracking-widest px-1 flex items-center gap-1.5 ${
               isLight ? 'text-slate-600' : 'text-zinc-400'
@@ -522,7 +800,7 @@ export function KitchenModuleContextMenu({ isLight: propIsLight }: { isLight?: b
                     onClick={() => toggleGrain(el.id)}
                     className={`flex items-center justify-between px-3 py-2 rounded-lg transition-colors cursor-pointer group ${
                       isLight
-                        ? 'bg-white hover:bg-slate-100 border border-slate-200 shadow-sm'
+                        ? 'bg-slate-50 hover:bg-slate-100 border border-slate-200'
                         : 'bg-[#242428] hover:bg-[#2c2c31]'
                     }`}
                   >
@@ -540,6 +818,545 @@ export function KitchenModuleContextMenu({ isLight: propIsLight }: { isLight?: b
                 );
               })}
             </div>
+          </div>
+        )}
+
+        {/* SECCIÓN: REPISAS INTERIORES (MÓDULOS CON PUERTA) */}
+        {isCabinetWithDoors(activeCabinet) && (() => {
+          const isSplit = isCabinetWithSplitDoors(activeCabinet);
+
+          if (isSplit) {
+            const splitCounts = getSplitCabinetShelvesCounts(activeCabinet);
+            const isLower = selectedDoorSection === 'lower';
+            const defaultLower = 1;
+            let defaultUpper = 3;
+            let maxUpper = 6;
+            let upperLabel = '(sobre 70cm)';
+
+            if (activeCabinet.variant === 'tall_oven_vent' || activeCabinet.variant === 'tall_oven_micro') {
+              defaultUpper = 1;
+              maxUpper = 3;
+              upperLabel = '(sobre hornos)';
+            } else if (activeCabinet.variant === 'tall_microwave_niche') {
+              defaultUpper = 2;
+              maxUpper = 5;
+              upperLabel = '(sobre nicho)';
+            }
+
+            const defaultSectionCount = isLower ? defaultLower : defaultUpper;
+            const maxSectionCount = isLower ? 4 : maxUpper;
+            const currentSectionCount = isLower ? splitCounts.lower : splitCounts.upper;
+            const isCustom = isLower
+              ? activeCabinet.shelvesCountLower !== undefined
+              : activeCabinet.shelvesCountUpper !== undefined;
+            const hasAnyCustom =
+              activeCabinet.shelvesCountLower !== undefined ||
+              activeCabinet.shelvesCountUpper !== undefined ||
+              activeCabinet.shelvesCount !== undefined;
+
+            return (
+              <div className={`flex flex-col gap-2 p-2.5 rounded-xl border ${
+                isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-[#1c1c1f] border-white/5'
+              }`}>
+                <div className="flex items-center justify-between px-1">
+                  <div className={`text-[10px] uppercase font-bold tracking-widest flex items-center gap-1.5 ${
+                    isLight ? 'text-slate-600' : 'text-zinc-400'
+                  }`}>
+                    <Layers size={13} className={isLight ? "text-orange-600" : "text-orange-400"} />
+                    <span>
+                      {activeCabinet.variant === 'tall_split_2_doors' ? 'Repisas Despensa Dividida' : 'Repisas Módulo 2 Puertas'}
+                    </span>
+                  </div>
+                  <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded ${
+                    isLight ? 'bg-orange-100 text-orange-700' : 'bg-orange-500/10 text-orange-400'
+                  }`}>
+                    Anti-Colisión
+                  </span>
+                </div>
+
+                {/* SELECTOR DE PUERTA SUPERIOR / INFERIOR */}
+                <div className={`grid grid-cols-2 gap-1 p-1 rounded-lg border ${
+                  isLight ? 'bg-slate-200/70 border-slate-300' : 'bg-[#242428] border-white/5'
+                }`}>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedDoorSection('lower')}
+                    className={`py-1.5 px-2 rounded-md text-[11px] font-bold transition-all flex flex-col items-center justify-center cursor-pointer ${
+                      isLower
+                        ? isLight
+                          ? 'bg-white text-orange-600 shadow-sm'
+                          : 'bg-orange-500 text-black shadow-md'
+                        : isLight
+                          ? 'text-slate-600 hover:text-slate-900'
+                          : 'text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    <span>Puerta 1 (Inferior)</span>
+                    <span className="text-[9px] font-medium opacity-85">
+                      {splitCounts.lower} repisa{splitCounts.lower !== 1 ? 's' : ''} (0-70cm)
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedDoorSection('upper')}
+                    className={`py-1.5 px-2 rounded-md text-[11px] font-bold transition-all flex flex-col items-center justify-center cursor-pointer ${
+                      !isLower
+                        ? isLight
+                          ? 'bg-white text-orange-600 shadow-sm'
+                          : 'bg-orange-500 text-black shadow-md'
+                        : isLight
+                          ? 'text-slate-600 hover:text-slate-900'
+                          : 'text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    <span>Puerta 2 (Superior)</span>
+                    <span className="text-[9px] font-medium opacity-85">
+                      {splitCounts.upper} repisa{splitCounts.upper !== 1 ? 's' : ''} {upperLabel}
+                    </span>
+                  </button>
+                </div>
+
+                {/* CONTROL DE CANTIDAD PARA LA SECCIÓN SELECCIONADA */}
+                <div className={`flex items-center justify-between px-3 py-2 rounded-lg border ${
+                  isLight ? 'bg-slate-50 border-slate-200 shadow-sm' : 'bg-[#242428] border-white/5'
+                }`}>
+                  <div className="flex flex-col">
+                    <span className={`text-xs font-semibold ${isLight ? 'text-slate-800' : 'text-zinc-200'}`}>
+                      {isLower ? 'Puerta 1: Sección Inferior' : 'Puerta 2: Sección Superior'}
+                    </span>
+                    <span className={`text-[9px] ${isLight ? 'text-slate-500' : 'text-zinc-400'}`}>
+                      {currentSectionCount} repisa{currentSectionCount !== 1 ? 's' : ''}{' '}
+                      {!isCustom ? `(Estándar: ${defaultSectionCount})` : '(Personalizado)'}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      disabled={currentSectionCount <= 0}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const next = Math.max(0, currentSectionCount - 1);
+                        if (isLower) {
+                          updateCabinet(activeCabinet.id, { shelvesCountLower: next });
+                        } else {
+                          updateCabinet(activeCabinet.id, { shelvesCountUpper: next });
+                        }
+                      }}
+                      className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-sm transition-colors cursor-pointer ${
+                        currentSectionCount <= 0
+                          ? isLight ? 'bg-slate-100 text-slate-300' : 'bg-white/5 text-zinc-600'
+                          : isLight
+                            ? 'bg-slate-200 hover:bg-slate-300 text-slate-700'
+                            : 'bg-zinc-700 hover:bg-zinc-600 text-white'
+                      }`}
+                      title="Disminuir repisas"
+                    >
+                      -
+                    </button>
+
+                    <div className={`w-8 text-center font-mono font-bold text-xs ${
+                      isLight ? 'text-slate-900' : 'text-white'
+                    }`}>
+                      {currentSectionCount}
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={currentSectionCount >= maxSectionCount}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const next = Math.min(maxSectionCount, currentSectionCount + 1);
+                        if (isLower) {
+                          updateCabinet(activeCabinet.id, { shelvesCountLower: next });
+                        } else {
+                          updateCabinet(activeCabinet.id, { shelvesCountUpper: next });
+                        }
+                      }}
+                      className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-sm transition-colors cursor-pointer ${
+                        currentSectionCount >= maxSectionCount
+                          ? isLight ? 'bg-slate-100 text-slate-300' : 'bg-white/5 text-zinc-600'
+                          : isLight
+                            ? 'bg-orange-500 hover:bg-orange-600 text-white'
+                            : 'bg-orange-500 hover:bg-orange-600 text-black'
+                      }`}
+                      title="Agregar repisas"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+
+                {hasAnyCustom && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      updateCabinet(activeCabinet.id, {
+                        shelvesCount: undefined,
+                        shelvesCountLower: undefined,
+                        shelvesCountUpper: undefined,
+                      });
+                    }}
+                    className={`text-[9px] text-right font-medium hover:underline cursor-pointer px-1 ${
+                      isLight ? 'text-slate-500 hover:text-orange-600' : 'text-zinc-400 hover:text-orange-400'
+                    }`}
+                  >
+                    Restablecer ambas puertas a estándar ({defaultLower} inf + {defaultUpper} sup)
+                  </button>
+                )}
+              </div>
+            );
+          }
+
+          const defaultShelves = getDefaultShelvesCount(activeCabinet);
+          const currentShelvesCount = activeCabinet.shelvesCount !== undefined ? activeCabinet.shelvesCount : defaultShelves;
+          return (
+            <div className={`flex flex-col gap-2 p-2.5 rounded-xl border ${
+              isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-[#1c1c1f] border-white/5'
+            }`}>
+              <div className="flex items-center justify-between px-1">
+                <div className={`text-[10px] uppercase font-bold tracking-widest flex items-center gap-1.5 ${
+                  isLight ? 'text-slate-600' : 'text-zinc-400'
+                }`}>
+                  <Layers size={13} className={isLight ? "text-orange-600" : "text-orange-400"} />
+                  <span>Repisas Interiores</span>
+                </div>
+                <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded ${
+                  isLight ? 'bg-orange-100 text-orange-700' : 'bg-orange-500/10 text-orange-400'
+                }`}>
+                  Anti-Colisión
+                </span>
+              </div>
+
+              <div className={`flex items-center justify-between px-3 py-2 rounded-lg border ${
+                isLight ? 'bg-slate-50 border-slate-200 shadow-sm' : 'bg-[#242428] border-white/5'
+              }`}>
+                <div className="flex flex-col">
+                  <span className={`text-xs font-semibold ${isLight ? 'text-slate-800' : 'text-zinc-200'}`}>
+                    Cantidad de Repisas
+                  </span>
+                  <span className={`text-[9px] ${isLight ? 'text-slate-500' : 'text-zinc-400'}`}>
+                    {currentShelvesCount} repisa{currentShelvesCount !== 1 ? 's' : ''} {currentShelvesCount === defaultShelves ? '(Estándar)' : '(Personalizado)'}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    disabled={currentShelvesCount <= 0}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const next = Math.max(0, currentShelvesCount - 1);
+                      updateCabinet(activeCabinet.id, { shelvesCount: next });
+                    }}
+                    className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-sm transition-colors cursor-pointer ${
+                      currentShelvesCount <= 0
+                        ? isLight ? 'bg-slate-100 text-slate-300' : 'bg-white/5 text-zinc-600'
+                        : isLight
+                          ? 'bg-slate-200 hover:bg-slate-300 text-slate-700'
+                          : 'bg-zinc-700 hover:bg-zinc-600 text-white'
+                    }`}
+                    title="Disminuir repisas"
+                  >
+                    -
+                  </button>
+
+                  <div className={`w-8 text-center font-mono font-bold text-xs ${
+                    isLight ? 'text-slate-900' : 'text-white'
+                  }`}>
+                    {currentShelvesCount}
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={currentShelvesCount >= 8}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const next = Math.min(8, currentShelvesCount + 1);
+                      updateCabinet(activeCabinet.id, { shelvesCount: next });
+                    }}
+                    className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-sm transition-colors cursor-pointer ${
+                      currentShelvesCount >= 8
+                        ? isLight ? 'bg-slate-100 text-slate-300' : 'bg-white/5 text-zinc-600'
+                        : isLight
+                          ? 'bg-orange-500 hover:bg-orange-600 text-white'
+                          : 'bg-orange-500 hover:bg-orange-600 text-black'
+                    }`}
+                    title="Agregar repisas"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+
+              {activeCabinet.shelvesCount !== undefined && activeCabinet.shelvesCount !== defaultShelves && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    updateCabinet(activeCabinet.id, { shelvesCount: undefined });
+                  }}
+                  className={`text-[9px] text-right font-medium hover:underline cursor-pointer px-1 ${
+                    isLight ? 'text-slate-500 hover:text-orange-600' : 'text-zinc-400 hover:text-orange-400'
+                  }`}
+                >
+                  Restablecer a estándar ({defaultShelves})
+                </button>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* SECCIÓN: TIRADORES / MANILLAS INDEPENDIENTES DEL MÓDULO */}
+        {!isDecoration && (
+          <div className={`flex flex-col gap-2 p-3 rounded-xl border ${
+            isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-black/30 border-white/5'
+          }`}>
+            <div className="flex items-center justify-between">
+              <div className={`text-[10px] uppercase font-bold tracking-widest flex items-center gap-1.5 ${
+                isLight ? 'text-slate-700' : 'text-zinc-300'
+              }`}>
+                <SlidersHorizontal size={13} className={isLight ? 'text-orange-600' : 'text-orange-400'} />
+                <span>Tirador del Módulo</span>
+              </div>
+              <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                activeCabinet.handleConfig
+                  ? isLight ? 'bg-orange-100 text-orange-700 border border-orange-300' : 'bg-orange-500/20 text-orange-400 border border-orange-500/40'
+                  : isLight ? 'bg-slate-100 text-slate-500 border border-slate-200' : 'bg-white/5 text-zinc-400 border border-white/10'
+              }`}>
+                {activeCabinet.handleConfig ? 'Personalizado' : 'Global (Heredado)'}
+              </span>
+            </div>
+
+            {/* Selector de Modo: Heredar vs Personalizar */}
+            <div className="grid grid-cols-2 gap-1.5 mt-0.5">
+              <button
+                type="button"
+                onClick={() => updateCabinet(activeCabinet.id, { handleConfig: undefined })}
+                className={`py-1.5 px-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                  !activeCabinet.handleConfig
+                    ? 'bg-orange-500 text-black shadow-sm font-extrabold'
+                    : isLight
+                      ? 'bg-slate-50 text-slate-700 border border-slate-200 hover:border-orange-500'
+                      : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50'
+                }`}
+              >
+                Heredar Global
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!activeCabinet.handleConfig) {
+                    updateCabinet(activeCabinet.id, {
+                      handleConfig: { ...globalHandleConfig }
+                    });
+                  }
+                }}
+                className={`py-1.5 px-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                  activeCabinet.handleConfig
+                    ? 'bg-orange-500 text-black shadow-sm font-extrabold'
+                    : isLight
+                      ? 'bg-slate-50 text-slate-700 border border-slate-200 hover:border-orange-500'
+                      : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50'
+                }`}
+              >
+                Personalizar
+              </button>
+            </div>
+
+            {/* Aviso si sistema Gola activo en módulo base o isla */}
+            {golaSystem !== 'none' && (activeCabinet.type === 'base' || activeCabinet.type === 'island') && (
+              <div className={`p-2 rounded-lg border flex items-start gap-1.5 text-[10px] leading-tight ${
+                isLight ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-amber-950/30 border-amber-700/50 text-amber-300'
+              }`}>
+                <ShieldAlert size={13} className="shrink-0 mt-0.5 text-amber-500" />
+                <span>Perfil Gola activo en mueble inferior (los tiradores frontales quedan ocultos).</span>
+              </div>
+            )}
+
+            {/* Panel de Configuración de Tirador cuando está Personalizado */}
+            {activeCabinet.handleConfig && (() => {
+              const currentHConfig = activeCabinet.handleConfig;
+              const selectedModelItem = HANDLE_CATALOG.find((m) => m.id === currentHConfig.model) || HANDLE_CATALOG[0];
+
+              const onSelectModel = (modelId: HandleModelId) => {
+                const item = HANDLE_CATALOG.find((m) => m.id === modelId);
+                if (!item) return;
+                const newFinish = item.finishes.includes(currentHConfig.finish)
+                  ? currentHConfig.finish
+                  : item.finishes[0] || 'negro';
+                const newLength = item.lengths.includes(currentHConfig.lengthMm)
+                  ? currentHConfig.lengthMm
+                  : item.lengths[0] || 0;
+                updateCabinet(activeCabinet.id, {
+                  handleConfig: {
+                    model: modelId,
+                    finish: newFinish,
+                    lengthMm: newLength,
+                    orientation: currentHConfig.orientation || 'auto'
+                  }
+                });
+              };
+
+              const onSelectFinish = (finish: HandleFinish) => {
+                updateCabinet(activeCabinet.id, {
+                  handleConfig: {
+                    ...currentHConfig,
+                    finish
+                  }
+                });
+              };
+
+              const onSelectLength = (len: number) => {
+                updateCabinet(activeCabinet.id, {
+                  handleConfig: {
+                    ...currentHConfig,
+                    lengthMm: len
+                  }
+                });
+              };
+
+              return (
+                <div className={`flex flex-col gap-3 p-2.5 rounded-xl border mt-1 ${
+                  isLight ? 'bg-orange-50/40 border-orange-200' : 'bg-black/40 border-orange-500/30'
+                }`}>
+                  {/* Selector de Modelos */}
+                  <div>
+                    <label className={`text-[9px] uppercase tracking-wider font-bold mb-1.5 block ${
+                      isLight ? 'text-slate-700' : 'text-slate-300'
+                    }`}>
+                      Modelo de Tirador
+                    </label>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {HANDLE_CATALOG.map((item) => {
+                        const isSelected = currentHConfig.model === item.id;
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => onSelectModel(item.id)}
+                            className={`flex flex-col text-left p-2 rounded-lg border transition-all cursor-pointer relative ${
+                              isSelected
+                                ? isLight
+                                  ? 'bg-orange-100 border-orange-500 shadow-sm text-orange-950 font-bold'
+                                  : 'bg-orange-500/20 border-orange-500 text-orange-400 font-bold'
+                                : isLight
+                                  ? 'bg-white border-slate-200 hover:border-orange-300 hover:bg-slate-50 text-slate-800'
+                                  : 'bg-white/5 border-white/10 hover:border-white/20 hover:bg-white/10 text-slate-300'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between w-full">
+                              <span className="text-[11px] truncate">{item.name}</span>
+                              {isSelected && (
+                                <div className="w-3.5 h-3.5 rounded-full bg-orange-500 flex items-center justify-center text-black shrink-0">
+                                  <Check size={9} strokeWidth={3} />
+                                </div>
+                              )}
+                            </div>
+                            <span className="text-[8px] opacity-75 capitalize">{item.material}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {currentHConfig.model !== 'none' && (
+                    <>
+                      {/* Acabado / Color */}
+                      {selectedModelItem.finishes.length > 0 && (
+                        <div>
+                          <label className={`text-[9px] uppercase tracking-wider font-bold mb-1.5 block ${
+                            isLight ? 'text-slate-700' : 'text-slate-300'
+                          }`}>
+                            Acabado ({selectedModelItem.finishes.length})
+                          </label>
+                          <div className="grid grid-cols-2 gap-1.5">
+                            {selectedModelItem.finishes.map((finishKey) => {
+                              const isSelected = currentHConfig.finish === finishKey;
+                              const hex = FINISH_HEX[finishKey];
+                              const label = FINISH_LABELS[finishKey];
+                              return (
+                                <button
+                                  key={finishKey}
+                                  type="button"
+                                  onClick={() => onSelectFinish(finishKey)}
+                                  className={`flex items-center gap-1.5 p-1.5 rounded-lg border transition-all cursor-pointer ${
+                                    isSelected
+                                      ? isLight
+                                        ? 'bg-orange-100 border-orange-500 ring-1 ring-orange-500'
+                                        : 'bg-orange-500/20 border-orange-500 ring-1 ring-orange-500'
+                                      : isLight
+                                        ? 'bg-white border-slate-200 hover:border-slate-300'
+                                        : 'bg-white/5 border-white/10 hover:border-white/20'
+                                  }`}
+                                >
+                                  <span
+                                    className="w-3.5 h-3.5 rounded-full border border-black/20 shrink-0 shadow-inner"
+                                    style={{ backgroundColor: hex }}
+                                  />
+                                  <span className={`text-[10px] font-semibold truncate ${
+                                    isSelected
+                                      ? isLight ? 'text-orange-950 font-bold' : 'text-orange-400 font-bold'
+                                      : isLight ? 'text-slate-700' : 'text-slate-300'
+                                  }`}>
+                                    {label}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Medidas / Entrecentros */}
+                      {selectedModelItem.lengths.length > 0 && (
+                        <div>
+                          <label className={`text-[9px] uppercase tracking-wider font-bold mb-1.5 block ${
+                            isLight ? 'text-slate-700' : 'text-slate-300'
+                          }`}>
+                            Entrecentros / Medida
+                          </label>
+                          <div className="flex flex-wrap gap-1.5">
+                            {selectedModelItem.lengths.map((len) => {
+                              const isSelected = currentHConfig.lengthMm === len;
+                              return (
+                                <button
+                                  key={len}
+                                  type="button"
+                                  onClick={() => onSelectLength(len)}
+                                  className={`py-1 px-2 rounded-md text-[10px] font-bold transition-all cursor-pointer ${
+                                    isSelected
+                                      ? 'bg-orange-500 text-black shadow-sm font-extrabold'
+                                      : isLight
+                                        ? 'bg-white border border-slate-200 text-slate-700 hover:border-orange-400'
+                                        : 'bg-white/5 border border-white/10 text-slate-300 hover:border-orange-500/50'
+                                  }`}
+                                >
+                                  {len === 0 ? 'Punto Único' : `${len} mm`}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {/* Botón para restablecer */}
+                  <button
+                    type="button"
+                    onClick={() => updateCabinet(activeCabinet.id, { handleConfig: undefined })}
+                    className={`text-[9px] text-right font-medium hover:underline cursor-pointer px-1 pt-1 ${
+                      isLight ? 'text-slate-500 hover:text-orange-600' : 'text-zinc-400 hover:text-orange-400'
+                    }`}
+                  >
+                    Restablecer a Tirador Global del Proyecto
+                  </button>
+                </div>
+              );
+            })()}
           </div>
         )}
 
@@ -565,9 +1382,29 @@ export function KitchenModuleContextMenu({ isLight: propIsLight }: { isLight?: b
           </button>
         </div>
 
+        {/* Acceso a Revestimiento Trasero de Isla */}
+        {activeCabinet.type === 'island' && onOpenIslandBack && (
+          <div className={`flex flex-col gap-1.5 pt-2 border-t ${isLight ? 'border-slate-200' : 'border-white/10'}`}>
+            <button
+              onClick={onOpenIslandBack}
+              className={`w-full flex items-center justify-between p-2.5 rounded-xl border text-xs uppercase font-bold tracking-wider transition-colors cursor-pointer ${
+                isLight
+                  ? 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300'
+                  : 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border-amber-500/30'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <Layers size={14} />
+                <span>Revestimiento Trasera Isla</span>
+              </div>
+              <span className="text-[10px] underline">Configurar</span>
+            </button>
+          </div>
+        )}
+
         {/* Diseño Local (Por Pieza) */}
         <div className="flex flex-col gap-1.5">
-          <div className={`text-[10px] uppercase font-bold tracking-widest ${isLight ? 'text-slate-600' : 'text-zinc-400'}`}>Diseño Local (Por Pieza)</div>
+          <div className={`text-[10px] uppercase font-bold tracking-widest ${isLight ? 'text-slate-600' : 'text-zinc-400'}`}>Acabado Exclusivo del Módulo</div>
           <button 
             onClick={() => setShowCatalog(!showCatalog)}
             className={`w-full py-2.5 px-4 rounded-xl text-center cursor-pointer transition-all text-xs uppercase font-bold tracking-wider ${
@@ -576,7 +1413,7 @@ export function KitchenModuleContextMenu({ isLight: propIsLight }: { isLight?: b
                 : 'bg-[#242428] border border-white/20 hover:border-white/40 hover:bg-[#2c2c31] text-white'
             }`}
           >
-            {showCatalog ? 'Ocultar Catálogo' : 'Cambiar Diseño Local'}
+            {showCatalog ? 'Ocultar Catálogo de Materiales' : 'Personalizar Acabado por Pieza'}
           </button>
         </div>
 
@@ -590,7 +1427,7 @@ export function KitchenModuleContextMenu({ isLight: propIsLight }: { isLight?: b
             <div className={`font-bold text-xs uppercase tracking-wider ${
               isLight ? 'text-orange-700' : 'text-orange-500'
             }`}>
-              Catálogo de Materiales
+              Catálogo de Materiales Exclusivo
             </div>
 
             <div className="flex flex-col gap-2">
@@ -601,12 +1438,12 @@ export function KitchenModuleContextMenu({ isLight: propIsLight }: { isLight?: b
               </div>
               <div className="grid grid-cols-2 gap-2">
                 {[
-                  { id: 'structure', label: 'Paredes' },
                   { id: 'doors', label: 'Puertas' },
                   { id: 'drawerFronts', label: 'Frentes Cajón' },
+                  { id: 'structure', label: 'Paredes / Casco' },
                   { id: 'drawerInner', label: 'Cajas Cajón' },
                   { id: 'shelves', label: 'Repisas' },
-                  { id: 'back', label: 'Fondo' },
+                  { id: 'back', label: 'Fondo Interior' },
                   { id: 'socle', label: 'Zócalo' }
                 ].map(part => {
                   const isSelected = targetZone === part.id;

@@ -15,9 +15,10 @@ import {
 } from '../types/countertop';
 import { MepPoint, MepClash, MepPresetType, MEP_PRESETS } from '../types/mep';
 import { generateDefaultMepPoints, calculateMepPositionOnWall } from '../utils/mepGeometry';
+import { KitchenHandleConfig, DEFAULT_HANDLE_CONFIG } from '../types/handle';
 
-export type { IslandBackConfig };
-export { DEFAULT_ISLAND_BACK_CONFIG };
+export type { IslandBackConfig, KitchenHandleConfig };
+export { DEFAULT_ISLAND_BACK_CONFIG, DEFAULT_HANDLE_CONFIG };
 
 
 export type GolaSystem = 'none' | 'aluminum' | 'black';
@@ -56,11 +57,16 @@ export type ToolMode =
   | 'place_tall_wine_rack'
   | 'place_tall_inner_drawers'
   | 'place_island' 
+  | 'place_island_4_drawers'
+  | 'place_island_2_drawers_1_pot'
+  | 'place_island_1_door'
+  | 'place_island_2_doors'
   | 'place_island_wine_rack'
   | 'place_deco_stove'
   | 'place_deco_fridge'
   | 'place_deco_hood'
   | 'place_deco_plant'
+  | 'place_deco_dishwasher'
   | 'place_arch_door'
   | 'place_arch_window'
   | 'place_arch_pillar'
@@ -118,6 +124,10 @@ export interface CabinetType {
   hplBalancer?: boolean;
   isOpen?: boolean;
   openElements?: Record<string, boolean>;
+  shelvesCount?: number;
+  shelvesCountLower?: number;
+  shelvesCountUpper?: number;
+  handleConfig?: KitchenHandleConfig;
 }
 
 export interface GolaIncompatibilityAlert {
@@ -132,6 +142,7 @@ export function getCabinetLabel(cab: Partial<CabinetType>, index: number): strin
   if (cab.variant === 'deco_stove') return 'Cocina FDV 90';
   if (cab.variant === 'deco_fridge') return 'Refrigerador SBS 513L';
   if (cab.variant === 'deco_plant') return 'Planta Interior';
+  if (cab.variant === 'deco_dishwasher') return 'Lavavajillas FDV Active 12C';
   if (cab.variant === 'sink_u_drawer') return 'Fregadero Cajón en U';
   if (cab.variant === 'corner_l' || cab.variant === 'base_corner_l') return 'Esquinero en L (90x90)';
   if (cab.variant?.startsWith('wall_corner_blind')) return 'Aéreo Esquinero Ciego';
@@ -140,6 +151,13 @@ export function getCabinetLabel(cab: Partial<CabinetType>, index: number): strin
   if (cab.variant === 'wall_wine_rack' || (cab.type === 'wall' && cab.variant === 'wine_rack')) return 'Botellero Aéreo';
   if (cab.variant === 'tall_wine_rack' || (cab.type === 'tall' && cab.variant === 'wine_rack')) return 'Botellero Despensa';
   if (cab.variant === 'island_wine_rack' || (cab.type === 'island' && cab.variant === 'wine_rack')) return 'Botellero Isla';
+  if (cab.type === 'island') {
+    if (cab.variant === '4_drawers') return 'Isla 4 Cajones';
+    if (cab.variant === '2_drawers_1_pot') return 'Isla 2 Cajones + 1 Ollero';
+    if (cab.variant === '1_door') return 'Isla 1 Puerta';
+    if (cab.variant === '2_doors') return 'Isla 2 Puertas';
+    if (cab.variant === '2_pot_drawers') return 'Isla 2 Olleros';
+  }
   if (cab.variant === 'wine_rack') return 'Botellero';
   if (cab.variant === 'tall_1_door') return 'Despensa 1 Puerta Larga';
   if (cab.variant === 'tall_split_2_doors') return 'Despensa 2 Puertas (Línea Base)';
@@ -157,6 +175,7 @@ export function getCabinetLabel(cab: Partial<CabinetType>, index: number): strin
   if (cab.variant === 'wall_open') return 'Aéreo Abierto Repisas';
   if (cab.variant === '1_door_1_drawer') return 'Base 1 Pta + 1 Cajón';
   if (cab.variant === '4_drawers') return 'Base 4 Cajones';
+  if (cab.variant === '2_drawers_1_pot') return 'Base 2 Cajones + 1 Ollero';
   if (cab.variant === '2_pot_drawers') return 'Base 2 Olleros';
   if (cab.variant === 'spice_rack') return 'Base Especiero';
   if (cab.variant === '2_doors') return 'Base 2 Puertas';
@@ -189,9 +208,11 @@ interface KitchenState {
   countertopConfig: CountertopConfig;
   islandBackConfig: IslandBackConfig;
   qstoneCatalog: QstoneProductItem[];
+  handleConfig: KitchenHandleConfig;
 
   setViewMode: (mode: ViewMode) => void;
   setToolMode: (mode: ToolMode) => void;
+  setHandleConfig: (config: Partial<KitchenHandleConfig>) => void;
   addWall: (wall: WallType) => void;
   setWalls: (walls: WallType[]) => void;
   addCabinet: (cabinet: CabinetType) => void;
@@ -229,14 +250,42 @@ interface KitchenState {
   activeMepId: string | null;
   showMep: boolean;
   showMepClashes: boolean;
+  showMepDimensions: boolean;
   addMepPoint: (point: MepPoint) => void;
   updateMepPoint: (id: string, updates: Partial<MepPoint>) => void;
   removeMepPoint: (id: string) => void;
   setActiveMepId: (id: string | null) => void;
   setShowMep: (show: boolean) => void;
   setShowMepClashes: (show: boolean) => void;
+  setShowMepDimensions: (show: boolean) => void;
   addMepPreset: (presetType: MepPresetType, wallId?: string, offsetCm?: number) => void;
   autoFixClash: (clash: MepClash) => void;
+
+  // Historial de Deshacer (Undo) y Rehacer (Redo)
+  history: Array<{
+    cabinets: CabinetType[];
+    architecturalElements: ArchitecturalElement[];
+    showSocle: boolean;
+    golaSystem: GolaSystem;
+    countertopConfig: CountertopConfig;
+    islandBackConfig: IslandBackConfig;
+    mepPoints: MepPoint[];
+    handleConfig: KitchenHandleConfig;
+  }>;
+  future: Array<{
+    cabinets: CabinetType[];
+    architecturalElements: ArchitecturalElement[];
+    showSocle: boolean;
+    golaSystem: GolaSystem;
+    countertopConfig: CountertopConfig;
+    islandBackConfig: IslandBackConfig;
+    mepPoints: MepPoint[];
+    handleConfig: KitchenHandleConfig;
+  }>;
+  undo: () => void;
+  redo: () => void;
+  canUndo: () => boolean;
+  canRedo: () => boolean;
 
   resetKitchen: () => void;
 }
@@ -424,7 +473,23 @@ const initialRoomConfig: RoomConfig = {
 
 const initialWalls = generateWallsFromRoom(initialRoomConfig);
 
-export const useKitchenStore = create<KitchenState>((set) => ({
+export const useKitchenStore = create<KitchenState>((set, get) => {
+  const saveSnapshot = (state: KitchenState) => {
+    const snapshot = {
+      cabinets: JSON.parse(JSON.stringify(state.cabinets)),
+      architecturalElements: JSON.parse(JSON.stringify(state.architecturalElements)),
+      showSocle: state.showSocle,
+      golaSystem: state.golaSystem,
+      countertopConfig: JSON.parse(JSON.stringify(state.countertopConfig)),
+      islandBackConfig: JSON.parse(JSON.stringify(state.islandBackConfig)),
+      mepPoints: JSON.parse(JSON.stringify(state.mepPoints)),
+      handleConfig: JSON.parse(JSON.stringify(state.handleConfig)),
+    };
+    const prevHistory = state.history || [];
+    return [snapshot, ...prevHistory.slice(0, 29)];
+  };
+
+  return {
   viewMode: '3d',
   toolMode: 'select',
   walls: initialWalls,
@@ -444,18 +509,121 @@ export const useKitchenStore = create<KitchenState>((set) => ({
   countertopConfig: DEFAULT_COUNTERTOP_CONFIG,
   islandBackConfig: DEFAULT_ISLAND_BACK_CONFIG,
   qstoneCatalog: DEFAULT_QSTONE_CATALOG,
+  handleConfig: DEFAULT_HANDLE_CONFIG,
   golaIncompatibilityAlert: null,
-  mepPoints: generateDefaultMepPoints(initialWalls),
+  mepPoints: [],
   activeMepId: null,
   showMep: true,
   showMepClashes: true,
+  showMepDimensions: true,
+  history: [],
+  future: [],
+
+  canUndo: () => {
+    return (get().history?.length || 0) > 0;
+  },
+
+  canRedo: () => {
+    return (get().future?.length || 0) > 0;
+  },
+
+  undo: () => {
+    const state = get();
+    const currentHistory = state.history;
+    if (!currentHistory || currentHistory.length === 0) return;
+    
+    // Save current state into future stack for redo
+    const currentSnapshot = {
+      cabinets: JSON.parse(JSON.stringify(state.cabinets)),
+      architecturalElements: JSON.parse(JSON.stringify(state.architecturalElements)),
+      showSocle: state.showSocle,
+      golaSystem: state.golaSystem,
+      countertopConfig: JSON.parse(JSON.stringify(state.countertopConfig)),
+      islandBackConfig: JSON.parse(JSON.stringify(state.islandBackConfig)),
+      mepPoints: JSON.parse(JSON.stringify(state.mepPoints)),
+      handleConfig: JSON.parse(JSON.stringify(state.handleConfig)),
+    };
+
+    const [previousState, ...remainingHistory] = currentHistory;
+    const newFuture = [currentSnapshot, ...(state.future || []).slice(0, 29)];
+
+    set({
+      cabinets: previousState.cabinets,
+      architecturalElements: previousState.architecturalElements,
+      showSocle: previousState.showSocle,
+      golaSystem: previousState.golaSystem,
+      countertopConfig: previousState.countertopConfig,
+      islandBackConfig: previousState.islandBackConfig,
+      mepPoints: previousState.mepPoints,
+      handleConfig: previousState.handleConfig,
+      history: remainingHistory,
+      future: newFuture,
+      activeCabinetId: null,
+      activeArchElementId: null,
+    });
+  },
+
+  redo: () => {
+    const state = get();
+    const currentFuture = state.future;
+    if (!currentFuture || currentFuture.length === 0) return;
+
+    // Save current state into history stack for undo
+    const currentSnapshot = {
+      cabinets: JSON.parse(JSON.stringify(state.cabinets)),
+      architecturalElements: JSON.parse(JSON.stringify(state.architecturalElements)),
+      showSocle: state.showSocle,
+      golaSystem: state.golaSystem,
+      countertopConfig: JSON.parse(JSON.stringify(state.countertopConfig)),
+      islandBackConfig: JSON.parse(JSON.stringify(state.islandBackConfig)),
+      mepPoints: JSON.parse(JSON.stringify(state.mepPoints)),
+      handleConfig: JSON.parse(JSON.stringify(state.handleConfig)),
+    };
+
+    const [nextState, ...remainingFuture] = currentFuture;
+    const newHistory = [currentSnapshot, ...(state.history || []).slice(0, 29)];
+
+    set({
+      cabinets: nextState.cabinets,
+      architecturalElements: nextState.architecturalElements,
+      showSocle: nextState.showSocle,
+      golaSystem: nextState.golaSystem,
+      countertopConfig: nextState.countertopConfig,
+      islandBackConfig: nextState.islandBackConfig,
+      mepPoints: nextState.mepPoints,
+      handleConfig: nextState.handleConfig,
+      history: newHistory,
+      future: remainingFuture,
+      activeCabinetId: null,
+      activeArchElementId: null,
+    });
+  },
 
   setViewMode: (mode) => set({ viewMode: mode }),
   setToolMode: (mode) => set({ toolMode: mode, drawingStart: null }),
+  setHandleConfig: (config) => set((state) => ({ handleConfig: { ...state.handleConfig, ...config } })),
   addWall: (wall) => set((state) => ({ walls: [...state.walls, wall] })),
-  setWalls: (walls) => set({ walls }),
+  setWalls: (walls) =>
+    set((state) => {
+      const roomPoly = state.roomConfig?.vertices?.map((v) => [v.x, v.y] as [number, number]) || [];
+      const updatedMepPoints = state.mepPoints.map((pt) => {
+        const wall = walls.find((w) => w.id === pt.wallId) || walls[0];
+        if (wall) {
+          const calc = calculateMepPositionOnWall(wall, pt.wallOffset || 0, pt.elevation, roomPoly);
+          return {
+            ...pt,
+            wallId: wall.id,
+            position: calc.position,
+            rotation: calc.rotation,
+          };
+        }
+        return pt;
+      });
+      return { walls, mepPoints: updatedMepPoints };
+    }),
   addCabinet: (cabinet) =>
     set((state) => {
+      const history = saveSnapshot(state);
       const walls = state.walls;
       const roomPoly = state.roomConfig?.vertices?.map((v) => [v.x, v.y] as [number, number]) || [];
       const constrainedPos = constrainInsideRoomAndWalls(
@@ -468,13 +636,17 @@ export const useKitchenStore = create<KitchenState>((set) => ({
         roomPoly,
         state.architecturalElements
       );
-      return { cabinets: [...state.cabinets, { ...cabinet, position: constrainedPos }] };
+      return { history, cabinets: [...state.cabinets, { ...cabinet, position: constrainedPos }] };
     }),
   removeCabinet: (id) =>
-    set((state) => ({
-      cabinets: state.cabinets.filter((c) => c.id !== id),
-      activeCabinetId: state.activeCabinetId === id ? null : state.activeCabinetId,
-    })),
+    set((state) => {
+      const history = saveSnapshot(state);
+      return {
+        history,
+        cabinets: state.cabinets.filter((c) => c.id !== id),
+        activeCabinetId: state.activeCabinetId === id ? null : state.activeCabinetId,
+      };
+    }),
   setActiveCabinet: (id) =>
     set((state) => ({
       activeCabinetId: id,
@@ -482,16 +654,18 @@ export const useKitchenStore = create<KitchenState>((set) => ({
     })),
   addArchitecturalElement: (el) =>
     set((state) => {
+      const history = saveSnapshot(state);
       const architecturalElements = [...state.architecturalElements, el];
       if (el.type === 'pillar') {
         const roomPoly = state.roomConfig?.vertices?.map((v) => [v.x, v.y] as [number, number]) || [];
         const resolvedCabinets = resolveCabinetsAgainstPillars(state.cabinets, architecturalElements, state.walls, roomPoly);
-        return { architecturalElements, cabinets: resolvedCabinets, activeArchElementId: el.id, activeCabinetId: null };
+        return { history, architecturalElements, cabinets: resolvedCabinets, activeArchElementId: el.id, activeCabinetId: null };
       }
-      return { architecturalElements, activeArchElementId: el.id, activeCabinetId: null };
+      return { history, architecturalElements, activeArchElementId: el.id, activeCabinetId: null };
     }),
   updateArchitecturalElement: (id, updates) =>
     set((state) => {
+      const history = saveSnapshot(state);
       const architecturalElements = state.architecturalElements.map((el) => {
         if (el.id !== id) return el;
         const merged = { ...el, ...updates };
@@ -523,11 +697,12 @@ export const useKitchenStore = create<KitchenState>((set) => ({
       if (updatedEl?.type === 'pillar') {
         const roomPoly = state.roomConfig?.vertices?.map((v) => [v.x, v.y] as [number, number]) || [];
         const resolvedCabinets = resolveCabinetsAgainstPillars(state.cabinets, architecturalElements, state.walls, roomPoly);
-        return { architecturalElements, cabinets: resolvedCabinets };
+        return { history, architecturalElements, cabinets: resolvedCabinets };
       }
-      return { architecturalElements };
+      return { history, architecturalElements };
     }),
   removeArchitecturalElement: (id) => set((state) => ({
+    history: saveSnapshot(state),
     architecturalElements: state.architecturalElements.filter(el => el.id !== id),
     activeArchElementId: state.activeArchElementId === id ? null : state.activeArchElementId,
     draggingArchElementId: state.draggingArchElementId === id ? null : state.draggingArchElementId
@@ -540,7 +715,7 @@ export const useKitchenStore = create<KitchenState>((set) => ({
   setDraggingArchElementId: (id) => set({ draggingArchElementId: id }),
   setDraggingCabinetId: (id) => set({ draggingCabinetId: id }),
   setDrawingStart: (pos) => set({ drawingStart: pos }),
-  setShowSocle: (val) => set({ showSocle: val }),
+  setShowSocle: (val) => set((state) => ({ history: saveSnapshot(state), showSocle: val })),
   setGolaIncompatibilityAlert: (alert) => set({ golaIncompatibilityAlert: alert }),
   setGolaSystem: (system) => {
     const state = useKitchenStore.getState();
@@ -560,10 +735,11 @@ export const useKitchenStore = create<KitchenState>((set) => ({
         return;
       }
     }
-    set({ golaSystem: system });
+    set((state) => ({ history: saveSnapshot(state), golaSystem: system }));
   },
   updateCabinet: (id, updates) =>
     set((state) => {
+      const history = saveSnapshot(state);
       const resolved = resolveCabinetsWithResize(state.cabinets, id, updates);
       const walls = state.walls;
       const roomPoly = state.roomConfig?.vertices?.map((v) => [v.x, v.y] as [number, number]) || [];
@@ -580,21 +756,36 @@ export const useKitchenStore = create<KitchenState>((set) => ({
           state.architecturalElements
         ),
       }));
-      return { cabinets: clamped };
+      return { history, cabinets: clamped };
     }),
   setRoomPlannerOpen: (open) => set({ isRoomPlannerOpen: open }),
   setRoomConfig: (config) => {
     const generatedWalls = generateWallsFromRoom(config);
+    const roomPoly = config.vertices?.map((v) => [v.x, v.y] as [number, number]) || [];
     set((state) => {
       const repositionedCabinets = repositionCabinetsOnRoomChange(
         state.cabinets,
         generatedWalls,
         config
       );
+      const updatedMepPoints = state.mepPoints.map((pt) => {
+        const wall = generatedWalls.find((w) => w.id === pt.wallId) || generatedWalls[0];
+        if (wall) {
+          const calc = calculateMepPositionOnWall(wall, pt.wallOffset || 0, pt.elevation, roomPoly);
+          return {
+            ...pt,
+            wallId: wall.id,
+            position: calc.position,
+            rotation: calc.rotation,
+          };
+        }
+        return pt;
+      });
       return {
         roomConfig: config,
         walls: generatedWalls,
         cabinets: repositionedCabinets,
+        mepPoints: updatedMepPoints,
       };
     });
   },
@@ -820,13 +1011,14 @@ export const useKitchenStore = create<KitchenState>((set) => ({
   addMepPoint: (point) => set((s) => ({ mepPoints: [...s.mepPoints, point], activeMepId: point.id })),
   
   updateMepPoint: (id, updates) => set((s) => {
+    const roomPoly = s.roomConfig?.vertices?.map((v) => [v.x, v.y] as [number, number]) || [];
     const nextPoints = s.mepPoints.map((p) => {
       if (p.id !== id) return p;
       const merged = { ...p, ...updates };
       if ((updates.wallOffset !== undefined || updates.elevation !== undefined) && merged.wallId) {
         const wall = s.walls.find((w) => w.id === merged.wallId) || s.walls[0];
         if (wall) {
-          const calc = calculateMepPositionOnWall(wall, merged.wallOffset || 0, merged.elevation);
+          const calc = calculateMepPositionOnWall(wall, merged.wallOffset || 0, merged.elevation, roomPoly);
           merged.position = calc.position;
           merged.rotation = calc.rotation;
         }
@@ -844,10 +1036,12 @@ export const useKitchenStore = create<KitchenState>((set) => ({
   setActiveMepId: (id) => set({ activeMepId: id, activeCabinetId: id ? null : undefined, activeArchElementId: id ? null : undefined }),
   setShowMep: (show) => set({ showMep: show }),
   setShowMepClashes: (show) => set({ showMepClashes: show }),
+  setShowMepDimensions: (show) => set({ showMepDimensions: show }),
 
   addMepPreset: (presetType, wallId, offsetCm) => set((s) => {
     const preset = MEP_PRESETS.find((pr) => pr.id === presetType);
     if (!preset || s.walls.length === 0) return {};
+    const roomPoly = s.roomConfig?.vertices?.map((v) => [v.x, v.y] as [number, number]) || [];
     const targetWall = (wallId && s.walls.find((w) => w.id === wallId)) || s.walls[0];
     const [x1, z1] = targetWall.start;
     const [x2, z2] = targetWall.end;
@@ -856,7 +1050,7 @@ export const useKitchenStore = create<KitchenState>((set) => ({
 
     const newPoints: MepPoint[] = preset.points.map((pt, idx) => {
       const pointOffset = Math.max(10, Math.min(wLen - 10, baseOffset + pt.relativeOffsetCm));
-      const calc = calculateMepPositionOnWall(targetWall, pointOffset, pt.elevationCm);
+      const calc = calculateMepPositionOnWall(targetWall, pointOffset, pt.elevationCm, roomPoly);
       return {
         id: `mep-${preset.id}-${Date.now()}-${idx}`,
         name: `${preset.name} (${idx + 1})`,
@@ -896,8 +1090,9 @@ export const useKitchenStore = create<KitchenState>((set) => ({
       if (targetPoint && targetPoint.wallId) {
         const wall = s.walls.find((w) => w.id === targetPoint.wallId);
         if (wall) {
+          const roomPoly = s.roomConfig?.vertices?.map((v) => [v.x, v.y] as [number, number]) || [];
           const newOffset = (targetPoint.wallOffset || 50) + 55;
-          const calc = calculateMepPositionOnWall(wall, newOffset, targetPoint.elevation);
+          const calc = calculateMepPositionOnWall(wall, newOffset, targetPoint.elevation, roomPoly);
           return {
             mepPoints: s.mepPoints.map((p) =>
               p.id === targetPoint.id
@@ -933,10 +1128,13 @@ export const useKitchenStore = create<KitchenState>((set) => ({
       drawingStart: null,
       countertopConfig: DEFAULT_COUNTERTOP_CONFIG,
       islandBackConfig: DEFAULT_ISLAND_BACK_CONFIG,
-      mepPoints: generateDefaultMepPoints(defaultWalls),
+      handleConfig: DEFAULT_HANDLE_CONFIG,
+      mepPoints: [],
       activeMepId: null,
       showMep: true,
       showMepClashes: true,
+      showMepDimensions: true,
     });
   },
-}));
+};
+});

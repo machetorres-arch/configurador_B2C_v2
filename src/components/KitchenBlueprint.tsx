@@ -1,14 +1,16 @@
 import React, { useState } from 'react';
-import { Printer, Download, X, HelpCircle, FileText, CheckCircle2, Loader2, QrCode, Cpu } from 'lucide-react';
+import { Printer, Download, X, HelpCircle, FileText, CheckCircle2, Loader2, QrCode, Cpu, FileSpreadsheet, DollarSign } from 'lucide-react';
 import { useStore } from '../store';
 import { useKitchenStore, CabinetType } from '../store/kitchenStore';
 import { analyzeRoomWalls } from '../utils/roomGeometry';
 import { getCabinetBox2D } from '../utils/kitchenCollision';
 import { Part } from '../utils/manufacturing';
-import { generateKitchenPartsList, generateKitchenHardwareList, HARDWARE_SPECS } from '../utils/kitchenManufacturing';
+import { generateKitchenPartsList, generateKitchenHardwareList, HARDWARE_SPECS, getResolvedCabinetShelfElevations, isCabinetWithDoors, isCabinetWithSplitDoors } from '../utils/kitchenManufacturing';
 import { optimizeNesting, NestingPart, BoardResult } from '../utils/nesting';
 import { exportKitchenPDF } from '../utils/kitchenPdfGenerator';
 import { exportBlueprintDomToPdf } from '../utils/blueprintPdfExport';
+import { exportKitchenToExcel } from '../utils/kitchenExcelGenerator';
+import { KitchenB2BQuoteModal } from './kitchen/KitchenB2BQuoteModal';
 import { getFriendlyColorName } from '../utils/colorNames';
 import { generateCountertopPieces } from '../utils/countertopNesting';
 import { calculateCncMachiningForPart } from '../utils/kitchenCncMachining';
@@ -22,6 +24,7 @@ export function KitchenBlueprint() {
   const [isExportingA3, setIsExportingA3] = useState(false);
   const [isExportingLabels, setIsExportingLabels] = useState(false);
   const [isExportingDxf, setIsExportingDxf] = useState(false);
+  const [isB2BQuoteOpen, setIsB2BQuoteOpen] = useState(false);
   const [exportProgress, setExportProgress] = useState<{ current: number; total: number } | null>(null);
   const [generatedPdfUrl, setGeneratedPdfUrl] = useState<string | null>(null);
 
@@ -69,7 +72,8 @@ export function KitchenBlueprint() {
             cab, 
             state.drawerHardware === 'Hafele' ? 'Hafele' : 'Provelcar', 
             state.assemblyType === 'minifix' ? 'minifix' : 'spax', 
-            kState.golaSystem
+            kState.golaSystem,
+            kState.handleConfig
           );
         });
 
@@ -618,6 +622,103 @@ export function KitchenBlueprint() {
                 )}
               </g>
             )}
+
+            {/* Perforaciones para Soportes de Repisas Regulables (Pitones Ø5mm) con Evasión Anti-Colisión */}
+            {isCabinetWithDoors(cab) && (() => {
+              const shelfElevations = getResolvedCabinetShelfElevations(cab, state.thickness);
+              if (!shelfElevations || shelfElevations.length === 0) return null;
+
+              const xFrontHole = 37;
+              const xRearHole = Math.max(xFrontHole + 120, pw - 50);
+
+              return (
+                <g key="shelf-support-drilling">
+                  {shelfElevations.map((elev, sIdx) => {
+                    const elevMm = Math.round(elev * 10);
+                    const yHole = pl - elevMm;
+                    if (yHole <= 30 || yHole >= pl - 30) return null;
+
+                    return (
+                      <g key={`shelf-hole-${sIdx}`}>
+                        {/* Línea de eje horizontal de apoyo */}
+                        <line 
+                          x1={xFrontHole - 12} 
+                          y1={yHole} 
+                          x2={xRearHole + 12} 
+                          y2={yHole} 
+                          stroke="#0284c7" 
+                          strokeWidth={strokeThin * 0.75} 
+                          strokeDasharray="4,2" 
+                        />
+
+                        {/* Perforación Frontal Ø5 */}
+                        <circle 
+                          cx={xFrontHole} 
+                          cy={yHole} 
+                          r={Math.max(4.5, Math.round(vMax * 0.012))} 
+                          fill="#0284c7" 
+                          stroke="#0369a1" 
+                          strokeWidth={strokeThin} 
+                        />
+                        <line x1={xFrontHole - 5} y1={yHole} x2={xFrontHole + 5} y2={yHole} stroke="#ffffff" strokeWidth={strokeThin} />
+                        <line x1={xFrontHole} y1={yHole - 5} x2={xFrontHole} y2={yHole + 5} stroke="#ffffff" strokeWidth={strokeThin} />
+
+                        {/* Perforación Trasera Ø5 */}
+                        <circle 
+                          cx={xRearHole} 
+                          cy={yHole} 
+                          r={Math.max(4.5, Math.round(vMax * 0.012))} 
+                          fill="#0284c7" 
+                          stroke="#0369a1" 
+                          strokeWidth={strokeThin} 
+                        />
+                        <line x1={xRearHole - 5} y1={yHole} x2={xRearHole + 5} y2={yHole} stroke="#ffffff" strokeWidth={strokeThin} />
+                        <line x1={xRearHole} y1={yHole - 5} x2={xRearHole} y2={yHole + 5} stroke="#ffffff" strokeWidth={strokeThin} />
+
+                        {/* Etiqueta Técnica de Mecanizado */}
+                        <text 
+                          x={(xFrontHole + xRearHole) / 2} 
+                          y={yHole - 6} 
+                          fontSize={Math.round(fSizeSm * 0.72)} 
+                          fill="#0284c7" 
+                          stroke="#ffffff" 
+                          strokeWidth={haloWidth} 
+                          paintOrder="stroke fill" 
+                          strokeLinejoin="round" 
+                          textAnchor="middle" 
+                          fontWeight="900" 
+                          fontFamily="monospace" 
+                          textRendering="geometricPrecision"
+                        >
+                          {isCabinetWithSplitDoors(cab) 
+                            ? (elevMm <= 700 ? `2x Ø5 SOP. REPISA INF (H=${elevMm})` : `2x Ø5 SOP. REPISA SUP (H=${elevMm})`)
+                            : `2x Ø5 SOPORTE REPISA (H=${elevMm})`}
+                        </text>
+
+                        {/* Cota vertical de elevación desde base */}
+                        <line x1={xRearHole + 20} y1={pl} x2={xRearHole + 20} y2={yHole} stroke="#0284c7" strokeWidth={strokeThin * 0.7} strokeDasharray="2,2" />
+                        <text 
+                          x={xRearHole + 24} 
+                          y={yHole + Math.round(fSizeSm * 0.3)} 
+                          fontSize={Math.round(fSizeSm * 0.65)} 
+                          fill="#0369a1" 
+                          stroke="#ffffff" 
+                          strokeWidth={haloWidth} 
+                          paintOrder="stroke fill" 
+                          strokeLinejoin="round" 
+                          textAnchor="start" 
+                          fontWeight="900" 
+                          fontFamily="monospace" 
+                          textRendering="geometricPrecision"
+                        >
+                          H={elevMm}
+                        </text>
+                      </g>
+                    );
+                  })}
+                </g>
+              );
+            })()}
           </g>
         )}
 
@@ -765,6 +866,90 @@ export function KitchenBlueprint() {
             <line x1={-padL * 0.52} y1={pl - 90} x2={22.5} y2={pl - 90} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
             <line x1={-padL * 0.52} y1={pl} x2={0} y2={pl} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
             <text x={-padL * 0.65} y={pl - 45} fontSize={fSizeSm} fill={COLOR_DETALLE} stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" textAnchor="middle" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision" transform={`rotate(-90 -${padL * 0.65} ${pl - 45})`}>90</text>
+
+            {/* Perforaciones de Tirador en Puerta (lado opuesto a bisagras - Cotas limpias sin colisión) */}
+            {(() => {
+              const hConf = kState.handleConfig;
+              const isGola = kState.golaSystem !== 'none';
+              if (isGola || !hConf || hConf.model === 'none') return null;
+
+              const isSingleHole = hConf.model === 'balin' || hConf.model === 'berlin';
+              const isRearPestana = hConf.model === 'ce' || hConf.model === 'oslo';
+              const handleX = pw - 45;
+              const handleCenterY = 70;
+
+              if (isRearPestana) {
+                return (
+                  <g key="door-handle-pestana">
+                    <line x1={pw - 120} y1={6} x2={pw} y2={6} stroke="#2563eb" strokeWidth={strokeMed} strokeDasharray="4,2" />
+                    <text x={pw - 60} y={24} fontSize={Math.round(fSizeSm * 0.8)} fill="#2563eb" stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" textAnchor="middle" fontWeight="bold">Tirador Pestaña Trasero</text>
+                  </g>
+                );
+              }
+
+              if (isSingleHole) {
+                return (
+                  <g key="door-handle-single">
+                    <circle cx={handleX} cy={handleCenterY} r={Math.max(4.5, Math.round(vMax * 0.012))} fill="#2563eb" stroke="#1d4ed8" strokeWidth={strokeThin} />
+                    <line x1={handleX - 8} y1={handleCenterY} x2={handleX + 8} y2={handleCenterY} stroke="#1d4ed8" strokeWidth={strokeThin} />
+                    <line x1={handleX} y1={handleCenterY - 8} x2={handleX} y2={handleCenterY + 8} stroke="#1d4ed8" strokeWidth={strokeThin} />
+                    {/* Cota horizontal 45mm hacia el canto */}
+                    <line x1={handleX} y1={handleCenterY - 18} x2={pw} y2={handleCenterY - 18} stroke="#2563eb" strokeWidth={strokeThin} />
+                    <line x1={handleX} y1={handleCenterY - 24} x2={handleX} y2={handleCenterY - 12} stroke="#2563eb" strokeWidth={strokeThin} />
+                    <line x1={pw} y1={handleCenterY - 24} x2={pw} y2={handleCenterY - 12} stroke="#2563eb" strokeWidth={strokeThin} />
+                    <text x={handleX + 22.5} y={handleCenterY - 22} fontSize={Math.round(fSizeSm * 0.85)} fill="#2563eb" stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" textAnchor="middle" fontWeight="bold">45</text>
+                    {/* Cota vertical 70mm interior (sin invadir el exterior derecho) */}
+                    <line x1={handleX - 25} y1={0} x2={handleX - 25} y2={handleCenterY} stroke="#2563eb" strokeWidth={strokeThin} />
+                    <line x1={handleX - 30} y1={0} x2={pw} y2={0} stroke="#2563eb" strokeWidth={strokeThin} />
+                    <line x1={handleX - 30} y1={handleCenterY} x2={handleX} y2={handleCenterY} stroke="#2563eb" strokeWidth={strokeThin} />
+                    <text x={handleX - 32} y={38} fontSize={Math.round(fSizeSm * 0.85)} fill="#2563eb" stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" textAnchor="end" fontWeight="bold">70</text>
+                    {/* Etiqueta hacia el interior */}
+                    <text x={handleX - 10} y={handleCenterY + 20} fontSize={Math.round(fSizeSm * 0.8)} fill="#2563eb" stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" textAnchor="end" fontWeight="bold">Ø4.5 Pomo</text>
+                  </g>
+                );
+              }
+
+              const hLen = hConf.lengthMm || 128;
+              const y1 = handleCenterY;
+              const y2 = handleCenterY + hLen;
+              const cotaX = handleX - 25;
+              const cotaY70X = handleX - 48;
+
+              return (
+                <g key="door-handle-double">
+                  {/* Taladros Pasantes Ø4.5 */}
+                  <circle cx={handleX} cy={y1} r={Math.max(4.5, Math.round(vMax * 0.012))} fill="#2563eb" stroke="#1d4ed8" strokeWidth={strokeThin} />
+                  <circle cx={handleX} cy={y2} r={Math.max(4.5, Math.round(vMax * 0.012))} fill="#2563eb" stroke="#1d4ed8" strokeWidth={strokeThin} />
+                  {/* Cruz de centro */}
+                  <line x1={handleX - 6} y1={y1} x2={handleX + 6} y2={y1} stroke="#1d4ed8" strokeWidth={strokeThin} />
+                  <line x1={handleX} y1={y1 - 6} x2={handleX} y2={y1 + 6} stroke="#1d4ed8" strokeWidth={strokeThin} />
+                  <line x1={handleX - 6} y1={y2} x2={handleX + 6} y2={y2} stroke="#1d4ed8" strokeWidth={strokeThin} />
+                  <line x1={handleX} y1={y2 - 6} x2={handleX} y2={y2 + 6} stroke="#1d4ed8" strokeWidth={strokeThin} />
+                  <line x1={handleX} y1={y1} x2={handleX} y2={y2} stroke="#2563eb" strokeWidth={strokeThin} strokeDasharray="3,2" />
+
+                  {/* Cota entre ejes de tirador hacia el INTERIOR (despejada de bordes y cotas exteriores) */}
+                  <line x1={cotaX} y1={y1} x2={cotaX} y2={y2} stroke="#2563eb" strokeWidth={strokeThin} />
+                  <line x1={cotaX - 5} y1={y1} x2={handleX} y2={y1} stroke="#2563eb" strokeWidth={strokeThin} />
+                  <line x1={cotaX - 5} y1={y2} x2={handleX} y2={y2} stroke="#2563eb" strokeWidth={strokeThin} />
+                  <text x={cotaX - 7} y={(y1 + y2) / 2 + 4} fontSize={Math.round(fSizeSm * 0.9)} fill="#2563eb" stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" textAnchor="end" fontWeight="900" fontFamily="monospace">{hLen}</text>
+
+                  {/* Cota horizontal 45mm superior */}
+                  <line x1={handleX} y1={y1 - 18} x2={pw} y2={y1 - 18} stroke="#2563eb" strokeWidth={strokeThin} />
+                  <line x1={handleX} y1={y1 - 24} x2={handleX} y2={y1 - 12} stroke="#2563eb" strokeWidth={strokeThin} />
+                  <line x1={pw} y1={y1 - 24} x2={pw} y2={y1 - 12} stroke="#2563eb" strokeWidth={strokeThin} />
+                  <text x={handleX + 22.5} y={y1 - 22} fontSize={Math.round(fSizeSm * 0.85)} fill="#2563eb" stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" textAnchor="middle" fontWeight="bold">45</text>
+
+                  {/* Cota vertical 70mm al canto superior (interna) */}
+                  <line x1={cotaY70X} y1={0} x2={cotaY70X} y2={y1} stroke="#2563eb" strokeWidth={strokeThin} />
+                  <line x1={cotaY70X - 5} y1={0} x2={pw} y2={0} stroke="#2563eb" strokeWidth={strokeThin} />
+                  <line x1={cotaY70X - 5} y1={y1} x2={cotaX} y2={y1} stroke="#2563eb" strokeWidth={strokeThin} />
+                  <text x={cotaY70X - 7} y={38} fontSize={Math.round(fSizeSm * 0.85)} fill="#2563eb" stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" textAnchor="end" fontWeight="bold">70</text>
+
+                  {/* Etiqueta técnica orientada al interior para evitar desborde */}
+                  <text x={handleX - 10} y={y2 + 22} fontSize={Math.round(fSizeSm * 0.8)} fill="#2563eb" stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" textAnchor="end" fontWeight="bold">2x Ø4.5 Tirador</text>
+                </g>
+              );
+            })()}
           </g>
         )}
 
@@ -797,15 +982,56 @@ export function KitchenBlueprint() {
             <line x1={-padL * 0.50} y1={35} x2={15} y2={35} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
             <text x={-padL * 0.62} y={18 + fSizeSm * 0.35} fontSize={fSizeSm} fill={COLOR_DETALLE} stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" textAnchor="middle" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision">35</text>
 
-            {/* Perforaciones de Tirador Centrado (Entreeje 128mm) */}
-            {pl >= 260 && (
-              <g>
-                <circle cx={pw / 2} cy={pl / 2 - 64} r={Math.max(4.5, Math.round(vMax * 0.012))} fill="#475569" stroke="#0f172a" strokeWidth={strokeThin} />
-                <circle cx={pw / 2} cy={pl / 2 + 64} r={Math.max(4.5, Math.round(vMax * 0.012))} fill="#475569" stroke="#0f172a" strokeWidth={strokeThin} />
-                <line x1={pw / 2} y1={pl / 2 - 64} x2={pw / 2} y2={pl / 2 + 64} stroke="#64748b" strokeWidth={strokeThin} strokeDasharray="4,2" />
-                <text x={pw / 2} y={pl / 2 + fSizeSm * 0.35} fontSize={Math.round(fSizeSm * 0.85)} fill="#475569" stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" textAnchor="middle" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision">128</text>
-              </g>
-            )}
+            {/* Perforaciones de Tirador Paramétrico */}
+            {(() => {
+              const hConf = kState.handleConfig;
+              const isGola = kState.golaSystem !== 'none';
+              if (isGola || !hConf || hConf.model === 'none') return null;
+
+              const isSingleHole = hConf.model === 'balin' || hConf.model === 'berlin';
+              const isRearPestana = hConf.model === 'ce' || hConf.model === 'oslo';
+              const cy = pl / 2;
+
+              if (isRearPestana) {
+                return (
+                  <g key="cajon-handle-pestana">
+                    <line x1={pw / 2 - 100} y1={6} x2={pw / 2 + 100} y2={6} stroke="#2563eb" strokeWidth={strokeMed} strokeDasharray="4,2" />
+                    <text x={pw / 2} y={22} fontSize={Math.round(fSizeSm * 0.8)} fill="#2563eb" stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" textAnchor="middle" fontWeight="bold">Tirador Pestaña Superior</text>
+                  </g>
+                );
+              }
+
+              if (isSingleHole) {
+                return (
+                  <g key="cajon-handle-single">
+                    <circle cx={pw / 2} cy={cy} r={Math.max(4.5, Math.round(vMax * 0.012))} fill="#2563eb" stroke="#1d4ed8" strokeWidth={strokeThin} />
+                    <line x1={pw / 2 - 8} y1={cy} x2={pw / 2 + 8} y2={cy} stroke="#1d4ed8" strokeWidth={strokeThin} />
+                    <line x1={pw / 2} y1={cy - 8} x2={pw / 2 + 8} y2={cy} stroke="#1d4ed8" strokeWidth={strokeThin} />
+                    <text x={pw / 2} y={cy + 18} fontSize={Math.round(fSizeSm * 0.85)} fill="#2563eb" stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" textAnchor="middle" fontWeight="bold">Ø4.5 Tirador Botón</text>
+                  </g>
+                );
+              }
+
+              const hLen = hConf.lengthMm || 128;
+              if (pw < hLen + 40) return null;
+
+              const cx1 = pw / 2 - hLen / 2;
+              const cx2 = pw / 2 + hLen / 2;
+
+              return (
+                <g key="cajon-handle-double">
+                  <circle cx={cx1} cy={cy} r={Math.max(4.5, Math.round(vMax * 0.012))} fill="#2563eb" stroke="#1d4ed8" strokeWidth={strokeThin} />
+                  <circle cx={cx2} cy={cy} r={Math.max(4.5, Math.round(vMax * 0.012))} fill="#2563eb" stroke="#1d4ed8" strokeWidth={strokeThin} />
+                  <line x1={cx1} y1={cy} x2={cx2} y2={cy} stroke="#2563eb" strokeWidth={strokeThin} strokeDasharray="4,2" />
+                  {/* Cota horizontal entre centros */}
+                  <line x1={cx1} y1={cy - 18} x2={cx2} y2={cy - 18} stroke="#2563eb" strokeWidth={strokeThin} />
+                  <line x1={cx1} y1={cy - 24} x2={cx1} y2={cx1} stroke="#2563eb" strokeWidth={strokeThin} />
+                  <line x1={cx2} y1={cy - 24} x2={cx2} y2={cy} stroke="#2563eb" strokeWidth={strokeThin} />
+                  <text x={pw / 2} y={cy - 22} fontSize={Math.round(fSizeSm * 0.85)} fill="#2563eb" stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" textAnchor="middle" fontWeight="900" fontFamily="monospace">{hLen}</text>
+                  <text x={pw / 2} y={cy + 18} fontSize={Math.round(fSizeSm * 0.8)} fill="#2563eb" stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" textAnchor="middle" fontWeight="bold">2x Ø4.5 Tirador ({hLen}mm)</text>
+                </g>
+              );
+            })()}
           </g>
         )}
 
@@ -1009,6 +1235,30 @@ export function KitchenBlueprint() {
                 <path d={`M 0 ${bodyH / 2} L ${cabW} 0 L ${cabW} ${bodyH} Z`} fill="none" stroke="#c026d3" strokeWidth={strokeF * 0.8} strokeDasharray="4,4" />
               )}
 
+              {/* Repisas Interiores en Vista Frontal (proyección oculta) */}
+              {isCabinetWithDoors(cab) && (() => {
+                const shelfElevations = getResolvedCabinetShelfElevations(cab, state.thickness);
+                const thickMm = (state.thickness || 1.8) * 10;
+                const sideThickMm = (state.thickness || 1.8) * 10;
+                return shelfElevations.map((elev, sIdx) => {
+                  const elevMm = Math.round(elev * 10);
+                  const yShelf = bodyH - elevMm - thickMm / 2;
+                  return (
+                    <g key={`front-shelf-${sIdx}`}>
+                      <line 
+                        x1={sideThickMm} 
+                        y1={yShelf + thickMm / 2} 
+                        x2={cabW - sideThickMm} 
+                        y2={yShelf + thickMm / 2} 
+                        stroke="#0284c7" 
+                        strokeWidth={strokeF * 0.8} 
+                        strokeDasharray="4,3" 
+                      />
+                    </g>
+                  );
+                });
+              })()}
+
               {/* Cota Ancho Superior */}
               <line x1={0} y1={-padTopF * 0.42} x2={cabW} y2={-padTopF * 0.42} stroke={COLOR_MAGENTA} strokeWidth={strokeF} />
               <line x1={0} y1={-padTopF * 0.52} x2={0} y2={0} stroke={COLOR_MAGENTA} strokeWidth={strokeF * 0.8} />
@@ -1115,6 +1365,43 @@ export function KitchenBlueprint() {
                   <text x={cabD - 13} y={golaCY_lat + 5} fontSize={Math.max(11, fSizeL * 0.38)} fill={kState.golaSystem === 'black' ? '#ffffff' : '#0f172a'} fontWeight="900" textAnchor="middle">GOLA C</text>
                 </g>
               )}
+
+              {/* Repisas Interiores y Soportes en Vista Lateral */}
+              {isCabinetWithDoors(cab) && (() => {
+                const shelfElevations = getResolvedCabinetShelfElevations(cab, state.thickness);
+                const thickMm = (state.thickness || 1.8) * 10;
+                return shelfElevations.map((elev, sIdx) => {
+                  const elevMm = Math.round(elev * 10);
+                  const yShelf = bodyH - elevMm - thickMm / 2;
+                  return (
+                    <g key={`lat-shelf-${sIdx}`}>
+                      <rect 
+                        x={25} 
+                        y={yShelf} 
+                        width={cabD - 45} 
+                        height={thickMm} 
+                        fill="#cbd5e1" 
+                        stroke="#0284c7" 
+                        strokeWidth={strokeL * 0.7} 
+                      />
+                      {/* Pitones de soporte Ø5 */}
+                      <circle cx={37} cy={yShelf + thickMm} r={3} fill="#0284c7" />
+                      <circle cx={cabD - 45} cy={yShelf + thickMm} r={3} fill="#0284c7" />
+                      <text 
+                        x={cabD / 2} 
+                        y={yShelf - 4} 
+                        fontSize={Math.max(10, fSizeL * 0.35)} 
+                        fill="#0284c7" 
+                        fontWeight="bold" 
+                        textAnchor="middle" 
+                        fontFamily="monospace"
+                      >
+                        REPISA (H={elevMm})
+                      </text>
+                    </g>
+                  );
+                });
+              })()}
 
               <rect x={cabD - 18} y={isBaseGola ? 35 : 0} width={18} height={isBaseGola ? bodyH - 35 : bodyH} fill="#f97316" stroke="#ea580c" strokeWidth={strokeL * 0.8} />
               {legsH > 0 && (
@@ -1276,117 +1563,140 @@ export function KitchenBlueprint() {
   );
 
   return (
-    <div className="fixed inset-0 z-[100] bg-neutral-800 text-black overflow-auto print-only-container">
-      {/* Barra Superior Flotante de Acciones y Descarga de PDF */}
-      <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[200] print:hidden flex flex-wrap items-center justify-center gap-3 bg-slate-900/95 text-white px-5 py-3 rounded-2xl shadow-2xl border border-white/20 backdrop-blur-md max-w-[95vw]">
-        <div className="flex items-center gap-2 text-xs font-bold text-orange-400 mr-2 border-r border-white/20 pr-3">
-          <FileText size={16} />
-          <span>PLANOS DE FABRICACIÓN</span>
+    <div className="fixed inset-0 z-[100] bg-neutral-800 text-black flex flex-col overflow-hidden">
+      {/* Header Superior Fijo Integrado (Opción 1) */}
+      <header className="sticky top-0 left-0 right-0 z-40 print:hidden w-full bg-slate-900/95 border-b border-slate-800 backdrop-blur-md px-4 py-2.5 shadow-xl flex flex-wrap items-center justify-between gap-3 shrink-0">
+        {/* Identificación y Título */}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 text-xs font-bold text-orange-400 border-r border-slate-700 pr-3">
+            <FileText size={16} className="text-orange-500 shrink-0" />
+            <span className="tracking-wider uppercase">PLANOS DE FABRICACIÓN</span>
+          </div>
+          <span className="hidden xl:inline-block text-[11px] text-slate-400 font-medium">
+            Láminas Técnicas A3 &middot; Despiece CNC &middot; BOM
+          </span>
         </div>
 
-        {/* Botón Principal: Descargar Planos Completos A3 en PDF */}
-        <button 
-          onClick={handleExportA3}
-          disabled={isExportingA3}
-          className="bg-orange-500 hover:bg-orange-600 disabled:opacity-50 active:scale-95 text-white px-4 py-2 rounded-xl font-bold uppercase text-xs tracking-wider shadow-lg flex items-center gap-2 transition-all cursor-pointer"
-          title="Generar y descargar todos los planos y despieces en formato A3 de alta resolución"
-        >
-          {isExportingA3 ? (
-            <>
-              <Loader2 size={15} className="animate-spin text-white" />
-              <span>Generando PDF ({exportProgress ? `${exportProgress.current}/${exportProgress.total}` : 'Iniciando...'})</span>
-            </>
-          ) : (
-            <>
-              <Download size={15} />
-              <span>Descargar Planos Completos PDF (A3)</span>
-            </>
-          )}
-        </button>
-
-        {generatedPdfUrl && (
-          <a
-            href={generatedPdfUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            download="planos_fabricacion_cocina_A3.pdf"
-            className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-xl font-bold uppercase text-xs tracking-wider shadow-lg flex items-center gap-2 animate-bounce cursor-pointer"
-            title="Haz clic para abrir o descargar directamente el PDF generado"
+        {/* Acciones Técnicas y Exportaciones */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Botón Principal: Descargar Planos Completos A3 en PDF */}
+          <button 
+            onClick={handleExportA3}
+            disabled={isExportingA3}
+            className="bg-orange-500 hover:bg-orange-600 disabled:opacity-50 active:scale-95 text-white px-3 py-1.5 rounded-lg font-bold uppercase text-[11px] tracking-wider shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
+            title="Generar y descargar todos los planos y despieces en formato A3 de alta resolución"
           >
-            <Download size={15} />
-            <span>¡PDF Listo! Abrir / Descargar</span>
-          </a>
-        )}
+            {isExportingA3 ? (
+              <>
+                <Loader2 size={14} className="animate-spin text-white" />
+                <span>Generando ({exportProgress ? `${exportProgress.current}/${exportProgress.total}` : '...'})</span>
+              </>
+            ) : (
+              <>
+                <Download size={14} />
+                <span>Planos PDF (A3)</span>
+              </>
+            )}
+          </button>
 
-        {/* Botón Secundario: Ficha Técnica PDF Directo */}
-        <button 
-          onClick={() => exportKitchenPDF(kState.cabinets, state)}
-          className="bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white px-4 py-2 rounded-xl font-bold uppercase text-xs tracking-wider shadow-lg flex items-center gap-2 transition-all cursor-pointer"
-          title="Descargar archivo PDF con despiece de corte, resumen de cubicación y herrajes"
-        >
-          <FileText size={15} />
-          <span>Ficha Técnica PDF (BOM)</span>
-        </button>
-
-        {/* Botón Industria 4.0: Etiquetas de Producción con Código QR */}
-        <button 
-          onClick={handleExportLabels}
-          disabled={isExportingLabels}
-          className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50 active:scale-95 text-white px-4 py-2 rounded-xl font-bold uppercase text-xs tracking-wider shadow-lg flex items-center gap-2 transition-all cursor-pointer"
-          title="Generar hoja de etiquetas adhesivas de corte y mecanizado con código QR y cantos"
-        >
-          {isExportingLabels ? (
-            <>
-              <Loader2 size={15} className="animate-spin text-white" />
-              <span>Generando...</span>
-            </>
-          ) : (
-            <>
-              <QrCode size={15} />
-              <span>Etiquetas QR (PDF)</span>
-            </>
+          {generatedPdfUrl && (
+            <a
+              href={generatedPdfUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              download="planos_fabricacion_cocina_A3.pdf"
+              className="bg-green-600 hover:bg-green-500 text-white px-3 py-1.5 rounded-lg font-bold uppercase text-[11px] tracking-wider shadow-sm flex items-center gap-1.5 animate-pulse cursor-pointer"
+              title="Haz clic para abrir o descargar directamente el PDF generado"
+            >
+              <Download size={14} />
+              <span>PDF Listo</span>
+            </a>
           )}
-        </button>
 
-        {/* Botón Industria 4.0: Exportar Paquete DXF para CNC */}
-        <button 
-          onClick={handleExportAllDxf}
-          disabled={isExportingDxf}
-          className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 active:scale-95 text-white px-3.5 py-2 rounded-xl font-bold uppercase text-xs tracking-wider shadow-lg flex items-center gap-2 transition-all cursor-pointer"
-          title="Descargar paquete ZIP con subcarpetas por mueble y archivos DXF con capas CNC para centros de corte"
-        >
-          {isExportingDxf ? (
-            <>
-              <Loader2 size={15} className="animate-spin text-white" />
-              <span>Generando ZIP DXF...</span>
-            </>
-          ) : (
-            <>
-              <Cpu size={15} />
-              <span>Exportar DXF CNC (.ZIP)</span>
-            </>
-          )}
-        </button>
+          {/* Botón Secundario: Ficha Técnica PDF Directo */}
+          <button 
+            onClick={() => exportKitchenPDF(kState.cabinets, state)}
+            className="bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white px-3 py-1.5 rounded-lg font-bold uppercase text-[11px] tracking-wider shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
+            title="Descargar archivo PDF con despiece de corte, resumen de cubicación y herrajes"
+          >
+            <FileText size={14} />
+            <span>Ficha (BOM)</span>
+          </button>
 
-        {/* Botón Terciario: Cuadro de Impresión Nativo */}
-        <button 
-          onClick={() => window.print()}
-          className="bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white px-3.5 py-2 rounded-xl font-semibold text-xs tracking-wider border border-white/10 transition-all flex items-center gap-1.5 cursor-pointer"
-          title="Abrir cuadro de diálogo de impresión del navegador"
-        >
-          <Printer size={14} />
-          <span>Imprimir</span>
-        </button>
+          {/* Botón CAD/CAM: Exportar Excel de Corte y Materiales */}
+          <button 
+            onClick={exportKitchenToExcel}
+            className="bg-emerald-700 hover:bg-emerald-600 active:scale-95 text-white px-3 py-1.5 rounded-lg font-bold uppercase text-[11px] tracking-wider shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
+            title="Descargar planilla Excel CAD/CAM para seccionadoras y centros de corte"
+          >
+            <FileSpreadsheet size={14} />
+            <span>Excel CAD/CAM</span>
+          </button>
 
-        {/* Botón Cerrar */}
-        <button 
-          onClick={() => state.setIsPrinting(false)}
-          className="bg-slate-700 hover:bg-red-600 text-white px-3.5 py-2 rounded-xl font-semibold text-xs tracking-wider shadow-md hover:shadow-red-500/20 transition-all flex items-center gap-1.5 cursor-pointer ml-1"
-        >
-          <X size={15} />
-          <span>Cerrar</span>
-        </button>
-      </div>
+          {/* Botón Industria 4.0: Etiquetas de Producción con Código QR */}
+          <button 
+            onClick={handleExportLabels}
+            disabled={isExportingLabels}
+            className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50 active:scale-95 text-white px-3 py-1.5 rounded-lg font-bold uppercase text-[11px] tracking-wider shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
+            title="Generar hoja de etiquetas adhesivas de corte y mecanizado con código QR y cantos"
+          >
+            {isExportingLabels ? (
+              <Loader2 size={14} className="animate-spin text-white" />
+            ) : (
+              <QrCode size={14} />
+            )}
+            <span>Etiquetas QR</span>
+          </button>
+
+          {/* Botón Industria 4.0: Exportar Paquete DXF para CNC */}
+          <button 
+            onClick={handleExportAllDxf}
+            disabled={isExportingDxf}
+            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 active:scale-95 text-white px-3 py-1.5 rounded-lg font-bold uppercase text-[11px] tracking-wider shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
+            title="Descargar paquete ZIP con subcarpetas por mueble y archivos DXF con capas CNC para centros de corte"
+          >
+            {isExportingDxf ? (
+              <Loader2 size={14} className="animate-spin text-white" />
+            ) : (
+              <Cpu size={14} />
+            )}
+            <span>DXF CNC</span>
+          </button>
+        </div>
+
+        {/* Lado Derecho: Comercial, Imprimir y Cerrar */}
+        <div className="flex items-center gap-2">
+          {/* Botón Comercial: Cotización Dual B2B & Retail */}
+          <button 
+            onClick={() => setIsB2BQuoteOpen(true)}
+            className="bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 active:scale-95 text-white px-3.5 py-1.5 rounded-lg font-bold uppercase text-[11px] tracking-wider shadow-md flex items-center gap-1.5 transition-all cursor-pointer border border-amber-400/30"
+            title="Abrir cotizador comercial B2B & Retail con desglose de costos y márgenes"
+          >
+            <DollarSign size={14} />
+            <span>Cotización B2B / Retail</span>
+          </button>
+
+          <button 
+            onClick={() => window.print()}
+            className="bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-slate-700 transition-all flex items-center gap-1 cursor-pointer"
+            title="Imprimir"
+          >
+            <Printer size={14} />
+          </button>
+
+          <button 
+            onClick={() => state.setIsPrinting(false)}
+            className="bg-slate-800 hover:bg-rose-600 text-slate-300 hover:text-white px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-700 transition-all flex items-center gap-1.5 cursor-pointer ml-1"
+            title="Cerrar vista de planos (Esc)"
+          >
+            <X size={15} />
+            <span>Cerrar</span>
+          </button>
+        </div>
+      </header>
+
+      {/* Contenedor con Scroll para las Láminas A3 */}
+      <div className="flex-1 overflow-auto bg-neutral-800 print-only-container">
 
       <style>{`
         @media screen { 
@@ -2068,7 +2378,8 @@ export function KitchenBlueprint() {
                             cab, 
                             state.drawerHardware === 'Hafele' ? 'Hafele' : 'Provelcar', 
                             state.assemblyType === 'minifix' ? 'minifix' : 'spax', 
-                            kState.golaSystem
+                            kState.golaSystem,
+                            kState.handleConfig
                           );
                           downloadPartDxfFile(cncPart);
                         }}
@@ -2145,6 +2456,23 @@ export function KitchenBlueprint() {
                       <div className="font-black text-orange-700 uppercase">DETALLE 3</div>
                       <div className="font-bold">CAZOLETA DE BISAGRA</div>
                       <div className="text-slate-600 font-medium">Eje a 22.5mm • A 90mm de extremos</div>
+                    </div>
+                  </div>
+
+                  {/* Detalle 4: Soportes de Repisa / Pitón Ø5 */}
+                  <div className="flex items-center gap-3">
+                    <div className="w-16 h-16 rounded-full border-2 border-sky-500 bg-white flex items-center justify-center shrink-0 relative overflow-hidden shadow-xs">
+                      <svg viewBox="0 0 50 50" className="w-full h-full p-1">
+                        <circle cx="25" cy="23" r="5" fill="#0284c7" stroke="#0369a1" strokeWidth="1.2"/>
+                        <line x1="18" y1="23" x2="32" y2="23" stroke="#ffffff" strokeWidth="0.8"/>
+                        <line x1="25" y1="16" x2="25" y2="30" stroke="#ffffff" strokeWidth="0.8"/>
+                        <text x="25" y="44" fontSize="8" fill="#0284c7" textAnchor="middle" fontWeight="900" fontFamily="monospace">Ø5 Pitón</text>
+                      </svg>
+                    </div>
+                    <div className="text-[10.5px] text-slate-800 leading-tight">
+                      <div className="font-black text-sky-700 uppercase">DETALLE 4</div>
+                      <div className="font-bold">SOPORTE REPISA (PITÓN)</div>
+                      <div className="text-slate-600 font-medium">Ø5mm x 10mm • Evasión anti-colisión</div>
                     </div>
                   </div>
                 </div>
@@ -2478,6 +2806,7 @@ export function KitchenBlueprint() {
         
         <BlueprintTitleBlock pageNum={totalDocPages} title="LISTADO CONSOLIDADO DE MATERIALES E INSUMOS (BOM)" />
       </div>
+      </div>
 
       {/* Modal de PDF Listo para Descargar */}
       {generatedPdfUrl && (
@@ -2509,6 +2838,12 @@ export function KitchenBlueprint() {
           </div>
         </div>
       )}
+
+      {/* Modal de Cotización Dual B2B & Retail integrado */}
+      <KitchenB2BQuoteModal
+        isOpen={isB2BQuoteOpen}
+        onClose={() => setIsB2BQuoteOpen(false)}
+      />
 
     </div>
   );

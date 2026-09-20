@@ -12,6 +12,7 @@ import {
 } from '../../types/mep';
 import { detectMepClashes } from '../../utils/mepClashDetection';
 import { calculateMepPositionOnWall } from '../../utils/mepGeometry';
+import { getWallDescriptiveInfo, getAllWallsDescriptiveInfo } from '../../utils/mepWallNaming';
 import { 
   Wrench, 
   AlertTriangle, 
@@ -29,7 +30,9 @@ import {
   Minus,
   Layers,
   Sparkles,
-  Info
+  Info,
+  Ruler,
+  Compass
 } from 'lucide-react';
 
 interface KitchenMepPanelProps {
@@ -42,10 +45,12 @@ export const KitchenMepPanel: React.FC<KitchenMepPanelProps> = ({ onClose, isLig
     mepPoints,
     showMep,
     showMepClashes,
+    showMepDimensions,
     activeMepId,
     setActiveMepId,
     setShowMep,
     setShowMepClashes,
+    setShowMepDimensions,
     addMepPoint,
     updateMepPoint,
     removeMepPoint,
@@ -53,13 +58,20 @@ export const KitchenMepPanel: React.FC<KitchenMepPanelProps> = ({ onClose, isLig
     autoFixClash,
     walls,
     cabinets,
+    architecturalElements,
     countertopConfig,
     setActiveCabinet,
+    roomConfig,
   } = useKitchenStore();
 
   const [selectedWallId, setSelectedWallId] = useState<string>(walls[0]?.id || '');
   const [activeTab, setActiveTab] = useState<'clashes' | 'points' | 'add'>('clashes');
   const [categoryFilter, setCategoryFilter] = useState<'all' | 'water' | 'electric' | 'gas'>('all');
+
+  // Muros descriptivos (Muro A · Fondo / Norte · 500 cm)
+  const descriptiveWalls = useMemo(() => {
+    return getAllWallsDescriptiveInfo(walls, cabinets, architecturalElements);
+  }, [walls, cabinets, architecturalElements]);
 
   // Detectar interferencias
   const clashes = useMemo(() => {
@@ -68,6 +80,7 @@ export const KitchenMepPanel: React.FC<KitchenMepPanelProps> = ({ onClose, isLig
 
   const activePoint = mepPoints.find((p) => p.id === activeMepId);
   const activeWall = walls.find((w) => w.id === (activePoint?.wallId || selectedWallId)) || walls[0];
+  const activeWallInfo = descriptiveWalls.find((dw) => dw.id === activeWall?.id) || descriptiveWalls[0];
 
   const handleAddPoint = (type: MepType) => {
     if (!activeWall) return;
@@ -76,8 +89,9 @@ export const KitchenMepPanel: React.FC<KitchenMepPanelProps> = ({ onClose, isLig
     const [x2, z2] = activeWall.end;
     const wLen = Math.hypot(x2 - x1, z2 - z1);
     const offset = wLen / 2;
+    const roomPoly = roomConfig?.vertices?.map(v => [v.x, v.y] as [number, number]) || [];
 
-    const calc = calculateMepPositionOnWall(activeWall, offset, config.defaultElevationCm);
+    const calc = calculateMepPositionOnWall(activeWall, offset, config.defaultElevationCm, roomPoly);
     const newPoint: MepPoint = {
       id: `mep-${type}-${Date.now()}`,
       name: `${config.label}`,
@@ -172,13 +186,13 @@ export const KitchenMepPanel: React.FC<KitchenMepPanelProps> = ({ onClose, isLig
         </div>
 
         {/* Controles de visualización y visibilidad */}
-        <div className={`mt-3.5 pt-3 border-t grid grid-cols-2 gap-2 ${
+        <div className={`mt-3.5 pt-3 border-t grid grid-cols-3 gap-1.5 ${
           isLight ? 'border-slate-200/80' : 'border-slate-800'
         }`}>
           <button
             type="button"
             onClick={() => setShowMep(!showMep)}
-            className={`py-2 px-3 rounded-xl border flex items-center justify-center gap-2 text-xs font-bold transition-all cursor-pointer ${
+            className={`py-2 px-2 rounded-xl border flex items-center justify-center gap-1.5 text-xs font-bold transition-all cursor-pointer ${
               showMep
                 ? isLight
                   ? 'bg-cyan-50 border-cyan-400 text-cyan-900 shadow-sm'
@@ -187,15 +201,34 @@ export const KitchenMepPanel: React.FC<KitchenMepPanelProps> = ({ onClose, isLig
                   ? 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
                   : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:bg-slate-800'
             }`}
+            title="Mostrar / Ocultar capas MEP en 3D"
           >
-            {showMep ? <Eye className="w-4 h-4 text-cyan-600" /> : <EyeOff className="w-4 h-4 text-slate-400" />}
-            <span>Ver MEP en 3D</span>
+            {showMep ? <Eye className="w-3.5 h-3.5 text-cyan-600 shrink-0" /> : <EyeOff className="w-3.5 h-3.5 text-slate-400 shrink-0" />}
+            <span className="truncate">Ver MEP</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowMepDimensions(!showMepDimensions)}
+            className={`py-2 px-2 rounded-xl border flex items-center justify-center gap-1.5 text-xs font-bold transition-all cursor-pointer ${
+              showMepDimensions
+                ? isLight
+                  ? 'bg-sky-50 border-sky-400 text-sky-900 shadow-sm'
+                  : 'bg-sky-950/80 border-sky-500 text-sky-300'
+                : isLight
+                  ? 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
+                  : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:bg-slate-800'
+            }`}
+            title="Cotas exclusivas para MEP: Offset a esquinas, elevación NPT e inter-distancia (no se mezclan con muebles)"
+          >
+            <Ruler className={`w-3.5 h-3.5 ${showMepDimensions ? 'text-sky-600' : 'text-slate-400'} shrink-0`} />
+            <span className="truncate">Cotas MEP</span>
           </button>
 
           <button
             type="button"
             onClick={() => setShowMepClashes(!showMepClashes)}
-            className={`py-2 px-3 rounded-xl border flex items-center justify-center gap-2 text-xs font-bold transition-all cursor-pointer ${
+            className={`py-2 px-2 rounded-xl border flex items-center justify-center gap-1.5 text-xs font-bold transition-all cursor-pointer ${
               showMepClashes
                 ? isLight
                   ? 'bg-rose-50 border-rose-400 text-rose-900 shadow-sm'
@@ -204,9 +237,10 @@ export const KitchenMepPanel: React.FC<KitchenMepPanelProps> = ({ onClose, isLig
                   ? 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
                   : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:bg-slate-800'
             }`}
+            title="Detección de interferencias con cajones y fondos"
           >
-            <ShieldAlert className={`w-4 h-4 ${showMepClashes ? 'text-rose-600' : 'text-slate-400'}`} />
-            <span>Alertas de Choque</span>
+            <ShieldAlert className={`w-3.5 h-3.5 ${showMepClashes ? 'text-rose-600' : 'text-slate-400'} shrink-0`} />
+            <span className="truncate">Alertas</span>
           </button>
         </div>
       </div>
@@ -450,7 +484,7 @@ export const KitchenMepPanel: React.FC<KitchenMepPanelProps> = ({ onClose, isLig
                   {filteredPoints.map((point) => {
                     const cfg = MEP_TYPE_CONFIGS[point.type];
                     const isSelected = activeMepId === point.id;
-                    const wallIdx = walls.findIndex(w => w.id === point.wallId);
+                    const wallInfo = descriptiveWalls.find(w => w.id === point.wallId) || descriptiveWalls[0];
 
                     return (
                       <div
@@ -478,7 +512,7 @@ export const KitchenMepPanel: React.FC<KitchenMepPanelProps> = ({ onClose, isLig
                             <span className={`text-[11px] block truncate ${
                               isLight ? 'text-slate-500' : 'text-slate-400'
                             }`}>
-                              {wallIdx >= 0 ? `Muro ${wallIdx + 1}` : 'Muro'} · Offset: {Math.round(point.wallOffset || 0)}cm
+                              {wallInfo ? wallInfo.shortLabel : 'Muro'} · Offset: {Math.round(point.wallOffset || 0)} cm
                             </span>
                           </div>
                         </div>
@@ -553,6 +587,41 @@ export const KitchenMepPanel: React.FC<KitchenMepPanelProps> = ({ onClose, isLig
                         : 'bg-slate-800 border-slate-700 text-white focus:border-cyan-400'
                     }`}
                   />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className={`text-xs font-semibold ${
+                    isLight ? 'text-slate-700' : 'text-slate-400'
+                  }`}>
+                    Muro Asignado
+                  </label>
+                  <select
+                    value={activePoint.wallId || walls[0]?.id}
+                    onChange={(e) => {
+                      const newWallId = e.target.value;
+                      const targetWall = walls.find(w => w.id === newWallId);
+                      if (targetWall) {
+                        const roomPoly = roomConfig?.vertices?.map(v => [v.x, v.y] as [number, number]) || [];
+                        const calc = calculateMepPositionOnWall(targetWall, activePoint.wallOffset || 50, activePoint.elevation, roomPoly);
+                        updateMepPoint(activePoint.id, {
+                          wallId: targetWall.id,
+                          position: calc.position,
+                          rotation: calc.rotation,
+                        });
+                      }
+                    }}
+                    className={`w-full rounded-xl px-3 py-2 text-xs font-semibold border transition-colors cursor-pointer ${
+                      isLight 
+                        ? 'bg-white border-slate-300 text-slate-900 focus:border-cyan-500' 
+                        : 'bg-slate-800 border-slate-700 text-white focus:border-cyan-400'
+                    }`}
+                  >
+                    {descriptiveWalls.map((wInfo) => (
+                      <option key={wInfo.id} value={wInfo.id}>
+                        {wInfo.fullLabel}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 {/* Ajuste de Cota NPT y Offset con botones steppers rápidos */}
@@ -664,14 +733,19 @@ export const KitchenMepPanel: React.FC<KitchenMepPanelProps> = ({ onClose, isLig
         {activeTab === 'add' && (
           <div className="space-y-4">
             {/* Selección de muro destino */}
-            <div className={`p-3.5 rounded-2xl border space-y-1.5 ${
+            <div className={`p-3.5 rounded-2xl border space-y-2.5 ${
               isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-900 border-slate-800'
             }`}>
-              <label className={`text-xs font-bold uppercase tracking-wider block ${
-                isLight ? 'text-slate-700' : 'text-slate-300'
-              }`}>
-                Muro Destino para Instalación
-              </label>
+              <div className="flex items-center justify-between">
+                <label className={`text-xs font-bold uppercase tracking-wider block ${
+                  isLight ? 'text-slate-700' : 'text-slate-300'
+                }`}>
+                  Muro Destino para Instalación
+                </label>
+                <span className="text-[11px] font-semibold text-cyan-600 dark:text-cyan-400">
+                  {descriptiveWalls.length} Muros detectados
+                </span>
+              </div>
               <select
                 value={selectedWallId}
                 onChange={(e) => setSelectedWallId(e.target.value)}
@@ -681,12 +755,37 @@ export const KitchenMepPanel: React.FC<KitchenMepPanelProps> = ({ onClose, isLig
                     : 'bg-slate-800 border-slate-700 text-white focus:border-cyan-400'
                 }`}
               >
-                {walls.map((w, idx) => (
-                  <option key={w.id} value={w.id}>
-                    Muro {idx + 1} ({Math.round(Math.hypot(w.end[0] - w.start[0], w.end[1] - w.start[1]))} cm de largo)
+                {descriptiveWalls.map((wInfo) => (
+                  <option key={wInfo.id} value={wInfo.id}>
+                    {wInfo.fullLabel}
                   </option>
                 ))}
               </select>
+
+              {/* Tarjeta visual de referencia del muro seleccionado */}
+              {(() => {
+                const curWallInfo = descriptiveWalls.find(w => w.id === selectedWallId) || descriptiveWalls[0];
+                if (!curWallInfo) return null;
+                return (
+                  <div className={`p-2.5 rounded-xl border flex items-center justify-between text-xs ${
+                    isLight ? 'bg-cyan-50/70 border-cyan-200 text-cyan-950' : 'bg-cyan-950/40 border-cyan-900/60 text-cyan-200'
+                  }`}>
+                    <div className="flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-cyan-600 text-white font-bold text-xs flex items-center justify-center shadow-xs">
+                        {curWallInfo.letter}
+                      </span>
+                      <div>
+                        <span className="font-bold block">{curWallInfo.orientation}</span>
+                        <span className="text-[11px] opacity-80">Longitud: {curWallInfo.lengthCm} cm · {curWallInfo.cabinetsCount} muebles</span>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[10px] font-mono opacity-75 block">Origen: 0 cm</span>
+                      <span className="text-[10px] font-mono opacity-75 block">Fin: {curWallInfo.lengthCm} cm</span>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Presets completos de obra BIM */}

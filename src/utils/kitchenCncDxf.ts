@@ -21,7 +21,7 @@ export function generatePartDxf(part: CncMachinedPart): string {
 
   // 2. TABLES SECTION (LAYERS DEFINITION WITH CNC COLORS)
   dxf += '0\nSECTION\n2\nTABLES\n';
-  dxf += '0\nTABLE\n2\nLAYER\n70\n7\n';
+  dxf += '0\nTABLE\n2\nLAYER\n70\n9\n';
 
   // Layer CUT_EXTERIOR (Color 7: Blanco / Corte perimetral con fresa)
   dxf += '0\nLAYER\n2\nCUT_EXTERIOR\n70\n0\n62\n7\n6\nCONTINUOUS\n';
@@ -33,6 +33,8 @@ export function generatePartDxf(part: CncMachinedPart): string {
   dxf += '0\nLAYER\n2\nDRILL_FACE_5\n70\n0\n62\n5\n6\nCONTINUOUS\n';
   // Layer DRILL_FACE_8 (Color 6: Magenta / Pernos y tarugos Ø8mm)
   dxf += '0\nLAYER\n2\nDRILL_FACE_8\n70\n0\n62\n6\n6\nCONTINUOUS\n';
+  // Layer DRILL_HANDLE (Color 4: Cian / Perforaciones pasantes de tirador Ø4.5mm)
+  dxf += '0\nLAYER\n2\nDRILL_HANDLE\n70\n0\n62\n4\n6\nCONTINUOUS\n';
   // Layer GROOVE_BACK (Color 2: Amarillo / Ranura de fondo 4mm x 8mm)
   dxf += '0\nLAYER\n2\nGROOVE_BACK\n70\n0\n62\n2\n6\nCONTINUOUS\n';
   // Layer POCKET_GOLA (Color 30: Naranja / Destaje de perfiles Gola L y C)
@@ -60,12 +62,18 @@ export function generatePartDxf(part: CncMachinedPart): string {
     dxf += `11\n${c.x2.toFixed(3)}\n21\n${c.y2.toFixed(3)}\n31\n0.0\n`;
   });
 
-  // 3.2 Perforaciones circulares (DRILL_FACE_*)
+  // 3.2 Perforaciones circulares (DRILL_FACE_* y DRILL_HANDLE)
   part.drills.forEach(drill => {
     let layer = 'DRILL_FACE_5';
-    if (drill.diameter >= 30) layer = 'DRILL_FACE_35';
-    else if (drill.diameter >= 14) layer = 'DRILL_FACE_15';
-    else if (drill.diameter >= 7) layer = 'DRILL_FACE_8';
+    if (drill.type === 'handle_hole' || drill.label?.toLowerCase().includes('tirador')) {
+      layer = 'DRILL_HANDLE';
+    } else if (drill.diameter >= 30) {
+      layer = 'DRILL_FACE_35';
+    } else if (drill.diameter >= 14) {
+      layer = 'DRILL_FACE_15';
+    } else if (drill.diameter >= 7) {
+      layer = 'DRILL_FACE_8';
+    }
 
     const radius = (drill.diameter / 2).toFixed(3);
 
@@ -202,9 +210,10 @@ MAPEO DE CAPAS CAD/CNC ESTÁNDAR:
 3. DRILL_FACE_15   | Color 3 (Verde)     | Cajas de ensamble Minifix / Rastex Ø15mm x 13.5mm
 4. DRILL_FACE_8    | Color 6 (Magenta)   | Pernos de unión y tarugos espiga guía Ø8mm
 5. DRILL_FACE_5    | Color 5 (Azul)      | Correderas de cajón, cremallera Sistema 32, tornillos Spax Ø5mm
-6. GROOVE_BACK     | Color 2 (Amarillo)  | Ranura de fondo Durolac / MDF 4mm (8mm profundidad)
-7. POCKET_GOLA     | Color 30 (Naranja)  | Rebaje/destaje perfiles Gola L (58x26) y C (68x26)
-8. TEXT_INFO       | Color 8 (Gris)      | Rotulado de taller y marcas de referencia (no mecanizar)
+6. DRILL_HANDLE    | Color 4 (Cian)      | Perforaciones pasantes de tirador Ø4.5mm
+7. GROOVE_BACK     | Color 2 (Amarillo)  | Ranura de fondo Durolac / MDF 4mm (8mm profundidad)
+8. POCKET_GOLA     | Color 30 (Naranja)  | Rebaje/destaje perfiles Gola L (58x26) y C (68x26)
+9. TEXT_INFO       | Color 8 (Gris)      | Rotulado de taller y marcas de referencia (no mecanizar)
 
 ESTRUCTURA DE CARPETAS EN ESTE PAQUETE:
 --------------------------------------------------------------------------------

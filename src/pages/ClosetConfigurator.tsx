@@ -12,7 +12,7 @@ import { SaveProjectModal } from '../components/common/SaveProjectModal';
 import { useStore } from '../store';
 import { QRCodeSVG } from 'qrcode.react';
 import { ARView } from '../components/ARView';
-import { Save } from 'lucide-react';
+import { Save, Undo2, Redo2 } from 'lucide-react';
 
 export function ClosetConfigurator({ onNavigate }: { onNavigate: () => void }) {
   const [showQR, setShowQR] = useState(false);
@@ -20,7 +20,26 @@ export function ClosetConfigurator({ onNavigate }: { onNavigate: () => void }) {
   const [isAR, setIsAR] = useState(false);
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
   const loadDesign = useStore(state => state.loadDesign);
+  const undo = useStore(state => state.undo);
+  const redo = useStore(state => state.redo);
+  const canUndo = useStore(state => state.canUndo);
+  const canRedo = useStore(state => state.canRedo);
   const state = useStore();
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) return;
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z') && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      } else if ((e.ctrlKey || e.metaKey) && (((e.key === 'z' || e.key === 'Z') && e.shiftKey) || e.key === 'y' || e.key === 'Y')) {
+        e.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [undo, redo]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -96,7 +115,38 @@ export function ClosetConfigurator({ onNavigate }: { onNavigate: () => void }) {
           <span className="font-bellota text-2xl font-bold lowercase text-orange-500 tracking-tight select-none">arquify</span>
           <span className="text-xs text-slate-500 uppercase tracking-widest border-l border-white/10 pl-3 hidden sm:inline">Clóset Modular</span>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
+          {/* Botones Deshacer y Rehacer (Undo / Redo) */}
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={undo}
+              disabled={!canUndo()}
+              className={`flex items-center justify-center p-2 rounded-lg border transition-all shadow-sm ${
+                canUndo()
+                  ? 'bg-orange-500/15 hover:bg-orange-500/25 border-orange-500/60 text-orange-400 hover:text-orange-300 cursor-pointer active:scale-95 shadow-[0_0_10px_rgba(249,115,22,0.25)]'
+                  : 'bg-white/5 border-white/5 text-slate-600 cursor-not-allowed opacity-40'
+              }`}
+              title={canUndo() ? 'Deshacer última acción (Ctrl+Z)' : 'Sin acciones para deshacer'}
+              aria-label="Deshacer"
+            >
+              <Undo2 size={16} strokeWidth={2.5} />
+            </button>
+
+            <button
+              onClick={redo}
+              disabled={!canRedo()}
+              className={`flex items-center justify-center p-2 rounded-lg border transition-all shadow-sm ${
+                canRedo()
+                  ? 'bg-orange-500/15 hover:bg-orange-500/25 border-orange-500/60 text-orange-400 hover:text-orange-300 cursor-pointer active:scale-95 shadow-[0_0_10px_rgba(249,115,22,0.25)]'
+                  : 'bg-white/5 border-white/5 text-slate-600 cursor-not-allowed opacity-40'
+              }`}
+              title={canRedo() ? 'Rehacer acción (Ctrl+Y / Ctrl+Shift+Z)' : 'Sin acciones para rehacer'}
+              aria-label="Rehacer"
+            >
+              <Redo2 size={16} strokeWidth={2.5} />
+            </button>
+          </div>
+
           <button 
             onClick={handleShowQR}
             className="px-3.5 py-1.5 bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 rounded-lg text-xs font-semibold uppercase tracking-wider transition-colors border border-orange-500/50"

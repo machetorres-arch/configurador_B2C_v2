@@ -3,12 +3,9 @@ import { Home } from './pages/Home';
 import { ClosetConfigurator } from './pages/ClosetConfigurator';
 import { KitchenConfigurator } from './pages/KitchenConfigurator';
 import { SpecialFurnitureConfigurator } from './pages/SpecialFurnitureConfigurator';
-import { SipHouseConfigurator } from './pages/SipHouseConfigurator';
 import { HplBathroomConfigurator } from './pages/HplBathroomConfigurator';
-import { ConcreteHouseConfigurator } from './pages/ConcreteHouseConfigurator';
 import OfficeConfigurator from './pages/OfficeConfigurator';
 import { ChairConfigurator } from './pages/ChairConfigurator';
-import { CltConfigurator } from './pages/CltConfigurator';
 import { useSupabaseAuthStore } from './store/supabaseAuthStore';
 
 interface Props {
@@ -57,7 +54,7 @@ class ErrorBoundary extends Component<Props, State> {
 }
 
 export default function App() {
-  const [route, setRoute] = useState<'home' | 'closet' | 'kitchen' | 'special' | 'sip-house' | 'hpl-bathroom' | 'concrete-house' | 'office' | 'chair' | 'clt-house'>('home');
+  const [route, setRoute] = useState<'home' | 'closet' | 'kitchen' | 'special' | 'hpl-bathroom' | 'office' | 'chair'>('home');
   const checkSession = useSupabaseAuthStore((state) => state.checkSession);
 
   useEffect(() => {
@@ -77,12 +74,9 @@ export default function App() {
       {route === 'closet' && <ClosetConfigurator onNavigate={() => setRoute('home')} />}
       {route === 'kitchen' && <KitchenConfigurator onNavigate={() => setRoute('home')} />}
       {route === 'special' && <SpecialFurnitureConfigurator onNavigate={() => setRoute('home')} />}
-      {route === 'sip-house' && <SipHouseConfigurator onNavigate={() => setRoute('home')} />}
       {route === 'hpl-bathroom' && <HplBathroomConfigurator onNavigate={() => setRoute('home')} />}
-      {route === 'concrete-house' && <ConcreteHouseConfigurator onNavigate={() => setRoute('home')} />}
       {route === 'office' && <OfficeConfigurator onNavigate={() => setRoute('home')} />}
       {route === 'chair' && <ChairConfigurator onNavigate={() => setRoute('home')} />}
-      {route === 'clt-house' && <CltConfigurator onNavigate={() => setRoute('home')} />}
     </ErrorBoundary>
   );
 }

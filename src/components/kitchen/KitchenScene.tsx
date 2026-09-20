@@ -14,10 +14,10 @@ import { ArchitecturalElementsRenderer } from './ArchitecturalElementsRenderer';
 import { KitchenCountertop3D } from './KitchenCountertop3D';
 import { KitchenIslandBackPanel } from './KitchenIslandBackPanel';
 import { KitchenMepScene } from './KitchenMepScene';
-import { resolvePlacement } from '../../utils/kitchenCollision';
+import { resolvePlacement, getCabinetSpecsFromTool } from '../../utils/kitchenCollision';
 
 function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
-  const { viewMode, toolMode, walls, cabinets, addWall, drawingStart, setDrawingStart, addCabinet, setToolMode, setActiveCabinet, roomConfig, activeCabinetId, addArchitecturalElement, draggingArchElementId, architecturalElements, activeArchElementId, setActiveArchElement } = useKitchenStore();
+  const { viewMode, toolMode, walls, cabinets, addWall, drawingStart, setDrawingStart, addCabinet, setToolMode, setActiveCabinet, roomConfig, activeCabinetId, addArchitecturalElement, draggingArchElementId, draggingCabinetId, setDraggingCabinetId, updateCabinet, architecturalElements, activeArchElementId, setActiveArchElement } = useKitchenStore();
   const [currentMousePos, setCurrentMousePos] = useState<[number, number] | null>(null);
   const [ghostCabinet, setGhostCabinet] = useState<{pos: [number,number,number], rot: number, isColliding?: boolean} | null>(null);
   const { camera, raycaster, pointer, scene } = useThree();
@@ -95,7 +95,61 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
 
   const dragInfoRef = useRef<{ id: string; startPointerX: number; startOffset: number } | null>(null);
 
+  useEffect(() => {
+    const handleGlobalPointerUp = () => {
+      const state = useKitchenStore.getState();
+      if (state.draggingCabinetId) {
+        state.setDraggingCabinetId(null);
+      }
+      if (state.draggingArchElementId) {
+        state.setDraggingArchElementId(null);
+      }
+    };
+    window.addEventListener('pointerup', handleGlobalPointerUp);
+    return () => {
+      window.removeEventListener('pointerup', handleGlobalPointerUp);
+    };
+  }, []);
+
   useFrame(() => {
+    const draggingCabinetId = useKitchenStore.getState().draggingCabinetId;
+    if (draggingCabinetId) {
+       raycaster.setFromCamera(pointer, camera);
+       const hit = raycaster.ray.intersectPlane(groundPlaneMath, intersectPoint);
+       if (hit) {
+          const rawX = Math.round(intersectPoint.x * 2) / 2;
+          const rawZ = Math.round(intersectPoint.z * 2) / 2;
+          const currentCabinets = useKitchenStore.getState().cabinets;
+          const cab = currentCabinets.find(c => c.id === draggingCabinetId);
+          if (cab) {
+             const result = resolvePlacement({
+                mouseX: rawX,
+                mouseZ: rawZ,
+                cabWidth: cab.width,
+                cabHeight: cab.height,
+                cabDepth: cab.depth,
+                cabType: cab.type,
+                variant: cab.variant,
+                customY: Array.isArray(cab.position) ? cab.position[1] : undefined,
+                preferredRot: cab.rotation || 0,
+                cabinets: currentCabinets,
+                ignoreId: cab.id,
+                walls: effectiveWalls,
+                roomVertices: roomConfig?.vertices,
+                architecturalElements,
+             });
+
+             if (result.position[0] !== cab.position[0] || result.position[2] !== cab.position[2] || result.rotation !== cab.rotation) {
+                useKitchenStore.getState().updateCabinet(draggingCabinetId, {
+                   position: result.position,
+                   rotation: result.rotation,
+                });
+             }
+          }
+       }
+       return;
+    }
+
     const draggingArchElementId = useKitchenStore.getState().draggingArchElementId;
     if (draggingArchElementId) {
        const architecturalElements = useKitchenStore.getState().architecturalElements;
@@ -318,114 +372,19 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
          setGhostCabinet({ pos: bestPos, rot: bestRot, isColliding: false });
          return;
       } else {
-         const isBase = toolMode.startsWith('place_base_');
-         const isTall = toolMode.startsWith('place_tall_') || toolMode === 'place_tall';
-         const isWall = toolMode.startsWith('place_wall_') || toolMode === 'place_wall';
-         if (isBase) {
-            cabType = 'base';
-            const v = toolMode.replace('place_base_', '');
-            cabVariant = v;
-            if (v === 'spice_rack') cabWidth = 15;
-            if (v === 'wine_rack') cabWidth = 20;
-            if (v === '2_doors' || v === '2_pot_drawers') cabWidth = 80;
-            if (v === 'sink_u_drawer') cabWidth = 90;
-            if (v === 'corner_blind') cabWidth = 100;
-            if (v === 'corner_l') {
-               cabWidth = 90;
-               cabDepth = 90;
-            }
-         } else if (isTall) {
-            cabType = 'tall';
-            cabHeight = 215;
-            if (toolMode === 'place_tall_wine_rack') {
-               cabVariant = 'tall_wine_rack';
-               cabWidth = 30;
-            } else if (toolMode === 'place_tall_2_doors') cabWidth = 80;
-            else if (toolMode === 'place_tall_oven_vent') {
-               cabVariant = 'tall_oven_vent';
-               cabWidth = 60;
-            } else if (toolMode === 'place_tall_inner_drawers') {
-               cabVariant = 'tall_inner_drawers';
-               cabWidth = 60;
-            } else cabWidth = 60;
-         } else if (isWall) {
-            cabType = 'wall';
-            cabDepth = 35;
-            if (toolMode === 'place_wall_1_door') {
-               cabVariant = '1_door';
-               cabWidth = 60;
-               cabHeight = 70;
-            } else if (toolMode === 'place_wall_2_doors' || toolMode === 'place_wall') {
-               cabVariant = '2_doors';
-               cabWidth = 80;
-               cabHeight = 70;
-            } else if (toolMode === 'place_wall_corner_blind') {
-               cabVariant = 'wall_corner_blind_right';
-               cabWidth = 70;
-               cabHeight = 70;
-            } else if (toolMode === 'place_wall_wine_rack') {
-               cabVariant = 'wall_wine_rack';
-               cabWidth = 20;
-               cabHeight = 70;
-            } else if (toolMode === 'place_wall_lift_up') {
-               cabVariant = 'wall_lift_up';
-               cabWidth = 80;
-               cabHeight = 40;
-            } else if (toolMode === 'place_wall_lift_up_double') {
-               cabVariant = 'wall_lift_up_double';
-               cabWidth = 80;
-               cabHeight = 70;
-            } else if (toolMode === 'place_wall_microwave_niche') {
-               cabVariant = 'wall_microwave_niche';
-               cabWidth = 60;
-               cabHeight = 80;
-               cabDepth = 38;
-            } else if (toolMode === 'place_wall_open') {
-               cabVariant = 'wall_open';
-               cabWidth = 60;
-               cabHeight = 70;
-            }
-         } else if (toolMode === 'place_island' || toolMode === 'place_island_wine_rack') {
-            cabType = 'island';
-            const existingIsland = cabinets.find((c) => c.type === 'island');
-            const defaultIslandDepth = existingIsland?.depth || 80;
-            const defaultIslandHeight = existingIsland?.height || 80;
-            if (toolMode === 'place_island_wine_rack') {
-               cabVariant = 'wine_rack';
-               cabHeight = defaultIslandHeight;
-               cabWidth = 25;
-               cabDepth = defaultIslandDepth;
-            } else {
-               cabVariant = '2_pot_drawers';
-               cabHeight = defaultIslandHeight;
-               cabWidth = 90;
-               cabDepth = defaultIslandDepth;
-            }
-         } else if (toolMode === 'place_deco_stove') {
-            cabType = 'decoration';
-            cabVariant = 'deco_stove';
-            cabWidth = 90;
-            cabHeight = 90;
-            cabDepth = 60;
-         } else if (toolMode === 'place_deco_fridge') {
-            cabType = 'decoration';
-            cabVariant = 'deco_fridge';
-            cabWidth = 91;
-            cabHeight = 177;
-            cabDepth = 67;
-         } else if (toolMode === 'place_deco_hood') {
-            cabType = 'decoration';
-            cabVariant = 'deco_hood';
-            cabWidth = 89.8;
-            cabHeight = 70;
-            cabDepth = 50;
-         } else if (toolMode === 'place_deco_plant') {
-            cabType = 'decoration';
-            cabVariant = 'deco_plant';
-            cabWidth = 40;
-            cabHeight = 95;
-            cabDepth = 40;
-         }
+        const specs = getCabinetSpecsFromTool(toolMode, cabinets);
+        cabType = specs.type;
+        cabVariant = specs.variant;
+        cabWidth = specs.width;
+        cabHeight = specs.height;
+        cabDepth = specs.depth;
+        customY = specs.defaultY;
+        if (cabType === 'island') {
+          const existingIsland = cabinets.find((c) => c.type === 'island');
+          if (existingIsland && existingIsland.rotation !== undefined) {
+            cabRot = existingIsland.rotation;
+          }
+        }
       }
 
       const result = resolvePlacement({
@@ -581,143 +540,12 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
         }
         setToolMode('select');
     } else if (toolMode.startsWith('place_') && ghostCabinet) {
-      const isBase = toolMode.startsWith('place_base_');
-      const isTall = toolMode.startsWith('place_tall_') || toolMode === 'place_tall';
-      const isWall = toolMode.startsWith('place_wall_') || toolMode === 'place_wall';
-      const isIsland = toolMode === 'place_island' || toolMode === 'place_island_wine_rack';
-      
-      let cabType: 'base' | 'wall' | 'tall' | 'island' | 'decoration' = 'base';
-      let cabVariant = '1_door';
-      let cabWidth = 60;
-      let cabHeight = 80;
-      let cabDepth = 60;
-
-      if (isBase) {
-         cabType = 'base';
-         cabVariant = toolMode.replace('place_base_', '');
-         if (cabVariant === 'spice_rack') cabWidth = 15;
-         if (cabVariant === 'wine_rack') cabWidth = 20;
-         if (cabVariant === '2_doors' || cabVariant === '2_pot_drawers') cabWidth = 80;
-         if (cabVariant === 'sink_u_drawer') cabWidth = 90;
-         if (cabVariant === 'corner_blind') {
-            cabWidth = 100;
-            cabVariant = 'corner_blind_right';
-         }
-         if (cabVariant === 'corner_l') {
-            cabWidth = 90;
-            cabDepth = 90;
-            cabVariant = 'corner_l';
-         }
-      } else if (isTall) {
-         cabType = 'tall';
-         cabHeight = 215;
-         cabDepth = 60;
-         if (toolMode === 'place_tall_1_door' || toolMode === 'place_tall') {
-            cabVariant = 'tall_1_door';
-            cabWidth = 60;
-         } else if (toolMode === 'place_tall_wine_rack') {
-            cabVariant = 'tall_wine_rack';
-            cabWidth = 30;
-         } else if (toolMode === 'place_tall_split_2_doors') {
-            cabVariant = 'tall_split_2_doors';
-            cabWidth = 60;
-         } else if (toolMode === 'place_tall_oven_micro') {
-            cabVariant = 'tall_oven_micro';
-            cabWidth = 60;
-         } else if (toolMode === 'place_tall_oven_vent') {
-            cabVariant = 'tall_oven_vent';
-            cabWidth = 60;
-         } else if (toolMode === 'place_tall_inner_drawers') {
-            cabVariant = 'tall_inner_drawers';
-            cabWidth = 60;
-         } else if (toolMode === 'place_tall_microwave_niche') {
-            cabVariant = 'tall_microwave_niche';
-            cabWidth = 60;
-         } else if (toolMode === 'place_tall_open') {
-            cabVariant = 'tall_open';
-            cabWidth = 60;
-         } else if (toolMode === 'place_tall_2_doors') {
-            cabVariant = 'tall_2_doors';
-            cabWidth = 80;
-         }
-      } else if (isWall) {
-         cabType = 'wall';
-         cabDepth = 35;
-         if (toolMode === 'place_wall_1_door') {
-            cabVariant = '1_door';
-            cabWidth = 60;
-            cabHeight = 70;
-         } else if (toolMode === 'place_wall_2_doors' || toolMode === 'place_wall') {
-            cabVariant = '2_doors';
-            cabWidth = 80;
-            cabHeight = 70;
-         } else if (toolMode === 'place_wall_corner_blind') {
-            cabVariant = 'wall_corner_blind_right';
-            cabWidth = 70;
-            cabHeight = 70;
-         } else if (toolMode === 'place_wall_wine_rack') {
-            cabVariant = 'wall_wine_rack';
-            cabWidth = 20;
-            cabHeight = 70;
-         } else if (toolMode === 'place_wall_lift_up') {
-            cabVariant = 'wall_lift_up';
-            cabWidth = 80;
-            cabHeight = 40;
-         } else if (toolMode === 'place_wall_lift_up_double') {
-            cabVariant = 'wall_lift_up_double';
-            cabWidth = 80;
-            cabHeight = 70;
-         } else if (toolMode === 'place_wall_microwave_niche') {
-            cabVariant = 'wall_microwave_niche';
-            cabWidth = 60;
-            cabHeight = 80;
-            cabDepth = 38;
-         } else if (toolMode === 'place_wall_open') {
-            cabVariant = 'wall_open';
-            cabWidth = 60;
-            cabHeight = 70;
-         }
-      } else if (isIsland) {
-         cabType = 'island';
-         const existingIsland = cabinets.find((c) => c.type === 'island');
-         const defaultIslandDepth = existingIsland?.depth || 80;
-         const defaultIslandHeight = existingIsland?.height || 80;
-         if (toolMode === 'place_island_wine_rack') {
-            cabVariant = 'wine_rack';
-            cabHeight = defaultIslandHeight;
-            cabWidth = 25;
-            cabDepth = defaultIslandDepth;
-         } else {
-            cabVariant = '2_pot_drawers';
-            cabHeight = defaultIslandHeight;
-            cabWidth = 90;
-            cabDepth = defaultIslandDepth;
-         }
-      } else if (toolMode === 'place_deco_stove') {
-         cabType = 'decoration';
-         cabVariant = 'deco_stove';
-         cabWidth = 90;
-         cabHeight = 90;
-         cabDepth = 60;
-      } else if (toolMode === 'place_deco_fridge') {
-         cabType = 'decoration';
-         cabVariant = 'deco_fridge';
-         cabWidth = 91;
-         cabHeight = 177;
-         cabDepth = 67;
-      } else if (toolMode === 'place_deco_hood') {
-         cabType = 'decoration';
-         cabVariant = 'deco_hood';
-         cabWidth = 89.8;
-         cabHeight = 70;
-         cabDepth = 50;
-      } else if (toolMode === 'place_deco_plant') {
-         cabType = 'decoration';
-         cabVariant = 'deco_plant';
-         cabWidth = 40;
-         cabHeight = 95;
-         cabDepth = 40;
-      }
+      const specs = getCabinetSpecsFromTool(toolMode, cabinets);
+      const cabType = specs.type;
+      const cabVariant = specs.variant;
+      const cabWidth = specs.width;
+      const cabHeight = specs.height;
+      const cabDepth = specs.depth;
 
       const newId = crypto.randomUUID();
       const gState = useStore.getState();
@@ -792,16 +620,16 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
       {is2D ? (
         <OrthographicCamera makeDefault position={[0, 1000, 0]} rotation={[-Math.PI/2, 0, 0]} zoom={2.5} near={1} far={3000} />
       ) : (
-        <PerspectiveCamera makeDefault position={[300, 300, 400]} fov={45} near={1} far={3000} />
+        <PerspectiveCamera makeDefault position={[460, 390, 560]} fov={45} near={1} far={3000} />
       )}
       
       <OrbitControls 
-        enableRotate={!is2D && !draggingArchElementId} 
-        enableZoom={!draggingArchElementId}
-        enablePan={!draggingArchElementId}
+        enableRotate={!is2D && !draggingArchElementId && !draggingCabinetId} 
+        enableZoom={!draggingArchElementId && !draggingCabinetId}
+        enablePan={!draggingArchElementId && !draggingCabinetId}
         minPolarAngle={0} 
         maxPolarAngle={is2D ? 0 : Math.PI / 2 - 0.05} 
-        target={[0, 0, 0]}
+        target={[0, 30, 0]}
       />
 
       <group name="kitchenGroup">
@@ -861,40 +689,11 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
               previewW = archType === 'door' ? 90 : archType === 'window' ? 120 : 40;
               previewH = archType === 'door' ? 205 : archType === 'window' ? 100 : 240;
               previewD = archType === 'pillar' ? 20 : 16;
-           } else if (toolMode.startsWith('place_base_')) {
-              const v = toolMode.replace('place_base_', '');
-              if (v === 'spice_rack') previewW = 15;
-              if (v === '2_doors' || v === '2_pot_drawers') previewW = 80;
-              if (v === 'corner_blind') previewW = 100;
-           } else if (toolMode.startsWith('place_tall_') || toolMode === 'place_tall') {
-              previewH = 215;
-              if (toolMode === 'place_tall_2_doors') previewW = 80;
-              else previewW = 60;
-           } else if (toolMode === 'place_wall') {
-              previewH = 60;
-              previewW = 80;
-              previewD = 35;
-           } else if (toolMode === 'place_island' || toolMode === 'place_island_wine_rack') {
-              const existingIsland = cabinets.find((c) => c.type === 'island');
-              previewH = existingIsland?.height || 80;
-              previewW = toolMode === 'place_island_wine_rack' ? 25 : 90;
-              previewD = existingIsland?.depth || 80;
-           } else if (toolMode === 'place_deco_stove') {
-              previewW = 90;
-              previewH = 90;
-              previewD = 60;
-           } else if (toolMode === 'place_deco_fridge') {
-              previewW = 91;
-              previewH = 177;
-              previewD = 67;
-           } else if (toolMode === 'place_deco_hood') {
-              previewW = 89.8;
-              previewH = 70;
-              previewD = 50;
-           } else if (toolMode === 'place_deco_plant') {
-              previewW = 40;
-              previewH = 95;
-              previewD = 40;
+           } else if (toolMode.startsWith('place_')) {
+              const specs = getCabinetSpecsFromTool(toolMode, cabinets);
+              previewW = specs.width;
+              previewH = specs.height;
+              previewD = specs.depth;
            }
 
            const posX = ghostCabinet.pos[0];

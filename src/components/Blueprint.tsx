@@ -291,77 +291,90 @@ export function Blueprint() {
   };
 
   return (
-    <div className="fixed inset-0 z-[100] bg-neutral-800 text-black overflow-auto print-only-container">
-      {/* Barra Superior Flotante de Acciones y Descarga de PDF */}
-      <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[200] print:hidden flex flex-wrap items-center justify-center gap-3 bg-slate-900/95 text-white px-5 py-3 rounded-2xl shadow-2xl border border-white/20 backdrop-blur-md max-w-[95vw]">
-        <div className="flex items-center gap-2 text-xs font-bold text-orange-400 mr-2 border-r border-white/20 pr-3">
-          <FileText size={16} />
-          <span>PLANOS DE CLÓSET</span>
+    <div className="fixed inset-0 z-[100] bg-neutral-800 text-black flex flex-col overflow-hidden">
+      {/* Header Superior Fijo Integrado (Opción 1) */}
+      <header className="sticky top-0 left-0 right-0 z-40 print:hidden w-full bg-slate-900/95 border-b border-slate-800 backdrop-blur-md px-4 py-2.5 shadow-xl flex flex-wrap items-center justify-between gap-3 shrink-0">
+        {/* Identificación y Título */}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 text-xs font-bold text-orange-400 border-r border-slate-700 pr-3">
+            <FileText size={16} className="text-orange-500 shrink-0" />
+            <span className="tracking-wider uppercase">PLANOS DE CLÓSET</span>
+          </div>
+          <span className="hidden xl:inline-block text-[11px] text-slate-400 font-medium">
+            Láminas Técnicas A3 &middot; Despiece &middot; Cubicaciones
+          </span>
         </div>
 
-        {/* Botón Principal: Descargar Planos Completos A3 en PDF */}
-        <button 
-          onClick={handleExportA3}
-          disabled={isExportingA3}
-          className="bg-orange-500 hover:bg-orange-600 disabled:opacity-50 active:scale-95 text-white px-4 py-2 rounded-xl font-bold uppercase text-xs tracking-wider shadow-lg flex items-center gap-2 transition-all cursor-pointer"
-          title="Generar y descargar todos los planos y despieces de clóset en formato A3"
-        >
-          {isExportingA3 ? (
-            <>
-              <Loader2 size={15} className="animate-spin text-white" />
-              <span>Generando PDF ({exportProgress ? `${exportProgress.current}/${exportProgress.total}` : 'Iniciando...'})</span>
-            </>
-          ) : (
-            <>
-              <Download size={15} />
-              <span>Descargar Planos Completos PDF (A3)</span>
-            </>
-          )}
-        </button>
-
-        {generatedPdfUrl && (
-          <a
-            href={generatedPdfUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            download="planos_closet_completos_A3.pdf"
-            className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-xl font-bold uppercase text-xs tracking-wider shadow-lg flex items-center gap-2 animate-bounce cursor-pointer"
-            title="Haz clic para abrir o descargar directamente el PDF generado"
+        {/* Acciones Técnicas y Exportaciones */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Botón Principal: Descargar Planos Completos A3 en PDF */}
+          <button 
+            onClick={handleExportA3}
+            disabled={isExportingA3}
+            className="bg-orange-500 hover:bg-orange-600 disabled:opacity-50 active:scale-95 text-white px-3.5 py-1.5 rounded-lg font-bold uppercase text-[11px] tracking-wider shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
+            title="Generar y descargar todos los planos y despieces de clóset en formato A3"
           >
-            <Download size={15} />
-            <span>¡PDF Listo! Abrir / Descargar</span>
-          </a>
-        )}
+            {isExportingA3 ? (
+              <>
+                <Loader2 size={14} className="animate-spin text-white" />
+                <span>Generando ({exportProgress ? `${exportProgress.current}/${exportProgress.total}` : '...'})</span>
+              </>
+            ) : (
+              <>
+                <Download size={14} />
+                <span>Planos PDF (A3)</span>
+              </>
+            )}
+          </button>
 
-        {/* Botón Secundario: Ficha Técnica PDF Directo */}
-        <button 
-          onClick={() => exportToPDF(state)}
-          className="bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white px-4 py-2 rounded-xl font-bold uppercase text-xs tracking-wider shadow-lg flex items-center gap-2 transition-all cursor-pointer"
-          title="Descargar archivo PDF estructurado con despiece y cubicación"
-        >
-          <FileText size={15} />
-          <span>Ficha Técnica PDF (Directo)</span>
-        </button>
+          {generatedPdfUrl && (
+            <a
+              href={generatedPdfUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              download="planos_closet_completos_A3.pdf"
+              className="bg-green-600 hover:bg-green-500 text-white px-3 py-1.5 rounded-lg font-bold uppercase text-[11px] tracking-wider shadow-sm flex items-center gap-1.5 animate-pulse cursor-pointer"
+              title="Haz clic para abrir o descargar directamente el PDF generado"
+            >
+              <Download size={14} />
+              <span>PDF Listo</span>
+            </a>
+          )}
 
-        {/* Botón Terciario: Cuadro de Impresión Nativo */}
-        <button 
-          onClick={() => window.print()}
-          className="bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white px-3.5 py-2 rounded-xl font-semibold text-xs tracking-wider border border-white/10 transition-all flex items-center gap-1.5 cursor-pointer"
-          title="Abrir cuadro de diálogo de impresión del navegador"
-        >
-          <Printer size={14} />
-          <span>Imprimir</span>
-        </button>
+          {/* Botón Secundario: Ficha Técnica PDF Directo */}
+          <button 
+            onClick={() => exportToPDF(state)}
+            className="bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white px-3.5 py-1.5 rounded-lg font-bold uppercase text-[11px] tracking-wider shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
+            title="Descargar archivo PDF estructurado con despiece y cubicación"
+          >
+            <FileText size={14} />
+            <span>Ficha Técnica PDF</span>
+          </button>
+        </div>
 
-        {/* Botón Cerrar */}
-        <button 
-          onClick={() => state.setIsPrinting(false)}
-          className="bg-slate-700 hover:bg-red-600 text-white px-3.5 py-2 rounded-xl font-semibold text-xs tracking-wider shadow-md hover:shadow-red-500/20 transition-all flex items-center gap-1.5 cursor-pointer ml-1"
-        >
-          <X size={15} />
-          <span>Cerrar</span>
-        </button>
-      </div>
+        {/* Lado Derecho: Imprimir y Cerrar */}
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={() => window.print()}
+            className="bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-slate-700 transition-all flex items-center gap-1 cursor-pointer"
+            title="Imprimir"
+          >
+            <Printer size={14} />
+          </button>
+
+          <button 
+            onClick={() => state.setIsPrinting(false)}
+            className="bg-slate-800 hover:bg-rose-600 text-slate-300 hover:text-white px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-700 transition-all flex items-center gap-1.5 cursor-pointer ml-1"
+            title="Cerrar vista de planos (Esc)"
+          >
+            <X size={15} />
+            <span>Cerrar</span>
+          </button>
+        </div>
+      </header>
+
+      {/* Contenedor con Scroll para las Láminas A3 */}
+      <div className="flex-1 overflow-auto bg-neutral-800 print-only-container">
 
       <style>{`
         @media screen { 
@@ -619,6 +632,7 @@ export function Blueprint() {
           </div>
         );
       })}
+      </div>
 
       {/* Modal de PDF Listo para Descargar */}
       {generatedPdfUrl && (

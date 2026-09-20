@@ -12,21 +12,20 @@ export const StoveFDVUnique90: React.FC<StoveProps> = ({
   height = 90,
   depth = 60,
 }) => {
-  // Materiales de alta fidelidad
+  // Materiales de alta fidelidad en Acero Inoxidable Silver Gris Claro
   const stainlessSteelMat = (
     <meshStandardMaterial
-      color="#d4d8dc"
-      metalness={0.88}
-      roughness={0.22}
-      envMapIntensity={1.2}
+      color="#d0d5da"
+      metalness={0.32}
+      roughness={0.4}
     />
   );
 
   const darkStainlessMat = (
     <meshStandardMaterial
-      color="#2b2d30"
-      metalness={0.75}
-      roughness={0.35}
+      color="#b8bec4"
+      metalness={0.28}
+      roughness={0.45}
     />
   );
 

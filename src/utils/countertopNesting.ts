@@ -59,6 +59,10 @@ export interface ContinuousRunInfo {
   canWaterfallRight: boolean;
   cornerExtensionLeftMm: number;
   cornerExtensionRightMm: number;
+  cornerTrimLeftMm?: number;
+  cornerTrimRightMm?: number;
+  backsplashExtLeftMm?: number;
+  backsplashExtRightMm?: number;
   extensionToWallLeftMm?: number;
   extensionToWallRightMm?: number;
 }
@@ -392,6 +396,142 @@ export function detectCountertopExtensionToWallOrPillar(
 }
 
 /**
+ * Resuelve y coordina encuentros de esquina en L entre corridas perpendiculares:
+ * - Calcula el vértice exacto de intersección de muros posteriores (P_corner).
+ * - Corrida Pasante (Dominante): La cubierta y el respaldo llegan de forma exacta hasta la cara del muro perpendicular (0 salientes hacia el exterior).
+ * - Corrida a Tope (Secundaria): Se corta milimétricamente en la cara frontal de la cubierta pasante (0 colisión/traslape), mientras su respaldo continúa pegado al muro hasta el vértice P_corner (0 huecos).
+ */
+export function resolveCornerEncounters(runs: ContinuousRunInfo[]) {
+  if (runs.length < 2) return;
+
+  for (let i = 0; i < runs.length; i++) {
+    for (let j = i + 1; j < runs.length; j++) {
+      const runA = runs[i];
+      const runB = runs[j];
+
+      // Ambos deben ser de tipo base
+      if (runA.type !== 'base' || runB.type !== 'base') continue;
+
+      const rotA = runA.rotation || 0;
+      const rotB = runB.rotation || 0;
+      const dotRot = Math.cos(rotA - rotB);
+      // Deben ser perpendiculares (aprox 90°)
+      if (Math.abs(dotRot) > 0.45) continue;
+
+      const uLA: [number, number] = [Math.cos(rotA), -Math.sin(rotA)];
+      const uRA: [number, number] = [-Math.sin(rotA), -Math.cos(rotA)];
+      const DcabA = runA.cabinets[0]?.depth || 60;
+      const PrearA: [number, number] = [
+        runA.centerWorld[0] + (DcabA / 2) * uRA[0],
+        runA.centerWorld[2] + (DcabA / 2) * uRA[1],
+      ];
+
+      const uLB: [number, number] = [Math.cos(rotB), -Math.sin(rotB)];
+      const uRB: [number, number] = [-Math.sin(rotB), -Math.cos(rotB)];
+      const DcabB = runB.cabinets[0]?.depth || 60;
+      const PrearB: [number, number] = [
+        runB.centerWorld[0] + (DcabB / 2) * uRB[0],
+        runB.centerWorld[2] + (DcabB / 2) * uRB[1],
+      ];
+
+      // Intersección de líneas de muros posteriores: PrearA + t*uLA = PrearB + s*uLB
+      const det = uLA[0] * uLB[1] - uLA[1] * uLB[0];
+      if (Math.abs(det) < 0.1) continue;
+
+      const dx = PrearB[0] - PrearA[0];
+      const dy = PrearB[1] - PrearA[1];
+      const tCornerA = (dx * uLB[1] - dy * uLB[0]) / det;
+      const sCornerB = (dx * uLA[1] - dy * uLA[0]) / det;
+
+      const LcmA = runA.totalLengthMm / 10;
+      const LcmB = runB.totalLengthMm / 10;
+
+      // Verificar proximidad a los extremos de las corridas (máx ~90cm del rincón)
+      const distA = Math.max(0, -LcmA / 2 - tCornerA, tCornerA - LcmA / 2);
+      const distB = Math.max(0, -LcmB / 2 - sCornerB, sCornerB - LcmB / 2);
+      const maxCornerDist = Math.max(DcabA, DcabB) + 30;
+
+      if (distA <= maxCornerDist && distB <= maxCornerDist) {
+        // Encuentro en L detectado
+        let isADominant = runA.totalLengthMm > runB.totalLengthMm;
+        if (runA.totalLengthMm === runB.totalLengthMm) {
+          isADominant = Math.abs(Math.sin(rotA)) <= Math.abs(Math.sin(rotB));
+        }
+
+        const runDom = isADominant ? runA : runB;
+        const runSec = isADominant ? runB : runA;
+        const tCornerDom = isADominant ? tCornerA : sCornerB;
+        const tCornerSec = isADominant ? sCornerB : tCornerA;
+        const isLeftDom = tCornerDom < 0;
+        const isLeftSec = tCornerSec < 0;
+
+        const LdomCm = runDom.totalLengthMm / 10;
+        const LsecCm = runSec.totalLengthMm / 10;
+        const DtotalDomCm = (runDom.depthMm || 620) / 10;
+
+        // 1. CORRIDA DOMINANTE (Pasante): Cubre el rincón hasta el muro posterior perpendicular exacto
+        if (isLeftDom) {
+          const bsExtCm = Math.max(0, -LdomCm / 2 - tCornerDom);
+          runDom.backsplashExtLeftMm = Math.round(bsExtCm * 10);
+          runDom.cornerExtensionLeftMm = Math.round(bsExtCm * 10);
+          const trimCm = Math.max(0, tCornerDom - (-LdomCm / 2));
+          if (trimCm > 0.5) runDom.cornerTrimLeftMm = Math.round(trimCm * 10);
+          runDom.canWaterfallLeft = false;
+        } else {
+          const bsExtCm = Math.max(0, tCornerDom - LdomCm / 2);
+          runDom.backsplashExtRightMm = Math.round(bsExtCm * 10);
+          runDom.cornerExtensionRightMm = Math.round(bsExtCm * 10);
+          const trimCm = Math.max(0, LdomCm / 2 - tCornerDom);
+          if (trimCm > 0.5) runDom.cornerTrimRightMm = Math.round(trimCm * 10);
+          runDom.canWaterfallRight = false;
+        }
+
+        // 2. CORRIDA SECUNDARIA (A tope): Cubierta termina en el frente de la dominante; Respaldo llega hasta el muro posterior
+        if (isLeftSec) {
+          // Respaldo continuo contra muro
+          const bsExtCm = Math.max(0, -LsecCm / 2 - tCornerSec);
+          runSec.backsplashExtLeftMm = Math.round(bsExtCm * 10);
+
+          // Canto de cubierta a tope contra el frente de la corrida dominante
+          const tAbutSec = tCornerSec + DtotalDomCm;
+          const flankT = -LsecCm / 2;
+          if (flankT < tAbutSec - 0.5) {
+            runSec.cornerTrimLeftMm = Math.round((tAbutSec - flankT) * 10);
+            runSec.cornerExtensionLeftMm = 0;
+          } else if (flankT > tAbutSec + 0.5) {
+            runSec.cornerExtensionLeftMm = Math.round((flankT - tAbutSec) * 10);
+            runSec.cornerTrimLeftMm = 0;
+          } else {
+            runSec.cornerExtensionLeftMm = 0;
+            runSec.cornerTrimLeftMm = 0;
+          }
+          runSec.canWaterfallLeft = false;
+        } else {
+          // Respaldo continuo contra muro
+          const bsExtCm = Math.max(0, tCornerSec - LsecCm / 2);
+          runSec.backsplashExtRightMm = Math.round(bsExtCm * 10);
+
+          // Canto de cubierta a tope contra el frente de la corrida dominante
+          const tAbutSec = tCornerSec - DtotalDomCm;
+          const flankT = LsecCm / 2;
+          if (flankT > tAbutSec + 0.5) {
+            runSec.cornerTrimRightMm = Math.round((flankT - tAbutSec) * 10);
+            runSec.cornerExtensionRightMm = 0;
+          } else if (flankT < tAbutSec - 0.5) {
+            runSec.cornerExtensionRightMm = Math.round((tAbutSec - flankT) * 10);
+            runSec.cornerTrimRightMm = 0;
+          } else {
+            runSec.cornerExtensionRightMm = 0;
+            runSec.cornerTrimRightMm = 0;
+          }
+          runSec.canWaterfallRight = false;
+        }
+      }
+    }
+  }
+}
+
+/**
  * Agrupa gabinetes adyacentes y alineados en corridas continuas (runs).
  */
 export function detectContinuousCabinetRuns(
@@ -510,63 +650,9 @@ export function detectContinuousCabinetRuns(
       const canWaterfallLeft = !isLeftBlockedByTall && !isLeftBlockedByAny && !isLeftBlockedByPillar;
       const canWaterfallRight = !isRightBlockedByTall && !isRightBlockedByAny && !isRightBlockedByPillar;
 
-      // Detección de extensión de respaldo en esquinas L
-      const cornerExtLeftMm = detectCornerBacksplashExtension(
-        firstFlanks.left,
-        runRot,
-        true,
-        runCabIds,
-        cabinets,
-        walls,
-        architecturalElements
-      );
-      const cornerExtRightMm = detectCornerBacksplashExtension(
-        lastFlanks.right,
-        runRot,
-        false,
-        runCabIds,
-        cabinets,
-        walls,
-        architecturalElements
-      );
-
-      // Extensión seleccionable por usuario hacia muro o pilar:
-      const maxGapCm = config?.extendToWallMaxGapCm ?? 50;
-      const shouldExtendLeft = !!config?.extendToWallLeft && (!isIsland || !config?.extendBaseOnly);
-      const shouldExtendRight = !!config?.extendToWallRight && (!isIsland || !config?.extendBaseOnly);
-
-      const extWallLeftMm = shouldExtendLeft
-        ? detectCountertopExtensionToWallOrPillar(
-            firstFlanks.left,
-            runRot,
-            true,
-            walls,
-            architecturalElements,
-            maxGapCm,
-            roomConfig,
-            cabinets,
-            runCabIds
-          )
-        : 0;
-
-      const extWallRightMm = shouldExtendRight
-        ? detectCountertopExtensionToWallOrPillar(
-            lastFlanks.right,
-            runRot,
-            false,
-            walls,
-            architecturalElements,
-            maxGapCm,
-            roomConfig,
-            cabinets,
-            runCabIds
-          )
-        : 0;
-
       // Segmentación según criterio logístico de transporte (Casa <= 2500mm, Edificio <= 2000mm)
       let segmentLengthsMm: number[] = [];
       if (totalLengthMm <= maxSegmentLengthMm) {
-        // Un solo tramo continuo entero sin cortes
         segmentLengthsMm = [totalLengthMm];
       } else {
         const numSegs = Math.ceil(totalLengthMm / maxSegmentLengthMm);
@@ -600,12 +686,16 @@ export function detectContinuousCabinetRuns(
         endFlankWorld: lastFlanks.right,
         centerWorld,
         rotation: runRot,
-        canWaterfallLeft: canWaterfallLeft && extWallLeftMm === 0,
-        canWaterfallRight: canWaterfallRight && extWallRightMm === 0,
-        cornerExtensionLeftMm: cornerExtLeftMm,
-        cornerExtensionRightMm: cornerExtRightMm,
-        extensionToWallLeftMm: extWallLeftMm,
-        extensionToWallRightMm: extWallRightMm,
+        canWaterfallLeft,
+        canWaterfallRight,
+        cornerExtensionLeftMm: 0,
+        cornerExtensionRightMm: 0,
+        cornerTrimLeftMm: 0,
+        cornerTrimRightMm: 0,
+        backsplashExtLeftMm: 0,
+        backsplashExtRightMm: 0,
+        extensionToWallLeftMm: 0,
+        extensionToWallRightMm: 0,
       });
     }
   }
@@ -630,51 +720,6 @@ export function detectContinuousCabinetRuns(
     const isRightBlockedByAny = isFlankBlockedByAnyCabinet(flanks.right, cabIds, cabinets);
     const isRightBlockedByPillar = isFlankBlockedByPillar(flanks.right, architecturalElements, walls);
 
-    const cornerExtLeftMm = detectCornerBacksplashExtension(
-      flanks.left,
-      cabRot,
-      true,
-      cabIds,
-      cabinets,
-      walls,
-      architecturalElements
-    );
-    const cornerExtRightMm = detectCornerBacksplashExtension(
-      flanks.right,
-      cabRot,
-      false,
-      cabIds,
-      cabinets,
-      walls,
-      architecturalElements
-    );
-
-    const maxGapCm = config?.extendToWallMaxGapCm ?? 50;
-    const shouldExtendLeft = !!config?.extendToWallLeft && (!isIsland || !config?.extendBaseOnly);
-    const shouldExtendRight = !!config?.extendToWallRight && (!isIsland || !config?.extendBaseOnly);
-
-    const extWallLeftMm = shouldExtendLeft
-      ? detectCountertopExtensionToWallOrPillar(
-          flanks.left,
-          cabRot,
-          true,
-          walls,
-          architecturalElements,
-          maxGapCm
-        )
-      : 0;
-
-    const extWallRightMm = shouldExtendRight
-      ? detectCountertopExtensionToWallOrPillar(
-          flanks.right,
-          cabRot,
-          false,
-          walls,
-          architecturalElements,
-          maxGapCm
-        )
-      : 0;
-
     runs.push({
       id: `${isIsland ? 'ISL' : 'BASE'}-RUN-${runs.length + 1}`,
       name: `Mueble Aislado (${totalLengthMm} mm)`,
@@ -691,13 +736,62 @@ export function detectContinuousCabinetRuns(
       endFlankWorld: flanks.right,
       centerWorld: [cab.position[0], cab.position[1] + cab.height / 2, cab.position[2]],
       rotation: cabRot,
-      canWaterfallLeft: !isLeftBlockedByTall && !isLeftBlockedByAny && !isLeftBlockedByPillar && extWallLeftMm === 0,
-      canWaterfallRight: !isRightBlockedByTall && !isRightBlockedByAny && !isRightBlockedByPillar && extWallRightMm === 0,
-      cornerExtensionLeftMm: cornerExtLeftMm,
-      cornerExtensionRightMm: cornerExtRightMm,
-      extensionToWallLeftMm: extWallLeftMm,
-      extensionToWallRightMm: extWallRightMm,
+      canWaterfallLeft: !isLeftBlockedByTall && !isLeftBlockedByAny && !isLeftBlockedByPillar,
+      canWaterfallRight: !isRightBlockedByTall && !isRightBlockedByAny && !isRightBlockedByPillar,
+      cornerExtensionLeftMm: 0,
+      cornerExtensionRightMm: 0,
+      cornerTrimLeftMm: 0,
+      cornerTrimRightMm: 0,
+      backsplashExtLeftMm: 0,
+      backsplashExtRightMm: 0,
+      extensionToWallLeftMm: 0,
+      extensionToWallRightMm: 0,
     });
+  }
+
+  // 3. Resolver de forma coordinada todos los encuentros en L entre esquinas
+  resolveCornerEncounters(runs);
+
+  // 4. Extensión seleccionable por usuario hacia muro o pilar en extremos libres
+  const maxGapCm = config?.extendToWallMaxGapCm ?? 50;
+  const shouldExtendLeft = !!config?.extendToWallLeft;
+  const shouldExtendRight = !!config?.extendToWallRight;
+
+  for (const run of runs) {
+    const isIsland = run.type === 'island';
+    const allowExt = !isIsland || !config?.extendBaseOnly;
+    if (shouldExtendLeft && allowExt && run.cornerExtensionLeftMm === 0 && run.cornerTrimLeftMm === 0) {
+      run.extensionToWallLeftMm = detectCountertopExtensionToWallOrPillar(
+        run.startFlankWorld,
+        run.rotation,
+        true,
+        walls,
+        architecturalElements,
+        maxGapCm,
+        roomConfig,
+        cabinets,
+        new Set(run.cabinets.map(c => c.id))
+      );
+      if (run.extensionToWallLeftMm > 0) {
+        run.canWaterfallLeft = false;
+      }
+    }
+    if (shouldExtendRight && allowExt && run.cornerExtensionRightMm === 0 && run.cornerTrimRightMm === 0) {
+      run.extensionToWallRightMm = detectCountertopExtensionToWallOrPillar(
+        run.endFlankWorld,
+        run.rotation,
+        false,
+        walls,
+        architecturalElements,
+        maxGapCm,
+        roomConfig,
+        cabinets,
+        new Set(run.cabinets.map(c => c.id))
+      );
+      if (run.extensionToWallRightMm > 0) {
+        run.canWaterfallRight = false;
+      }
+    }
   }
 
   return runs;
@@ -932,7 +1026,10 @@ export function generateCountertopPieces(
         segIdx === run.segmentLengthsMm.length - 1
           ? (run.cornerExtensionRightMm || 0) + (run.extensionToWallRightMm || 0)
           : 0;
-      const totalSlabLengthMm = segLengthMm + extraLeft + extraRight;
+      const trimLeft = segIdx === 0 ? (run.cornerTrimLeftMm || 0) : 0;
+      const trimRight = segIdx === run.segmentLengthsMm.length - 1 ? (run.cornerTrimRightMm || 0) : 0;
+
+      const totalSlabLengthMm = Math.max(100, segLengthMm + extraLeft + extraRight - trimLeft - trimRight);
 
       const slabName = isSingleSegment
         ? `Tramo Cubierta Corrida ${pieceId} (${totalSlabLengthMm}x${run.depthMm}mm)`
@@ -955,8 +1052,8 @@ export function generateCountertopPieces(
           (totalSlabLengthMm + (segIdx === 0 || segIdx === run.segmentLengthsMm.length - 1 ? run.depthMm : 0)) /
           1000,
         notes: isSingleSegment
-          ? `Tramo continuo entero sin uniones intermedias (${config.buildingType === 'casa' ? 'Casa: máx 2500mm' : 'Edificio: máx 2000mm'})${extraLeft || extraRight ? ' (incluye extensión a muro/pilar)' : ''}.`
-          : `Junta ortogonal a 90° rectificada con disco diamantado kerf 3.5mm${extraLeft || extraRight ? ' (incluye extensión a muro/pilar)' : ''}.`,
+          ? `Tramo continuo entero sin uniones intermedias (${config.buildingType === 'casa' ? 'Casa: máx 2500mm' : 'Edificio: máx 2000mm'})${extraLeft || extraRight ? ' (incluye extensión a muro/pilar/esquina pasante)' : ''}.`
+          : `Junta ortogonal a 90° rectificada con disco diamantado kerf 3.5mm${extraLeft || extraRight ? ' (incluye extensión a muro/pilar/esquina pasante)' : ''}.`,
         runId: run.id,
         hasCutout: cutoutType,
       });
@@ -964,7 +1061,7 @@ export function generateCountertopPieces(
       // 2. Faldón Delantero / Regrueso
       if (config.regruesoCm > 0) {
         const apronHeightMm = Math.round(config.regruesoCm * 10);
-        const apronLengthMm = segLengthMm + extraLeft + extraRight;
+        const apronLengthMm = Math.max(100, segLengthMm + extraLeft + extraRight - trimLeft - trimRight);
         pieces.push({
           id: `${pieceId}-FALDON`,
           name: `Faldón Delantero ${pieceId} (${apronLengthMm}x${apronHeightMm}mm)`,
@@ -985,7 +1082,15 @@ export function generateCountertopPieces(
           config.backsplashMode === 'standard_5cm'
             ? Math.round(config.backsplashHeightCm * 10)
             : 550; // 55cm revestimiento completo
-        const totalBsLengthMm = segLengthMm + extraLeft + extraRight;
+        const bsLeft =
+          segIdx === 0
+            ? (run.backsplashExtLeftMm || 0) + (run.extensionToWallLeftMm || 0)
+            : 0;
+        const bsRight =
+          segIdx === run.segmentLengthsMm.length - 1
+            ? (run.backsplashExtRightMm || 0) + (run.extensionToWallRightMm || 0)
+            : 0;
+        const totalBsLengthMm = segLengthMm + bsLeft + bsRight;
 
         pieces.push({
           id: `${pieceId}-RESPALDO`,
@@ -1002,8 +1107,8 @@ export function generateCountertopPieces(
           edgePolishingM: totalBsLengthMm / 1000,
           notes:
             config.backsplashMode === 'standard_5cm'
-              ? `Zócalo de protección perimetral 50mm con canto superior pulido${extraLeft || extraRight ? ' (incluye extensión a muro/pilar)' : ''}`
-              : `Revestimiento de muro completo hasta muebles aéreos${extraLeft || extraRight ? ' (incluye extensión a muro/pilar)' : ''}`,
+              ? `Zócalo de protección perimetral 50mm con canto superior pulido${bsLeft || bsRight ? ' (incluye extensión continua a esquina/muro)' : ''}`
+              : `Revestimiento de muro completo hasta muebles aéreos${bsLeft || bsRight ? ' (incluye extensión continua a esquina/muro)' : ''}`,
           runId: run.id,
         });
       }

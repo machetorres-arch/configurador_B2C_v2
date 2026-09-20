@@ -1,293 +1,228 @@
 import React, { useState, useMemo } from 'react';
 import {
   BarChart3,
-  TrendingUp,
-  Package,
   Layers,
-  FolderCheck,
+  MapPin,
+  TrendingUp,
+  Leaf,
   ShieldCheck,
   Building,
   Calendar,
-  Hash,
+  Radio,
+  Sliders,
+  DollarSign,
+  Download,
   EyeOff,
-  Filter,
-  ArrowUpRight,
-  Info
+  Sparkles,
+  RefreshCw
 } from 'lucide-react';
 import { useAdminStore } from '../../store/adminStore';
+import { ExecutiveOverviewSheet } from './analytics/ExecutiveOverviewSheet';
+import { MaterialAnalyticsSheet } from './analytics/MaterialAnalyticsSheet';
+import { GreenMetricsCarbonSheet } from './analytics/GreenMetricsCarbonSheet';
+import { GeographicDemandSheet } from './analytics/GeographicDemandSheet';
+import { ForecastingSamplesSheet } from './analytics/ForecastingSamplesSheet';
 
 interface ProviderAnalyticsTabProps {
   currentProviderId?: string;
   isSuperAdmin?: boolean;
 }
 
-export function ProviderAnalyticsTab({ currentProviderId, isSuperAdmin = true }: ProviderAnalyticsTabProps) {
-  const { providers, getProviderStats, projects, textures } = useAdminStore();
+export function ProviderAnalyticsTab({
+  currentProviderId,
+  isSuperAdmin = true
+}: ProviderAnalyticsTabProps) {
+  const { providers, projects, textures, themeMode } = useAdminStore();
+  const isLight = themeMode === 'light';
 
-  // Si se pasa currentProviderId, se usa como inicial; de lo contrario el primer proveedor
+  // Sub-tabs navigation
+  const [activeSubTab, setActiveSubTab] = useState<
+    'resumen' | 'materiales' | 'huella_verde' | 'geografica' | 'prediccion'
+  >('resumen');
+
+  // Provider selector
   const [selectedProviderId, setSelectedProviderId] = useState<string>(
     currentProviderId || (providers[0]?.id ?? 'prov-masisa')
   );
+
+  // Quick unit/currency toggle
+  const [currency, setCurrency] = useState<'CLP' | 'UF' | 'USD'>('CLP');
+  const [unitMetric, setUnitMetric] = useState<'m2' | 'planchas'>('m2');
+  const [timeRange, setTimeRange] = useState<'30d' | 'q3' | 'ytd'>('30d');
 
   const selectedProvider = useMemo(() => {
     return providers.find((p) => p.id === selectedProviderId) || providers[0];
   }, [providers, selectedProviderId]);
 
-  // Obtener estadísticas del proveedor seleccionado
-  const stats = useMemo(() => {
-    if (!selectedProvider) return null;
-    return getProviderStats(selectedProvider.id);
-  }, [selectedProvider, getProviderStats, projects, textures]);
-
-  if (!selectedProvider) {
-    return (
-      <div className="p-12 text-center text-zinc-400">
-        No hay proveedores configurados en el sistema.
-      </div>
-    );
-  }
+  const providerName = selectedProvider ? selectedProvider.name : 'Arauco & Masisa Soluciones (Chile)';
 
   return (
     <div className="space-y-6">
-      {/* Header con Selector de Proveedor y Badge de Privacidad */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-zinc-900/80 p-5 rounded-2xl border border-zinc-800">
+      {/* 1. Global Navigation & Sub-Tab Bar */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-zinc-900/90 border border-zinc-800 p-4 rounded-2xl">
         <div className="flex items-center gap-3">
-          <div className="p-3 bg-blue-500/10 border border-blue-500/20 text-blue-400 rounded-xl">
-            <BarChart3 size={24} />
+          <div className="p-2.5 bg-orange-500/10 border border-orange-500/30 text-orange-400 rounded-xl">
+            <BarChart3 size={22} />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-base font-bold text-white">Métricas y Demanda de Productos</h2>
+              <h2 className="text-base font-bold text-white">KitchStudio Supplier Intelligence</h2>
               <span className="px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold rounded-full flex items-center gap-1">
-                <ShieldCheck size={11} /> Datos Anonimizados
+                <ShieldCheck size={11} /> Telemetría Verificada
               </span>
             </div>
-            <p className="text-xs text-zinc-400 mt-0.5">
-              Estadísticas en tiempo real sobre la especificación y uso de tus terminaciones en proyectos guardados.
+            <p className="text-xs text-zinc-400">
+              {providerName} • Hub Central Santiago (Plantas Quilicura, San Joaquín y Huechuraba)
             </p>
           </div>
         </div>
 
-        {/* Selector de Proveedor (habilitado para Superadmin o para ver otros) */}
-        {isSuperAdmin && (
-          <div className="flex items-center gap-2.5">
-            <span className="text-xs font-semibold text-zinc-400 flex items-center gap-1">
-              <Building size={14} /> Proveedor:
-            </span>
-            <select
-              value={selectedProviderId}
-              onChange={(e) => setSelectedProviderId(e.target.value)}
-              className="py-2 px-3 bg-zinc-950 border border-zinc-700 rounded-xl text-xs text-white font-bold focus:outline-none focus:border-orange-500"
-            >
-              {providers.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name} ({p.commissionPercentage}% Comisión)
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-      </div>
-
-      {/* Aviso de Privacidad y Cumplimiento */}
-      <div className="p-3 bg-zinc-950/80 border border-zinc-800 rounded-xl flex items-center gap-3 text-xs text-zinc-400">
-        <EyeOff size={16} className="text-amber-400 shrink-0" />
-        <span>
-          <strong className="text-zinc-200">Privacidad del Cliente Garantizada:</strong> Por política de confidencialidad comercial de Arquify, las estadísticas reflejan únicamente métricas de consumo y especificación técnica (diseños, metros y unidades). Los datos personales, nombres de clientes y contactos son estrictamente privados.
-        </span>
-      </div>
-
-      {/* Tarjetas de Métricas Resumen */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="p-5 bg-zinc-900/90 border border-zinc-800 rounded-2xl space-y-2">
-          <div className="flex items-center justify-between text-zinc-400 text-xs font-semibold uppercase tracking-wider">
-            <span>Proyectos que usan tus Productos</span>
-            <FolderCheck size={18} className="text-orange-400" />
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-black font-mono text-white">
-              {stats?.totalProjects ?? 0}
-            </span>
-            <span className="text-xs text-zinc-500">proyectos activos</span>
-          </div>
-          <p className="text-[11px] text-zinc-500">
-            Diseños de cocina, clósets y proyectos comerciales guardados.
-          </p>
-        </div>
-
-        <div className="p-5 bg-zinc-900/90 border border-zinc-800 rounded-2xl space-y-2">
-          <div className="flex items-center justify-between text-zinc-400 text-xs font-semibold uppercase tracking-wider">
-            <span>Especificaciones de Productos</span>
-            <Package size={18} className="text-blue-400" />
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-black font-mono text-white">
-              {stats?.totalProductsUsed ?? 0}
-            </span>
-            <span className="text-xs text-zinc-500">usos en despieces</span>
-          </div>
-          <p className="text-[11px] text-zinc-500">
-            Total de partes y piezas calculadas con tus códigos de terminación.
-          </p>
-        </div>
-
-        <div className="p-5 bg-zinc-900/90 border border-zinc-800 rounded-2xl space-y-2">
-          <div className="flex items-center justify-between text-zinc-400 text-xs font-semibold uppercase tracking-wider">
-            <span>Comisión Acordada con Arquify</span>
-            <TrendingUp size={18} className="text-emerald-400" />
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-black font-mono text-amber-400">
-              {selectedProvider.commissionPercentage ?? 15}%
-            </span>
-            <span className="text-xs text-zinc-500">retención venta</span>
-          </div>
-          <p className="text-[11px] text-emerald-400/90 font-medium">
-            Recibes el {100 - (selectedProvider.commissionPercentage ?? 15)}% neto de cada plancha vendida.
-          </p>
-        </div>
-      </div>
-
-      {/* Desglose de Productos más utilizados (Ranking y Códigos) */}
-      <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-bold text-white flex items-center gap-2">
-            <Layers size={17} className="text-orange-400" />
-            Demanda por Código y Nombre de Producto
-          </h3>
-          <span className="text-xs text-zinc-500 font-mono">
-            {stats?.productsBreakdown.length || 0} terminaciones analizadas
-          </span>
-        </div>
-
-        {stats && stats.productsBreakdown.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-zinc-800 text-[11px] uppercase text-zinc-400 font-bold tracking-wider">
-                  <th className="pb-3 pl-2">Código / SKU</th>
-                  <th className="pb-3">Nombre del Producto</th>
-                  <th className="pb-3">Piezas / Usos</th>
-                  <th className="pb-3">Área Estimada</th>
-                  <th className="pb-3">Participación Relativa</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-800/60">
-                {stats.productsBreakdown.map((item, idx) => {
-                  const maxUsage = Math.max(...stats.productsBreakdown.map((b) => b.count), 1);
-                  const percentage = Math.round((item.count / maxUsage) * 100);
-
-                  return (
-                    <tr key={item.code || idx} className="hover:bg-zinc-800/40 transition-colors">
-                      <td className="py-3 pl-2 font-mono text-orange-400 font-bold">
-                        {item.code}
-                      </td>
-                      <td className="py-3 font-semibold text-white">
-                        {item.name}
-                      </td>
-                      <td className="py-3 font-mono text-zinc-300">
-                        <span className="px-2 py-0.5 bg-zinc-800 rounded-md">
-                          {item.count} {item.count === 1 ? 'pieza' : 'piezas'}
-                        </span>
-                      </td>
-                      <td className="py-3 font-mono font-bold text-slate-200">
-                        {item.estimatedAreaM2.toFixed(2)} m²
-                      </td>
-                      <td className="py-3 w-48">
-                        <div className="flex items-center gap-2">
-                          <div className="w-full bg-zinc-800 h-2 rounded-full overflow-hidden">
-                            <div
-                              className="bg-gradient-to-r from-orange-500 to-amber-400 h-full rounded-full transition-all duration-500"
-                              style={{ width: `${Math.max(percentage, 10)}%` }}
-                            />
-                          </div>
-                          <span className="text-[10px] text-zinc-500 font-mono w-8">
-                            {percentage}%
-                          </span>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div className="p-8 text-center bg-zinc-950/40 rounded-xl border border-dashed border-zinc-800 space-y-1.5">
-            <Package size={24} className="mx-auto text-zinc-600 mb-1" />
-            <p className="text-xs font-semibold text-zinc-300">
-              Aún no hay proyectos guardados con productos de este proveedor
-            </p>
-            <p className="text-[11px] text-zinc-500">
-              Cuando los usuarios especifiquen tus melaminas o laminados en sus muebles, aparecerán aquí.
-            </p>
-          </div>
-        )}
-      </div>
-
-      {/* Historial Anonimizado de Proyectos */}
-      <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-sm font-bold text-white flex items-center gap-2">
-              <FolderCheck size={17} className="text-emerald-400" />
-              Proyectos donde se especificaron tus productos (Anonimizado)
-            </h3>
-            <p className="text-xs text-zinc-400 mt-0.5">
-              Historial de especificación por fecha y tipo de mobiliario.
-            </p>
-          </div>
-        </div>
-
-        {stats && stats.anonymousProjects.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {stats.anonymousProjects.map((p) => (
-              <div
-                key={p.id}
-                className="p-4 bg-zinc-950/80 border border-zinc-800 rounded-xl space-y-2.5"
+        {/* Global Controls: Provider + Currency + Units */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Currency Toggle */}
+          <div className="flex items-center bg-zinc-950 border border-zinc-800 p-0.5 rounded-xl text-xs font-bold font-mono">
+            {(['CLP', 'UF', 'USD'] as const).map((c) => (
+              <button
+                key={c}
+                onClick={() => setCurrency(c)}
+                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                  currency === c ? 'bg-orange-500 text-white' : 'text-zinc-400 hover:text-white'
+                }`}
               >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="px-2 py-0.5 bg-orange-500/15 border border-orange-500/30 text-orange-300 text-[10px] font-bold uppercase rounded-md">
-                      {p.type}
-                    </span>
-                    <span className="text-xs font-bold text-white font-mono">{p.code}</span>
-                  </div>
-                  <span className="text-[10px] text-zinc-500 font-mono flex items-center gap-1">
-                    <Calendar size={11} /> {p.date}
-                  </span>
-                </div>
-
-                <div>
-                  <span className="text-[10px] text-zinc-500 uppercase font-semibold block mb-1">
-                    Terminaciones Utilizadas ({p.productsUsedCount} piezas):
-                  </span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {p.matchedProducts.map((prod, i) => (
-                      <span
-                        key={i}
-                        className="px-2 py-0.5 bg-zinc-900 border border-zinc-700/80 text-zinc-300 rounded-md text-[11px] font-medium"
-                      >
-                        {prod.code} • {prod.name} ({prod.count})
-                      </span>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="pt-2 border-t border-zinc-900 flex items-center justify-between text-[10px] text-zinc-500">
-                  <span>ID Registro: {p.id.slice(0, 8)}...</span>
-                  <span className="text-emerald-400 font-medium">Cliente protegido (No revelado)</span>
-                </div>
-              </div>
+                {c === 'CLP' ? 'CLP ($)' : c}
+              </button>
             ))}
           </div>
-        ) : (
-          <div className="p-8 text-center bg-zinc-950/40 rounded-xl border border-dashed border-zinc-800 space-y-1">
-            <p className="text-xs font-semibold text-zinc-400">
-              No hay proyectos registrados para este proveedor.
-            </p>
+
+          {/* Unit Toggle */}
+          <div className="flex items-center bg-zinc-950 border border-zinc-800 p-0.5 rounded-xl text-xs font-bold font-mono">
+            {(['m2', 'planchas'] as const).map((u) => (
+              <button
+                key={u}
+                onClick={() => setUnitMetric(u)}
+                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                  unitMetric === u ? 'bg-orange-500 text-white' : 'text-zinc-400 hover:text-white'
+                }`}
+              >
+                {u}
+              </button>
+            ))}
           </div>
+
+          {/* Provider Selector */}
+          {isSuperAdmin && (
+            <div className="flex items-center gap-2">
+              <select
+                value={selectedProviderId}
+                onChange={(e) => setSelectedProviderId(e.target.value)}
+                className="py-1.5 px-3 bg-zinc-950 border border-zinc-700 rounded-xl text-xs text-white font-bold focus:outline-none focus:border-orange-500 cursor-pointer"
+              >
+                {providers.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 2. Sub-Tab Pills Navigation */}
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 bg-zinc-950/80 p-1.5 border border-zinc-800 rounded-2xl">
+        <button
+          onClick={() => setActiveSubTab('resumen')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all shrink-0 cursor-pointer ${
+            activeSubTab === 'resumen'
+              ? 'bg-orange-500 text-white shadow-md'
+              : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+          }`}
+        >
+          <BarChart3 size={15} />
+          <span>Resumen Ejecutivo</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('materiales')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all shrink-0 cursor-pointer ${
+            activeSubTab === 'materiales'
+              ? 'bg-orange-500 text-white shadow-md'
+              : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+          }`}
+        >
+          <Layers size={15} />
+          <span>Analítica de Materiales & Catálogo</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('huella_verde')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all shrink-0 cursor-pointer ${
+            activeSubTab === 'huella_verde'
+              ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20'
+              : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+          }`}
+        >
+          <Leaf size={15} className="text-emerald-400" />
+          <span>Huella de Carbono & ESG</span>
+          <span className="px-1.5 py-0.2 bg-emerald-950 text-emerald-300 border border-emerald-500/30 text-[9px] font-extrabold rounded uppercase">
+            Scope 1-3
+          </span>
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('geografica')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all shrink-0 cursor-pointer ${
+            activeSubTab === 'geografica'
+              ? 'bg-orange-500 text-white shadow-md'
+              : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+          }`}
+        >
+          <MapPin size={15} />
+          <span>Demanda Geográfica (Gran Santiago)</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('prediccion')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all shrink-0 cursor-pointer ${
+            activeSubTab === 'prediccion'
+              ? 'bg-orange-500 text-white shadow-md'
+              : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+          }`}
+        >
+          <TrendingUp size={15} />
+          <span>Predicción & Muestras Físicas</span>
+        </button>
+      </div>
+
+      {/* 3. Sub-Tab Content Rendering */}
+      <div>
+        {activeSubTab === 'resumen' && (
+          <ExecutiveOverviewSheet
+            selectedProviderName={providerName}
+            onNavigateToTab={(tab) => {
+              if (tab === 'materiales') setActiveSubTab('materiales');
+              if (tab === 'geografica') setActiveSubTab('geografica');
+              if (tab === 'sku-viewer') setActiveSubTab('prediccion');
+            }}
+          />
         )}
+
+        {activeSubTab === 'materiales' && (
+          <MaterialAnalyticsSheet
+            onPrescribePackage={(pack) => {
+              alert(`Paquete "${pack}" añadido a la cola de prescripción 3D.`);
+            }}
+            onNavigateToTab={(tab) => {
+              if (tab === 'sku-viewer') setActiveSubTab('prediccion');
+            }}
+          />
+        )}
+
+        {activeSubTab === 'huella_verde' && <GreenMetricsCarbonSheet />}
+
+        {activeSubTab === 'geografica' && <GeographicDemandSheet />}
+
+        {activeSubTab === 'prediccion' && <ForecastingSamplesSheet />}
       </div>
     </div>
   );

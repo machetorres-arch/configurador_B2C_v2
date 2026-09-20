@@ -25,7 +25,7 @@ export async function exportKitchenLabelsPDF(
 
   allParts.forEach((part) => {
     const cab = realCabinets.find(c => c.id === part.moduleId);
-    const cncPart = calculateCncMachiningForPart(part, cab, hardwareBrand, assemblyType, golaSystem);
+    const cncPart = calculateCncMachiningForPart(part, cab, hardwareBrand, assemblyType, golaSystem, state.handleConfig);
 
     for (let q = 1; q <= part.qty; q++) {
       const partCopy: CncMachinedPart = {

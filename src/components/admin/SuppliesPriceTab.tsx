@@ -47,8 +47,7 @@ export function SuppliesPriceTab() {
     { id: 'cubiertas_qstone', label: 'Cubiertas Qstone', icon: Sparkles },
     { id: 'melamina', label: 'Melaminas & Tableros', icon: Layers },
     { id: 'herrajes', label: 'Herrajes & Cantos', icon: Wrench },
-    { id: 'sip', label: 'Paneles SIP (PROSIP)', icon: Home },
-    { id: 'madera', label: 'Madera Estructural', icon: Trees },
+    { id: 'madera', label: 'Madera & Enchapados', icon: Trees },
     { id: 'fijaciones_sellantes', label: 'Fijaciones & Sellos', icon: DollarSign },
   ];
 
@@ -134,10 +133,8 @@ export function SuppliesPriceTab() {
         return <span className="px-2 py-0.5 bg-orange-500/10 text-orange-400 border border-orange-500/20 rounded text-[9px] font-bold uppercase">Melaminas</span>;
       case 'herrajes':
         return <span className="px-2 py-0.5 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded text-[9px] font-bold uppercase">Herrajes</span>;
-      case 'sip':
-        return <span className="px-2 py-0.5 bg-sky-500/10 text-sky-400 border border-sky-500/20 rounded text-[9px] font-bold uppercase">Paneles SIP</span>;
       case 'madera':
-        return <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded text-[9px] font-bold uppercase">Madera IPV</span>;
+        return <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded text-[9px] font-bold uppercase">Madera</span>;
       case 'fijaciones_sellantes':
         return <span className="px-2 py-0.5 bg-purple-500/10 text-purple-400 border border-purple-500/20 rounded text-[9px] font-bold uppercase">Fijaciones/Sellos</span>;
     }
@@ -393,8 +390,7 @@ export function SuppliesPriceTab() {
                     <option value="cubiertas_qstone">Cubiertas Qstone (Cuarzo / Sinterizado / MO)</option>
                     <option value="melamina">Melaminas & Tableros</option>
                     <option value="herrajes">Herrajes & Accesorios</option>
-                    <option value="sip">Paneles SIP</option>
-                    <option value="madera">Madera Estructural IPV</option>
+                    <option value="madera">Madera & Enchapados</option>
                     <option value="fijaciones_sellantes">Fijaciones & Sellos</option>
                   </select>
                 </div>

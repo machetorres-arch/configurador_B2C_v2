@@ -12,20 +12,19 @@ export const FridgeFDVSignatureSBS: React.FC<FridgeProps> = ({
   height = 177,
   depth = 67,
 }) => {
-  // Materiales de alta gama
+  // Materiales en Acero Inoxidable Silver Gris Claro
   const darkInoxMat = (
     <meshStandardMaterial
-      color="#1e2024"
-      metalness={0.82}
-      roughness={0.28}
-      envMapIntensity={1.0}
+      color="#d0d5da"
+      metalness={0.32}
+      roughness={0.4}
     />
   );
 
   const darkCabinetBodyMat = (
     <meshStandardMaterial
-      color="#141517"
-      metalness={0.6}
+      color="#b8bec4"
+      metalness={0.28}
       roughness={0.45}
     />
   );

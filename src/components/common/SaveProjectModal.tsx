@@ -72,13 +72,11 @@ export function SaveProjectModal({
           ? 'Clóset Modular'
           : projectType === 'special'
           ? 'Mueble Especial de Autor'
-          : projectType === 'sip-house'
-          ? 'Cabaña Modular SIP'
           : projectType === 'hpl-bathroom'
           ? 'Tabiquería Sanitaria HPL'
-          : projectType === 'concrete-house'
-          ? 'Casa Hormigón Armado'
-          : 'Mobiliario de Oficina';
+          : projectType === 'office'
+          ? 'Mobiliario de Oficina'
+          : 'Diseño de Sillas';
 
       const dateStr = new Date().toLocaleDateString('es-CL', {
         day: '2-digit',
@@ -121,14 +119,13 @@ export function SaveProjectModal({
       // 2. Si Supabase está autenticado, sincronizar a la nube
       if (supabaseUser && supabaseTenant) {
         try {
-          const cloudTypeMap: Record<ProjectType, 'kitchen' | 'closet' | 'special_furniture' | 'sip_house'> = {
+          const cloudTypeMap: Record<ProjectType, 'kitchen' | 'closet' | 'special_furniture'> = {
             kitchen: 'kitchen',
             closet: 'closet',
             special: 'special_furniture',
-            'sip-house': 'sip_house',
             'hpl-bathroom': 'special_furniture',
-            'concrete-house': 'sip_house',
             office: 'special_furniture',
+            chair: 'special_furniture',
           };
 
           await saveProjectToCloud({
@@ -169,14 +166,12 @@ export function SaveProjectModal({
         return 'Clóset Modular';
       case 'special':
         return 'Muebles Especiales';
-      case 'sip-house':
-        return 'Casa / Cabaña Panel SIP';
       case 'hpl-bathroom':
         return 'Tabiquería Sanitaria HPL';
-      case 'concrete-house':
-        return 'Casa Hormigón Armado';
       case 'office':
         return 'Mobiliario de Oficina';
+      case 'chair':
+        return 'Sillas y Estructuras';
     }
   };
 

@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { useKitchenStore } from '../../store/kitchenStore';
 import { MEP_TYPE_CONFIGS, MepPoint } from '../../types/mep';
 import { detectMepClashes } from '../../utils/mepClashDetection';
+import { KitchenMepDimensionsRenderer } from './KitchenMepDimensionsRenderer';
 
 export const KitchenMepScene: React.FC = () => {
   const {
@@ -137,6 +138,7 @@ export const KitchenMepScene: React.FC = () => {
           </group>
         );
       })}
+      <KitchenMepDimensionsRenderer />
     </group>
   );
 };

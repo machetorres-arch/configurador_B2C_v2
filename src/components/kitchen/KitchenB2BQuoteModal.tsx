@@ -95,7 +95,7 @@ export function KitchenB2BQuoteModal({ isOpen, onClose }: KitchenB2BQuoteModalPr
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200 overflow-hidden">
+    <div className="fixed inset-0 z-[500] flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200 overflow-hidden">
       <div className={`relative w-full max-w-5xl h-[92vh] border rounded-2xl shadow-2xl flex flex-col overflow-hidden transition-colors ${
         isLight ? 'bg-zinc-50 border-zinc-300 text-zinc-900' : 'bg-zinc-950 border-zinc-800 text-slate-200'
       }`}>

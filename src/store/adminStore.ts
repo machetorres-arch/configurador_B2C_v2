@@ -3,7 +3,7 @@ import { getSupabase } from '../lib/supabase';
 import { useSupabaseAuthStore } from './supabaseAuthStore';
 import { useKitchenStore } from './kitchenStore';
 
-export type ProjectType = 'closet' | 'kitchen' | 'special' | 'sip-house' | 'hpl-bathroom' | 'concrete-house' | 'office';
+export type ProjectType = 'closet' | 'kitchen' | 'special' | 'hpl-bathroom' | 'office' | 'chair';
 
 export interface ProjectItem {
   id: string;
@@ -16,7 +16,7 @@ export interface ProjectItem {
   data: any;
 }
 
-export type SupplyCategory = 'melamina' | 'herrajes' | 'cubiertas_qstone' | 'sip' | 'madera' | 'fijaciones_sellantes';
+export type SupplyCategory = 'melamina' | 'herrajes' | 'cubiertas_qstone' | 'madera' | 'fijaciones_sellantes';
 
 export interface SupplyItem {
   id: string;
@@ -648,56 +648,6 @@ export const DEFAULT_SUPPLIES: SupplyItem[] = [
     supplier: 'Marmolería Especializada',
     stockRef: 999,
     notes: 'Para encimeras a gas o inducción sobrepuesta'
-  },
-
-  // Paneles SIP
-  {
-    id: 'sip-panel-90',
-    category: 'sip',
-    name: 'Panel SIP Muro Interior 90mm (OSB 11.1 + EPS 68 + OSB 11.1)',
-    code: 'SIP-WALL-90',
-    spec: 'Formato estándar 1.22 x 2.44 m, EPS 15 kg/m³',
-    unit: 'Panel (2.97 m²)',
-    priceClp: 48900,
-    supplier: 'PROSIP / Maderas Arauco',
-    stockRef: 70,
-    notes: 'Tabiquería divisoria interior no estructural'
-  },
-  {
-    id: 'sip-panel-114',
-    category: 'sip',
-    name: 'Panel SIP Perimetral 114mm (OSB 11.1 + EPS 92 + OSB 11.1)',
-    code: 'SIP-WALL-114',
-    spec: 'Formato 1.22 x 2.44 m, transmitancia U=0.38 W/m²K',
-    unit: 'Panel (2.97 m²)',
-    priceClp: 56800,
-    supplier: 'PROSIP / Maderas Arauco',
-    stockRef: 120,
-    notes: 'Muros perimetrales habitacionales estándar'
-  },
-  {
-    id: 'sip-panel-162',
-    category: 'sip',
-    name: 'Panel SIP Alto Aislamiento 162mm (OSB 11.1 + EPS 140 + OSB 11.1)',
-    code: 'SIP-WALL-162',
-    spec: 'Formato 1.22 x 2.44 m, transmitancia U=0.25 W/m²K',
-    unit: 'Panel (2.97 m²)',
-    priceClp: 69500,
-    supplier: 'PROSIP Climas Fríos',
-    stockRef: 50,
-    notes: 'Techumbres y muros perimetrales Zona Sur'
-  },
-  {
-    id: 'sip-panel-210',
-    category: 'sip',
-    name: 'Panel SIP Techo/Piso 210mm (OSB 11.1 + EPS 188 + OSB 11.1)',
-    code: 'SIP-ROOF-210',
-    spec: 'Formato 1.22 x 2.44 m, alta inercia térmica y luz estructural',
-    unit: 'Panel (2.97 m²)',
-    priceClp: 84900,
-    supplier: 'PROSIP Estructural',
-    stockRef: 40,
-    notes: 'Techumbres inclinadas y losas de entrepiso'
   },
 
   // Madera Estructural
@@ -1465,34 +1415,6 @@ export const DEFAULT_PROVIDERS: ProviderItem[] = [
 
 export const DEFAULT_PROJECTS: ProjectItem[] = [
   {
-    id: 'proj-sip-molco-01',
-    name: 'Casa SIP Molco 132.1 m² - Proyecto Tipo',
-    client: 'Inmobiliaria Los Arrayanes SpA',
-    date: '2026-08-20',
-    type: 'sip-house',
-    description: 'Vivienda modular sustentable en paneles SIP 162/114 con 3 dormitorios, 2 baños y envolvente térmica continua.',
-    totalCostEstimateClp: 28450000,
-    data: {
-      dimensions: {
-        width: 800,
-        length: 1200,
-        wallHeight: 280,
-        roofPitch: 22,
-        ridgeOffset: 400,
-        overhang: 50,
-      },
-      foundationType: 'radier_sobrecimiento',
-      extCladding: 'zincalum_negro',
-      roofCladding: 'zinc_ca8_negro',
-      interiorCeiling: 'entablado_pino',
-      flooringType: 'vinilico_spc',
-      coreType: 'eps_15kg',
-      wallThicknessMm: 114,
-      roofThicknessMm: 210,
-      floorThicknessMm: 114
-    }
-  },
-  {
     id: 'proj-kitchen-loft-01',
     name: 'Cocina Isla Integral Roble & Grafito',
     client: 'Arquitecto Martín Silva',
@@ -1820,7 +1742,10 @@ export const useAdminStore = create<AdminState>((set, get) => {
             kitchen: 'kitchen',
             closet: 'closet',
             special_furniture: 'special',
-            sip_house: 'sip-house',
+            special: 'special',
+            hpl_bathroom: 'hpl-bathroom',
+            office: 'office',
+            chair: 'chair',
           };
 
           const cloudProjectItems: ProjectItem[] = data.map((cp) => ({

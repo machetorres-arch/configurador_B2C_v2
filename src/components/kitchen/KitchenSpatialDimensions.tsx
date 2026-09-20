@@ -53,19 +53,22 @@ export function KitchenSpatialDimensions() {
   const roomConfig = useKitchenStore((s) => s.roomConfig);
   const architecturalElements = useKitchenStore((s) => s.architecturalElements);
   const toolMode = useKitchenStore((s) => s.toolMode);
+  const countertopConfig = useKitchenStore((s) => s.countertopConfig);
+  const qstoneCatalog = useKitchenStore((s) => s.qstoneCatalog);
 
-  const isEnabled = showDimensions && dimensionLevel >= 6 && !toolMode.startsWith('place_') && toolMode !== 'draw_wall';
+  const isEnabled = showDimensions && (dimensionLevel >= 6 || dimensionLevel === 1) && !toolMode.startsWith('place_') && toolMode !== 'draw_wall';
 
-  // 1. Gather all room wall segments (centerlines in X-Z)
+  // 1. Gather all room wall segments (centerlines in X-Z with thickness)
   const wallSegments = useMemo(() => {
-    const segs: Array<{ start: [number, number]; end: [number, number] }> = [];
+    const segs: Array<{ start: [number, number]; end: [number, number]; thickness: number }> = [];
+    const defaultThick = roomConfig?.wallThickness || 20;
     if (walls && walls.length > 0) {
-      walls.forEach((w) => segs.push({ start: w.start, end: w.end }));
+      walls.forEach((w) => segs.push({ start: w.start, end: w.end, thickness: w.thickness || defaultThick }));
     } else if (roomConfig?.vertices && roomConfig.vertices.length >= 3) {
       const v = roomConfig.vertices;
       for (let i = 0; i < v.length; i++) {
         const next = (i + 1) % v.length;
-        segs.push({ start: [v[i].x, v[i].y], end: [v[next].x, v[next].y] });
+        segs.push({ start: [v[i].x, v[i].y], end: [v[next].x, v[next].y], thickness: defaultThick });
       }
     }
     return segs;
@@ -158,26 +161,33 @@ export function KitchenSpatialDimensions() {
     }> = [];
 
     for (const flank of terminalFlanks) {
-      let closestHit: { distance: number; point: [number, number] } | null = null;
+      let closestHit: { distance: number; point: [number, number]; thickness: number } | null = null;
 
       for (const seg of wallSegments) {
         const hit = raySegmentIntersection(flank.point, flank.direction, seg.start, seg.end);
         if (hit) {
           if (!closestHit || hit.distance < closestHit.distance) {
-            closestHit = hit;
+            closestHit = { ...hit, thickness: seg.thickness };
           }
         }
       }
 
       // Filter: only show if space to wall is between 2cm and 350cm (carpenters/fitters need clearance)
-      if (closestHit && closestHit.distance >= 2 && closestHit.distance <= 350) {
-        const d = closestHit.distance;
-        results.push({
-          id: `wall-dim-${flank.cabId}-${flank.point[0].toFixed(0)}-${flank.point[1].toFixed(0)}`,
-          start: [flank.point[0], flank.yElevation, flank.point[1]],
-          end: [closestHit.point[0], flank.yElevation, closestHit.point[1]],
-          label: `${d.toFixed(1)} cm a Muro`,
-        });
+      if (closestHit) {
+        const wallThick = closestHit.thickness || 20;
+        const clearanceToFace = Math.max(0, closestHit.distance - wallThick / 2);
+        if (clearanceToFace >= 2 && clearanceToFace <= 350) {
+          const hitPointFace: [number, number] = [
+            flank.point[0] + clearanceToFace * flank.direction[0],
+            flank.point[1] + clearanceToFace * flank.direction[1],
+          ];
+          results.push({
+            id: `wall-dim-${flank.cabId}-${flank.point[0].toFixed(0)}-${flank.point[1].toFixed(0)}`,
+            start: [flank.point[0], flank.yElevation, flank.point[1]],
+            end: [hitPointFace[0], flank.yElevation, hitPointFace[1]],
+            label: `${clearanceToFace.toFixed(1)} cm a Muro`,
+          });
+        }
       }
     }
 
@@ -386,6 +396,135 @@ export function KitchenSpatialDimensions() {
     return results;
   }, [architecturalElements, cabinets]);
 
+  // 5. Medida de altura libre: Distancia desde la cubierta hasta la base de los muebles aéreos
+  // REGLA: Mostrar SOLO 1 cota por corrida si la altura es uniforme. Si varía la altura (mueble más arriba o abajo), agregar esa cota.
+  const countertopToWallDimensions = useMemo(() => {
+    const results: Array<{ id: string; start: [number, number, number]; end: [number, number, number]; label: string }> = [];
+    const wallCabinets = cabinets.filter((c) => c.type === 'wall');
+    if (wallCabinets.length === 0) return results;
+
+    const baseCabinets = cabinets.filter((c) => c.type === 'base' || c.type === 'island');
+    const isCountertopActive = countertopConfig?.enabled !== false;
+    const activeProduct = isCountertopActive
+      ? (qstoneCatalog?.find((p) => p.id === countertopConfig.selectedProductId) || qstoneCatalog?.[0])
+      : null;
+    const stoneThicknessCm = (activeProduct?.thicknessMm || 20) / 10;
+
+    interface ClearanceCandidate {
+      wallCab: CabinetType;
+      matchingBase: CabinetType;
+      clearance: number;
+      countertopTopY: number;
+      wallBottomY: number;
+      posX: number;
+      posZ: number;
+      runAngle: number;
+      tangentPos: number;
+    }
+
+    const candidates: ClearanceCandidate[] = [];
+
+    for (const wallCab of wallCabinets) {
+      const [wx, wy, wz] = wallCab.position;
+      const wallBottomY = wy - wallCab.height / 2;
+      const wRot = wallCab.rotation || 0;
+      const cos = Math.cos(wRot);
+      const sin = Math.sin(wRot);
+
+      // Buscar el mueble base alineado verticalmente debajo de este mueble aéreo
+      let matchingBase: CabinetType | null = null;
+      let minDistXZ = Infinity;
+
+      for (const baseCab of baseCabinets) {
+        const [bx, by, bz] = baseCab.position;
+        const dXZ = Math.hypot(bx - wx, bz - wz);
+        const rotDiff = Math.abs((baseCab.rotation || 0) - wRot) % Math.PI;
+        const isRotAligned = rotDiff < 0.2 || Math.abs(rotDiff - Math.PI) < 0.2;
+
+        if (dXZ < Math.max(wallCab.width, baseCab.width) + 15 && isRotAligned) {
+          if (dXZ < minDistXZ) {
+            minDistXZ = dXZ;
+            matchingBase = baseCab;
+          }
+        }
+      }
+
+      if (matchingBase) {
+        const [bx, by, bz] = matchingBase.position;
+        const baseTopY = by + matchingBase.height / 2;
+        const countertopTopY = baseTopY + (isCountertopActive ? stoneThicknessCm : 0);
+        const clearance = wallBottomY - countertopTopY;
+
+        if (clearance >= 10 && clearance <= 250) {
+          const frontOffset = (Math.max(wallCab.depth, matchingBase.depth) / 2) + 6;
+          const normX = -sin;
+          const normZ = cos;
+
+          const posX = wx + normX * frontOffset;
+          const posZ = wz + normZ * frontOffset;
+          const tangentPos = wx * cos + wz * sin;
+
+          candidates.push({
+            wallCab,
+            matchingBase,
+            clearance,
+            countertopTopY,
+            wallBottomY,
+            posX,
+            posZ,
+            runAngle: Math.round(wRot * 100) / 100,
+            tangentPos,
+          });
+        }
+      }
+    }
+
+    if (candidates.length === 0) return results;
+
+    // Agrupar por orientación de pared / corrida
+    const runsMap = new Map<number, ClearanceCandidate[]>();
+    for (const cand of candidates) {
+      const list = runsMap.get(cand.runAngle) || [];
+      list.push(cand);
+      runsMap.set(cand.runAngle, list);
+    }
+
+    for (const [, runCands] of runsMap.entries()) {
+      // Ordenar de izquierda a derecha en la corrida
+      runCands.sort((a, b) => a.tangentPos - b.tangentPos);
+
+      // Agrupar por distancia libre con tolerancia de 0.5 cm
+      const clearanceGroups = new Map<number, ClearanceCandidate[]>();
+      for (const cand of runCands) {
+        const roundedClearance = Math.round(cand.clearance * 10) / 10;
+        let foundKey: number | null = null;
+        for (const k of clearanceGroups.keys()) {
+          if (Math.abs(k - roundedClearance) <= 0.5) {
+            foundKey = k;
+            break;
+          }
+        }
+        const key = foundKey !== null ? foundKey : roundedClearance;
+        const group = clearanceGroups.get(key) || [];
+        group.push(cand);
+        clearanceGroups.set(key, group);
+      }
+
+      // Para cada altura libre distinta dentro de la corrida, colocar EXACTAMENTE 1 cota
+      for (const [, group] of clearanceGroups.entries()) {
+        const rep = group[0];
+        results.push({
+          id: `cota-cubierta-aereo-${rep.wallCab.id}`,
+          start: [rep.posX, rep.countertopTopY, rep.posZ],
+          end: [rep.posX, rep.wallBottomY, rep.posZ],
+          label: `Cubierta a Aéreo: ${rep.clearance.toFixed(1)} cm`,
+        });
+      }
+    }
+
+    return results;
+  }, [cabinets, countertopConfig, qstoneCatalog]);
+
   if (!isEnabled) return null;
 
   return (
@@ -439,6 +578,19 @@ export function KitchenSpatialDimensions() {
           color="#10b981" // Emerald
           fontSize={5.2}
           lineWidth={1.8}
+        />
+      ))}
+
+      {/* 5. Distancia desde Cubierta a Base de Muebles Aéreos */}
+      {countertopToWallDimensions.map((dim) => (
+        <DimensionCota
+          key={dim.id}
+          start={dim.start}
+          end={dim.end}
+          label={dim.label}
+          color="#06b6d4" // Cyan CAD
+          fontSize={5.5}
+          lineWidth={2.2}
         />
       ))}
     </group>

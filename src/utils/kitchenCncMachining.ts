@@ -1,9 +1,10 @@
 import { Part } from './manufacturing';
 import { CabinetType } from '../store/kitchenStore';
+import { KitchenHandleConfig } from '../types/handle';
 
 export interface CncDrill {
   id: string;
-  type: 'hinge_cup_35' | 'hinge_plate_5' | 'slide_hole_5' | 'shelf_pin_5' | 'minifix_15' | 'minifix_bolt_8' | 'dowel_8' | 'screw_confirmat_5';
+  type: 'hinge_cup_35' | 'hinge_plate_5' | 'slide_hole_5' | 'shelf_pin_5' | 'minifix_15' | 'minifix_bolt_8' | 'dowel_8' | 'screw_confirmat_5' | 'handle_hole';
   face: 'face_A' | 'face_B' | 'edge_L1' | 'edge_L2' | 'edge_W1' | 'edge_W2';
   x: number; // mm from bottom-left corner of piece (0 to width)
   y: number; // mm from bottom-left corner (0 to length)
@@ -67,7 +68,8 @@ export function calculateCncMachiningForPart(
   cab: CabinetType | undefined,
   hardwareBrand: 'Hafele' | 'Provelcar' = 'Hafele',
   assemblyType: 'spax' | 'minifix' = 'minifix',
-  golaSystem: 'none' | 'aluminum' | 'black' = 'none'
+  golaSystem: 'none' | 'aluminum' | 'black' = 'none',
+  handleConfig?: KitchenHandleConfig
 ): CncMachinedPart {
   const pw = Math.round(part.width);   // mm (e.g. depth of cabinet for laterals)
   const pl = Math.round(part.length);  // mm (e.g. height of cabinet for laterals)
@@ -293,6 +295,43 @@ export function calculateCncMachiningForPart(
         label: 'Tornillo Cazoleta Ø2.5'
       });
     });
+
+    // Perforaciones para Tirador (lado opuesto a bisagras si no hay gola y requiere taladros pasantes)
+    if (golaSystem === 'none' && handleConfig && handleConfig.model !== 'none') {
+      const isSingleHole = handleConfig.model === 'balin' || handleConfig.model === 'berlin';
+      const isRearPestana = handleConfig.model === 'ce' || handleConfig.model === 'oslo';
+      const handleX = pw - 45;
+      const handleCenterY = 70;
+
+      if (!isRearPestana) {
+        if (isSingleHole) {
+          drills.push({
+            id: 'dr-handle-0',
+            type: 'handle_hole',
+            face: 'face_A',
+            x: handleX,
+            y: handleCenterY,
+            diameter: 4.5,
+            depth: th,
+            label: `Tirador Ø4.5mm Pasante (${handleConfig.model.toUpperCase()})`
+          });
+        } else {
+          const hLen = handleConfig.lengthMm || 128;
+          [handleCenterY, handleCenterY + hLen].forEach((yPos, hIdx) => {
+            drills.push({
+              id: `dr-handle-${hIdx}`,
+              type: 'handle_hole',
+              face: 'face_A',
+              x: handleX,
+              y: yPos,
+              diameter: 4.5,
+              depth: th,
+              label: `Tirador 2x Ø4.5mm Pasante (${handleConfig.model.toUpperCase()} ${hLen}mm)`
+            });
+          });
+        }
+      }
+    }
   }
 
   // 3. PISOS, TECHOS Y BASES HORIZONTALES
@@ -347,6 +386,44 @@ export function calculateCncMachiningForPart(
         label: hardwareBrand === 'Hafele' ? 'Clip de Enganche Häfele Matrix' : 'Clip de Regulación Cajón'
       });
     });
+
+    // Perforaciones para Tirador en Frente de Cajón
+    if (golaSystem === 'none' && handleConfig && handleConfig.model !== 'none') {
+      const isSingleHole = handleConfig.model === 'balin' || handleConfig.model === 'berlin';
+      const isRearPestana = handleConfig.model === 'ce' || handleConfig.model === 'oslo';
+      const cy = pl / 2;
+
+      if (!isRearPestana) {
+        if (isSingleHole) {
+          drills.push({
+            id: 'dr-drawer-handle-0',
+            type: 'handle_hole',
+            face: 'face_A',
+            x: pw / 2,
+            y: cy,
+            diameter: 4.5,
+            depth: th,
+            label: `Tirador Cajón Ø4.5mm Pasante (${handleConfig.model.toUpperCase()})`
+          });
+        } else {
+          const hLen = handleConfig.lengthMm || 128;
+          if (pw >= hLen + 40) {
+            [pw / 2 - hLen / 2, pw / 2 + hLen / 2].forEach((xPos, hIdx) => {
+              drills.push({
+                id: `dr-drawer-handle-${hIdx}`,
+                type: 'handle_hole',
+                face: 'face_A',
+                x: xPos,
+                y: cy,
+                diameter: 4.5,
+                depth: th,
+                label: `Tirador Cajón 2x Ø4.5mm Pasante (${handleConfig.model.toUpperCase()} ${hLen}mm)`
+              });
+            });
+          }
+        }
+      }
+    }
   }
 
   // Identificador de pieza estandarizado

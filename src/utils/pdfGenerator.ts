@@ -1,7 +1,6 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { ProjectItem } from '../store/adminStore';
-import { calculateSipHouseQuantities } from './sipExcelGenerator';
 import { renderArquifyPdfLogo } from './pdfLogo';
 
 export function exportProjectToPdf(project: ProjectItem) {
@@ -54,9 +53,7 @@ export function exportProjectToPdf(project: ProjectItem) {
   let currentY = 72;
 
   // Module-specific data generation
-  if (project.type === 'sip-house') {
-    renderSipHousePdf(doc, project, currentY);
-  } else if (project.type === 'kitchen') {
+  if (project.type === 'kitchen') {
     renderKitchenPdf(doc, project, currentY);
   } else if (project.type === 'closet') {
     renderClosetPdf(doc, project, currentY);
@@ -73,81 +70,21 @@ export function exportProjectToPdf(project: ProjectItem) {
 
 function getModuleTypeName(type: string): string {
   switch (type) {
-    case 'sip-house':
-      return 'Casa Industrializada Panel SIP (BIM / EETT PROSIP)';
     case 'kitchen':
       return 'Cocina Modular & Planificador 2D/3D';
     case 'closet':
       return 'Clóset Paramétrico Modular';
     case 'special':
       return 'Mueble Especial / Aparador Vitrina Autor';
+    case 'office':
+      return 'Mobiliario de Oficina (Space Planning)';
+    case 'hpl-bathroom':
+      return 'Cabinas Sanitarias Fenólicas HPL';
+    case 'chair':
+      return 'Sillas Terciado Curvo & Estructura Metálica';
     default:
-      return 'Proyecto 3D';
+      return 'Proyecto de Mobiliario 3D';
   }
-}
-
-function renderSipHousePdf(doc: jsPDF, project: ProjectItem, startY: number) {
-  const d = project.data || {};
-  const dim = d.dimensions || { width: 800, length: 1200, wallHeight: 280, roofPitch: 22 };
-
-  const quantities = calculateSipHouseQuantities(
-    dim,
-    d.foundationType || 'radier_sobrecimiento',
-    d.extCladding || 'zincalum_negro',
-    d.roofCladding || 'zinc_ca8_negro',
-    d.interiorCeiling || 'entablado_pino',
-    d.flooringType || 'vinilico_spc',
-    d.openings || [],
-    d.mepNetwork,
-    d.coreType || 'eps_15kg',
-    d.wallThicknessMm || 114,
-    d.roofThicknessMm || 210,
-    d.floorThicknessMm || 114,
-    d.interiorWalls || []
-  );
-
-  autoTable(doc, {
-    startY: startY,
-    head: [['Parámetro General', 'Valor / Especificación Técnica']],
-    body: [
-      ['Dimensiones en Planta', `${dim.width / 100} m (Ancho) x ${dim.length / 100} m (Largo)`],
-      ['Superficie Útil de Piso', `${quantities.totalFloorM2.toFixed(1)} m²`],
-      ['Superficie Muros Perimetrales SIP', `${quantities.extWallAreaM2.toFixed(1)} m²`],
-      ['Superficie Cubierta / Techo SIP', `${quantities.totalRoofAreaM2.toFixed(1)} m²`],
-      ['Espesor Muros / Techo', `${d.wallThicknessMm || 114} mm / ${d.roofThicknessMm || 210} mm`],
-      ['Tipo de Núcleo Aislante', `${d.coreType || 'EPS 15 kg/m³'} de alta eficiencia`],
-      ['Fundación Proyectada', `${d.foundationType || 'Radier de Hormigón Armado'}`],
-      ['Costo Total Estimado CLP', `$${quantities.totalPresupuestoClp.toLocaleString('es-CL')}`],
-    ],
-    theme: 'grid',
-    headStyles: { fillColor: [24, 24, 27], textColor: [255, 255, 255], fontStyle: 'bold' },
-    styles: { fontSize: 9, cellPadding: 3 },
-  });
-
-  const finalY = (doc as any).lastAutoTable.finalY || 140;
-
-  // Add Itemized BOM Table
-  const bomRows = quantities.items.slice(0, 18).map((item) => [
-    item.especialidad,
-    item.item,
-    `${item.cantidad} ${item.unidad}`,
-    `$${item.precioUnitarioClp.toLocaleString('es-CL')}`,
-    `$${item.totalClp.toLocaleString('es-CL')}`,
-  ]);
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
-  doc.setTextColor(24, 24, 27);
-  doc.text('CUBICACIÓN DE MATERIALES PRINCIPALES (BOM)', 14, finalY + 10);
-
-  autoTable(doc, {
-    startY: finalY + 14,
-    head: [['Especialidad', 'Ítem / Insumo', 'Cantidad', 'P. Unitario', 'Total CLP']],
-    body: bomRows,
-    theme: 'striped',
-    headStyles: { fillColor: [249, 115, 22], textColor: [255, 255, 255], fontStyle: 'bold' },
-    styles: { fontSize: 8, cellPadding: 2 },
-  });
 }
 
 function renderKitchenPdf(doc: jsPDF, project: ProjectItem, startY: number) {

@@ -19,7 +19,10 @@ import { KitchenB2BQuoteModal } from '../components/kitchen/KitchenB2BQuoteModal
 import { calculatePolygonArea } from '../utils/roomGeometry';
 import { KitchenMepPanel } from '../components/kitchen/KitchenMepPanel';
 import { detectMepClashes } from '../utils/mepClashDetection';
-import { ArrowLeft, Box, Square, Move3D, PenTool, LayoutGrid, Trash2, RotateCw, Flame, Refrigerator, Flower2, Info, Sparkles, Maximize2, Layers, Palette, ListOrdered, Save, Columns, Sliders, Sun, Moon, Wine, Wrench, DollarSign } from 'lucide-react';
+import { resolvePlacement, getCabinetSpecsFromTool } from '../utils/kitchenCollision';
+import { ArrowLeft, Box, Square, Move3D, PenTool, LayoutGrid, Trash2, RotateCw, Undo2, Redo2, Flame, Refrigerator, Flower2, Utensils, Info, Sparkles, Maximize2, Layers, Palette, ListOrdered, Save, Columns, Sliders, Sun, Moon, Wine, Wrench, DollarSign, ChevronDown, ChevronRight } from 'lucide-react';
+import { HandlesSection } from '../components/kitchen/HandlesSection';
+import { HANDLE_CATALOG } from '../types/handle';
 
 const sectionTitle = "text-xs uppercase tracking-wider text-orange-400 font-bold mb-3 mt-4 first:mt-0";
 const labelClass = "text-xs uppercase tracking-wider text-slate-300 font-semibold";
@@ -27,12 +30,12 @@ const btnClass = "w-full py-2 px-3 bg-white/5 border border-white/10 rounded-lg 
 const activeBtnClass = "w-full py-2 px-3 bg-orange-500/20 border border-orange-500 rounded-lg text-center cursor-pointer text-orange-400 transition-colors text-xs font-bold shadow-[0_0_10px_rgba(249,115,22,0.15)]";
 
 export const DIMENSION_LEVEL_DATA: Record<number, { title: string; desc: string }> = {
-  1: { title: '1. Cotas Generales', desc: 'Largo total de corrida, alto y prof.' },
+  1: { title: '1. Cotas Generales', desc: 'Largo total de corrida, alto, prof. y dist. Cubierta-Aéreo' },
   2: { title: '2. Módulos', desc: 'Ancho individual de cada cuerpo' },
   3: { title: '3. Frentes', desc: 'Puertas y frentes ciegos' },
-  4: { title: '4. Cajoneras e Interiores', desc: 'Alturas de cajones y repisas' },
+  4: { title: '4. Cajoneras e Interiores', desc: 'Alturas de frentes de cajón y repisas' },
   5: { title: '5. Identificación Módulos', desc: 'N° y nombre de muebles (MOD • Nombre)' },
-  6: { title: '6. Medidas Espaciales', desc: 'Muros, vanos, pilares y paso Isla-Base' },
+  6: { title: '6. Medidas Espaciales', desc: 'Muros, vanos, pilares, distancia Cubierta-Aéreo y paso Isla-Base' },
 };
 
 const ToggleBtn = ({ active, onClick, label, isLight }: { active: boolean, onClick: () => void, label: string, isLight?: boolean }) => (
@@ -94,13 +97,158 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
 
   const isLight = theme === 'light';
 
-  const { viewMode, setViewMode, toolMode, setToolMode, cabinets, activeCabinetId, updateCabinet, removeCabinet, setActiveCabinet, applyGlobalTexture, showSocle, setShowSocle, roomConfig, setRoomPlannerOpen, architecturalElements, activeArchElementId, addArchitecturalElement, updateArchitecturalElement, removeArchitecturalElement, setActiveArchElement, golaSystem, setGolaSystem, countertopConfig, setCountertopConfig, qstoneCatalog, islandBackConfig, setIslandBackConfig, mepPoints } = useKitchenStore();
+  const { viewMode, setViewMode, toolMode, setToolMode, cabinets, addCabinet, activeCabinetId, updateCabinet, removeCabinet, setActiveCabinet, applyGlobalTexture, showSocle, setShowSocle, roomConfig, setRoomPlannerOpen, architecturalElements, activeArchElementId, addArchitecturalElement, updateArchitecturalElement, removeArchitecturalElement, setActiveArchElement, golaSystem, setGolaSystem, countertopConfig, setCountertopConfig, qstoneCatalog, islandBackConfig, setIslandBackConfig, mepPoints, handleConfig, undo, redo, canUndo, canRedo } = useKitchenStore();
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) return;
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z') && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      } else if ((e.ctrlKey || e.metaKey) && (((e.key === 'z' || e.key === 'Z') && e.shiftKey) || e.key === 'y' || e.key === 'Y')) {
+        e.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [undo, redo]);
+  const [openAccordions, setOpenAccordions] = useState<Record<string, boolean>>({
+    gola: false,
+    handles: true,
+    tapacantos: false,
+    assembly: false,
+    view: false,
+  });
+
+  const handleInsertModule = (tool: string) => {
+    setViewMode('3d');
+
+    if (tool.startsWith('place_arch_')) {
+      setToolMode(tool as any);
+      return;
+    }
+
+    const state = useKitchenStore.getState();
+    const currentCabinets = state.cabinets;
+    const effectiveWalls = state.walls && state.walls.length > 0 ? state.walls : (state.roomConfig?.vertices && state.roomConfig.vertices.length >= 3 ? state.roomConfig.vertices.map((v, i, arr) => {
+      const next = arr[(i + 1) % arr.length];
+      return { id: `wall_v_${i}`, start: [v.x, v.y] as [number, number], end: [next.x, next.y] as [number, number], thickness: 20, height: 240 };
+    }) : []);
+
+    const specs = getCabinetSpecsFromTool(tool, currentCabinets);
+    const newId = `cab_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
+
+    let targetX = 0;
+    let targetZ = 0;
+    let preferredRot = 0;
+
+    if (specs.type === 'island') {
+      const islandCabinets = currentCabinets.filter(c => c.type === 'island');
+      if (islandCabinets.length === 0) {
+        if (state.roomConfig?.vertices && state.roomConfig.vertices.length >= 3) {
+          const xs = state.roomConfig.vertices.map(v => v.x);
+          const ys = state.roomConfig.vertices.map(v => v.y);
+          targetX = Math.round((Math.min(...xs) + Math.max(...xs)) / 2 / 5) * 5;
+          targetZ = Math.round((Math.min(...ys) + Math.max(...ys)) / 2 / 5) * 5;
+        } else {
+          targetX = 0;
+          targetZ = 0;
+        }
+        preferredRot = 0;
+      } else {
+        const lastIsland = islandCabinets[islandCabinets.length - 1];
+        preferredRot = lastIsland.rotation || 0;
+        const rightDist = (lastIsland.width + specs.width) / 2;
+        const cos = Math.cos(preferredRot);
+        const sin = Math.sin(preferredRot);
+        targetX = Math.round((lastIsland.position[0] + rightDist * cos) / 5) * 5;
+        targetZ = Math.round((lastIsland.position[2] + rightDist * sin) / 5) * 5;
+      }
+    } else {
+      const candidateLastCabs = specs.type === 'wall'
+        ? currentCabinets.filter(c => c.type === 'wall')
+        : currentCabinets.filter(c => c.type === 'base' || c.type === 'tall' || c.type === 'decoration');
+      const lastCab = candidateLastCabs.slice(-1)[0] || currentCabinets.filter(c => c.type !== 'island').slice(-1)[0];
+
+      if (lastCab) {
+        preferredRot = lastCab.rotation || 0;
+        const rightDist = (lastCab.width + specs.width) / 2;
+        const cos = Math.cos(preferredRot);
+        const sin = Math.sin(preferredRot);
+        targetX = lastCab.position[0] + rightDist * cos;
+        targetZ = lastCab.position[2] + rightDist * sin;
+      } else if (effectiveWalls.length > 0) {
+        const w = effectiveWalls[0];
+        const [x1, z1] = w.start;
+        const [x2, z2] = w.end;
+        const wLen = Math.hypot(x2 - x1, z2 - z1);
+        preferredRot = Math.atan2(x1 - x2, z1 - z2);
+        const uX = (x2 - x1) / (wLen || 1);
+        const uZ = (z2 - z1) / (wLen || 1);
+        const offset = Math.min(wLen / 2, specs.width / 2 + 10);
+        targetX = x1 + offset * uX;
+        targetZ = z1 + offset * uZ;
+      }
+    }
+
+    const placement = resolvePlacement({
+      mouseX: targetX,
+      mouseZ: targetZ,
+      cabWidth: specs.width,
+      cabHeight: specs.height,
+      cabDepth: specs.depth,
+      cabType: specs.type,
+      variant: specs.variant,
+      customY: specs.defaultY,
+      preferredRot,
+      cabinets: currentCabinets,
+      walls: effectiveWalls,
+      roomVertices: state.roomConfig?.vertices,
+      architecturalElements: state.architecturalElements,
+    });
+
+    state.addCabinet({
+      id: newId,
+      name: specs.name,
+      type: specs.type,
+      variant: specs.variant,
+      width: specs.width,
+      height: specs.height,
+      depth: specs.depth,
+      position: placement.position,
+      rotation: placement.rotation,
+      material: currentCabinets[0]?.material || 'melamina_blanco',
+      shelfCount: specs.type === 'wall' ? 2 : (specs.type === 'tall' ? 4 : 1),
+      openAction: false,
+    });
+
+    state.setActiveCabinet(newId);
+    state.setToolMode('select');
+  };
+
+  const [moduleAccordions, setModuleAccordions] = useState<Record<string, boolean>>({
+    bases: true,
+    torres: false,
+    murales: false,
+    isla: false,
+    arch: false,
+    deco: false,
+  });
+
+  const toggleModuleAccordion = (key: string) => {
+    setModuleAccordions(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const toggleAccordion = (key: string) => {
+    setOpenAccordions(prev => ({ ...prev, [key]: !prev[key] }));
+  };
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
   const [isCountertopModalOpen, setIsCountertopModalOpen] = useState(false);
   const [isB2BQuoteOpen, setIsB2BQuoteOpen] = useState(false);
   const [isExportingLabels, setIsExportingLabels] = useState(false);
-  const [leftTab, setLeftTab] = useState<'modules' | 'placed' | 'decorations'>('modules');
+  const [leftTab, setLeftTab] = useState<'modules' | 'placed'>('modules');
   const [rightTab, setRightTab] = useState<'module' | 'materials' | 'engineering' | 'mep'>('module');
   const [showIndividualMaterial, setShowIndividualMaterial] = useState(false);
   const globalState = useStore();
@@ -318,6 +466,45 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
             </button>
           </div>
 
+          {/* Botones Deshacer y Rehacer (Undo / Redo) */}
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={undo}
+              disabled={!canUndo()}
+              className={`flex items-center justify-center p-2 rounded-lg border transition-all shadow-sm ${
+                canUndo()
+                  ? isLight
+                    ? 'bg-orange-50 hover:bg-orange-100 border-orange-400 text-orange-600 cursor-pointer active:scale-95 shadow-orange-500/10'
+                    : 'bg-orange-500/15 hover:bg-orange-500/25 border-orange-500/60 text-orange-400 hover:text-orange-300 cursor-pointer active:scale-95 shadow-[0_0_10px_rgba(249,115,22,0.25)]'
+                  : isLight
+                    ? 'bg-slate-100 border-slate-200 text-slate-300 cursor-not-allowed opacity-50'
+                    : 'bg-white/5 border-white/5 text-slate-600 cursor-not-allowed opacity-40'
+              }`}
+              title={canUndo() ? 'Deshacer última acción (Ctrl+Z)' : 'Sin acciones para deshacer'}
+              aria-label="Deshacer"
+            >
+              <Undo2 size={16} strokeWidth={2.5} />
+            </button>
+
+            <button
+              onClick={redo}
+              disabled={!canRedo()}
+              className={`flex items-center justify-center p-2 rounded-lg border transition-all shadow-sm ${
+                canRedo()
+                  ? isLight
+                    ? 'bg-orange-50 hover:bg-orange-100 border-orange-400 text-orange-600 cursor-pointer active:scale-95 shadow-orange-500/10'
+                    : 'bg-orange-500/15 hover:bg-orange-500/25 border-orange-500/60 text-orange-400 hover:text-orange-300 cursor-pointer active:scale-95 shadow-[0_0_10px_rgba(249,115,22,0.25)]'
+                  : isLight
+                    ? 'bg-slate-100 border-slate-200 text-slate-300 cursor-not-allowed opacity-50'
+                    : 'bg-white/5 border-white/5 text-slate-600 cursor-not-allowed opacity-40'
+              }`}
+              title={canRedo() ? 'Rehacer acción (Ctrl+Y / Ctrl+Shift+Z)' : 'Sin acciones para rehacer'}
+              aria-label="Rehacer"
+            >
+              <Redo2 size={16} strokeWidth={2.5} />
+            </button>
+          </div>
+
           {/* Botón selector de Modo Claro / Oscuro */}
           <button
             onClick={toggleTheme}
@@ -406,13 +593,12 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                     </div>
                   </button>
 
-                  <ToolButton isLight={isLight} active={toolMode === 'select'} onClick={() => setToolMode('select')} icon={<Move3D size={16}/>} label="Seleccionar" />
                   <ToolButton isLight={isLight} active={toolMode === 'draw_wall'} onClick={() => { setToolMode('draw_wall'); setViewMode('2d'); }} icon={<PenTool size={16}/>} label="Dibujar Tramo Muro" />
                </div>
             </div>
 
-            {/* Pestañas Catálogo Módulos / En Escena / Acabados */}
-            <div className={`grid grid-cols-3 border-b p-2 gap-1.5 transition-colors ${isLight ? 'border-slate-200 bg-slate-50' : 'border-white/10 bg-black/50'}`}>
+            {/* Pestañas Catálogo Módulos / En Escena */}
+            <div className={`grid grid-cols-2 border-b p-2 gap-1.5 transition-colors ${isLight ? 'border-slate-200 bg-slate-50' : 'border-white/10 bg-black/50'}`}>
               <button
                 onClick={() => setLeftTab('modules')}
                 className={`flex items-center justify-center gap-1.5 py-2 px-1 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
@@ -439,81 +625,138 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                 <ListOrdered size={13} />
                 <span>Escena</span>
               </button>
-              <button
-                onClick={() => setLeftTab('decorations')}
-                className={`flex items-center justify-center gap-1.5 py-2 px-1 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
-                  leftTab === 'decorations'
-                    ? 'bg-orange-500 text-black shadow-[0_0_10px_rgba(249,115,22,0.25)]'
-                    : isLight
-                      ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
-                      : 'text-slate-400 hover:text-white hover:bg-white/5'
-                }`}
-              >
-                <Palette size={13} />
-                <span>Acabados</span>
-              </button>
             </div>
 
             <div className="p-4 flex-1 overflow-y-auto custom-scrollbar">
                {leftTab === 'modules' ? (
                  <div className="flex flex-col gap-2">
-                    <h3 className={`text-xs uppercase tracking-wider font-bold mb-2 ${isLight ? 'text-orange-600' : 'text-orange-400'}`}>Bases</h3>
-                    <div className="flex flex-col gap-1 mb-4">
-                       <ToolButton isLight={isLight} active={toolMode === 'place_base_1_door'} onClick={() => { setToolMode('place_base_1_door'); setViewMode('3d'); }} icon={<Box size={14}/>} label="1 Puerta" />
-                       <ToolButton isLight={isLight} active={toolMode === 'place_base_1_door_1_drawer'} onClick={() => { setToolMode('place_base_1_door_1_drawer'); setViewMode('3d'); }} icon={<Box size={14}/>} label="1 Pta + 1 Cajón" />
-                       <ToolButton isLight={isLight} active={toolMode === 'place_base_2_doors'} onClick={() => { setToolMode('place_base_2_doors'); setViewMode('3d'); }} icon={<Box size={14}/>} label="2 Puertas" />
-                       <ToolButton isLight={isLight} active={toolMode === 'place_base_4_drawers'} onClick={() => { setToolMode('place_base_4_drawers'); setViewMode('3d'); }} icon={<Box size={14}/>} label="4 Cajones" />
-                       <ToolButton isLight={isLight} active={toolMode === 'place_base_2_pot_drawers'} onClick={() => { setToolMode('place_base_2_pot_drawers'); setViewMode('3d'); }} icon={<Box size={14}/>} label="2 Olleros" />
-                       <ToolButton isLight={isLight} active={toolMode === 'place_base_sink_u_drawer'} onClick={() => { setToolMode('place_base_sink_u_drawer'); setViewMode('3d'); }} icon={<Box size={14}/>} label="Fregadero Cajón en U" />
-                       <ToolButton isLight={isLight} active={toolMode === 'place_base_spice_rack'} onClick={() => { setToolMode('place_base_spice_rack'); setViewMode('3d'); }} icon={<Box size={14}/>} label="Especiero" />
-                       <ToolButton isLight={isLight} active={toolMode === 'place_base_wine_rack'} onClick={() => { setToolMode('place_base_wine_rack'); setViewMode('3d'); }} icon={<Wine size={14}/>} label="Botellero Base" />
-                       <ToolButton isLight={isLight} active={toolMode === 'place_base_corner_blind'} onClick={() => { setToolMode('place_base_corner_blind'); setViewMode('3d'); }} icon={<Box size={14}/>} label="Esquinero Ciego" />
-                       <ToolButton isLight={isLight} active={toolMode === 'place_base_corner_l'} onClick={() => { setToolMode('place_base_corner_l'); setViewMode('3d'); }} icon={<Box size={14}/>} label="Esquinero en L (90x90)" />
-                    </div>
-                    
-                    <h3 className={`text-xs uppercase tracking-wider font-bold mb-2 ${isLight ? 'text-orange-600' : 'text-orange-400'}`}>Torres & Despensas</h3>
-                    <div className="flex flex-col gap-1 mb-4">
-                       <ToolButton isLight={isLight} active={toolMode === 'place_tall_1_door'} onClick={() => { setToolMode('place_tall_1_door'); setViewMode('3d'); }} icon={<LayoutGrid size={14}/>} label="1 Pta Larga (Repisas)" />
-                       <ToolButton isLight={isLight} active={toolMode === 'place_tall_split_2_doors'} onClick={() => { setToolMode('place_tall_split_2_doors'); setViewMode('3d'); }} icon={<LayoutGrid size={14}/>} label="2 Ptas (Línea Base + Alta)" />
-                       <ToolButton isLight={isLight} active={toolMode === 'place_tall_oven_micro'} onClick={() => { setToolMode('place_tall_oven_micro'); setViewMode('3d'); }} icon={<LayoutGrid size={14}/>} label="Torre Horno + Micro Empotrado" />
-                       <ToolButton isLight={isLight} active={toolMode === 'place_tall_oven_vent'} onClick={() => { setToolMode('place_tall_oven_vent'); setViewMode('3d'); }} icon={<LayoutGrid size={14}/>} label="Torre Hornos Vent. Técnica" />
-                       <ToolButton isLight={isLight} active={toolMode === 'place_tall_inner_drawers'} onClick={() => { setToolMode('place_tall_inner_drawers'); setViewMode('3d'); }} icon={<LayoutGrid size={14}/>} label="Despensa Cajones Interiores" />
-                       <ToolButton isLight={isLight} active={toolMode === 'place_tall_microwave_niche'} onClick={() => { setToolMode('place_tall_microwave_niche'); setViewMode('3d'); }} icon={<LayoutGrid size={14}/>} label="Nicho Micro Portátil" />
-                       <ToolButton isLight={isLight} active={toolMode === 'place_tall_open'} onClick={() => { setToolMode('place_tall_open'); setViewMode('3d'); }} icon={<LayoutGrid size={14}/>} label="Repisas a la Vista" />
-                       <ToolButton isLight={isLight} active={toolMode === 'place_tall_wine_rack'} onClick={() => { setToolMode('place_tall_wine_rack'); setViewMode('3d'); }} icon={<Wine size={14}/>} label="Botellero Despensa" />
-                       <ToolButton isLight={isLight} active={toolMode === 'place_tall_2_doors'} onClick={() => { setToolMode('place_tall_2_doors'); setViewMode('3d'); }} icon={<LayoutGrid size={14}/>} label="Despensa 2 Puertas" />
-                    </div>
+                    {/* 1. Bases */}
+                    <ModuleCategoryAccordion
+                      id="bases"
+                      title="1. Bases"
+                      count={10}
+                      icon={<Box size={14} />}
+                      isOpen={!!moduleAccordions.bases}
+                      onToggle={() => toggleModuleAccordion('bases')}
+                      hasActiveTool={['place_base_1_door', 'place_base_1_door_1_drawer', 'place_base_2_doors', 'place_base_4_drawers', 'place_base_2_pot_drawers', 'place_base_sink_u_drawer', 'place_base_spice_rack', 'place_base_wine_rack', 'place_base_corner_blind', 'place_base_corner_l'].includes(toolMode)}
+                      isLight={isLight}
+                    >
+                      <ToolButton isLight={isLight} active={toolMode === 'place_base_1_door'} onClick={() => handleInsertModule('place_base_1_door')} icon={<Box size={14}/>} label="1 Puerta" />
+                      <ToolButton isLight={isLight} active={toolMode === 'place_base_1_door_1_drawer'} onClick={() => handleInsertModule('place_base_1_door_1_drawer')} icon={<Box size={14}/>} label="1 Pta + 1 Cajón" />
+                      <ToolButton isLight={isLight} active={toolMode === 'place_base_2_doors'} onClick={() => handleInsertModule('place_base_2_doors')} icon={<Box size={14}/>} label="2 Puertas" />
+                      <ToolButton isLight={isLight} active={toolMode === 'place_base_4_drawers'} onClick={() => handleInsertModule('place_base_4_drawers')} icon={<Box size={14}/>} label="4 Cajones" />
+                      <ToolButton isLight={isLight} active={toolMode === 'place_base_2_pot_drawers'} onClick={() => handleInsertModule('place_base_2_pot_drawers')} icon={<Box size={14}/>} label="2 Olleros" />
+                      <ToolButton isLight={isLight} active={toolMode === 'place_base_sink_u_drawer'} onClick={() => handleInsertModule('place_base_sink_u_drawer')} icon={<Box size={14}/>} label="Fregadero Cajón en U" />
+                      <ToolButton isLight={isLight} active={toolMode === 'place_base_spice_rack'} onClick={() => handleInsertModule('place_base_spice_rack')} icon={<Box size={14}/>} label="Especiero" />
+                      <ToolButton isLight={isLight} active={toolMode === 'place_base_wine_rack'} onClick={() => handleInsertModule('place_base_wine_rack')} icon={<Wine size={14}/>} label="Botellero Base" />
+                      <ToolButton isLight={isLight} active={toolMode === 'place_base_corner_blind'} onClick={() => handleInsertModule('place_base_corner_blind')} icon={<Box size={14}/>} label="Esquinero Ciego" />
+                      <ToolButton isLight={isLight} active={toolMode === 'place_base_corner_l'} onClick={() => handleInsertModule('place_base_corner_l')} icon={<Box size={14}/>} label="Esquinero en L (90x90)" />
+                    </ModuleCategoryAccordion>
 
-                    <h3 className={`text-xs uppercase tracking-wider font-bold mb-2 ${isLight ? 'text-orange-600' : 'text-orange-400'}`}>Murales & Aéreos</h3>
-                    <div className="flex flex-col gap-1 mb-4">
-                       <ToolButton isLight={isLight} active={toolMode === 'place_wall_1_door'} onClick={() => { setToolMode('place_wall_1_door'); setViewMode('3d'); }} icon={<Square size={14}/>} label="1. Aéreo 1 Puerta" />
-                       <ToolButton isLight={isLight} active={toolMode === 'place_wall_2_doors'} onClick={() => { setToolMode('place_wall_2_doors'); setViewMode('3d'); }} icon={<Square size={14}/>} label="2. Aéreo 2 Puertas" />
-                       <ToolButton isLight={isLight} active={toolMode === 'place_wall_lift_up'} onClick={() => { setToolMode('place_wall_lift_up'); setViewMode('3d'); }} icon={<Square size={14}/>} label="3. Pta Elevable Aventos" />
-                       <ToolButton isLight={isLight} active={toolMode === 'place_wall_lift_up_double'} onClick={() => { setToolMode('place_wall_lift_up_double'); setViewMode('3d'); }} icon={<Square size={14}/>} label="4. Doble Pta Elevable" />
-                       <ToolButton isLight={isLight} active={toolMode === 'place_wall_microwave_niche'} onClick={() => { setToolMode('place_wall_microwave_niche'); setViewMode('3d'); }} icon={<Square size={14}/>} label="5. Nicho Micro + Pta Sup" />
-                       <ToolButton isLight={isLight} active={toolMode === 'place_wall_open'} onClick={() => { setToolMode('place_wall_open'); setViewMode('3d'); }} icon={<Square size={14}/>} label="6. Repisas a la Vista" />
-                       <ToolButton isLight={isLight} active={toolMode === 'place_wall_corner_blind'} onClick={() => { setToolMode('place_wall_corner_blind'); setViewMode('3d'); }} icon={<Square size={14}/>} label="7. Aéreo Esquinero Ciego" />
-                       <ToolButton isLight={isLight} active={toolMode === 'place_wall_wine_rack'} onClick={() => { setToolMode('place_wall_wine_rack'); setViewMode('3d'); }} icon={<Wine size={14}/>} label="8. Botellero Aéreo" />
-                       <ToolButton isLight={isLight} active={toolMode === 'place_island_wine_rack'} onClick={() => { setToolMode('place_island_wine_rack'); setViewMode('3d'); }} icon={<Wine size={14}/>} label="Botellero Isla" />
-                       <ToolButton isLight={isLight} active={toolMode === 'place_island'} onClick={() => { setToolMode('place_island'); setViewMode('3d'); }} icon={<Box size={14}/>} label="Isla Libre" />
-                    </div>
+                    {/* 2. Torres & Despensas */}
+                    <ModuleCategoryAccordion
+                      id="torres"
+                      title="2. Torres & Despensas"
+                      count={9}
+                      icon={<LayoutGrid size={14} />}
+                      isOpen={!!moduleAccordions.torres}
+                      onToggle={() => toggleModuleAccordion('torres')}
+                      hasActiveTool={['place_tall_1_door', 'place_tall_split_2_doors', 'place_tall_oven_micro', 'place_tall_oven_vent', 'place_tall_inner_drawers', 'place_tall_microwave_niche', 'place_tall_open', 'place_tall_wine_rack', 'place_tall_2_doors'].includes(toolMode)}
+                      isLight={isLight}
+                    >
+                      <ToolButton isLight={isLight} active={toolMode === 'place_tall_1_door'} onClick={() => handleInsertModule('place_tall_1_door')} icon={<LayoutGrid size={14}/>} label="1 Pta Larga (Repisas)" />
+                      <ToolButton isLight={isLight} active={toolMode === 'place_tall_split_2_doors'} onClick={() => handleInsertModule('place_tall_split_2_doors')} icon={<LayoutGrid size={14}/>} label="2 Ptas (Línea Base + Alta)" />
+                      <ToolButton isLight={isLight} active={toolMode === 'place_tall_oven_micro'} onClick={() => handleInsertModule('place_tall_oven_micro')} icon={<LayoutGrid size={14}/>} label="Torre Horno + Micro Empotrado" />
+                      <ToolButton isLight={isLight} active={toolMode === 'place_tall_oven_vent'} onClick={() => handleInsertModule('place_tall_oven_vent')} icon={<LayoutGrid size={14}/>} label="Torre Hornos Vent. Técnica" />
+                      <ToolButton isLight={isLight} active={toolMode === 'place_tall_inner_drawers'} onClick={() => handleInsertModule('place_tall_inner_drawers')} icon={<LayoutGrid size={14}/>} label="Despensa Cajones Interiores" />
+                      <ToolButton isLight={isLight} active={toolMode === 'place_tall_microwave_niche'} onClick={() => handleInsertModule('place_tall_microwave_niche')} icon={<LayoutGrid size={14}/>} label="Nicho Micro Portátil" />
+                      <ToolButton isLight={isLight} active={toolMode === 'place_tall_open'} onClick={() => handleInsertModule('place_tall_open')} icon={<LayoutGrid size={14}/>} label="Repisas a la Vista" />
+                      <ToolButton isLight={isLight} active={toolMode === 'place_tall_wine_rack'} onClick={() => handleInsertModule('place_tall_wine_rack')} icon={<Wine size={14}/>} label="Botellero Despensa" />
+                      <ToolButton isLight={isLight} active={toolMode === 'place_tall_2_doors'} onClick={() => handleInsertModule('place_tall_2_doors')} icon={<LayoutGrid size={14}/>} label="Despensa 2 Puertas" />
+                    </ModuleCategoryAccordion>
 
-                    <h3 className={`text-xs uppercase tracking-wider font-bold mb-2 ${isLight ? 'text-orange-600' : 'text-orange-400'}`}>Decoración & Equipamiento</h3>
-                    <div className="flex flex-col gap-1 mb-4">
-                       <ToolButton isLight={isLight} active={toolMode === 'place_deco_stove'} onClick={() => { setToolMode('place_deco_stove'); setViewMode('3d'); }} icon={<Flame size={14}/>} label="1. Cocina FDV 90" />
-                       <ToolButton isLight={isLight} active={toolMode === 'place_deco_fridge'} onClick={() => { setToolMode('place_deco_fridge'); setViewMode('3d'); }} icon={<Refrigerator size={14}/>} label="2. Refrigerador SBS" />
-                       <ToolButton isLight={isLight} active={toolMode === 'place_deco_hood'} onClick={() => { setToolMode('place_deco_hood'); setViewMode('3d'); }} icon={<Sparkles size={14}/>} label="3. Campana FDV Conic 90" />
-                       <ToolButton isLight={isLight} active={toolMode === 'place_deco_plant'} onClick={() => { setToolMode('place_deco_plant'); setViewMode('3d'); }} icon={<Flower2 size={14}/>} label="4. Planta Interior" />
-                    </div>
+                    {/* 3. Murales & Aéreos */}
+                    <ModuleCategoryAccordion
+                      id="murales"
+                      title="3. Murales & Aéreos"
+                      count={8}
+                      icon={<Square size={14} />}
+                      isOpen={!!moduleAccordions.murales}
+                      onToggle={() => toggleModuleAccordion('murales')}
+                      hasActiveTool={['place_wall_1_door', 'place_wall_2_doors', 'place_wall_lift_up', 'place_wall_lift_up_double', 'place_wall_microwave_niche', 'place_wall_open', 'place_wall_corner_blind', 'place_wall_wine_rack'].includes(toolMode)}
+                      isLight={isLight}
+                    >
+                      <ToolButton isLight={isLight} active={toolMode === 'place_wall_1_door'} onClick={() => handleInsertModule('place_wall_1_door')} icon={<Square size={14}/>} label="1. Aéreo 1 Puerta" />
+                      <ToolButton isLight={isLight} active={toolMode === 'place_wall_2_doors'} onClick={() => handleInsertModule('place_wall_2_doors')} icon={<Square size={14}/>} label="2. Aéreo 2 Puertas" />
+                      <ToolButton isLight={isLight} active={toolMode === 'place_wall_lift_up'} onClick={() => handleInsertModule('place_wall_lift_up')} icon={<Square size={14}/>} label="3. Pta Elevable Aventos" />
+                      <ToolButton isLight={isLight} active={toolMode === 'place_wall_lift_up_double'} onClick={() => handleInsertModule('place_wall_lift_up_double')} icon={<Square size={14}/>} label="4. Doble Pta Elevable" />
+                      <ToolButton isLight={isLight} active={toolMode === 'place_wall_microwave_niche'} onClick={() => handleInsertModule('place_wall_microwave_niche')} icon={<Square size={14}/>} label="5. Nicho Micro + Pta Sup" />
+                      <ToolButton isLight={isLight} active={toolMode === 'place_wall_open'} onClick={() => handleInsertModule('place_wall_open')} icon={<Square size={14}/>} label="6. Repisas a la Vista" />
+                      <ToolButton isLight={isLight} active={toolMode === 'place_wall_corner_blind'} onClick={() => handleInsertModule('place_wall_corner_blind')} icon={<Square size={14}/>} label="7. Aéreo Esquinero Ciego" />
+                      <ToolButton isLight={isLight} active={toolMode === 'place_wall_wine_rack'} onClick={() => handleInsertModule('place_wall_wine_rack')} icon={<Wine size={14}/>} label="8. Botellero Aéreo" />
+                    </ModuleCategoryAccordion>
 
-                    <h3 className={`text-xs uppercase tracking-wider font-bold mb-2 ${isLight ? 'text-orange-600' : 'text-orange-400'}`}>Elementos Arquitectónicos</h3>
-                    <div className="flex flex-col gap-1 mb-4">
-                       <ToolButton isLight={isLight} active={toolMode === 'place_arch_door'} onClick={() => { setToolMode('place_arch_door'); setViewMode('3d'); }} icon={<Columns size={14}/>} label="Puerta" />
-                       <ToolButton isLight={isLight} active={toolMode === 'place_arch_window'} onClick={() => { setToolMode('place_arch_window'); setViewMode('3d'); }} icon={<Square size={14}/>} label="Ventana" />
-                       <ToolButton isLight={isLight} active={toolMode === 'place_arch_pillar'} onClick={() => { setToolMode('place_arch_pillar'); setViewMode('3d'); }} icon={<Maximize2 size={14}/>} label="Pilar / Muro Corto" />
-                    </div>
+                    {/* 4. Isla */}
+                    <ModuleCategoryAccordion
+                      id="isla"
+                      title="4. Muebles Isla"
+                      count={6}
+                      icon={<Layers size={14} />}
+                      isOpen={!!moduleAccordions.isla}
+                      onToggle={() => toggleModuleAccordion('isla')}
+                      hasActiveTool={[
+                        'place_island',
+                        'place_island_4_drawers',
+                        'place_island_2_drawers_1_pot',
+                        'place_island_1_door',
+                        'place_island_2_doors',
+                        'place_island_wine_rack'
+                      ].includes(toolMode)}
+                      isLight={isLight}
+                    >
+                      <ToolButton isLight={isLight} active={toolMode === 'place_island'} onClick={() => handleInsertModule('place_island')} icon={<Box size={14}/>} label="Isla 2 Olleros" />
+                      <ToolButton isLight={isLight} active={toolMode === 'place_island_4_drawers'} onClick={() => handleInsertModule('place_island_4_drawers')} icon={<LayoutGrid size={14}/>} label="Isla 4 Cajones" />
+                      <ToolButton isLight={isLight} active={toolMode === 'place_island_2_drawers_1_pot'} onClick={() => handleInsertModule('place_island_2_drawers_1_pot')} icon={<LayoutGrid size={14}/>} label="Isla 2 Caj. + 1 Ollero" />
+                      <ToolButton isLight={isLight} active={toolMode === 'place_island_1_door'} onClick={() => handleInsertModule('place_island_1_door')} icon={<Square size={14}/>} label="Isla 1 Puerta" />
+                      <ToolButton isLight={isLight} active={toolMode === 'place_island_2_doors'} onClick={() => handleInsertModule('place_island_2_doors')} icon={<Columns size={14}/>} label="Isla 2 Puertas" />
+                      <ToolButton isLight={isLight} active={toolMode === 'place_island_wine_rack'} onClick={() => handleInsertModule('place_island_wine_rack')} icon={<Wine size={14}/>} label="Botellero Isla" />
+                    </ModuleCategoryAccordion>
+
+                    {/* 5. Elementos Arquitectónicos */}
+                    <ModuleCategoryAccordion
+                      id="arch"
+                      title="5. Elementos Arquitectónicos"
+                      count={3}
+                      icon={<Columns size={14} />}
+                      isOpen={!!moduleAccordions.arch}
+                      onToggle={() => toggleModuleAccordion('arch')}
+                      hasActiveTool={['place_arch_door', 'place_arch_window', 'place_arch_pillar'].includes(toolMode)}
+                      isLight={isLight}
+                    >
+                      <ToolButton isLight={isLight} active={toolMode === 'place_arch_door'} onClick={() => { setToolMode('place_arch_door'); setViewMode('3d'); }} icon={<Columns size={14}/>} label="Puerta" />
+                      <ToolButton isLight={isLight} active={toolMode === 'place_arch_window'} onClick={() => { setToolMode('place_arch_window'); setViewMode('3d'); }} icon={<Square size={14}/>} label="Ventana" />
+                      <ToolButton isLight={isLight} active={toolMode === 'place_arch_pillar'} onClick={() => { setToolMode('place_arch_pillar'); setViewMode('3d'); }} icon={<Maximize2 size={14}/>} label="Pilar / Muro Corto" />
+                    </ModuleCategoryAccordion>
+
+                    {/* 6. Decoración */}
+                    <ModuleCategoryAccordion
+                      id="deco"
+                      title="6. Decoración"
+                      count={5}
+                      icon={<Sparkles size={14} />}
+                      isOpen={!!moduleAccordions.deco}
+                      onToggle={() => toggleModuleAccordion('deco')}
+                      hasActiveTool={['place_deco_stove', 'place_deco_fridge', 'place_deco_hood', 'place_deco_plant', 'place_deco_dishwasher'].includes(toolMode)}
+                      isLight={isLight}
+                    >
+                      <ToolButton isLight={isLight} active={toolMode === 'place_deco_stove'} onClick={() => handleInsertModule('place_deco_stove')} icon={<Flame size={14}/>} label="1. Cocina FDV 90" />
+                      <ToolButton isLight={isLight} active={toolMode === 'place_deco_fridge'} onClick={() => handleInsertModule('place_deco_fridge')} icon={<Refrigerator size={14}/>} label="2. Refrigerador SBS" />
+                      <ToolButton isLight={isLight} active={toolMode === 'place_deco_hood'} onClick={() => handleInsertModule('place_deco_hood')} icon={<Sparkles size={14}/>} label="3. Campana FDV Conic 90" />
+                      <ToolButton isLight={isLight} active={toolMode === 'place_deco_plant'} onClick={() => handleInsertModule('place_deco_plant')} icon={<Flower2 size={14}/>} label="4. Planta Interior" />
+                      <ToolButton isLight={isLight} active={toolMode === 'place_deco_dishwasher'} onClick={() => handleInsertModule('place_deco_dishwasher')} icon={<Utensils size={14}/>} label="5. Lavavajillas FDV 12C" />
+                    </ModuleCategoryAccordion>
                  </div>
-               ) : leftTab === 'placed' ? (
+               ) : (
                  <div className="flex flex-col gap-3">
                    <div className="flex items-center justify-between">
                      <div className={`text-[10px] uppercase font-bold tracking-widest ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
@@ -625,31 +868,11 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                      </div>
                    )}
                  </div>
-               ) : (
-                 <div className="flex flex-col gap-3">
-                    <div className="p-3 bg-orange-500/10 border border-orange-500/30 rounded-lg">
-                       <div className="flex items-center gap-1.5 text-orange-400 text-[10px] font-bold uppercase tracking-wider mb-1">
-                          <Palette size={12} />
-                          <span>Decorativos Globales</span>
-                       </div>
-                       <p className="text-[10px] text-slate-300 leading-relaxed">
-                          Al seleccionar un decorativo aquí, se actualizarán <strong>todos los muebles de la cocina</strong> automáticamente.
-                       </p>
-                    </div>
-
-                    <TexturesSection 
-                      onSelectTexture={handleGlobalTextureSelect}
-                      title="Decorativos de Cocina"
-                      badgeText="Toda la Cocina"
-                      isLight={isLight}
-                    />
-                 </div>
                )}
             </div>
          </div>
          <div className={`flex-1 min-w-0 relative transition-colors ${isLight ? 'bg-[#e2e8f0]' : 'bg-[#111]'}`}>
             <KitchenScene theme={theme} />
-            <KitchenModuleContextMenu isLight={isLight} />
             {toolMode === 'draw_wall' && (
               <div className={`absolute bottom-6 left-1/2 -translate-x-1/2 backdrop-blur-md px-6 py-3 rounded-full border text-xs font-semibold pointer-events-none uppercase tracking-wider ${
                 isLight ? 'bg-white/90 border-slate-300 text-slate-800 shadow-lg' : 'bg-black/80 border-white/10 text-slate-300'
@@ -657,11 +880,11 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                 Haz clic en la grilla para iniciar un muro. Pulsa ESC para cancelar.
               </div>
             )}
-            {toolMode.startsWith('place_') && (
+            {(toolMode.startsWith('place_') || toolMode === 'move_active') && (
               <div className={`absolute bottom-6 left-1/2 -translate-x-1/2 backdrop-blur-md px-6 py-3 rounded-full border text-xs font-semibold pointer-events-none uppercase tracking-wider ${
                 isLight ? 'bg-orange-100/90 border-orange-300 text-orange-950 shadow-lg' : 'bg-orange-500/20 border-orange-500/50 text-blue-200'
               }`}>
-                Mueve el cursor sobre un muro para imantar. Clic para posicionar.
+                {toolMode.startsWith('place_island') ? 'Mueve sobre el piso (imantación automática a islas y cuadrícula). Clic para fijar.' : 'Mueve el cursor sobre un muro para imantar. Clic para posicionar.'}
               </div>
             )}
          </div>
@@ -887,418 +1110,13 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                 </div>
               </div>
             ) : activeCabinetId && activeCabinet ? (
-              (activeCabinet.type === 'decoration' || activeCabinet.variant?.startsWith('deco_')) ? (
-                <div className="mb-4">
-                  <h2 className={isLight ? "text-xs uppercase tracking-wider text-orange-600 font-bold mb-3 mt-4 first:mt-0" : sectionTitle}>Equipamiento Seleccionado</h2>
-                  <div className={`p-4 rounded-xl flex flex-col gap-3 ${
-                    isLight ? 'bg-slate-50 border border-slate-200 shadow-sm' : 'bg-white/5 border border-white/10 shadow-inner'
-                  }`}>
-                    <div className={`flex justify-between items-center border-b pb-2.5 ${isLight ? 'border-slate-200' : 'border-white/10'}`}>
-                      <h3 className={`text-xs uppercase tracking-wider font-bold truncate pr-2 ${isLight ? 'text-cyan-600' : 'text-cyan-400'}`}>
-                        {activeCabinet.variant === 'deco_hood' ? 'Campana FDV New Conic 90'
-                          : activeCabinet.variant === 'deco_stove' ? 'Cocina FDV FS Unique 90'
-                          : activeCabinet.variant === 'deco_fridge' ? 'Refrigerador FDV SBS'
-                          : activeCabinet.variant === 'deco_plant' ? 'Planta Decorativa'
-                          : 'Equipamiento Cocina'}
-                      </h3>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <button
-                          onClick={() => {
-                            const currentRot = activeCabinet.rotation || 0;
-                            const nextRot = (currentRot + Math.PI / 2) % (Math.PI * 2);
-                            updateCabinet(activeCabinet.id, { rotation: nextRot });
-                          }}
-                          className="text-xs text-cyan-500 hover:text-cyan-600 flex items-center gap-1 font-semibold cursor-pointer"
-                          title="Girar 90°"
-                        >
-                          <RotateCw size={13} />
-                          <span>Girar</span>
-                        </button>
-                        <button
-                          onClick={() => {
-                            setToolMode('move_active');
-                            setViewMode('3d');
-                          }}
-                          className="text-xs text-orange-500 hover:text-orange-600 flex items-center gap-1 font-semibold cursor-pointer"
-                        >
-                          <Move3D size={13} />
-                          <span>Mover</span>
-                        </button>
-                        <button
-                          onClick={() => removeCabinet(activeCabinet.id)}
-                          className="text-xs text-rose-500 hover:text-rose-600 flex items-center gap-1 font-semibold cursor-pointer"
-                          title="Eliminar Equipamiento"
-                        >
-                          <Trash2 size={13} />
-                          <span>Eliminar</span>
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className={`grid grid-cols-3 gap-2 p-2.5 rounded-lg border text-center ${isLight ? 'bg-slate-100 border-slate-300' : 'bg-black/40 border-white/10'}`}>
-                      <div>
-                        <div className={`text-xs uppercase tracking-wider font-semibold ${isLight ? 'text-slate-700' : 'text-slate-400'}`}>Ancho</div>
-                        <div className={`font-mono text-sm font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>{activeCabinet.width} cm</div>
-                      </div>
-                      <div>
-                        <div className={`text-xs uppercase tracking-wider font-semibold ${isLight ? 'text-slate-700' : 'text-slate-400'}`}>Alto</div>
-                        <div className={`font-mono text-sm font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>{activeCabinet.height} cm</div>
-                      </div>
-                      <div>
-                        <div className={`text-xs uppercase tracking-wider font-semibold ${isLight ? 'text-slate-700' : 'text-slate-400'}`}>Fondo</div>
-                        <div className={`font-mono text-sm font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>{activeCabinet.depth} cm</div>
-                      </div>
-                    </div>
-
-                    {activeCabinet.variant === 'deco_hood' && (
-                      <div className={`flex flex-col gap-2 pt-2 border-t ${isLight ? 'border-slate-200' : 'border-white/10'}`}>
-                        <SliderControl
-                          isLight={isLight}
-                          label="Elevación Base Campana (desde Piso)"
-                          value={Math.round(activeCabinet.position[1] - activeCabinet.height / 2)}
-                          min={120}
-                          max={170}
-                          step={2}
-                          unit="cm"
-                          onChange={(newBottom) => {
-                            updateCabinet(activeCabinet.id, {
-                              position: [activeCabinet.position[0], newBottom + activeCabinet.height / 2, activeCabinet.position[2]]
-                            });
-                          }}
-                        />
-                      </div>
-                    )}
-
-                    <div className="flex gap-2 mt-2">
-                      <button
-                        onClick={() => {
-                          setToolMode('move_active');
-                          setViewMode('3d');
-                        }}
-                        className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 bg-orange-500 hover:bg-orange-600 text-black font-bold rounded-lg text-xs uppercase tracking-wider transition-all cursor-pointer"
-                      >
-                        <Move3D size={14} />
-                        Reubicar / Mover
-                      </button>
-                      <button
-                        onClick={() => removeCabinet(activeCabinet.id)}
-                        className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-lg text-xs uppercase font-bold tracking-wider transition-all cursor-pointer border ${
-                          isLight
-                            ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200 shadow-sm'
-                            : 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border-rose-500/30'
-                        }`}
-                      >
-                        <Trash2 size={14} />
-                        Eliminar
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="mb-4">
-                  <h2 className={isLight ? "text-xs uppercase tracking-wider text-orange-600 font-bold mb-3 mt-4 first:mt-0" : sectionTitle}>Módulo Seleccionado</h2>
-                  <div className={`p-4 rounded-xl flex flex-col gap-3 ${
-                    isLight ? 'bg-slate-50 border border-slate-200 shadow-sm' : 'bg-white/5 border border-white/10 shadow-inner'
-                  }`}>
-                    <div className={`flex justify-between items-center border-b pb-2.5 ${isLight ? 'border-slate-200' : 'border-white/10'}`}>
-                      <h3 className={`text-xs uppercase tracking-wider font-bold truncate pr-2 ${isLight ? 'text-orange-600' : 'text-orange-400'}`}>
-                        {activeCabinet.variant?.startsWith('corner_blind') 
-                          ? 'Esquinero Ciego' 
-                          : activeCabinet.variant === 'tall_1_door' ? 'Despensa 1 Puerta Larga'
-                          : activeCabinet.variant === 'tall_split_2_doors' ? 'Despensa 2 Puertas (Línea Base)'
-                          : activeCabinet.variant === 'tall_oven_micro' ? 'Torre Horno + Micro Empotrado'
-                          : activeCabinet.variant === 'tall_microwave_niche' ? 'Torre Nicho Micro Portátil'
-                          : activeCabinet.variant === 'tall_open' ? 'Despensa Abierta (Repisas)'
-                          : activeCabinet.variant === 'tall_2_doors' ? 'Despensa 2 Puertas Batientes'
-                          : activeCabinet.variant === 'wall_1_door' ? 'Mueble Aéreo 1 Puerta'
-                          : activeCabinet.variant === 'wall_2_doors' ? 'Mueble Aéreo 2 Puertas'
-                          : activeCabinet.variant === 'wall_lift_up' ? 'Aéreo Puerta Elevable Aventos'
-                          : activeCabinet.variant === 'wall_lift_up_double' ? 'Aéreo Doble Puerta Elevable'
-                          : activeCabinet.variant === 'wall_microwave_niche' ? 'Aéreo Nicho Micro + Puerta'
-                          : activeCabinet.variant === 'wall_open' ? 'Aéreo Repisas a la Vista'
-                          : (activeCabinet.variant || activeCabinet.type)}
-                      </h3>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <button
-                          onClick={() => {
-                            const currentRot = activeCabinet.rotation || 0;
-                            const nextRot = (currentRot + Math.PI / 2) % (Math.PI * 2);
-                            updateCabinet(activeCabinet.id, { rotation: nextRot });
-                          }}
-                          className="text-xs text-cyan-500 hover:text-cyan-600 flex items-center gap-1 font-semibold cursor-pointer"
-                          title="Girar 90°"
-                        >
-                          <RotateCw size={13} />
-                          <span>Girar</span>
-                        </button>
-                        <button
-                          onClick={() => { setToolMode('move_active'); setViewMode('3d'); }}
-                          className="text-xs text-orange-500 hover:text-orange-600 flex items-center gap-1 font-semibold cursor-pointer"
-                        >
-                          <Move3D size={13} />
-                          <span>Mover</span>
-                        </button>
-                        <button
-                          onClick={() => removeCabinet(activeCabinet.id)}
-                          className="text-xs text-rose-500 hover:text-rose-600 flex items-center gap-1 font-semibold cursor-pointer"
-                          title="Eliminar Módulo (Supr)"
-                        >
-                          <Trash2 size={13} />
-                          <span>Eliminar</span>
-                        </button>
-                      </div>
-                    </div>
-
-                    {activeCabinet.type === 'tall' && (
-                      <div className={`flex flex-col gap-2 p-2.5 rounded-lg border ${isLight ? 'bg-slate-100/90 border-slate-300' : 'bg-black/40 border-white/10'}`}>
-                        <label className={isLight ? "text-xs uppercase tracking-wider text-slate-800 font-bold" : labelClass}>Variante de Torre / Despensa</label>
-                        <div className="grid grid-cols-2 gap-1.5 mt-1">
-                          {[
-                            { id: 'tall_1_door', label: '1 Pta Larga' },
-                            { id: 'tall_split_2_doors', label: '2 Ptas Línea Base' },
-                            { id: 'tall_oven_micro', label: 'Horno + Micro' },
-                            { id: 'tall_microwave_niche', label: 'Nicho Micro' },
-                            { id: 'tall_open', label: 'Repisas Vistas' },
-                            { id: 'tall_2_doors', label: '2 Puertas' },
-                          ].map(t => (
-                            <button
-                              key={t.id}
-                              onClick={() => updateCabinet(activeCabinet.id, { variant: t.id })}
-                              className={`py-2 px-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
-                                isLight
-                                  ? ((activeCabinet.variant === t.id || (!activeCabinet.variant && t.id === 'tall_1_door'))
-                                      ? 'bg-orange-500 text-black shadow-sm'
-                                      : 'bg-white text-slate-800 border border-slate-300 hover:border-orange-500 hover:text-black shadow-sm')
-                                  : ((activeCabinet.variant === t.id || (!activeCabinet.variant && t.id === 'tall_1_door'))
-                                      ? 'bg-orange-500 text-black shadow-[0_0_10px_rgba(249,115,22,0.2)]'
-                                      : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50')
-                              }`}
-                            >
-                              {t.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {activeCabinet.type === 'wall' && (
-                      <div className={`flex flex-col gap-2 p-2.5 rounded-lg border ${isLight ? 'bg-slate-100/90 border-slate-300' : 'bg-black/40 border-white/10'}`}>
-                        <label className={isLight ? "text-xs uppercase tracking-wider text-slate-800 font-bold" : labelClass}>Variante de Mueble Aéreo</label>
-                        <div className="grid grid-cols-2 gap-1.5 mt-1">
-                          {[
-                            { id: 'wall_1_door', label: '1 Puerta' },
-                            { id: 'wall_2_doors', label: '2 Puertas' },
-                            { id: 'wall_lift_up', label: 'Pta Elevable' },
-                            { id: 'wall_lift_up_double', label: 'Doble Elevable' },
-                            { id: 'wall_microwave_niche', label: 'Nicho Micro' },
-                            { id: 'wall_open', label: 'Repisas Vistas' },
-                          ].map(t => (
-                            <button
-                              key={t.id}
-                              onClick={() => updateCabinet(activeCabinet.id, { variant: t.id })}
-                              className={`py-2 px-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
-                                isLight
-                                  ? ((activeCabinet.variant === t.id || (!activeCabinet.variant && t.id === 'wall_1_door'))
-                                      ? 'bg-orange-500 text-black shadow-sm'
-                                      : 'bg-white text-slate-800 border border-slate-300 hover:border-orange-500 hover:text-black shadow-sm')
-                                  : ((activeCabinet.variant === t.id || (!activeCabinet.variant && t.id === 'wall_1_door'))
-                                      ? 'bg-orange-500 text-black shadow-[0_0_10px_rgba(249,115,22,0.2)]'
-                                      : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50')
-                              }`}
-                            >
-                              {t.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {(activeCabinet.variant?.startsWith('corner_blind') || activeCabinet.variant === 'corner_blind' || activeCabinet.variant?.startsWith('wall_corner_blind')) && (
-                      <div className={`flex flex-col gap-2 p-2.5 rounded-lg border ${isLight ? 'bg-slate-100/90 border-slate-300' : 'bg-black/40 border-white/10'}`}>
-                        <label className={isLight ? "text-xs uppercase tracking-wider text-slate-800 font-bold" : labelClass}>Mano / Orientación Esquinero</label>
-                        <div className="grid grid-cols-2 gap-2 mt-1">
-                          <button
-                            onClick={() => updateCabinet(activeCabinet.id, { 
-                              variant: activeCabinet.type === 'wall' ? 'wall_corner_blind_right' : 'corner_blind_right' 
-                            })}
-                            className={`py-2 px-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
-                              isLight
-                                ? ((!activeCabinet.variant.endsWith('_left'))
-                                    ? 'bg-orange-500 text-black shadow-sm'
-                                    : 'bg-white text-slate-800 border border-slate-300 hover:border-orange-500 hover:text-black shadow-sm')
-                                : ((!activeCabinet.variant.endsWith('_left'))
-                                    ? 'bg-orange-500 text-black shadow-[0_0_10px_rgba(249,115,22,0.2)]'
-                                    : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50')
-                            }`}
-                          >
-                            Derecho (Ciego Der)
-                          </button>
-                          <button
-                            onClick={() => updateCabinet(activeCabinet.id, { 
-                              variant: activeCabinet.type === 'wall' ? 'wall_corner_blind_left' : 'corner_blind_left' 
-                            })}
-                            className={`py-2 px-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
-                              isLight
-                                ? ((activeCabinet.variant.endsWith('_left'))
-                                    ? 'bg-orange-500 text-black shadow-sm'
-                                    : 'bg-white text-slate-800 border border-slate-300 hover:border-orange-500 hover:text-black shadow-sm')
-                                : ((activeCabinet.variant.endsWith('_left'))
-                                    ? 'bg-orange-500 text-black shadow-[0_0_10px_rgba(249,115,22,0.2)]'
-                                    : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50')
-                            }`}
-                          >
-                            Izquierdo (Ciego Izq)
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {activeCabinet.type === 'wall' && (
-                      <div className={`p-2.5 rounded-lg border ${isLight ? 'bg-slate-100/90 border-slate-300' : 'bg-black/40 border-white/10'}`}>
-                        <SliderControl 
-                          isLight={isLight}
-                          label="Elevación en Muro (Cota Inferior)" 
-                          value={Math.round(activeCabinet.position[1] - activeCabinet.height / 2)} 
-                          min={110} 
-                          max={180} 
-                          step={2} 
-                          unit="cm" 
-                          onChange={(newBottom) => {
-                            updateCabinet(activeCabinet.id, {
-                              position: [activeCabinet.position[0], newBottom + activeCabinet.height / 2, activeCabinet.position[2]]
-                            });
-                          }} 
-                        />
-                      </div>
-                    )}
-
-                    {activeCabinet.variant?.includes('wine_rack') && (() => {
-                      const innerW = activeCabinet.width - 3.6;
-                      const cols = Math.min(5, Math.max(1, Math.floor((innerW + 1.8) / (10.5 + 1.8))));
-                      const colW = (innerW - (cols - 1) * 1.8) / cols;
-                      return (
-                        <div className={`p-2.5 rounded-lg border text-xs ${isLight ? 'bg-orange-50 border-orange-200 text-orange-950' : 'bg-orange-950/20 border-orange-500/30 text-orange-200'}`}>
-                          <div className="font-bold mb-1 flex items-center justify-between">
-                            <span>Distribución Botellero:</span>
-                            <span className="text-orange-500 font-extrabold">{cols} {cols === 1 ? 'Corrida' : 'Corridas'} (Máx 5)</span>
-                          </div>
-                          <div className="text-[11px] opacity-90 leading-relaxed">
-                            • Ancho libre por celda: <span className="font-mono font-bold">{colW.toFixed(1)} cm</span> (Mín. 10.5 cm)<br/>
-                            • Fondo Falso Estándar: <span className="font-mono font-bold">32.0 cm</span> útiles (cámara técnica posterior)
-                          </div>
-                        </div>
-                      );
-                    })()}
-
-                    {activeCabinet.variant?.startsWith('wall_corner_blind') && (
-                      <div className={`p-2.5 rounded-lg border text-xs ${isLight ? 'bg-slate-100 border-slate-300 text-slate-800' : 'bg-white/5 border-white/10 text-slate-300'}`}>
-                        <div className="font-bold mb-1">Aéreo Esquinero Ciego (Lámina Técnica):</div>
-                        <div className="text-[11px] opacity-90 leading-relaxed">
-                          • Tapa esquinero frontal: <span className="font-mono font-bold">55 mm</span><br/>
-                          • Regleta interior en L: <span className="font-mono font-bold">55 mm</span><br/>
-                          • Puerta batiente con bisagras en lateral opuesto
-                        </div>
-                      </div>
-                    )}
-                    
-                    <SliderControl 
-                      isLight={isLight} 
-                      label="Ancho del Módulo" 
-                      value={activeCabinet.width} 
-                      min={
-                        activeCabinet.variant === "spice_rack" ? 15 : 
-                        activeCabinet.variant?.includes('wine_rack') ? 15 :
-                        activeCabinet.variant?.startsWith('wall_corner_blind') ? 60 :
-                        (activeCabinet.variant?.startsWith('corner_blind') ? 80 : 30)
-                      } 
-                      max={
-                        activeCabinet.variant?.includes('wine_rack') ? 65 :
-                        activeCabinet.variant?.startsWith('wall_corner_blind') ? 100 :
-                        (activeCabinet.variant?.startsWith('corner_blind') ? 130 : 120)
-                      } 
-                      step={5} 
-                      unit="cm" 
-                      onChange={(v) => updateCabinet(activeCabinet.id, { width: v })} 
-                    />
-                    <SliderControl isLight={isLight} label="Alto Total" value={activeCabinet.height} min={activeCabinet.type === 'tall' ? 140 : (activeCabinet.type === 'base' ? 70 : 30)} max={activeCabinet.type === 'tall' ? 240 : (activeCabinet.type === 'wall' ? 120 : 100)} step={5} unit="cm" onChange={(v) => updateCabinet(activeCabinet.id, { height: v })} />
-                    <SliderControl isLight={isLight} label="Profundidad" value={activeCabinet.depth} min={25} max={80} step={5} unit="cm" onChange={(v) => updateCabinet(activeCabinet.id, { depth: v })} />
-
-                    {/* Botón para eliminar este módulo individual */}
-                    <button
-                      onClick={() => removeCabinet(activeCabinet.id)}
-                      className={`mt-2 w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-xs uppercase font-bold tracking-wider transition-all cursor-pointer border ${
-                        isLight
-                          ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200 shadow-sm'
-                          : 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border-rose-500/30'
-                      }`}
-                    >
-                      <Trash2 size={14} />
-                      Eliminar Módulo (Supr)
-                    </button>
-
-                    {/* Opción para personalizar el acabado exclusivo de este módulo */}
-                    <div className={`mt-3 pt-3 border-t ${isLight ? 'border-slate-200' : 'border-white/10'}`}>
-                      <button
-                        onClick={() => setShowIndividualMaterial(!showIndividualMaterial)}
-                        className={`w-full flex items-center justify-between p-2.5 rounded-lg text-xs uppercase font-bold tracking-wider transition-colors border cursor-pointer ${
-                          isLight
-                            ? 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300 shadow-sm'
-                            : 'bg-white/5 hover:bg-white/10 text-slate-200 border-white/10'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <Palette size={14} className={isLight ? 'text-orange-600' : 'text-orange-400'} />
-                          <span className={isLight ? 'text-slate-900 font-bold' : ''}>Acabado Exclusivo de este Módulo</span>
-                        </div>
-                        <span className={`text-xs font-bold ${isLight ? 'text-orange-600' : 'text-orange-400'}`}>{showIndividualMaterial ? 'Ocultar' : 'Personalizar'}</span>
-                      </button>
-                      {showIndividualMaterial && (
-                        <div className="mt-3">
-                          <TexturesSection 
-                            onSelectTexture={handleTextureSelect}
-                            title="Acabado Exclusivo de este Módulo"
-                            badgeText="Solo Módulo Seleccionado"
-                            isLight={isLight}
-                          />
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Acceso directo a Revestimiento Trasero de Isla */}
-                    {activeCabinet.type === 'island' && (
-                      <div className={`mt-3 pt-3 border-t ${isLight ? 'border-slate-200' : 'border-white/10'}`}>
-                        <div className="flex items-center justify-between mb-1.5">
-                          <div className="flex items-center gap-1.5">
-                            <Layers size={14} className={isLight ? 'text-orange-600' : 'text-orange-400'} />
-                            <span className={`text-xs font-bold uppercase tracking-wider ${isLight ? 'text-slate-900' : 'text-white'}`}>
-                              Trasera Continua Isla
-                            </span>
-                          </div>
-                          <button
-                            onClick={() => setRightTab('materials')}
-                            className="text-[11px] font-bold text-orange-500 hover:text-orange-600 cursor-pointer underline"
-                          >
-                            Configurar
-                          </button>
-                        </div>
-                        <div className={`p-2 rounded-lg text-[11px] leading-relaxed border ${
-                          isLight ? 'bg-slate-100/80 border-slate-200 text-slate-600' : 'bg-white/5 border-white/10 text-slate-300'
-                        }`}>
-                          {islandBackConfig.enabled ? (
-                            <span>
-                              Estado: <strong className="text-emerald-500">Activo</strong> ({islandBackConfig.materialType === 'countertop' ? 'Piedra de Cubierta a piso' : `Decorativo ${islandBackConfig.heightMode === 'to_floor' ? 'a piso' : 'con zócalo'}`}).
-                            </span>
-                          ) : (
-                            <span>
-                              Estado: <strong className="text-slate-400">Inactivo</strong>. Puedes forrar la parte trasera completa de la isla con decorativo o piedra de cubierta.
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )
+              <div className="mb-4">
+                <KitchenModuleContextMenu
+                  inline={true}
+                  isLight={isLight}
+                  onOpenIslandBack={() => setRightTab('materials')}
+                />
+              </div>
             ) : (
               <div className="flex flex-col gap-4">
                 <div className={`p-4 rounded-xl flex items-start gap-3 border ${
@@ -1442,219 +1260,378 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
         )}
 
         {rightTab === 'engineering' && (
-          <div className="flex flex-col gap-5">
-            <div>
-              <h2 className={isLight ? "text-xs uppercase tracking-wider text-orange-600 font-bold mb-3 mt-1 first:mt-0" : sectionTitle}>Sistema de Apertura (Perfil Gola)</h2>
-              <div className="flex flex-col gap-2">
-                <div className="grid grid-cols-3 gap-1.5">
-                  {[
-                    { id: 'none', label: 'Sin Gola' },
-                    { id: 'aluminum', label: 'Aluminio' },
-                    { id: 'black', label: 'Negro Mate' },
-                  ].map((opt) => (
-                    <button
-                      key={opt.id}
-                      onClick={() => setGolaSystem(opt.id as any)}
-                      className={`py-2 px-1 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer text-center ${
-                        golaSystem === opt.id
-                          ? 'bg-orange-500 text-black shadow-[0_0_10px_rgba(249,115,22,0.25)]'
-                          : isLight
-                            ? 'bg-white text-slate-800 border border-slate-300 hover:border-orange-500 shadow-sm'
-                            : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50'
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-                <p className={`text-[11px] leading-relaxed mt-1 ${isLight ? 'text-slate-600 font-medium' : 'text-slate-400'}`}>
-                  {golaSystem === 'none'
-                    ? 'Los muebles se fabrican con tiradores tradicionales estándar y frentes a cota completa.'
-                    : `Perfil Provelcar x175 (L superior -35mm) y x176 (C intermedio 40mm) en acabado ${golaSystem === 'black' ? 'Negro Mate' : 'Aluminio Anodizado'}. Descuenta alturas de puertas y cajones automáticamente, suprimiendo tiradores en 3D y cubicación.`}
-                </p>
-              </div>
-            </div>
-
-            <div>
-              <h2 className={isLight ? "text-xs uppercase tracking-wider text-orange-600 font-bold mb-3 mt-4 first:mt-0" : sectionTitle}>Tapacantos Industriales</h2>
-              <div className="flex flex-col gap-3">
-                <div>
-                  <label className={isLight ? "text-xs uppercase tracking-wider text-slate-700 font-bold" : labelClass}>Tapacanto Gabinetes (mm)</label>
-                  <div className="grid grid-cols-4 gap-1.5 mt-1.5">
-                    {[0.5, 1.0, 1.5, 2.0].map((t) => (
-                      <button 
-                        key={t}
-                        onClick={() => globalState.setEdgeBandingThicknessCabinets(t as any)}
-                        className={`py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer ${
-                          globalState.edgeBandingThicknessCabinets === t 
-                            ? 'bg-orange-500 text-black shadow-[0_0_10px_rgba(249,115,22,0.25)]' 
-                            : isLight
-                              ? 'bg-white text-slate-800 border border-slate-300 hover:border-orange-500 shadow-sm'
-                              : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50'
-                        }`}
-                      >
-                        {t.toFixed(1)}
-                      </button>
-                    ))}
+          <div className="flex flex-col gap-3">
+            {/* 1. Sistema de Apertura (Perfil Gola) */}
+            <div className={`rounded-xl border overflow-hidden transition-all ${
+              isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-white/[0.03] border-white/10'
+            }`}>
+              <button
+                type="button"
+                onClick={() => toggleAccordion('gola')}
+                className={`w-full flex items-center justify-between p-3 text-left transition-colors cursor-pointer select-none ${
+                  openAccordions.gola 
+                    ? (isLight ? 'bg-orange-50/50' : 'bg-white/[0.04]') 
+                    : (isLight ? 'hover:bg-slate-50' : 'hover:bg-white/[0.02]')
+                }`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className={`p-1.5 rounded-lg shrink-0 ${
+                    openAccordions.gola 
+                      ? 'bg-orange-500 text-black shadow-sm' 
+                      : (isLight ? 'bg-slate-100 text-slate-700' : 'bg-white/10 text-slate-300')
+                  }`}>
+                    <Sliders size={14} />
                   </div>
-                </div>
-                
-                <div>
-                  <label className={isLight ? "text-xs uppercase tracking-wider text-slate-700 font-bold" : labelClass}>Tapacanto Frentes (mm)</label>
-                  <div className="grid grid-cols-4 gap-1.5 mt-1.5">
-                    {[0.5, 1.0, 1.5, 2.0].map((t) => (
-                      <button 
-                        key={t}
-                        onClick={() => globalState.setEdgeBandingThicknessFronts(t as any)}
-                        className={`py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer ${
-                          globalState.edgeBandingThicknessFronts === t 
-                            ? 'bg-orange-500 text-black shadow-[0_0_10px_rgba(249,115,22,0.25)]' 
-                            : isLight
-                              ? 'bg-white text-slate-800 border border-slate-300 hover:border-orange-500 shadow-sm'
-                              : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50'
-                        }`}
-                      >
-                        {t.toFixed(1)}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <h2 className={isLight ? "text-xs uppercase tracking-wider text-orange-600 font-bold mb-3 mt-4 first:mt-0" : sectionTitle}>Armado y Sujeción</h2>
-              <div className="flex flex-col gap-3">
-                <div>
-                  <label className={isLight ? "text-xs uppercase tracking-wider text-slate-700 font-bold" : labelClass}>Tipo de Ensamblaje Estructura</label>
-                  <div className="grid grid-cols-2 gap-2 mt-1.5">
-                    <button 
-                      onClick={() => globalState.setAssemblyType('spax')}
-                      className={`py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer ${
-                        globalState.assemblyType === 'spax' 
-                          ? 'bg-orange-500 text-black shadow-[0_0_10px_rgba(249,115,22,0.25)]' 
-                          : isLight
-                            ? 'bg-white text-slate-800 border border-slate-300 hover:border-orange-500 shadow-sm'
-                            : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50'
-                      }`}
-                    >
-                      Soberbio / Spax
-                    </button>
-                    <button 
-                      onClick={() => globalState.setAssemblyType('minifix')}
-                      className={`py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer ${
-                        globalState.assemblyType === 'minifix' 
-                          ? 'bg-orange-500 text-black shadow-[0_0_10px_rgba(249,115,22,0.25)]' 
-                          : isLight
-                            ? 'bg-white text-slate-800 border border-slate-300 hover:border-orange-500 shadow-sm'
-                            : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50'
-                      }`}
-                    >
-                      Minifix
-                    </button>
-                  </div>
+                  <span className={`text-xs font-bold uppercase tracking-wider truncate ${
+                    openAccordions.gola 
+                      ? (isLight ? 'text-orange-600' : 'text-orange-400') 
+                      : (isLight ? 'text-slate-800' : 'text-slate-200')
+                  }`}>
+                    Sistema de Apertura (Gola)
+                  </span>
                 </div>
 
-                <div>
-                  <label className={isLight ? "text-xs uppercase tracking-wider text-slate-700 font-bold" : labelClass}>Herrajes de Cajón</label>
-                  <div className="grid grid-cols-2 gap-2 mt-1.5">
-                    <button 
-                      onClick={() => globalState.setDrawerHardware('Provelcar')}
-                      className={`py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer ${
-                        globalState.drawerHardware === 'Provelcar' 
-                          ? 'bg-orange-500 text-black shadow-[0_0_10px_rgba(249,115,22,0.25)]' 
-                          : isLight
-                            ? 'bg-white text-slate-800 border border-slate-300 hover:border-orange-500 shadow-sm'
-                            : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50'
-                      }`}
-                    >
-                      Provelcar
-                    </button>
-                    <button 
-                      onClick={() => globalState.setDrawerHardware('Hafele')}
-                      className={`py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer ${
-                        globalState.drawerHardware === 'Hafele' 
-                          ? 'bg-orange-500 text-black shadow-[0_0_10px_rgba(249,115,22,0.25)]' 
-                          : isLight
-                            ? 'bg-white text-slate-800 border border-slate-300 hover:border-orange-500 shadow-sm'
-                            : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50'
-                      }`}
-                    >
-                      Häfele
-                    </button>
-                  </div>
-                </div>
-                
-                <div>
-                  <label className={isLight ? "text-xs uppercase tracking-wider text-slate-700 font-bold" : labelClass}>Armado de Cajón</label>
-                  <div className="grid grid-cols-2 gap-2 mt-1.5">
-                    <button 
-                      onClick={() => globalState.setDrawerAssemblyType('spax')}
-                      className={`py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer ${
-                        globalState.drawerAssemblyType === 'spax' 
-                          ? 'bg-orange-500 text-black shadow-[0_0_10px_rgba(249,115,22,0.25)]' 
-                          : isLight
-                            ? 'bg-white text-slate-800 border border-slate-300 hover:border-orange-500 shadow-sm'
-                            : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50'
-                      }`}
-                    >
-                      Soberbio / Spax
-                    </button>
-                    <button 
-                      onClick={() => globalState.setDrawerAssemblyType('minifix')}
-                      className={`py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer ${
-                        globalState.drawerAssemblyType === 'minifix' 
-                          ? 'bg-orange-500 text-black shadow-[0_0_10px_rgba(249,115,22,0.25)]' 
-                          : isLight
-                            ? 'bg-white text-slate-800 border border-slate-300 hover:border-orange-500 shadow-sm'
-                            : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50'
-                      }`}
-                    >
-                      Minifix
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <h2 className={isLight ? "text-xs uppercase tracking-wider text-orange-600 font-bold mb-3 mt-4 first:mt-0" : sectionTitle}>Visualización y Entorno</h2>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="flex flex-col gap-1">
-                  <ToggleBtn isLight={isLight} active={globalState.showDimensions} onClick={globalState.toggleDimensions} label="Mostrar Cotas" />
-                  {globalState.showDimensions && (
-                    <div className="mt-1.5 flex flex-col gap-1 p-2 rounded-lg bg-black/20 border border-white/5">
-                      <div className="flex items-center justify-between text-[11px] font-bold">
-                        <span className={isLight ? "text-slate-700" : "text-slate-200"}>
-                          {DIMENSION_LEVEL_DATA[globalState.dimensionLevel]?.title || `Nivel ${globalState.dimensionLevel}`}
-                        </span>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-400 font-mono font-bold border border-orange-500/30">
-                          {globalState.dimensionLevel}/6
-                        </span>
-                      </div>
-                      <input 
-                        type="range" 
-                        min={1} 
-                        max={6} 
-                        step={1}
-                        value={globalState.dimensionLevel} 
-                        onChange={(e) => globalState.setDimensionLevel(Number(e.target.value))}
-                        className={`w-full h-2 rounded-lg appearance-none cursor-pointer accent-orange-500 hover:accent-orange-400 transition-all ${
-                          isLight ? 'bg-slate-300' : 'bg-white/10'
-                        }`}
-                        title="Nivel de Detalle de Cotas"
-                      />
-                      <p className={`text-[10px] leading-snug ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                        {DIMENSION_LEVEL_DATA[globalState.dimensionLevel]?.desc}
-                      </p>
-                    </div>
+                <div className="flex items-center gap-2 shrink-0 ml-2">
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                    openAccordions.gola
+                      ? (isLight ? 'bg-orange-100 text-orange-800 border-orange-200' : 'bg-orange-500/20 text-orange-400 border-orange-500/30')
+                      : (isLight ? 'bg-slate-100 text-slate-600 border-slate-200' : 'bg-white/5 text-slate-400 border-white/10')
+                  }`}>
+                    {golaSystem === 'none' ? 'Sin Gola' : golaSystem === 'black' ? 'Negro Mate' : 'Aluminio'}
+                  </span>
+                  {openAccordions.gola ? (
+                    <ChevronDown size={16} className={isLight ? "text-orange-600" : "text-orange-400"} />
+                  ) : (
+                    <ChevronRight size={16} className={isLight ? "text-slate-400" : "text-slate-500"} />
                   )}
                 </div>
-                <div className="flex flex-col gap-2">
-                  <ToggleBtn isLight={isLight} active={globalState.isTransparent} onClick={globalState.toggleTransparent} label="Transparente" />
-                  <ToggleBtn isLight={isLight} active={showSocle} onClick={() => setShowSocle(!showSocle)} label="Zócalo" />
+              </button>
+
+              {openAccordions.gola && (
+                <div className={`p-3.5 border-t ${isLight ? 'border-slate-100 bg-slate-50/40' : 'border-white/5 bg-black/10'}`}>
+                  <div className="flex flex-col gap-2">
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {[
+                        { id: 'none', label: 'Sin Gola' },
+                        { id: 'aluminum', label: 'Aluminio' },
+                        { id: 'black', label: 'Negro Mate' },
+                      ].map((opt) => (
+                        <button
+                          key={opt.id}
+                          onClick={() => setGolaSystem(opt.id as any)}
+                          className={`py-2 px-1 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer text-center ${
+                            golaSystem === opt.id
+                              ? 'bg-orange-500 text-black shadow-[0_0_10px_rgba(249,115,22,0.25)]'
+                              : isLight
+                                ? 'bg-white text-slate-800 border border-slate-300 hover:border-orange-500 shadow-sm'
+                                : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                    <p className={`text-[11px] leading-relaxed mt-1 ${isLight ? 'text-slate-600 font-medium' : 'text-slate-400'}`}>
+                      {golaSystem === 'none'
+                        ? 'Los muebles se fabrican con tiradores tradicionales estándar y frentes a cota completa.'
+                        : `Perfil Provelcar x175 (L superior -35mm) y x176 (C intermedio 40mm) en acabado ${golaSystem === 'black' ? 'Negro Mate' : 'Aluminio Anodizado'}. Descuenta alturas automáticamente y suprime tiradores convencionales.`}
+                    </p>
+                  </div>
                 </div>
-              </div>
+              )}
+            </div>
+
+            {/* 2. Tiradores & Pomos de Mueble */}
+            <div className={`rounded-xl border overflow-hidden transition-all ${
+              isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-white/[0.03] border-white/10'
+            }`}>
+              <button
+                type="button"
+                onClick={() => toggleAccordion('handles')}
+                className={`w-full flex items-center justify-between p-3 text-left transition-colors cursor-pointer select-none ${
+                  openAccordions.handles 
+                    ? (isLight ? 'bg-orange-50/50' : 'bg-white/[0.04]') 
+                    : (isLight ? 'hover:bg-slate-50' : 'hover:bg-white/[0.02]')
+                }`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className={`p-1.5 rounded-lg shrink-0 ${
+                    openAccordions.handles 
+                      ? 'bg-orange-500 text-black shadow-sm' 
+                      : (isLight ? 'bg-slate-100 text-slate-700' : 'bg-white/10 text-slate-300')
+                  }`}>
+                    <Sparkles size={14} />
+                  </div>
+                  <span className={`text-xs font-bold uppercase tracking-wider truncate ${
+                    openAccordions.handles 
+                      ? (isLight ? 'text-orange-600' : 'text-orange-400') 
+                      : (isLight ? 'text-slate-800' : 'text-slate-200')
+                  }`}>
+                    Tiradores & Pomos
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0 ml-2">
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                    openAccordions.handles
+                      ? (isLight ? 'bg-orange-100 text-orange-800 border-orange-200' : 'bg-orange-500/20 text-orange-400 border-orange-500/30')
+                      : (isLight ? 'bg-slate-100 text-slate-600 border-slate-200' : 'bg-white/5 text-slate-400 border-white/10')
+                  }`}>
+                    {golaSystem !== 'none'
+                      ? 'Gola Activo'
+                      : (HANDLE_CATALOG.find((h) => h.id === handleConfig?.model)?.name?.replace('Tirador ', '') || 'Sin Tirador')}
+                  </span>
+                  {openAccordions.handles ? (
+                    <ChevronDown size={16} className={isLight ? "text-orange-600" : "text-orange-400"} />
+                  ) : (
+                    <ChevronRight size={16} className={isLight ? "text-slate-400" : "text-slate-500"} />
+                  )}
+                </div>
+              </button>
+
+              {openAccordions.handles && (
+                <div className={`p-3.5 border-t ${isLight ? 'border-slate-100 bg-slate-50/40' : 'border-white/5 bg-black/10'}`}>
+                  <HandlesSection isLight={isLight} />
+                </div>
+              )}
+            </div>
+
+            {/* 3. Tapacantos Industriales */}
+            <div className={`rounded-xl border overflow-hidden transition-all ${
+              isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-white/[0.03] border-white/10'
+            }`}>
+              <button
+                type="button"
+                onClick={() => toggleAccordion('tapacantos')}
+                className={`w-full flex items-center justify-between p-3 text-left transition-colors cursor-pointer select-none ${
+                  openAccordions.tapacantos 
+                    ? (isLight ? 'bg-orange-50/50' : 'bg-white/[0.04]') 
+                    : (isLight ? 'hover:bg-slate-50' : 'hover:bg-white/[0.02]')
+                }`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className={`p-1.5 rounded-lg shrink-0 ${
+                    openAccordions.tapacantos 
+                      ? 'bg-orange-500 text-black shadow-sm' 
+                      : (isLight ? 'bg-slate-100 text-slate-700' : 'bg-white/10 text-slate-300')
+                  }`}>
+                    <Layers size={14} />
+                  </div>
+                  <span className={`text-xs font-bold uppercase tracking-wider truncate ${
+                    openAccordions.tapacantos 
+                      ? (isLight ? 'text-orange-600' : 'text-orange-400') 
+                      : (isLight ? 'text-slate-800' : 'text-slate-200')
+                  }`}>
+                    Tapacantos Industriales
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0 ml-2">
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                    openAccordions.tapacantos
+                      ? (isLight ? 'bg-orange-100 text-orange-800 border-orange-200' : 'bg-orange-500/20 text-orange-400 border-orange-500/30')
+                      : (isLight ? 'bg-slate-100 text-slate-600 border-slate-200' : 'bg-white/5 text-slate-400 border-white/10')
+                  }`}>
+                    G:{globalState.edgeBandingThicknessCabinets} / F:{globalState.edgeBandingThicknessFronts} mm
+                  </span>
+                  {openAccordions.tapacantos ? (
+                    <ChevronDown size={16} className={isLight ? "text-orange-600" : "text-orange-400"} />
+                  ) : (
+                    <ChevronRight size={16} className={isLight ? "text-slate-400" : "text-slate-500"} />
+                  )}
+                </div>
+              </button>
+
+              {openAccordions.tapacantos && (
+                <div className={`p-3.5 border-t ${isLight ? 'border-slate-100 bg-slate-50/40' : 'border-white/5 bg-black/10'}`}>
+                  <div className="flex flex-col gap-3">
+                    <div>
+                      <label className={isLight ? "text-xs uppercase tracking-wider text-slate-700 font-bold" : labelClass}>Tapacanto Gabinetes (mm)</label>
+                      <div className="grid grid-cols-4 gap-1.5 mt-1.5">
+                        {[0.5, 1.0, 1.5, 2.0].map((t) => (
+                          <button 
+                            key={t}
+                            onClick={() => globalState.setEdgeBandingThicknessCabinets(t as any)}
+                            className={`py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer ${
+                              globalState.edgeBandingThicknessCabinets === t 
+                                ? 'bg-orange-500 text-black shadow-[0_0_10px_rgba(249,115,22,0.25)]' 
+                                : isLight
+                                  ? 'bg-white text-slate-800 border border-slate-300 hover:border-orange-500 shadow-sm'
+                                  : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50'
+                            }`}
+                          >
+                            {t.toFixed(1)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <label className={isLight ? "text-xs uppercase tracking-wider text-slate-700 font-bold" : labelClass}>Tapacanto Frentes (mm)</label>
+                      <div className="grid grid-cols-4 gap-1.5 mt-1.5">
+                        {[0.5, 1.0, 1.5, 2.0].map((t) => (
+                          <button 
+                            key={t}
+                            onClick={() => globalState.setEdgeBandingThicknessFronts(t as any)}
+                            className={`py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer ${
+                              globalState.edgeBandingThicknessFronts === t 
+                                ? 'bg-orange-500 text-black shadow-[0_0_10px_rgba(249,115,22,0.25)]' 
+                                : isLight
+                                  ? 'bg-white text-slate-800 border border-slate-300 hover:border-orange-500 shadow-sm'
+                                  : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50'
+                            }`}
+                          >
+                            {t.toFixed(1)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 4. Armado y Sujeción */}
+            <div className={`rounded-xl border overflow-hidden transition-all ${
+              isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-white/[0.03] border-white/10'
+            }`}>
+              <button
+                type="button"
+                onClick={() => toggleAccordion('assembly')}
+                className={`w-full flex items-center justify-between p-3 text-left transition-colors cursor-pointer select-none ${
+                  openAccordions.assembly 
+                    ? (isLight ? 'bg-orange-50/50' : 'bg-white/[0.04]') 
+                    : (isLight ? 'hover:bg-slate-50' : 'hover:bg-white/[0.02]')
+                }`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className={`p-1.5 rounded-lg shrink-0 ${
+                    openAccordions.assembly 
+                      ? 'bg-orange-500 text-black shadow-sm' 
+                      : (isLight ? 'bg-slate-100 text-slate-700' : 'bg-white/10 text-slate-300')
+                  }`}>
+                    <Wrench size={14} />
+                  </div>
+                  <span className={`text-xs font-bold uppercase tracking-wider truncate ${
+                    openAccordions.assembly 
+                      ? (isLight ? 'text-orange-600' : 'text-orange-400') 
+                      : (isLight ? 'text-slate-800' : 'text-slate-200')
+                  }`}>
+                    Armado y Sujeción
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0 ml-2">
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                    openAccordions.assembly
+                      ? (isLight ? 'bg-orange-100 text-orange-800 border-orange-200' : 'bg-orange-500/20 text-orange-400 border-orange-500/30')
+                      : (isLight ? 'bg-slate-100 text-slate-600 border-slate-200' : 'bg-white/5 text-slate-400 border-white/10')
+                  }`}>
+                    {globalState.assemblyType === 'spax' ? 'Soberbio/Spax' : 'Minifix'}
+                  </span>
+                  {openAccordions.assembly ? (
+                    <ChevronDown size={16} className={isLight ? "text-orange-600" : "text-orange-400"} />
+                  ) : (
+                    <ChevronRight size={16} className={isLight ? "text-slate-400" : "text-slate-500"} />
+                  )}
+                </div>
+              </button>
+
+              {openAccordions.assembly && (
+                <div className={`p-3.5 border-t ${isLight ? 'border-slate-100 bg-slate-50/40' : 'border-white/5 bg-black/10'}`}>
+                  <div className="flex flex-col gap-3">
+                    <div>
+                      <label className={isLight ? "text-xs uppercase tracking-wider text-slate-700 font-bold" : labelClass}>Tipo de Ensamblaje Estructura</label>
+                      <div className="grid grid-cols-2 gap-2 mt-1.5">
+                        <button 
+                          onClick={() => globalState.setAssemblyType('spax')}
+                          className={`py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer ${
+                            globalState.assemblyType === 'spax' 
+                              ? 'bg-orange-500 text-black shadow-[0_0_10px_rgba(249,115,22,0.25)]' 
+                              : isLight
+                                ? 'bg-white text-slate-800 border border-slate-300 hover:border-orange-500 shadow-sm'
+                                : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50'
+                          }`}
+                        >
+                          Soberbio / Spax
+                        </button>
+                        <button 
+                          onClick={() => globalState.setAssemblyType('minifix')}
+                          className={`py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer ${
+                            globalState.assemblyType === 'minifix' 
+                              ? 'bg-orange-500 text-black shadow-[0_0_10px_rgba(249,115,22,0.25)]' 
+                              : isLight
+                                ? 'bg-white text-slate-800 border border-slate-300 hover:border-orange-500 shadow-sm'
+                                : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50'
+                          }`}
+                        >
+                          Minifix
+                        </button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className={isLight ? "text-xs uppercase tracking-wider text-slate-700 font-bold" : labelClass}>Herrajes de Cajón</label>
+                      <div className="grid grid-cols-2 gap-2 mt-1.5">
+                        <button 
+                          onClick={() => globalState.setDrawerHardware('Provelcar')}
+                          className={`py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer ${
+                            globalState.drawerHardware === 'Provelcar' 
+                              ? 'bg-orange-500 text-black shadow-[0_0_10px_rgba(249,115,22,0.25)]' 
+                              : isLight
+                                ? 'bg-white text-slate-800 border border-slate-300 hover:border-orange-500 shadow-sm'
+                                : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50'
+                          }`}
+                        >
+                          Provelcar
+                        </button>
+                        <button 
+                          onClick={() => globalState.setDrawerHardware('Hafele')}
+                          className={`py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer ${
+                            globalState.drawerHardware === 'Hafele' 
+                              ? 'bg-orange-500 text-black shadow-[0_0_10px_rgba(249,115,22,0.25)]' 
+                              : isLight
+                                ? 'bg-white text-slate-800 border border-slate-300 hover:border-orange-500 shadow-sm'
+                                : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50'
+                          }`}
+                        >
+                          Häfele
+                        </button>
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <label className={isLight ? "text-xs uppercase tracking-wider text-slate-700 font-bold" : labelClass}>Armado de Cajón</label>
+                      <div className="grid grid-cols-2 gap-2 mt-1.5">
+                        <button 
+                          onClick={() => globalState.setDrawerAssemblyType('spax')}
+                          className={`py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer ${
+                            globalState.drawerAssemblyType === 'spax' 
+                              ? 'bg-orange-500 text-black shadow-[0_0_10px_rgba(249,115,22,0.25)]' 
+                              : isLight
+                                ? 'bg-white text-slate-800 border border-slate-300 hover:border-orange-500 shadow-sm'
+                                : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50'
+                          }`}
+                        >
+                          Soberbio / Spax
+                        </button>
+                        <button 
+                          onClick={() => globalState.setDrawerAssemblyType('minifix')}
+                          className={`py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer ${
+                            globalState.drawerAssemblyType === 'minifix' 
+                              ? 'bg-orange-500 text-black shadow-[0_0_10px_rgba(249,115,22,0.25)]' 
+                              : isLight
+                                ? 'bg-white text-slate-800 border border-slate-300 hover:border-orange-500 shadow-sm'
+                                : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50'
+                          }`}
+                        >
+                          Minifix
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -1666,59 +1643,17 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
         )}
       </div>
 
-      {/* Dock de Fabricación Fijo Inferior (Siempre visible) */}
-      <div className={`p-4 border-t shrink-0 flex flex-col gap-2.5 backdrop-blur-md transition-colors ${
+      {/* Acceso Unificado a Planos y Documentación Técnica de Fabricación */}
+      <div className={`p-3.5 border-t shrink-0 backdrop-blur-md transition-colors ${
         isLight ? 'border-slate-200 bg-slate-50/95 shadow-lg' : 'border-white/10 bg-black/90'
       }`}>
         <button 
-          onClick={() => setIsB2BQuoteOpen(true)}
-          className="flex items-center justify-center gap-2.5 w-full py-3 px-4 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white rounded-xl transition-all text-xs uppercase tracking-wider font-bold shadow-lg shadow-orange-600/20 active:scale-[0.99] cursor-pointer"
-        >
-          <DollarSign size={16} />
-          <span>Cotización Dual B2B & Retail</span>
-        </button>
-
-        <button 
-          onClick={exportKitchenToExcel} 
-          className="flex items-center justify-center gap-2.5 w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl transition-all text-xs uppercase tracking-wider font-bold shadow-md shadow-emerald-600/20 active:scale-[0.99] cursor-pointer"
-        >
-          <FileSpreadsheet size={16} />
-          <span>Exportar Excel CAD/CAM</span>
-        </button>
-        
-        <button 
           onClick={() => globalState.setIsPrinting(true)} 
-          className={`flex items-center justify-center gap-2 w-full py-2.5 px-4 rounded-xl transition-all text-xs uppercase tracking-wider font-bold cursor-pointer active:scale-[0.99] ${
-            isLight
-              ? 'bg-rose-50 border border-rose-200 hover:bg-rose-100 text-rose-700'
-              : 'bg-rose-600/20 border border-rose-500/40 hover:bg-rose-600/30 text-rose-300 hover:text-white'
-          }`}
+          className="flex items-center justify-center gap-2.5 w-full py-3 px-4 bg-gradient-to-r from-orange-600 via-amber-600 to-orange-500 hover:from-orange-500 hover:to-amber-500 text-white rounded-xl transition-all text-xs uppercase tracking-wider font-bold shadow-lg shadow-orange-600/25 active:scale-[0.98] cursor-pointer"
+          title="Abrir planos interactivos 2D/A3, despiece de corte, cotizaciones, etiquetas QR y archivos DXF para CNC"
         >
-          <FileText size={15} />
-          <span>Planos de Fabricación (PDF)</span>
-        </button>
-
-        <button 
-          onClick={handleExportLabels}
-          disabled={isExportingLabels}
-          className={`flex items-center justify-center gap-2 w-full py-2.5 px-4 rounded-xl transition-all text-xs uppercase tracking-wider font-bold cursor-pointer active:scale-[0.99] disabled:opacity-50 ${
-            isLight
-              ? 'bg-purple-50 border border-purple-200 hover:bg-purple-100 text-purple-700'
-              : 'bg-purple-600/20 border border-purple-500/40 hover:bg-purple-600/30 text-purple-300 hover:text-white'
-          }`}
-          title="Descargar PDF con etiquetas adhesivas y códigos QR de trazabilidad para cada pieza"
-        >
-          {isExportingLabels ? (
-            <>
-              <Loader2 size={15} className="animate-spin text-purple-400" />
-              <span>Generando Etiquetas...</span>
-            </>
-          ) : (
-            <>
-              <QrCode size={15} />
-              <span>Etiquetas CNC (QR)</span>
-            </>
-          )}
+          <FileText size={16} />
+          <span>Planos y Despiece de Fabricación</span>
         </button>
       </div>
 
@@ -1781,3 +1716,78 @@ function ToolButton({ active, onClick, icon, label, isLight }: { active: boolean
     </button>
   );
 }
+
+interface ModuleCategoryAccordionProps {
+  id: string;
+  title: string;
+  count: number;
+  icon: React.ReactNode;
+  isOpen: boolean;
+  onToggle: () => void;
+  hasActiveTool: boolean;
+  isLight: boolean;
+  children: React.ReactNode;
+}
+
+function ModuleCategoryAccordion({
+  title,
+  count,
+  icon,
+  isOpen,
+  onToggle,
+  hasActiveTool,
+  isLight,
+  children,
+}: ModuleCategoryAccordionProps) {
+  return (
+    <div className={`rounded-xl border transition-all overflow-hidden ${
+      hasActiveTool
+        ? isLight
+          ? 'border-orange-400 bg-orange-50/40 shadow-sm'
+          : 'border-orange-500/50 bg-orange-950/10 shadow-sm'
+        : isLight
+          ? 'border-slate-200 bg-white'
+          : 'border-white/10 bg-white/[0.02]'
+    }`}>
+      <button
+        type="button"
+        onClick={onToggle}
+        className={`w-full flex items-center justify-between p-2.5 text-xs font-bold uppercase tracking-wider cursor-pointer select-none transition-colors ${
+          hasActiveTool
+            ? isLight
+              ? 'text-orange-800 bg-orange-100/70'
+              : 'text-orange-400 bg-orange-500/20'
+            : isLight
+              ? 'text-slate-800 hover:bg-slate-50'
+              : 'text-slate-200 hover:bg-white/5'
+        }`}
+      >
+        <div className="flex items-center gap-2 min-w-0">
+          <span className={hasActiveTool ? 'text-orange-500' : isLight ? 'text-slate-600' : 'text-slate-400'}>
+            {icon}
+          </span>
+          <span className="truncate">{title}</span>
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold ${
+            hasActiveTool
+              ? isLight ? 'bg-orange-200 text-orange-950 border border-orange-300' : 'bg-orange-500/40 text-orange-200 border border-orange-400/30'
+              : isLight ? 'bg-slate-100 text-slate-700 border border-slate-200' : 'bg-black/40 text-slate-400 border border-white/5'
+          }`}>
+            {count}
+          </span>
+          {isOpen ? <ChevronDown size={14} className="text-orange-500" /> : <ChevronRight size={14} className={isLight ? 'text-slate-400' : 'text-slate-500'} />}
+        </div>
+      </button>
+
+      {isOpen && (
+        <div className={`p-2 flex flex-col gap-1.5 border-t ${
+          isLight ? 'border-slate-100 bg-slate-50/60' : 'border-white/5 bg-black/20'
+        }`}>
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+

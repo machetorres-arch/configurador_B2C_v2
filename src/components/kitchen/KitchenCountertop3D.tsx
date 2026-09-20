@@ -653,6 +653,13 @@ export function KitchenCountertop3D() {
           ((run.cornerExtensionLeftMm || 0) + (run.extensionToWallLeftMm || 0)) / 10;
         const totalExtRightCm =
           ((run.cornerExtensionRightMm || 0) + (run.extensionToWallRightMm || 0)) / 10;
+        const trimLeftCm = (run.cornerTrimLeftMm || 0) / 10;
+        const trimRightCm = (run.cornerTrimRightMm || 0) / 10;
+
+        const bsExtLeftCm =
+          ((run.backsplashExtLeftMm || 0) + (run.extensionToWallLeftMm || 0)) / 10;
+        const bsExtRightCm =
+          ((run.backsplashExtRightMm || 0) + (run.extensionToWallRightMm || 0)) / 10;
 
         return (
           <group
@@ -662,10 +669,10 @@ export function KitchenCountertop3D() {
           >
             {run.segmentLengthsMm.map((segLenMm, segIdx) => {
               const segLenCm = segLenMm / 10;
-              const extraCornerLeftCm = segIdx === 0 ? totalExtLeftCm : 0;
+              const extraCornerLeftCm = segIdx === 0 ? (totalExtLeftCm - trimLeftCm) : 0;
               const extraCornerRightCm =
-                segIdx === run.segmentLengthsMm.length - 1 ? totalExtRightCm : 0;
-              const totalSegSlabLenCm = segLenCm + extraCornerLeftCm + extraCornerRightCm;
+                segIdx === run.segmentLengthsMm.length - 1 ? (totalExtRightCm - trimRightCm) : 0;
+              const totalSegSlabLenCm = Math.max(0.1, segLenCm + extraCornerLeftCm + extraCornerRightCm);
               const segCornerShiftX = (extraCornerRightCm - extraCornerLeftCm) / 2;
 
               const segCenterRelX = currentSegStartCm + segLenCm / 2 + segCornerShiftX;
@@ -830,8 +837,12 @@ export function KitchenCountertop3D() {
 
             {/* Faldón Delantero / Regrueso Continuo (de 0 a 5 cm) */}
             {regruesoCm > 0 && (() => {
-              const apronShiftX = (totalExtRightCm - totalExtLeftCm) / 2;
-              const apronLen = totalRunLengthCm + totalExtLeftCm + totalExtRightCm;
+              const apronShiftX =
+                (totalExtRightCm - trimRightCm - (totalExtLeftCm - trimLeftCm)) / 2;
+              const apronLen = Math.max(
+                0.1,
+                totalRunLengthCm + (totalExtLeftCm - trimLeftCm) + (totalExtRightCm - trimRightCm)
+              );
               return (
                 <mesh
                   position={[
@@ -851,8 +862,8 @@ export function KitchenCountertop3D() {
 
             {/* Respaldo / Zócalo Posterior Continuo (solo en muebles base contra muro) */}
             {!isIsland && countertopConfig.backsplashMode !== 'none' && (() => {
-              const bsLenCm = totalRunLengthCm + totalExtLeftCm + totalExtRightCm;
-              const bsCenterShiftX = (totalExtRightCm - totalExtLeftCm) / 2;
+              const bsLenCm = totalRunLengthCm + bsExtLeftCm + bsExtRightCm;
+              const bsCenterShiftX = (bsExtRightCm - bsExtLeftCm) / 2;
 
               return (
                 <mesh

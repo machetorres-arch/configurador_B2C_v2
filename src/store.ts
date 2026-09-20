@@ -140,6 +140,49 @@ export interface ClosetState {
   removeModule: (id: string) => void;
   setActiveModule: (id: string | null) => void;
   
+  history: Array<{
+    modules: ClosetModule[];
+    height: number;
+    depth: number;
+    thickness: number;
+    structureColor: string;
+    structureMaterial: MaterialType;
+    doorColor: string;
+    doorMaterial: MaterialType;
+    drawerFrontColor: string;
+    drawerFrontMaterial: MaterialType;
+    shelfColor: string;
+    shelfMaterial: MaterialType;
+    socleColor: string;
+    socleMaterial: MaterialType;
+    backColor: string;
+    showSocle: boolean;
+    showLegs: boolean;
+  }>;
+  future: Array<{
+    modules: ClosetModule[];
+    height: number;
+    depth: number;
+    thickness: number;
+    structureColor: string;
+    structureMaterial: MaterialType;
+    doorColor: string;
+    doorMaterial: MaterialType;
+    drawerFrontColor: string;
+    drawerFrontMaterial: MaterialType;
+    shelfColor: string;
+    shelfMaterial: MaterialType;
+    socleColor: string;
+    socleMaterial: MaterialType;
+    backColor: string;
+    showSocle: boolean;
+    showLegs: boolean;
+  }>;
+  undo: () => void;
+  redo: () => void;
+  canUndo: () => boolean;
+  canRedo: () => boolean;
+
   saveDesign: (name: string) => void;
   loadDesign: (name: string) => void;
   setIsPrinting: (val: boolean) => void;
@@ -196,7 +239,32 @@ const getSavedDesigns = () => {
   return designs;
 };
 
-export const useStore = create<ClosetState>((set, get) => ({
+export const useStore = create<ClosetState>((set, get) => {
+  const saveSnapshot = (state: ClosetState) => {
+    const snapshot = {
+      modules: JSON.parse(JSON.stringify(state.modules)),
+      height: state.height,
+      depth: state.depth,
+      thickness: state.thickness,
+      structureColor: state.structureColor,
+      structureMaterial: state.structureMaterial,
+      doorColor: state.doorColor,
+      doorMaterial: state.doorMaterial,
+      drawerFrontColor: state.drawerFrontColor,
+      drawerFrontMaterial: state.drawerFrontMaterial,
+      shelfColor: state.shelfColor,
+      shelfMaterial: state.shelfMaterial,
+      socleColor: state.socleColor,
+      socleMaterial: state.socleMaterial,
+      backColor: state.backColor,
+      showSocle: state.showSocle,
+      showLegs: state.showLegs,
+    };
+    const prevHistory = state.history || [];
+    return [snapshot, ...prevHistory.slice(0, 29)];
+  };
+
+  return {
   height: 240,
   depth: 60,
   thickness: 1.8,
@@ -239,6 +307,120 @@ export const useStore = create<ClosetState>((set, get) => ({
   activeModuleId: 'mod-1',
   savedDesigns: getSavedDesigns(),
   isPrinting: false,
+  history: [],
+  future: [],
+
+  canUndo: () => {
+    return (get().history?.length || 0) > 0;
+  },
+
+  canRedo: () => {
+    return (get().future?.length || 0) > 0;
+  },
+
+  undo: () => {
+    const state = get();
+    const currentHistory = state.history;
+    if (!currentHistory || currentHistory.length === 0) return;
+    
+    const currentSnapshot = {
+      modules: JSON.parse(JSON.stringify(state.modules)),
+      height: state.height,
+      depth: state.depth,
+      thickness: state.thickness,
+      structureColor: state.structureColor,
+      structureMaterial: state.structureMaterial,
+      doorColor: state.doorColor,
+      doorMaterial: state.doorMaterial,
+      drawerFrontColor: state.drawerFrontColor,
+      drawerFrontMaterial: state.drawerFrontMaterial,
+      shelfColor: state.shelfColor,
+      shelfMaterial: state.shelfMaterial,
+      socleColor: state.socleColor,
+      socleMaterial: state.socleMaterial,
+      backColor: state.backColor,
+      showSocle: state.showSocle,
+      showLegs: state.showLegs,
+    };
+
+    const [prev, ...rest] = currentHistory;
+    const newFuture = [currentSnapshot, ...(state.future || []).slice(0, 29)];
+
+    set({
+      modules: prev.modules,
+      height: prev.height,
+      depth: prev.depth,
+      thickness: prev.thickness,
+      structureColor: prev.structureColor,
+      structureMaterial: prev.structureMaterial,
+      doorColor: prev.doorColor,
+      doorMaterial: prev.doorMaterial,
+      drawerFrontColor: prev.drawerFrontColor,
+      drawerFrontMaterial: prev.drawerFrontMaterial,
+      shelfColor: prev.shelfColor,
+      shelfMaterial: prev.shelfMaterial,
+      socleColor: prev.socleColor,
+      socleMaterial: prev.socleMaterial,
+      backColor: prev.backColor,
+      showSocle: prev.showSocle,
+      showLegs: prev.showLegs,
+      history: rest,
+      future: newFuture,
+      activeModuleId: prev.modules[0]?.id || null,
+    });
+  },
+
+  redo: () => {
+    const state = get();
+    const currentFuture = state.future;
+    if (!currentFuture || currentFuture.length === 0) return;
+
+    const currentSnapshot = {
+      modules: JSON.parse(JSON.stringify(state.modules)),
+      height: state.height,
+      depth: state.depth,
+      thickness: state.thickness,
+      structureColor: state.structureColor,
+      structureMaterial: state.structureMaterial,
+      doorColor: state.doorColor,
+      doorMaterial: state.doorMaterial,
+      drawerFrontColor: state.drawerFrontColor,
+      drawerFrontMaterial: state.drawerFrontMaterial,
+      shelfColor: state.shelfColor,
+      shelfMaterial: state.shelfMaterial,
+      socleColor: state.socleColor,
+      socleMaterial: state.socleMaterial,
+      backColor: state.backColor,
+      showSocle: state.showSocle,
+      showLegs: state.showLegs,
+    };
+
+    const [next, ...rest] = currentFuture;
+    const newHistory = [currentSnapshot, ...(state.history || []).slice(0, 29)];
+
+    set({
+      modules: next.modules,
+      height: next.height,
+      depth: next.depth,
+      thickness: next.thickness,
+      structureColor: next.structureColor,
+      structureMaterial: next.structureMaterial,
+      doorColor: next.doorColor,
+      doorMaterial: next.doorMaterial,
+      drawerFrontColor: next.drawerFrontColor,
+      drawerFrontMaterial: next.drawerFrontMaterial,
+      shelfColor: next.shelfColor,
+      shelfMaterial: next.shelfMaterial,
+      socleColor: next.socleColor,
+      socleMaterial: next.socleMaterial,
+      backColor: next.backColor,
+      showSocle: next.showSocle,
+      showLegs: next.showLegs,
+      history: newHistory,
+      future: rest,
+      activeModuleId: next.modules[0]?.id || null,
+    });
+  },
 
   targetPart: 'structure',
   setTargetPart: (part) => set({ targetPart: part }),
@@ -294,8 +476,8 @@ export const useStore = create<ClosetState>((set, get) => ({
   toggleLeftWall: () => set((state) => ({ showLeftWall: !state.showLeftWall })),
   toggleRightWall: () => set((state) => ({ showRightWall: !state.showRightWall })),
   toggleBackWall: () => set((state) => ({ showBackWall: !state.showBackWall })),
-  toggleSocle: () => set((state) => ({ showSocle: !state.showSocle })),
-  toggleLegs: () => set((state) => ({ showLegs: !state.showLegs })),
+  toggleSocle: () => set((state) => ({ history: saveSnapshot(state), showSocle: !state.showSocle })),
+  toggleLegs: () => set((state) => ({ history: saveSnapshot(state), showLegs: !state.showLegs })),
   toggleDimensions: () => set((state) => ({ showDimensions: !state.showDimensions })),
   setShowDimensions: (showDimensions) => set({ showDimensions }),
   setDimensionLevel: (dimensionLevel) => set({ dimensionLevel }),
@@ -307,18 +489,22 @@ export const useStore = create<ClosetState>((set, get) => ({
   setDrawerAssemblyType: (type) => set({ drawerAssemblyType: type }),
   
   addModule: () => set((state) => {
+    const history = saveSnapshot(state);
     const newId = `mod-${Date.now()}`;
     return {
+      history,
       modules: [...state.modules, { ...defaultModule, id: newId }],
       activeModuleId: newId
     };
   }),
   
   updateModule: (id, updates) => set((state) => ({
+    history: saveSnapshot(state),
     modules: state.modules.map(m => m.id === id ? { ...m, ...updates } : m)
   })),
   
   updateModuleOverrides: (id, overrides) => set((state) => ({
+    history: saveSnapshot(state),
     modules: state.modules.map(m => m.id === id ? { 
       ...m, 
       overrides: overrides === null ? undefined : { ...(m.overrides || {}), ...overrides } 
@@ -326,8 +512,10 @@ export const useStore = create<ClosetState>((set, get) => ({
   })),
   
   removeModule: (id) => set((state) => {
+    const history = saveSnapshot(state);
     const newModules = state.modules.filter(m => m.id !== id);
     return {
+      history,
       modules: newModules,
       activeModuleId: state.activeModuleId === id ? (newModules[0]?.id || null) : state.activeModuleId
     };
@@ -386,4 +574,5 @@ export const useStore = create<ClosetState>((set, get) => ({
   }),
   
   setIsPrinting: (val) => set({ isPrinting: val })
-}));
+};
+});

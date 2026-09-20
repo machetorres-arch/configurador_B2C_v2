@@ -549,7 +549,8 @@ export function repositionCabinetsOnRoomChange(
       wallBoundTypes.has(cab.type) ||
       cab.variant === 'deco_hood' ||
       cab.variant === 'deco_stove' ||
-      cab.variant === 'deco_fridge';
+      cab.variant === 'deco_fridge' ||
+      cab.variant === 'deco_dishwasher';
 
     if (isWallBound && walls && walls.length > 0) {
       let bestWall: any = null;
@@ -604,6 +605,7 @@ export function repositionCabinetsOnRoomChange(
           cab.type === 'island' ||
           cab.variant === 'deco_stove' ||
           cab.variant === 'deco_fridge' ||
+          cab.variant === 'deco_dishwasher' ||
           cab.variant === 'deco_plant'
         ) {
           newY = cab.height / 2;
@@ -906,7 +908,7 @@ export function resolvePlacement({
   const pillarBoxes = getPillarsBox2D(architecturalElements, effectiveWalls, roomPoly);
 
   // 1. Detección y atracción magnética a otros muebles adyacentes y pilares (Snapping Flanco a Flanco suave)
-  const snapThreshold = 30;
+  const snapThreshold = cabType === 'island' ? 42 : 30;
   let bestSnap: { pos: [number, number, number]; rot: number; dist: number } | null = null;
 
   for (const cab of otherCabinets) {
@@ -984,6 +986,61 @@ export function resolvePlacement({
         const constrained = constrainInsideRoomAndWalls(dockPos, orthoRot, cabWidth, cabDepth, cabHeight, walls, roomPoly, architecturalElements);
         if (!bestSnap || distDock < bestSnap.dist) {
           bestSnap = { pos: constrained, rot: orthoRot, dist: distDock };
+        }
+      }
+    }
+
+    // Detección de contacto magnético posterior (espalda con espalda) para islas
+    if (cabType === 'island' && (cab.type === 'island' || cab.type === 'base')) {
+      const backDist = (cab.depth + cabDepth) / 2;
+      const backDockX = cab.position[0] - backDist * sin;
+      const backDockZ = cab.position[2] + backDist * cos;
+      
+      // Candidato espalda con espalda mirando hacia afuera (rot + PI)
+      const candBackOpposite: [number, number, number] = [
+        backDockX,
+        defaultY,
+        backDockZ,
+      ];
+      const rotOpposite = (rot + Math.PI) % (Math.PI * 2);
+      const distBackOpp = Math.hypot(mouseX - candBackOpposite[0], mouseZ - candBackOpposite[2]);
+
+      if (distBackOpp < snapThreshold * 1.2) {
+        const constrained = constrainInsideRoomAndWalls(candBackOpposite, rotOpposite, cabWidth, cabDepth, cabHeight, walls, roomPoly, architecturalElements);
+        const isCandValid = isCandidateValid({
+          position: constrained,
+          width: cabWidth,
+          depth: cabDepth,
+          height: cabHeight,
+          rotation: rotOpposite,
+          type: cabType,
+        }, otherCabinets, walls, ignoreId, roomPoly, architecturalElements);
+
+        if (isCandValid && (!bestSnap || distBackOpp < bestSnap.dist)) {
+          bestSnap = { pos: constrained, rot: rotOpposite, dist: distBackOpp };
+        }
+      }
+
+      // Candidato espalda con trasera en misma orientación (rot)
+      const candBackSame: [number, number, number] = [
+        backDockX,
+        defaultY,
+        backDockZ,
+      ];
+      const distBackSame = Math.hypot(mouseX - candBackSame[0], mouseZ - candBackSame[2]);
+      if (distBackSame < snapThreshold * 1.2) {
+        const constrained = constrainInsideRoomAndWalls(candBackSame, rot, cabWidth, cabDepth, cabHeight, walls, roomPoly, architecturalElements);
+        const isCandValid = isCandidateValid({
+          position: constrained,
+          width: cabWidth,
+          depth: cabDepth,
+          height: cabHeight,
+          rotation: rot,
+          type: cabType,
+        }, otherCabinets, walls, ignoreId, roomPoly, architecturalElements);
+
+        if (isCandValid && (!bestSnap || distBackSame < bestSnap.dist)) {
+          bestSnap = { pos: constrained, rot, dist: distBackSame };
         }
       }
     }
@@ -1078,8 +1135,9 @@ export function resolvePlacement({
     cabType === 'decoration' ||
     variant === 'deco_hood' ||
     variant === 'deco_stove' ||
-    variant === 'deco_fridge';
-  const wallSnapThreshold = isWallBound ? Infinity : 50;
+    variant === 'deco_fridge' ||
+    variant === 'deco_dishwasher';
+  const wallSnapThreshold = isWallBound ? Infinity : (cabType === 'island' ? 0 : 50);
   let bestWallSnap: { pos: [number, number, number]; rot: number; dist: number; isColliding: boolean } | null = null;
 
   if (effectiveWalls.length > 0) {
@@ -1101,7 +1159,7 @@ export function resolvePlacement({
       const s = (mouseX - x1) * uX + (mouseZ - z1) * uZ;
       const sClamped = Math.max(cabWidth / 2 + 0.5, Math.min(wallLen - cabWidth / 2 - 0.5, s));
       const wallThickness = w.thickness || 20;
-      const isWallMountedDeco = variant === 'deco_hood' || variant === 'deco_stove' || variant === 'deco_fridge';
+      const isWallMountedDeco = variant === 'deco_hood' || variant === 'deco_stove' || variant === 'deco_fridge' || variant === 'deco_dishwasher';
       const flushDist = (cabType === 'decoration' && !isWallMountedDeco && variant !== 'deco_plant') ? 0 : (variant === 'deco_plant' ? 0 : wallThickness / 2 + cabDepth / 2);
 
       // La posición de enganche siempre queda exactamente en la cara interior del tabique
@@ -1330,15 +1388,167 @@ export function resolvePlacement({
     };
   }
 
-  // 3. Posición libre: restringida estrictamente al interior de la habitación para no sobrepasar muros ni pilares
-  let candidatePos: [number, number, number] = [mouseX, defaultY, mouseZ];
-  candidatePos = constrainInsideRoomAndWalls(candidatePos, preferredRot, cabWidth, cabDepth, cabHeight, walls, roomPoly, architecturalElements);
+  // 3. Posición libre: resolución de colisión OBB / SAT para evitar que los muebles se sobrepongan entre sí
+  let candidatePos: [number, number, number] = [
+    cabType === 'island' ? Math.round(mouseX / 5) * 5 : mouseX,
+    defaultY,
+    cabType === 'island' ? Math.round(mouseZ / 5) * 5 : mouseZ,
+  ];
+  const curRot = preferredRot;
+
+  // Si no está snappeado, empujar fuera de cualquier colisión con otros muebles
+  for (let iter = 0; iter < 6; iter++) {
+    let hadCollision = false;
+    const candBox = getCabinetBox2D({
+      position: candidatePos,
+      width: cabWidth,
+      depth: cabDepth,
+      height: cabHeight,
+      rotation: curRot,
+      type: cabType,
+    });
+
+    for (const otherCab of otherCabinets) {
+      // Verificar solapamiento en altura
+      const otherYMin = otherCab.position[1] - otherCab.height / 2;
+      const otherYMax = otherCab.position[1] + otherCab.height / 2;
+      const candYMin = defaultY - cabHeight / 2;
+      const candYMax = defaultY + cabHeight / 2;
+      if (Math.min(otherYMax, candYMax) - Math.max(otherYMin, candYMin) <= 2) {
+        continue;
+      }
+
+      const otherBox = getCabinetBox2D(otherCab);
+      const col = checkOBBCollision(candBox, otherBox, 0.2);
+      if (col.colliding && col.mtvAxis && col.overlap > 0.05) {
+        hadCollision = true;
+        candidatePos[0] += col.mtvAxis[0] * (col.overlap + 0.1);
+        candidatePos[2] += col.mtvAxis[1] * (col.overlap + 0.1);
+        break;
+      }
+    }
+
+    if (!hadCollision) break;
+  }
+
+  candidatePos = constrainInsideRoomAndWalls(candidatePos, curRot, cabWidth, cabDepth, cabHeight, walls, roomPoly, architecturalElements);
+
+  // Verificación final de colisión
+  const finalCandBox = getCabinetBox2D({
+    position: candidatePos,
+    width: cabWidth,
+    depth: cabDepth,
+    height: cabHeight,
+    rotation: curRot,
+    type: cabType,
+  });
+
+  let isColliding = false;
+  for (const otherCab of otherCabinets) {
+    const otherBox = getCabinetBox2D(otherCab);
+    if (checkOBBCollision(finalCandBox, otherBox, 0.4).colliding) {
+      isColliding = true;
+      break;
+    }
+  }
 
   return {
     position: candidatePos,
-    rotation: preferredRot,
+    rotation: curRot,
     isSnapped: false,
-    isColliding: false,
+    isColliding,
   };
 }
 
+export interface CabinetToolSpecs {
+  type: 'base' | 'tall' | 'wall' | 'island' | 'decoration';
+  variant: string;
+  name: string;
+  width: number;
+  height: number;
+  depth: number;
+  defaultY?: number;
+}
+
+export function getCabinetSpecsFromTool(toolMode: string, existingCabinets: any[] = []): CabinetToolSpecs {
+  // Bases
+  if (toolMode.startsWith('place_base_')) {
+    const v = toolMode.replace('place_base_', '');
+    let w = 60;
+    let d = 60;
+    let name = 'Módulo Base';
+    let variant = v;
+    if (v === '1_door') { w = 60; name = 'Base 1 Puerta'; }
+    else if (v === '1_door_1_drawer') { w = 60; name = 'Base 1 Pta + 1 Cajón'; }
+    else if (v === '2_doors') { w = 80; name = 'Base 2 Puertas'; }
+    else if (v === '4_drawers') { w = 80; name = 'Base 4 Cajones'; }
+    else if (v === '2_pot_drawers') { w = 80; name = 'Base 2 Olleros'; }
+    else if (v === 'sink_u_drawer') { w = 90; name = 'Fregadero Cajón en U'; }
+    else if (v === 'spice_rack') { w = 15; name = 'Especiero Extraíble'; }
+    else if (v === 'wine_rack') { w = 20; name = 'Botellero Base'; }
+    else if (v === 'corner_blind') { w = 100; name = 'Esquinero Ciego'; variant = 'corner_blind_right'; }
+    else if (v === 'corner_l') { w = 90; d = 90; name = 'Esquinero en L'; }
+    return { type: 'base', variant, name, width: w, height: 80, depth: d };
+  }
+
+  // Torres
+  if (toolMode.startsWith('place_tall')) {
+    const raw = toolMode === 'place_tall' ? 'tall_1_door' : (toolMode.startsWith('place_tall_') ? toolMode.replace('place_', '') : toolMode);
+    let w = 60;
+    let name = 'Torre Despensa';
+    if (raw === 'tall_1_door') { w = 60; name = 'Torre 1 Puerta Larga'; }
+    else if (raw === 'tall_split_2_doors') { w = 60; name = 'Torre 2 Puertas'; }
+    else if (raw === 'tall_oven_micro') { w = 60; name = 'Torre Horno + Microondas'; }
+    else if (raw === 'tall_oven_vent') { w = 60; name = 'Torre Hornos Vent. Técnica'; }
+    else if (raw === 'tall_inner_drawers') { w = 60; name = 'Torre Cajones Interiores'; }
+    else if (raw === 'tall_microwave_niche') { w = 60; name = 'Torre Nicho Microondas'; }
+    else if (raw === 'tall_open') { w = 60; name = 'Torre Repisas a la Vista'; }
+    else if (raw === 'tall_wine_rack') { w = 30; name = 'Torre Botellero'; }
+    else if (raw === 'tall_2_doors') { w = 80; name = 'Torre Despensa 2 Puertas'; }
+    return { type: 'tall', variant: raw, name, width: w, height: 215, depth: 60 };
+  }
+
+  // Murales / Aéreos
+  if (toolMode.startsWith('place_wall')) {
+    const v = toolMode === 'place_wall' ? '2_doors' : toolMode.replace('place_wall_', '');
+    let w = 60;
+    let h = 70;
+    let d = 35;
+    let name = 'Módulo Aéreo';
+    let variant = v;
+    if (v === '1_door') { w = 60; name = 'Aéreo 1 Puerta'; }
+    else if (v === '2_doors') { w = 80; name = 'Aéreo 2 Puertas'; }
+    else if (v === 'lift_up') { variant = 'wall_lift_up'; w = 80; h = 40; name = 'Aéreo Puerta Elevable'; }
+    else if (v === 'lift_up_double') { variant = 'wall_lift_up_double'; w = 80; h = 70; name = 'Aéreo Doble Elevable'; }
+    else if (v === 'microwave_niche') { variant = 'wall_microwave_niche'; w = 60; h = 80; d = 38; name = 'Aéreo Nicho Microondas'; }
+    else if (v === 'open') { variant = 'wall_open'; w = 60; h = 70; name = 'Aéreo Repisas a la Vista'; }
+    else if (v === 'corner_blind') { variant = 'wall_corner_blind_right'; w = 70; h = 70; name = 'Aéreo Esquinero Ciego'; }
+    else if (v === 'wine_rack') { variant = 'wall_wine_rack'; w = 20; h = 70; name = 'Aéreo Botellero'; }
+    return { type: 'wall', variant, name, width: w, height: h, depth: d };
+  }
+
+  // Islas
+  if (toolMode.startsWith('place_island')) {
+    const existingIsland = existingCabinets.find((c: any) => c.type === 'island');
+    const defaultIslandDepth = existingIsland?.depth || 80;
+    const defaultIslandHeight = existingIsland?.height || 80;
+    let v = '2_pot_drawers';
+    let w = 90;
+    let name = 'Isla 2 Olleros';
+    if (toolMode === 'place_island_wine_rack') { v = 'wine_rack'; w = 25; name = 'Botellero Isla'; }
+    else if (toolMode === 'place_island_4_drawers') { v = '4_drawers'; w = 80; name = 'Isla 4 Cajones'; }
+    else if (toolMode === 'place_island_2_drawers_1_pot') { v = '2_drawers_1_pot'; w = 80; name = 'Isla 2 Cajones + 1 Ollero'; }
+    else if (toolMode === 'place_island_1_door') { v = '1_door'; w = 60; name = 'Isla 1 Puerta'; }
+    else if (toolMode === 'place_island_2_doors') { v = '2_doors'; w = 80; name = 'Isla 2 Puertas'; }
+    return { type: 'island', variant: v, name, width: w, height: defaultIslandHeight, depth: defaultIslandDepth };
+  }
+
+  // Decoraciones / Equipamiento
+  if (toolMode === 'place_deco_stove') return { type: 'decoration', variant: 'deco_stove', name: 'Cocina FDV 90', width: 90, height: 90, depth: 60 };
+  if (toolMode === 'place_deco_fridge') return { type: 'decoration', variant: 'deco_fridge', name: 'Refrigerador SBS', width: 91, height: 177, depth: 67 };
+  if (toolMode === 'place_deco_hood') return { type: 'decoration', variant: 'deco_hood', name: 'Campana FDV Conic 90', width: 89.8, height: 70, depth: 50 };
+  if (toolMode === 'place_deco_plant') return { type: 'decoration', variant: 'deco_plant', name: 'Planta Interior', width: 40, height: 95, depth: 40 };
+  if (toolMode === 'place_deco_dishwasher') return { type: 'decoration', variant: 'deco_dishwasher', name: 'Lavavajillas FDV 12C', width: 59.8, height: 84.5, depth: 60 };
+
+  return { type: 'base', variant: '1_door', name: 'Módulo Base', width: 60, height: 80, depth: 60 };
+}

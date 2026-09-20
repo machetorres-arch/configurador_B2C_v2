@@ -183,15 +183,6 @@ export const TexturesSection = ({
             { id: 'shelves' as PartType, label: 'Repisas' },
             { id: 'back' as PartType, label: 'Fondo Interior' },
             { id: 'socle' as PartType, label: 'Zócalo' },
-            ...(hasIslands
-              ? [
-                  {
-                    id: 'islandBack' as PartType,
-                    label: 'Placa Trasera Isla (Revestimiento Exterior)',
-                    highlight: true,
-                  },
-                ]
-              : []),
           ].map(part => (
             <button 
               key={part.id}

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useStore, ClosetModuleOverrides, PartType } from '../store';
 import { useAdminStore } from '../store/adminStore';
-import { SlidersHorizontal, X, RefreshCw, ArrowUpDown, ArrowLeftRight } from 'lucide-react';
+import { SlidersHorizontal, X, RefreshCw, ArrowUpDown, ArrowLeftRight, DoorOpen, DoorClosed, Layers } from 'lucide-react';
 
 const DEFAULT_TEXTURES = [
   { id: 'def_mas_blanco', name: 'Masisa Blanco', url: '#FFFFFF' },
@@ -45,6 +45,52 @@ export function ModuleContextMenu() {
 
   const getGrain = (key: string) => {
     return overrides.grainElements?.[key] ?? overrides.grainDirection ?? 'vertical';
+  };
+
+  const isElementOpen = (key: string) => {
+    return overrides.openElements?.[key] ?? overrides.isOpen ?? false;
+  };
+
+  const toggleElementOpen = (key: string) => {
+    const newOpenElements = { ...(overrides.openElements || {}) };
+    const current = isElementOpen(key);
+    newOpenElements[key] = !current;
+    handleOverride('openElements', newOpenElements);
+  };
+
+  const doorCount = activeModule.doors ? (activeModule.width > 60 ? 2 : 1) : 0;
+  const hasPieces = doorCount > 0 || activeModule.drawers > 0;
+
+  const getInteractiveElements = () => {
+    const elements: { id: string; label: string }[] = [];
+    if (activeModule.doors) {
+      if (doorCount > 1) {
+        elements.push({ id: 'door-1', label: 'Puerta Derecha' });
+        elements.push({ id: 'door-0', label: 'Puerta Izquierda' });
+      } else {
+        elements.push({ id: 'door-0', label: 'Puerta Única' });
+      }
+    }
+    if (activeModule.drawers > 0) {
+      for (let idx = 0; idx < activeModule.drawers; idx++) {
+        const d = activeModule.drawers - 1 - idx;
+        elements.push({ id: `drawer-${d}`, label: `Cajón ${d + 1}` });
+      }
+    }
+    return elements;
+  };
+
+  const interactiveElements = getInteractiveElements();
+  const anyElementOpen = interactiveElements.some(el => isElementOpen(el.id));
+
+  const toggleAllOpen = () => {
+    const nextState = !anyElementOpen;
+    const newOpenElements: Record<string, boolean> = {};
+    interactiveElements.forEach(el => {
+      newOpenElements[el.id] = nextState;
+    });
+    handleOverride('isOpen', nextState);
+    handleOverride('openElements', newOpenElements);
   };
 
   const handleApplyTexture = (url: string, name: string) => {
@@ -96,9 +142,6 @@ export function ModuleContextMenu() {
     return !n.includes('masisa') && !n.includes('abet') && !n.includes('laminati') && !n.includes('hpl');
   });
 
-  const doorCount = activeModule.doors ? (activeModule.width > 60 ? 2 : 1) : 0;
-  const hasPieces = doorCount > 0 || activeModule.drawers > 0;
-
   const renderTextureButton = (tex: any) => (
     <div key={tex.id} className="relative group">
       <button 
@@ -136,9 +179,61 @@ export function ModuleContextMenu() {
       </div>
 
       <div className="p-4 flex flex-col gap-4 overflow-y-auto flex-1 min-h-0 custom-scrollbar">
+        {/* SECCIÓN: APERTURA INDIVIDUAL DE PUERTAS Y CAJONES */}
+        {hasPieces && (
+          <div className="flex flex-col gap-2 p-2.5 rounded-xl border border-white/5 bg-[#1c1c1f]">
+            <div className="flex items-center justify-between px-1">
+              <div className="text-[10px] uppercase font-bold tracking-widest flex items-center gap-1.5 text-zinc-400">
+                <DoorOpen size={13} className="text-orange-400" />
+                <span>Apertura de Puertas y Cajones</span>
+              </div>
+              <button
+                onClick={toggleAllOpen}
+                className="text-[10px] uppercase font-bold tracking-wider px-2 py-1 rounded transition-colors flex items-center gap-1 cursor-pointer bg-white/5 hover:bg-orange-500/20 text-orange-400"
+                title={anyElementOpen ? "Cerrar todo el módulo" : "Abrir todo el módulo"}
+              >
+                {anyElementOpen ? <DoorClosed size={12} /> : <DoorOpen size={12} />}
+                {anyElementOpen ? 'Cerrar Todo' : 'Abrir Todo'}
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-1 mt-1">
+              {interactiveElements.map((el) => {
+                const open = isElementOpen(el.id);
+                return (
+                  <div
+                    key={`open-${el.id}`}
+                    onClick={() => toggleElementOpen(el.id)}
+                    className="flex items-center justify-between px-3 py-2 rounded-lg transition-colors cursor-pointer group bg-[#242428] hover:bg-[#2c2c31]"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold text-zinc-200 group-hover:text-white">
+                        {el.label}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded transition-all ${
+                        open 
+                          ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-[0_0_8px_rgba(16,185,129,0.2)]'
+                          : 'bg-zinc-800 text-zinc-400 border border-white/5'
+                      }`}>
+                        {open ? 'Abierto' : 'Cerrado'}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Pieces Grain List */}
         {hasPieces && (
           <div className="flex flex-col gap-1.5 p-2 bg-[#1c1c1f] rounded-xl border border-white/5">
+            <div className="text-[10px] uppercase font-bold tracking-widest px-1 flex items-center gap-1.5 text-zinc-400">
+              <Layers size={13} className="text-orange-400" />
+              <span>Orientación de Veta (Grano)</span>
+            </div>
             {/* Doors */}
             {activeModule.doors && (
               <>

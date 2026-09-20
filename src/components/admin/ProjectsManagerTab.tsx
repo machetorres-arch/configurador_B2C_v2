@@ -12,7 +12,6 @@ import {
   Filter,
   Check,
   X,
-  Home,
   LayoutDashboard,
   Box,
   Sparkles,
@@ -22,22 +21,21 @@ import {
   RefreshCw,
   Cloud,
   HardDrive,
-  Building2
+  Building2,
+  Armchair
 } from 'lucide-react';
 import { useAdminStore, ProjectItem, ProjectType } from '../../store/adminStore';
 import { useSupabaseAuthStore } from '../../store/supabaseAuthStore';
 import { useTenantDataStore } from '../../store/tenantDataStore';
 import { exportProjectToPdf } from '../../utils/pdfGenerator';
 import * as XLSX from 'xlsx-js-style';
-import { calculateSipHouseQuantities } from '../../utils/sipExcelGenerator';
-import { useSipHouseStore } from '../../store/sipHouseStore';
 import { useKitchenStore } from '../../store/kitchenStore';
 import { useStore as useClosetStore } from '../../store';
 import { useSpecialFurnitureStore } from '../../store/specialFurnitureStore';
 import { useOfficeStore } from '../../store/officeStore';
 
 interface ProjectsManagerTabProps {
-  onLoadProjectToModule: (route: 'sip-house' | 'kitchen' | 'closet' | 'special' | 'hpl-bathroom' | 'concrete-house' | 'office') => void;
+  onLoadProjectToModule: (route: 'kitchen' | 'closet' | 'special' | 'hpl-bathroom' | 'office' | 'chair') => void;
 }
 
 export function ProjectsManagerTab({ onLoadProjectToModule }: ProjectsManagerTabProps) {
@@ -51,7 +49,7 @@ export function ProjectsManagerTab({ onLoadProjectToModule }: ProjectsManagerTab
   const [editName, setEditName] = useState('');
   const [editClient, setEditClient] = useState('');
   const [isCreatingNew, setIsCreatingNew] = useState(false);
-  const [newType, setNewType] = useState<ProjectType>('sip-house');
+  const [newType, setNewType] = useState<ProjectType>('kitchen');
   const [newName, setNewName] = useState('');
   const [newClient, setNewClient] = useState('');
   const [newDescription, setNewDescription] = useState('');
@@ -122,26 +120,7 @@ export function ProjectsManagerTab({ onLoadProjectToModule }: ProjectsManagerTab
 
   const handleOpenInConfigurator = (proj: ProjectItem) => {
     // Inject data into the target module store
-    if (proj.type === 'sip-house') {
-      const sipState = useSipHouseStore.getState();
-      if (proj.data) {
-        if (proj.data.dimensions) {
-          Object.entries(proj.data.dimensions).forEach(([k, v]) => {
-            sipState.setDimension(k as any, Number(v));
-          });
-        }
-        if (proj.data.foundationType) sipState.setFoundationType(proj.data.foundationType);
-        if (proj.data.extCladding) sipState.setExteriorCladding(proj.data.extCladding);
-        if (proj.data.roofCladding) sipState.setRoofCladding(proj.data.roofCladding);
-        if (proj.data.interiorCeiling) sipState.setInteriorCeiling(proj.data.interiorCeiling);
-        if (proj.data.flooringType) sipState.setFlooringType(proj.data.flooringType);
-        if (proj.data.coreType) sipState.setCoreType(proj.data.coreType);
-        if (proj.data.wallThicknessMm) sipState.setWallThicknessMm(proj.data.wallThicknessMm);
-        if (proj.data.roofThicknessMm) sipState.setRoofThicknessMm(proj.data.roofThicknessMm);
-        if (proj.data.floorThicknessMm) sipState.setFloorThicknessMm(proj.data.floorThicknessMm);
-      }
-      onLoadProjectToModule('sip-house');
-    } else if (proj.type === 'kitchen') {
+    if (proj.type === 'kitchen') {
       if (proj.data?.cabinets) {
         useKitchenStore.setState({ cabinets: proj.data.cabinets });
       }
@@ -183,6 +162,10 @@ export function ProjectsManagerTab({ onLoadProjectToModule }: ProjectsManagerTab
         }
       }
       onLoadProjectToModule('office');
+    } else if (proj.type === 'hpl-bathroom') {
+      onLoadProjectToModule('hpl-bathroom');
+    } else if (proj.type === 'chair') {
+      onLoadProjectToModule('chair');
     }
   };
 
@@ -213,22 +196,7 @@ export function ProjectsManagerTab({ onLoadProjectToModule }: ProjectsManagerTab
     let initialData: any = {};
     let estimatedCost = 1500000;
 
-    if (newType === 'sip-house') {
-      const current = useSipHouseStore.getState();
-      initialData = {
-        dimensions: current.dimensions,
-        foundationType: current.foundationType,
-        extCladding: current.exteriorCladding,
-        roofCladding: current.roofCladding,
-        interiorCeiling: current.interiorCeiling,
-        flooringType: current.flooringType,
-        coreType: current.coreType,
-        wallThicknessMm: current.wallThicknessMm,
-        roofThicknessMm: current.roofThicknessMm,
-        floorThicknessMm: current.floorThicknessMm,
-      };
-      estimatedCost = 28000000;
-    } else if (newType === 'kitchen') {
+    if (newType === 'kitchen') {
       const current = useKitchenStore.getState();
       initialData = {
         cabinets: current.cabinets,
@@ -256,6 +224,12 @@ export function ProjectsManagerTab({ onLoadProjectToModule }: ProjectsManagerTab
         abetTextureId: current.backTexture,
       };
       estimatedCost = 1350000;
+    } else if (newType === 'office') {
+      const current = useOfficeStore.getState();
+      initialData = {
+        placedItems: current.placedItems,
+      };
+      estimatedCost = 3200000;
     }
 
     saveProject({
@@ -268,14 +242,13 @@ export function ProjectsManagerTab({ onLoadProjectToModule }: ProjectsManagerTab
     });
 
     if (supabaseUser && supabaseTenant) {
-      const cloudTypeMap: Record<ProjectType, 'kitchen' | 'closet' | 'special_furniture' | 'sip_house'> = {
+      const cloudTypeMap: Record<ProjectType, 'kitchen' | 'closet' | 'special_furniture'> = {
         kitchen: 'kitchen',
         closet: 'closet',
         special: 'special_furniture',
-        'sip-house': 'sip_house',
         'hpl-bathroom': 'special_furniture',
-        'concrete-house': 'sip_house',
         office: 'special_furniture',
+        chair: 'special_furniture',
       };
       saveProjectToCloud({
         code: `PRJ-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -301,12 +274,6 @@ export function ProjectsManagerTab({ onLoadProjectToModule }: ProjectsManagerTab
 
   const getModuleBadge = (type: ProjectType) => {
     switch (type) {
-      case 'sip-house':
-        return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-sky-500/10 text-sky-400 border border-sky-500/30 rounded text-[10px] font-bold uppercase tracking-wider">
-            <Home size={12} /> Casa SIP
-          </span>
-        );
       case 'kitchen':
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-500/10 text-blue-400 border border-blue-500/30 rounded text-[10px] font-bold uppercase tracking-wider">
@@ -331,16 +298,16 @@ export function ProjectsManagerTab({ onLoadProjectToModule }: ProjectsManagerTab
             <FolderKanban size={12} /> Baños HPL
           </span>
         );
-      case 'concrete-house':
-        return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-stone-500/10 text-stone-300 border border-stone-500/30 rounded text-[10px] font-bold uppercase tracking-wider">
-            <Home size={12} /> Hormigón
-          </span>
-        );
       case 'office':
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-500/10 text-indigo-400 border border-indigo-500/30 rounded text-[10px] font-bold uppercase tracking-wider">
             <Building2 size={12} /> Oficinas
+          </span>
+        );
+      case 'chair':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-purple-500/10 text-purple-400 border border-purple-500/30 rounded text-[10px] font-bold uppercase tracking-wider">
+            <Armchair size={12} /> Sillas
           </span>
         );
     }
@@ -374,13 +341,12 @@ export function ProjectsManagerTab({ onLoadProjectToModule }: ProjectsManagerTab
         <div className="flex items-center gap-1 bg-zinc-950 p-1 rounded-lg border border-zinc-800 overflow-x-auto">
           {[
             { id: 'all', label: 'Todos' },
-            { id: 'office', label: 'Oficinas' },
-            { id: 'sip-house', label: 'Casas SIP' },
-            { id: 'concrete-house', label: 'Hormigón' },
-            { id: 'hpl-bathroom', label: 'Baños HPL' },
             { id: 'kitchen', label: 'Cocinas' },
             { id: 'closet', label: 'Clósets' },
+            { id: 'office', label: 'Oficinas' },
             { id: 'special', label: 'Muebles Esp.' },
+            { id: 'hpl-bathroom', label: 'Baños HPL' },
+            { id: 'chair', label: 'Sillas' },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -448,13 +414,12 @@ export function ProjectsManagerTab({ onLoadProjectToModule }: ProjectsManagerTab
                 onChange={(e) => setNewType(e.target.value as ProjectType)}
                 className="w-full p-2 bg-zinc-950 border border-zinc-700 rounded-lg text-xs text-white focus:border-orange-500 focus:outline-none"
               >
-                <option value="office">Mobiliario de Oficina (Space Planning 3D)</option>
-                <option value="sip-house">Casa Panel SIP (Molco 132 m²)</option>
-                <option value="concrete-house">Casa Hormigón Armado (ICH)</option>
-                <option value="hpl-bathroom">Cabinas Sanitarias HPL</option>
                 <option value="kitchen">Cocina Planificador 2D/3D</option>
                 <option value="closet">Clóset Paramétrico Modular</option>
+                <option value="office">Mobiliario de Oficina (Space Planning 3D)</option>
                 <option value="special">Mueble Especial Abet & Madera</option>
+                <option value="hpl-bathroom">Cabinas Sanitarias HPL</option>
+                <option value="chair">Diseño y Fabricación de Sillas</option>
               </select>
             </div>
 
@@ -649,74 +614,24 @@ export function ProjectsManagerTab({ onLoadProjectToModule }: ProjectsManagerTab
 function generateProjectExcel(project: ProjectItem) {
   const wb = XLSX.utils.book_new();
 
-  if (project.type === 'sip-house') {
-    const d = project.data || {};
-    const dim = d.dimensions || { width: 800, length: 1200, wallHeight: 280, roofPitch: 22 };
-    const quantities = calculateSipHouseQuantities(
-      dim,
-      d.foundationType || 'radier_sobrecimiento',
-      d.extCladding || 'zincalum_negro',
-      d.roofCladding || 'zinc_ca8_negro',
-      d.interiorCeiling || 'entablado_pino',
-      d.flooringType || 'vinilico_spc',
-      d.openings || [],
-      d.mepNetwork,
-      d.coreType || 'eps_15kg',
-      d.wallThicknessMm || 114,
-      d.roofThicknessMm || 210,
-      d.floorThicknessMm || 114,
-      d.interiorWalls || []
-    );
+  // Generar planilla de materiales para Mobiliario (Cocina, Clóset, Especial, Oficina, etc.)
+  const rows = [
+    ['MUEBLESTUDIO 3D - PLANILLA DE FABRICACIÓN'],
+    ['Proyecto:', project.name],
+    ['Cliente:', project.client],
+    ['Tipo:', project.type.toUpperCase()],
+    ['Fecha:', project.date],
+    ['Presupuesto Estimado CLP:', project.totalCostEstimateClp],
+    [''],
+    ['PARÁMETROS TÉCNICOS CONFIGURADOS'],
+    ...Object.entries(project.data || {}).map(([k, v]) => [
+      k,
+      typeof v === 'object' ? JSON.stringify(v) : String(v),
+    ]),
+  ];
 
-    const rows = [
-      ['PROYECTO SIP INDUSTRIALIZADO - ROBFU / MUEBLESTUDIO'],
-      ['Nombre Proyecto:', project.name],
-      ['Cliente:', project.client || 'General'],
-      ['Fecha:', project.date],
-      [''],
-      ['RESUMEN GENERAL DE SUPERFICIES Y COSTOS'],
-      ['Superficie Piso Útil (m²):', quantities.totalFloorM2],
-      ['Superficie Muros SIP (m²):', quantities.extWallAreaM2],
-      ['Superficie Techo SIP (m²):', quantities.totalRoofAreaM2],
-      ['Total General Estimado CLP:', quantities.totalPresupuestoClp],
-      [''],
-      ['CUBICACIÓN Y LISTA DE MATERIALES (BOM)'],
-      ['Especialidad', 'Código', 'Ítem', 'Descripción', 'Unidad', 'Cantidad', 'Precio Unitario CLP', 'Total CLP', 'Proveedor'],
-      ...quantities.items.map((i) => [
-        i.especialidad,
-        i.codigo,
-        i.item,
-        i.descripcion,
-        i.unidad,
-        i.cantidad,
-        i.precioUnitarioClp,
-        i.totalClp,
-        i.proveedor,
-      ]),
-    ];
-
-    const ws = XLSX.utils.aoa_to_sheet(rows);
-    XLSX.utils.book_append_sheet(wb, ws, 'Cubicación SIP');
-  } else {
-    // Generar planilla de materiales para Cocina, Clóset o Especial
-    const rows = [
-      ['MUEBLESTUDIO 3D - PLANILLA DE FABRICACIÓN'],
-      ['Proyecto:', project.name],
-      ['Cliente:', project.client],
-      ['Tipo:', project.type.toUpperCase()],
-      ['Fecha:', project.date],
-      ['Presupuesto Estimado CLP:', project.totalCostEstimateClp],
-      [''],
-      ['PARÁMETROS TÉCNICOS CONFIGURADOS'],
-      ...Object.entries(project.data || {}).map(([k, v]) => [
-        k,
-        typeof v === 'object' ? JSON.stringify(v) : String(v),
-      ]),
-    ];
-
-    const ws = XLSX.utils.aoa_to_sheet(rows);
-    XLSX.utils.book_append_sheet(wb, ws, 'Datos Fabricación');
-  }
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  XLSX.utils.book_append_sheet(wb, ws, 'Datos Fabricación');
 
   const filename = `${project.name.toLowerCase().replace(/[^a-z0-9]/g, '_')}_materiales.xlsx`;
   XLSX.writeFile(wb, filename);

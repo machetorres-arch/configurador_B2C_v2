@@ -11,6 +11,9 @@ import { getProvelcarX175Geometry, getProvelcarX176Geometry } from '../../utils/
 import { StoveFDVUnique90 } from './decoration/StoveFDVUnique90';
 import { FridgeFDVSignatureSBS } from './decoration/FridgeFDVSignatureSBS';
 import { PlantDecoration } from './decoration/PlantDecoration';
+import { DishwasherFDVActive12C } from './decoration/DishwasherFDVActive12C';
+import { KitchenHandle3D } from './KitchenHandle3D';
+import { getResolvedCabinetShelfElevations } from '../../utils/kitchenManufacturing';
 
 export function AssemblyJoint({
   position, 
@@ -97,40 +100,24 @@ export function AssemblyJoint({
 }
 
 export function AnimatedDrawer({ children, openZOffset, forceOpen, onClickAction }: { children: React.ReactNode, openZOffset: number, forceOpen?: boolean, onClickAction?: () => void }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [hovered, setHovered] = useState(false);
-  useCursor(hovered);
   const groupRef = useRef<THREE.Group>(null);
-
-  React.useEffect(() => {
-    if (forceOpen !== undefined) setIsOpen(forceOpen);
-  }, [forceOpen]);
   
   useFrame((state, delta) => {
     if (groupRef.current) {
-      const targetZ = isOpen ? openZOffset : 0;
+      const targetZ = forceOpen ? openZOffset : 0;
       groupRef.current.position.z = THREE.MathUtils.lerp(groupRef.current.position.z, targetZ, delta * 4);
     }
   });
 
-  const handleClick = (e: any) => {
-    e.stopPropagation();
-    if (onClickAction) {
-      onClickAction();
-    } else {
-      setIsOpen((prev) => !prev);
-    }
-  };
-
   return (
     <group 
       ref={groupRef}
-      onClick={handleClick}
-      onPointerOver={(e) => {
-        e.stopPropagation();
-        setHovered(true);
+      onClick={(e) => {
+        if (onClickAction) {
+          e.stopPropagation();
+          onClickAction();
+        }
       }}
-      onPointerOut={() => setHovered(false)}
     >
       {children}
     </group>
@@ -147,6 +134,8 @@ export function AnimatedDoor({
   forceOpen,
   onClickAction,
   globalPosition,
+  isUpper,
+  handleConfig: propHandleConfig,
 }: {
   doorW: number;
   doorH: number;
@@ -157,19 +146,14 @@ export function AnimatedDoor({
   forceOpen?: boolean;
   onClickAction?: () => void;
   globalPosition?: [number, number, number];
+  isUpper?: boolean;
+  handleConfig?: import('../../types/handle').KitchenHandleConfig;
 }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [hovered, setHovered] = useState(false);
-  useCursor(hovered);
   const groupRef = useRef<THREE.Group>(null);
-
-  React.useEffect(() => {
-    if (forceOpen !== undefined) setIsOpen(forceOpen);
-  }, [forceOpen]);
 
   useFrame((state, delta) => {
     if (groupRef.current) {
-      const targetRotation = isOpen ? (isRightHinge ? Math.PI * 0.55 : -Math.PI * 0.55) : 0;
+      const targetRotation = forceOpen ? (isRightHinge ? Math.PI * 0.55 : -Math.PI * 0.55) : 0;
       groupRef.current.rotation.y = THREE.MathUtils.lerp(groupRef.current.rotation.y, targetRotation, delta * 4);
     }
   });
@@ -183,25 +167,63 @@ export function AnimatedDoor({
       ? [-doorH / 2 + 12, 0, doorH / 2 - 12]
       : [-doorH / 2 + 10, doorH / 2 - 10]);
 
-  const handleClick = (e: any) => {
-    e.stopPropagation();
-    if (onClickAction) {
-      onClickAction();
-    } else {
-      setIsOpen((prev) => !prev);
-    }
-  };
+  const { handleConfig: storeHandleConfig, golaSystem } = useKitchenStore();
+  const handleConfig = propHandleConfig || storeHandleConfig;
+  const isUpperResolved = isUpper !== undefined ? isUpper : ((globalPosition?.[1] ?? position[1]) > 135);
+  const isPestana = handleConfig?.model === 'ce' || handleConfig?.model === 'oslo';
+
+  // Dimensiones del tirador para cálculo paramétrico de cotas
+  const handleLenMm = handleConfig?.lengthMm ?? 128;
+  const handleLenCm = handleLenMm / 10;
+  const handleTotalLenCm = handleConfig?.model === 'madrid'
+    ? (handleLenMm + 40) / 10
+    : handleLenCm;
+
+  // Para perfiles pestaña (Oslo, CE): se montan en el canto con holgura de 8mm respecto al borde de apertura
+  const pestanaMargin = 0.8;
+  const effectivePestanaLen = Math.min(handleLenCm, Math.max(2, doorW - 1.6));
+  const handleXPestana = isRightHinge
+    ? (-doorW + pestanaMargin + effectivePestanaLen / 2)
+    : (doorW - pestanaMargin - effectivePestanaLen / 2);
+
+  // Para tiradores estándar (Madrid, Forza, Denver): centrados a 4.5 cm del canto de apertura
+  const handleXStandard = isRightHinge ? -doorW + 4.5 : doorW - 4.5;
+  const handleX = isPestana ? handleXPestana : handleXStandard;
+
+  // Posicionamiento vertical acotado paramétricamente para garantizar que NUNCA sobrepase la puerta
+  let defaultHandleY = 0;
+  if (isPestana) {
+    // Al ras del canto superior (mueble bajo) o inferior (mueble aéreo)
+    defaultHandleY = isUpperResolved ? -doorH / 2 : doorH / 2;
+  } else if (doorH > 140) {
+    // Puertas de despensero alto
+    defaultHandleY = 0;
+  } else if (isUpperResolved) {
+    // Mueble aéreo: extremo inferior a 4.5 cm sobre el canto inferior
+    const desiredCenter = -doorH / 2 + 4.5 + handleTotalLenCm / 2;
+    const maxCenter = doorH / 2 - handleTotalLenCm / 2 - 1.5;
+    defaultHandleY = Math.min(maxCenter, desiredCenter);
+  } else {
+    // Mueble bajo: extremo superior a 4.5 cm bajo el canto superior
+    const desiredCenter = doorH / 2 - 4.5 - handleTotalLenCm / 2;
+    const minCenter = -doorH / 2 + handleTotalLenCm / 2 + 1.5;
+    defaultHandleY = Math.max(minCenter, desiredCenter);
+  }
+
+  // Si Gola está activo globalmente (aluminio o negro), se ocultan los tiradores en toda la cocina
+  const isGolaBlocked = golaSystem !== 'none';
+  const showHandle = !isGolaBlocked && handleConfig && handleConfig.model !== 'none';
 
   return (
     <group
       position={[position[0] + hingeXOffset, position[1], position[2] - thickness / 2]}
       ref={groupRef}
-      onClick={handleClick}
-      onPointerOver={(e) => {
-        e.stopPropagation();
-        setHovered(true);
+      onClick={(e) => {
+        if (onClickAction) {
+          e.stopPropagation();
+          onClickAction();
+        }
       }}
-      onPointerOut={() => setHovered(false)}
     >
       {/* Front Door Board */}
       <Board
@@ -211,6 +233,19 @@ export function AnimatedDoor({
         isFrontPanel={true}
         globalPosition={globalPosition}
       />
+
+      {/* Tirador 3D */}
+      {showHandle && (
+        <group position={[handleX, defaultHandleY, thickness]}>
+          <KitchenHandle3D
+            config={handleConfig}
+            orientation={isPestana ? 'horizontal' : 'vertical'}
+            isDoor={true}
+            isUpper={isUpperResolved}
+            thickness={thickness}
+          />
+        </group>
+      )}
 
       {/* Bisagras de Cazoleta (Euro Hinges 35mm) */}
       {hingeYs.map((y, idx) => (
@@ -245,6 +280,8 @@ export function AnimatedBiFoldCornerLDoors({
   forceOpen,
   onClickAction,
   safePos,
+  isUpper,
+  handleConfig: propHandleConfig,
 }: {
   doorW: number;
   doorH: number;
@@ -254,23 +291,17 @@ export function AnimatedBiFoldCornerLDoors({
   forceOpen?: boolean;
   onClickAction?: () => void;
   safePos: [number, number, number];
+  isUpper?: boolean;
+  handleConfig?: import('../../types/handle').KitchenHandleConfig;
 }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [hovered, setHovered] = useState(false);
-  useCursor(hovered);
-
   const door1Ref = useRef<THREE.Group>(null);
   const door2Ref = useRef<THREE.Group>(null);
-
-  React.useEffect(() => {
-    if (forceOpen !== undefined) setIsOpen(forceOpen);
-  }, [forceOpen]);
 
   useFrame((state, delta) => {
     // Puerta 1: anclada en el lateral derecho de la abertura.
     // Cerrada: 0 rad (cubre Face 1 en Z = 15).
     // Abierta: Gira hacia AFUERA / FRENTE (rotación positiva +Y) hacia el usuario (+Z).
-    const targetRot1 = isOpen ? Math.PI * 0.52 : 0;
+    const targetRot1 = forceOpen ? Math.PI * 0.52 : 0;
     if (door1Ref.current) {
       door1Ref.current.rotation.y = THREE.MathUtils.lerp(door1Ref.current.rotation.y, targetRot1, delta * 5);
     }
@@ -278,32 +309,57 @@ export function AnimatedBiFoldCornerLDoors({
     // Puerta 2: unida a Puerta 1 mediante bisagra bi-fold de rincón 135° en el vértice.
     // Cerrada: 0 rad (cubre Face 2 a escuadra de 90° en X = 15, extendiéndose a lo largo de +Z).
     // Abierta: Pliega hacia el frente solidaria a la Puerta 1 (-Math.PI * 0.48), quedando ambas proyectadas al frente exterior.
-    const targetRot2 = isOpen ? -Math.PI * 0.48 : 0;
+    const targetRot2 = forceOpen ? -Math.PI * 0.48 : 0;
     if (door2Ref.current) {
       door2Ref.current.rotation.y = THREE.MathUtils.lerp(door2Ref.current.rotation.y, targetRot2, delta * 5);
     }
   });
 
-  const handleClick = (e: any) => {
-    e.stopPropagation();
-    if (onClickAction) {
-      onClickAction();
-    } else {
-      setIsOpen((prev) => !prev);
-    }
-  };
-
   const hingeYs = [-doorH / 2 + 12, doorH / 2 - 12];
+  const { handleConfig: storeHandleConfig, golaSystem } = useKitchenStore();
+  const handleConfig = propHandleConfig || storeHandleConfig;
+  const isUpperCorner = isUpper !== undefined ? isUpper : ((safePos[1] + position[1]) > 135);
+  const isPestana = handleConfig?.model === 'ce' || handleConfig?.model === 'oslo';
+
+  const handleLenMm = handleConfig?.lengthMm ?? 128;
+  const handleLenCm = handleLenMm / 10;
+  const handleTotalLenCm = handleConfig?.model === 'madrid'
+    ? (handleLenMm + 40) / 10
+    : handleLenCm;
+
+  const pestanaMargin = 0.8;
+  const effectivePestanaLen = Math.min(handleLenCm, Math.max(2, doorW - 1.6));
+  const handleCornerZ = isPestana
+    ? (doorW - pestanaMargin - effectivePestanaLen / 2)
+    : (doorW - 4.5);
+
+  let handleCornerY = 0;
+  if (isPestana) {
+    handleCornerY = isUpperCorner ? -doorH / 2 : doorH / 2;
+  } else if (doorH > 140) {
+    handleCornerY = 0;
+  } else if (isUpperCorner) {
+    const desiredCenter = -doorH / 2 + 4.5 + handleTotalLenCm / 2;
+    const maxCenter = doorH / 2 - handleTotalLenCm / 2 - 1.5;
+    handleCornerY = Math.min(maxCenter, desiredCenter);
+  } else {
+    const desiredCenter = doorH / 2 - 4.5 - handleTotalLenCm / 2;
+    const minCenter = -doorH / 2 + handleTotalLenCm / 2 + 1.5;
+    handleCornerY = Math.max(minCenter, desiredCenter);
+  }
+
+  const isGolaBlocked = golaSystem !== 'none';
+  const showHandle = !isGolaBlocked && handleConfig && handleConfig.model !== 'none';
 
   return (
     <group
       position={position}
-      onClick={handleClick}
-      onPointerOver={(e) => {
-        e.stopPropagation();
-        setHovered(true);
+      onClick={(e) => {
+        if (onClickAction) {
+          e.stopPropagation();
+          onClickAction();
+        }
       }}
-      onPointerOut={() => setHovered(false)}
     >
       {/* Grupo Articulado Hoja 1 (Pivote en Lateral Derecho) */}
       <group ref={door1Ref}>
@@ -355,6 +411,17 @@ export function AnimatedBiFoldCornerLDoors({
               isFrontPanel={true}
               globalPosition={[safePos[0] + position[0] - doorW, safePos[1] + position[1], safePos[2] + position[2] + doorW / 2]}
             />
+            {showHandle && (
+              <group position={[thickness + 0.1, handleCornerY, handleCornerZ]} rotation={[0, Math.PI / 2, 0]}>
+                <KitchenHandle3D
+                  config={handleConfig}
+                  orientation={isPestana ? 'horizontal' : 'vertical'}
+                  isDoor={true}
+                  isUpper={isUpperCorner}
+                  thickness={thickness}
+                />
+              </group>
+            )}
           </group>
         </group>
       </group>
@@ -372,6 +439,7 @@ export function AnimatedLiftUpDoor({
   onClickAction,
   globalPosition,
   innerDepth = 30,
+  handleConfig: propHandleConfig,
 }: {
   doorW: number;
   doorH: number;
@@ -382,44 +450,34 @@ export function AnimatedLiftUpDoor({
   onClickAction?: () => void;
   globalPosition?: [number, number, number];
   innerDepth?: number;
+  handleConfig?: import('../../types/handle').KitchenHandleConfig;
 }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [hovered, setHovered] = useState(false);
-  useCursor(hovered);
   const groupRef = useRef<THREE.Group>(null);
-
-  React.useEffect(() => {
-    if (forceOpen !== undefined) setIsOpen(forceOpen);
-  }, [forceOpen]);
 
   useFrame((state, delta) => {
     if (groupRef.current) {
-      const targetRotation = isOpen ? -Math.PI * 0.45 : 0;
+      const targetRotation = forceOpen ? -Math.PI * 0.45 : 0;
       groupRef.current.rotation.x = THREE.MathUtils.lerp(groupRef.current.rotation.x, targetRotation, delta * 4);
     }
   });
 
-  const handleClick = (e: any) => {
-    e.stopPropagation();
-    if (onClickAction) {
-      onClickAction();
-    } else {
-      setIsOpen((prev) => !prev);
-    }
-  };
-
   const topHingeY = doorH / 2;
+  const { handleConfig: storeHandleConfig, golaSystem } = useKitchenStore();
+  const handleConfig = propHandleConfig || storeHandleConfig;
+  const isPestana = handleConfig?.model === 'ce' || handleConfig?.model === 'oslo';
+  const isGolaBlocked = golaSystem !== 'none';
+  const showHandle = !isGolaBlocked && handleConfig && handleConfig.model !== 'none';
 
   return (
     <group
       position={[position[0], position[1] + topHingeY, position[2] - thickness / 2]}
       ref={groupRef}
-      onClick={handleClick}
-      onPointerOver={(e) => {
-        e.stopPropagation();
-        setHovered(true);
+      onClick={(e) => {
+        if (onClickAction) {
+          e.stopPropagation();
+          onClickAction();
+        }
       }}
-      onPointerOut={() => setHovered(false)}
     >
       {/* Front Door Board */}
       <Board
@@ -429,6 +487,19 @@ export function AnimatedLiftUpDoor({
         isFrontPanel={true}
         globalPosition={globalPosition}
       />
+
+      {/* Tirador 3D */}
+      {showHandle && (
+        <group position={[0, -doorH + (isPestana ? 0 : 4.0), thickness]}>
+          <KitchenHandle3D
+            config={handleConfig}
+            orientation="horizontal"
+            isDoor={true}
+            isUpper={true}
+            thickness={thickness}
+          />
+        </group>
+      )}
 
       {/* Bisagras Superiores / Herrajes Elevadores Aventos / Pistones a Gas */}
       {[-doorW / 2 + 5, doorW / 2 - 5].map((x, idx) => (
@@ -512,18 +583,18 @@ export function HoodFDVConic90({ width = 89.8, height = 70, depth = 50 }: { widt
       {/* 1. Labio inferior perimetral (Frente vertical de acero inoxidable de 4cm) */}
       <mesh position={[0, lipH / 2, 0]} castShadow receiveShadow>
         <boxGeometry args={[bodyW, lipH, bodyD]} />
-        <meshStandardMaterial color="#d4d8dc" metalness={0.88} roughness={0.22} />
+        <meshStandardMaterial color="#d0d5da" metalness={0.32} roughness={0.4} />
       </mesh>
 
       {/* Bisel inferior decorativo */}
       <mesh position={[0, 0.1, 0]}>
         <boxGeometry args={[bodyW + 0.2, 0.2, bodyD + 0.2]} />
-        <meshStandardMaterial color="#b0b5bc" metalness={0.92} roughness={0.18} />
+        <meshStandardMaterial color="#c0c5cb" metalness={0.3} roughness={0.38} />
       </mesh>
 
       {/* 2. Cuerpo Piramidal de Acero Inoxidable (Tronco de pirámide continuo) */}
       <mesh geometry={pyramidGeometry} castShadow receiveShadow>
-        <meshStandardMaterial color="#d4d8dc" metalness={0.88} roughness={0.22} />
+        <meshStandardMaterial color="#d0d5da" metalness={0.32} roughness={0.4} />
       </mesh>
 
       {/* 3. Panel de Control Frontal (Pulsadores / Touch Soft-Touch y display) */}
@@ -603,19 +674,19 @@ export function HoodFDVConic90({ width = 89.8, height = 70, depth = 50 }: { widt
         {/* Tramo inferior de chimenea */}
         <mesh position={[0, (chimneyH * 0.55) / 2, 0]} castShadow receiveShadow>
           <boxGeometry args={[chimneyW, chimneyH * 0.55, chimneyD]} />
-          <meshStandardMaterial color="#d4d8dc" metalness={0.88} roughness={0.22} />
+          <meshStandardMaterial color="#d0d5da" metalness={0.32} roughness={0.4} />
         </mesh>
 
         {/* Tramo superior telescópico deslizable */}
         <mesh position={[0, chimneyH * 0.5 + (chimneyH * 0.5) / 2, 0]} castShadow receiveShadow>
           <boxGeometry args={[chimneyW - 0.2, chimneyH * 0.5, chimneyD - 0.1]} />
-          <meshStandardMaterial color="#d4d8dc" metalness={0.88} roughness={0.22} />
+          <meshStandardMaterial color="#d0d5da" metalness={0.32} roughness={0.4} />
         </mesh>
 
         {/* Junta / Collarín decorativo entre tramos */}
         <mesh position={[0, chimneyH * 0.52, 0]}>
           <boxGeometry args={[chimneyW + 0.4, 1.2, chimneyD + 0.3]} />
-          <meshStandardMaterial color="#94a3b8" metalness={0.92} roughness={0.18} />
+          <meshStandardMaterial color="#b0b6bc" metalness={0.3} roughness={0.38} />
         </mesh>
 
         {/* Rejillas de ventilación lateral y frontal superiores */}
@@ -848,8 +919,9 @@ interface CabinetProps extends CabinetType {
   index?: number;
 }
 
-export function Cabinet({ id, type, variant, width, height, depth, position, rotation, color, structureColor, doorColor, drawerFrontColor, drawerInnerColor, shelfColor, backColor, socleColor, structureMaterial, doorMaterial, drawerFrontMaterial, drawerInnerMaterial, shelfMaterial, backMaterial, socleMaterial, grainDirection, grainElements, hplBalancer, isOpen, openElements, index }: CabinetProps) {
-   const { activeCabinetId, setActiveCabinet, setDraggingCabinetId, setToolMode, showSocle, cabinets, viewMode, golaSystem, countertopConfig, qstoneCatalog, setOpenElement } = useKitchenStore();
+export function Cabinet({ id, type, variant, width, height, depth, position, rotation, color, structureColor, doorColor, drawerFrontColor, drawerInnerColor, shelfColor, backColor, socleColor, structureMaterial, doorMaterial, drawerFrontMaterial, drawerInnerMaterial, shelfMaterial, backMaterial, socleMaterial, grainDirection, grainElements, hplBalancer, isOpen, openElements, index, shelvesCount, shelvesCountLower, shelvesCountUpper, handleConfig: propHandleConfig }: CabinetProps) {
+   const { activeCabinetId, setActiveCabinet, setDraggingCabinetId, setToolMode, showSocle, cabinets, viewMode, golaSystem, countertopConfig, qstoneCatalog, setOpenElement, handleConfig: storeHandleConfig } = useKitchenStore();
+   const handleConfig = propHandleConfig || storeHandleConfig;
 
    // Sanitización estricta: Piedras y cuarzos Qstone aplican ÚNICAMENTE a la cubierta.
    // Si por error se asignó una textura de piedra a un gabinete, revertir al color base de melamina.
@@ -887,6 +959,9 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
       : (rawRegruesoCm > 0 ? (Math.max(0, rawRegruesoCm - stoneThicknessCm) + (rawRegruesoCm > stoneThicknessCm ? 0.3 : 0)) : 0);
    const showDimensions = useStore((s) => s.showDimensions);
    const dimensionLevel = useStore((s) => s.dimensionLevel);
+   const isGolaGloballyActive = golaSystem === 'aluminum' || golaSystem === 'black';
+   const showHandle = !isGolaGloballyActive && handleConfig && handleConfig.model !== 'none';
+   const isPestanaHandle = handleConfig?.model === 'ce' || handleConfig?.model === 'oslo';
    const isActive = activeCabinetId === id;
    const is2D = viewMode === '2d';
 
@@ -1001,7 +1076,7 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
 
    const renderParametricBody = () => {
       // 1. Renderizado de Elementos de Decoración & Electrodomésticos Especializados
-      if (type === 'decoration' || variant === 'deco_stove' || variant === 'deco_fridge' || variant === 'deco_hood' || variant === 'deco_plant') {
+      if (type === 'decoration' || variant === 'deco_stove' || variant === 'deco_fridge' || variant === 'deco_hood' || variant === 'deco_plant' || variant === 'deco_dishwasher') {
          if (variant === 'deco_stove') {
             return <StoveFDVUnique90 width={width} height={height} depth={depth} />;
          }
@@ -1013,6 +1088,9 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
          }
          if (variant === 'deco_plant') {
             return <PlantDecoration width={width} height={height} depth={depth} />;
+         }
+         if (variant === 'deco_dishwasher') {
+            return <DishwasherFDVActive12C width={width} height={height} depth={depth} />;
          }
       }
 
@@ -1049,6 +1127,13 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                   <AnimatedDrawer openZOffset={drawerBoxLength - 3} forceOpen={isElementOpen(drawerKey)}>
                      {/* Drawer Front */}
                      <Board position={[0, yBoxCenter, frontZ]} args={[width - gap*2, drawerH, thickness]} {...colorProps} isFrontPanel={true} globalPosition={[position[0] + 0, position[1] + yBoxCenter, position[2] + frontZ]} />
+
+                     {/* Tirador Cajón 3D */}
+                     {showHandle && (
+                       <group position={[0, yBoxCenter + (isPestanaHandle ? drawerH / 2 : (drawerH > 22 ? drawerH * 0.15 : 0)), frontZ + thickness / 2]}>
+                         <KitchenHandle3D config={handleConfig} orientation="horizontal" isUpper={false} thickness={thickness} />
+                       </group>
+                     )}
                      
                      {/* Drawer Box (Sides, Back) */}
                      <Board position={[-skw/2 + thickness/2, yBoxCenter, drawerBoxZCenter]} args={[thickness, sideHeight, drawerBoxLength]} {...parseColor(cInner, drawerInnerMaterial)} />
@@ -1137,6 +1222,13 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                         isFrontPanel={true}
                         globalPosition={[position[0], position[1] + yBoxCenter, position[2] + frontZ]}
                      />
+
+                     {/* Tirador Cajón U 3D */}
+                     {showHandle && (
+                       <group position={[0, yBoxCenter + (isPestanaHandle ? drawerH / 2 : (drawerH > 22 ? drawerH * 0.15 : 0)), frontZ + thickness / 2]}>
+                         <KitchenHandle3D config={handleConfig} orientation="horizontal" isUpper={false} thickness={thickness} />
+                       </group>
+                     )}
 
                      {/* Costados exteriores del cajón */}
                      <Board
@@ -1241,7 +1333,7 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
             </group>
          );
          
-         if (effectiveVariant === '1_door' || effectiveVariant === 'tall_1_door') {
+           if (effectiveVariant === '1_door' || effectiveVariant === 'tall_1_door') {
             const doorW = width - gap*2;
             const topDeduct = isGolaActive ? 3.5 : (isBaseOrIsland ? regruesoDeduct : 0);
             const doorH = Math.max(10, cabH - topDeduct - gap*2);
@@ -1255,21 +1347,22 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                      doorH={doorH}
                      thickness={thickness}
                      isRightHinge={false}
+                     isUpper={type === 'wall'}
                      colorProps={parseColor(cDoors, doorMaterial, 'door-0')}
                      forceOpen={isElementOpen('door-0')}
                      globalPosition={[position[0], position[1] + doorY, position[2] + frontZ]}
+                     handleConfig={handleConfig}
                   />
-                  {/* Repisas Interiores */}
-                  {type === 'tall' ? (
-                     <>
-                        {renderShelfWithJoints(legsHeight + cabH * 0.20, 't1')}
-                        {renderShelfWithJoints(legsHeight + cabH * 0.40, 't2')}
-                        {renderShelfWithJoints(legsHeight + cabH * 0.60, 't3')}
-                        {renderShelfWithJoints(legsHeight + cabH * 0.80, 't4')}
-                     </>
-                  ) : (
-                     renderShelfWithJoints(legsHeight + cabH/2, 'b1')
-                  )}
+                  {/* Repisas Interiores Paramétricas con Anti-Colisión */}
+                  {(() => {
+                     const cabObj: CabinetType = { id, type, variant, width, height, depth, position, rotation, color, shelvesCount };
+                     const shelfElevations = getResolvedCabinetShelfElevations(cabObj, thickness);
+                     return shelfElevations.map((elev, sIdx) => (
+                        <React.Fragment key={`1d-shelf-${sIdx}`}>
+                           {renderShelfWithJoints(legsHeight + elev, `1d-shelf-${sIdx}`)}
+                        </React.Fragment>
+                     ));
+                  })()}
                </>
             );
          }
@@ -1288,25 +1381,35 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                      doorH={lowerDoorH}
                      thickness={thickness}
                      isRightHinge={false}
+                     isUpper={false}
                      colorProps={parseColor(cDoors, doorMaterial, 'door-lower')}
                      forceOpen={isElementOpen('door-lower')}
                      globalPosition={[position[0], position[1] + lowerY, position[2] + frontZ]}
+                     handleConfig={handleConfig}
                   />
                   {renderShelfWithJoints(legsHeight + baseH, 'div')}
-                  {renderShelfWithJoints(legsHeight + baseH / 2, 'low')}
                   <AnimatedDoor
                      position={[0, upperY, frontZ]}
                      doorW={width - gap*2}
                      doorH={upperDoorH}
                      thickness={thickness}
                      isRightHinge={false}
+                     isUpper={true}
                      colorProps={parseColor(cDoors, doorMaterial, 'door-upper')}
                      forceOpen={isElementOpen('door-upper')}
                      globalPosition={[position[0], position[1] + upperY, position[2] + frontZ]}
+                     handleConfig={handleConfig}
                   />
-                  {renderShelfWithJoints(legsHeight + baseH + (cabH - baseH) * 0.25, 'u1')}
-                  {renderShelfWithJoints(legsHeight + baseH + (cabH - baseH) * 0.50, 'u2')}
-                  {renderShelfWithJoints(legsHeight + baseH + (cabH - baseH) * 0.75, 'u3')}
+                  {/* Repisas Interiores Paramétricas con Anti-Colisión */}
+                  {(() => {
+                     const cabObj: CabinetType = { id, type, variant, width, height, depth, position, rotation, color, shelvesCount, shelvesCountLower, shelvesCountUpper };
+                     const shelfElevations = getResolvedCabinetShelfElevations(cabObj, thickness);
+                     return shelfElevations.map((elev, sIdx) => (
+                        <React.Fragment key={`split-shelf-${sIdx}`}>
+                           {renderShelfWithJoints(legsHeight + elev, `split-shelf-${sIdx}`)}
+                        </React.Fragment>
+                     ));
+                  })()}
                </>
             );
          }
@@ -1315,13 +1418,17 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
             const baseH = 70;
             const ovenH = 60;
             const microH = 38;
-            const topH = Math.max(10, cabH - (baseH + ovenH + microH));
+            const topStart = baseH + ovenH + microH;
+            const topH = Math.max(10, cabH - topStart);
             const lowerDoorH = baseH - gap*2;
             const topDoorH = topH - gap*2;
             const lowerY = legsHeight + gap + lowerDoorH/2;
             const ovenY = legsHeight + baseH + ovenH/2;
             const microY = legsHeight + baseH + ovenH + microH/2;
-            const topY = legsHeight + baseH + ovenH + microH + gap + topDoorH/2;
+            const topY = legsHeight + topStart + gap + topDoorH/2;
+            const cabObj: CabinetType = { id, type, variant, width, height, depth, position, rotation, color, shelvesCount, shelvesCountLower, shelvesCountUpper };
+            const shelfElevations = getResolvedCabinetShelfElevations(cabObj, thickness);
+
             return (
                <>
                   <AnimatedDoor
@@ -1330,11 +1437,18 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                      doorH={lowerDoorH}
                      thickness={thickness}
                      isRightHinge={false}
+                     isUpper={false}
                      colorProps={parseColor(cDoors, doorMaterial, 'door-lower')}
                      forceOpen={isElementOpen('door-lower')}
                      globalPosition={[position[0], position[1] + lowerY, position[2] + frontZ]}
+                     handleConfig={handleConfig}
                   />
-                  <Board position={[0, legsHeight + baseH / 2, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(shelfColor || cStructure, shelfMaterial)} />
+                  {/* Repisas Dinámicas en Puerta Inferior (Anti-Colisión) */}
+                  {shelfElevations.filter(e => e < baseH).map((elev, sIdx) => (
+                     <React.Fragment key={`oven-micro-low-${sIdx}`}>
+                        {renderShelfWithJoints(legsHeight + elev, `oven-micro-low-${sIdx}`)}
+                     </React.Fragment>
+                  ))}
                   <Board position={[0, legsHeight + baseH, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(shelfColor || cStructure, shelfMaterial)} />
                   <group position={[0, ovenY, 0]}>
                      <BuiltInOven width={innerW + 1.4} height={ovenH - 0.6} depth={depth - 4} />
@@ -1343,7 +1457,7 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                   <group position={[0, microY, 0]}>
                      <BuiltInMicrowave width={innerW + 1.4} height={microH - 0.6} depth={depth - 4} />
                   </group>
-                  <Board position={[0, legsHeight + baseH + ovenH + microH, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(shelfColor || cStructure, shelfMaterial)} />
+                  <Board position={[0, legsHeight + topStart, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(shelfColor || cStructure, shelfMaterial)} />
                   {topDoorH > 10 && (
                      <AnimatedDoor
                         position={[0, topY, frontZ]}
@@ -1351,14 +1465,19 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                         doorH={topDoorH}
                         thickness={thickness}
                         isRightHinge={false}
+                        isUpper={true}
                         colorProps={parseColor(cDoors, doorMaterial, 'door-top')}
                         forceOpen={isElementOpen('door-top')}
                         globalPosition={[position[0], position[1] + topY, position[2] + frontZ]}
+                        handleConfig={handleConfig}
                      />
                   )}
-                  {topDoorH > 35 && (
-                     <Board position={[0, legsHeight + baseH + ovenH + microH + topH/2, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(shelfColor || cStructure, shelfMaterial)} />
-                  )}
+                  {/* Repisas Dinámicas en Puerta Superior (Anti-Colisión) */}
+                  {shelfElevations.filter(e => e > topStart).map((elev, sIdx) => (
+                     <React.Fragment key={`oven-micro-up-${sIdx}`}>
+                        {renderShelfWithJoints(legsHeight + elev, `oven-micro-up-${sIdx}`)}
+                     </React.Fragment>
+                  ))}
                </>
             );
          }
@@ -1366,12 +1485,16 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
          if (effectiveVariant === 'tall_microwave_niche') {
             const baseH = 70;
             const nicheH = 45;
-            const topH = Math.max(10, cabH - (baseH + nicheH));
+            const topStart = baseH + nicheH;
+            const topH = Math.max(10, cabH - topStart);
             const lowerDoorH = baseH - gap*2;
             const topDoorH = topH - gap*2;
             const lowerY = legsHeight + gap + lowerDoorH/2;
             const nicheShelfY = legsHeight + baseH;
-            const topY = legsHeight + baseH + nicheH + gap + topDoorH/2;
+            const topY = legsHeight + topStart + gap + topDoorH/2;
+            const cabObj: CabinetType = { id, type, variant, width, height, depth, position, rotation, color, shelvesCount, shelvesCountLower, shelvesCountUpper };
+            const shelfElevations = getResolvedCabinetShelfElevations(cabObj, thickness);
+
             return (
                <>
                   <AnimatedDoor
@@ -1380,16 +1503,23 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                      doorH={lowerDoorH}
                      thickness={thickness}
                      isRightHinge={false}
+                     isUpper={false}
                      colorProps={parseColor(cDoors, doorMaterial, 'door-lower')}
                      forceOpen={isElementOpen('door-lower')}
                      globalPosition={[position[0], position[1] + lowerY, position[2] + frontZ]}
+                     handleConfig={handleConfig}
                   />
-                  <Board position={[0, legsHeight + baseH / 2, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(shelfColor || cStructure, shelfMaterial)} />
+                  {/* Repisas Dinámicas en Puerta Inferior (Anti-Colisión) */}
+                  {shelfElevations.filter(e => e < baseH).map((elev, sIdx) => (
+                     <React.Fragment key={`micro-niche-low-${sIdx}`}>
+                        {renderShelfWithJoints(legsHeight + elev, `micro-niche-low-${sIdx}`)}
+                     </React.Fragment>
+                  ))}
                   <Board position={[0, nicheShelfY, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(shelfColor || cStructure, shelfMaterial)} />
                   <group position={[0, nicheShelfY + thickness/2, 0]}>
                      <PortableMicrowave width={innerW} height={nicheH} depth={depth - 4} />
                   </group>
-                  <Board position={[0, legsHeight + baseH + nicheH, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(shelfColor || cStructure, shelfMaterial)} />
+                  <Board position={[0, legsHeight + topStart, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(shelfColor || cStructure, shelfMaterial)} />
                   {topDoorH > 10 && (
                      <AnimatedDoor
                         position={[0, topY, frontZ]}
@@ -1397,13 +1527,19 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                         doorH={topDoorH}
                         thickness={thickness}
                         isRightHinge={false}
+                        isUpper={true}
                         colorProps={parseColor(cDoors, doorMaterial, 'door-top')}
                         forceOpen={isElementOpen('door-top')}
                         globalPosition={[position[0], position[1] + topY, position[2] + frontZ]}
+                        handleConfig={handleConfig}
                      />
                   )}
-                  <Board position={[0, legsHeight + baseH + nicheH + topH * 0.33, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(shelfColor || cStructure, shelfMaterial)} />
-                  <Board position={[0, legsHeight + baseH + nicheH + topH * 0.66, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(shelfColor || cStructure, shelfMaterial)} />
+                  {/* Repisas Dinámicas en Puerta Superior (Anti-Colisión) */}
+                  {shelfElevations.filter(e => e > topStart).map((elev, sIdx) => (
+                     <React.Fragment key={`micro-niche-up-${sIdx}`}>
+                        {renderShelfWithJoints(legsHeight + elev, `micro-niche-up-${sIdx}`)}
+                     </React.Fragment>
+                  ))}
                </>
             );
          }
@@ -1453,7 +1589,7 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
             );
          }
          
-         if (effectiveVariant === '2_doors' || effectiveVariant === 'tall_2_doors') {
+           if (effectiveVariant === '2_doors' || effectiveVariant === 'tall_2_doors') {
             const doorW = (width - gap*3) / 2;
             const topDeduct = isGolaActive ? 3.5 : (isBaseOrIsland ? regruesoDeduct : 0);
             const doorH = Math.max(10, cabH - topDeduct - gap*2);
@@ -1470,9 +1606,11 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                      doorH={doorH}
                      thickness={thickness}
                      isRightHinge={false}
+                     isUpper={type === 'wall'}
                      colorProps={parseColor(cDoors, doorMaterial, 'door-0')}
                      forceOpen={isElementOpen('door-0')}
                      globalPosition={[position[0] + leftDoorX, position[1] + doorY, position[2] + frontZ]}
+                     handleConfig={handleConfig}
                   />
                   <AnimatedDoor
                      key="door-right"
@@ -1481,21 +1619,22 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                      doorH={doorH}
                      thickness={thickness}
                      isRightHinge={true}
+                     isUpper={type === 'wall'}
                      colorProps={parseColor(cDoors, doorMaterial, 'door-1')}
                      forceOpen={isElementOpen('door-1')}
                      globalPosition={[position[0] + rightDoorX, position[1] + doorY, position[2] + frontZ]}
+                     handleConfig={handleConfig}
                   />
-                  {/* Repisas Interiores */}
-                  {type === 'tall' ? (
-                     <>
-                        {renderShelfWithJoints(legsHeight + cabH * 0.20, '2dt1')}
-                        {renderShelfWithJoints(legsHeight + cabH * 0.40, '2dt2')}
-                        {renderShelfWithJoints(legsHeight + cabH * 0.60, '2dt3')}
-                        {renderShelfWithJoints(legsHeight + cabH * 0.80, '2dt4')}
-                     </>
-                  ) : (
-                     renderShelfWithJoints(legsHeight + cabH/2, '2db1')
-                  )}
+                  {/* Repisas Interiores Paramétricas con Anti-Colisión */}
+                  {(() => {
+                     const cabObj: CabinetType = { id, type, variant, width, height, depth, position, rotation, color, shelvesCount };
+                     const shelfElevations = getResolvedCabinetShelfElevations(cabObj, thickness);
+                     return shelfElevations.map((elev, sIdx) => (
+                        <React.Fragment key={`2d-shelf-${sIdx}`}>
+                           {renderShelfWithJoints(legsHeight + elev, `2d-shelf-${sIdx}`)}
+                        </React.Fragment>
+                     ));
+                  })()}
                </>
             );
          }
@@ -1518,14 +1657,22 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                         doorH={doorH}
                         thickness={thickness}
                         isRightHinge={false}
+                        isUpper={false}
                         colorProps={parseColor(cDoors, doorMaterial, 'door-0')}
                         forceOpen={isElementOpen('door-0')}
                         globalPosition={[position[0], position[1] + yDoorCenter, position[2] + frontZ]}
+                        handleConfig={handleConfig}
                      />
                      <Board position={[0, yGolaC, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(shelfColor || cStructure, shelfMaterial)} />
-                     {doorH > 40 && (
-                        <Board position={[0, legsHeight + gap + doorH / 2, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(shelfColor || cStructure, shelfMaterial)} />
-                     )}
+                     {(() => {
+                        const cabObj: CabinetType = { id, type, variant, width, height, depth, position, rotation, color, shelvesCount };
+                        const shelfElevations = getResolvedCabinetShelfElevations(cabObj, thickness);
+                        return shelfElevations.map((elev, sIdx) => (
+                           <React.Fragment key={`1d1dr-gola-shelf-${sIdx}`}>
+                              {renderShelfWithJoints(legsHeight + elev, `1d1dr-gola-shelf-${sIdx}`)}
+                           </React.Fragment>
+                        ));
+                     })()}
                      {renderUndermountDrawer('d1', yBoxCenter, drawerH, parseColor(cDrawers, drawerFrontMaterial, 'drawer-0'), 'drawer-0')}
                   </>
                );
@@ -1543,15 +1690,23 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                      doorH={doorH}
                      thickness={thickness}
                      isRightHinge={false}
+                     isUpper={false}
                      colorProps={parseColor(cDoors, doorMaterial, 'door-0')}
                      forceOpen={isElementOpen('door-0')}
                      globalPosition={[position[0], position[1] + yDoorCenter, position[2] + frontZ]}
+                     handleConfig={handleConfig}
                   />
                   {/* Divisor fijo bajo el cajón */}
                   <Board position={[0, legsHeight + gap + doorH + gap, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(shelfColor || cStructure, shelfMaterial)} />
-                  {doorH > 40 && (
-                     <Board position={[0, legsHeight + gap + doorH / 2, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(shelfColor || cStructure, shelfMaterial)} />
-                  )}
+                  {(() => {
+                     const cabObj: CabinetType = { id, type, variant, width, height, depth, position, rotation, color, shelvesCount };
+                     const shelfElevations = getResolvedCabinetShelfElevations(cabObj, thickness);
+                     return shelfElevations.map((elev, sIdx) => (
+                        <React.Fragment key={`1d1dr-shelf-${sIdx}`}>
+                           {renderShelfWithJoints(legsHeight + elev, `1d1dr-shelf-${sIdx}`)}
+                        </React.Fragment>
+                     ));
+                  })()}
                   {renderUndermountDrawer('d1', yBoxCenter, drawerH, parseColor(cDrawers, drawerFrontMaterial, 'drawer-0'), 'drawer-0')}
                </>
             );
@@ -1590,7 +1745,7 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
             );
          }
          
-         if (effectiveVariant === '2_pot_drawers') {
+          if (effectiveVariant === '2_pot_drawers') {
             if (isGolaActive) {
                const golaRegruesoDeduct = Math.max(0, rawRegruesoCm - 3.5);
                const availH = Math.max(20, cabH - 3.5 - 4.0 - gap * 3 - golaRegruesoDeduct);
@@ -1617,6 +1772,44 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                <>
                   {renderUndermountDrawer('p0', yLower, lowerH, parseColor(cDrawers, drawerFrontMaterial, 'drawer-0'), 'drawer-0')}
                   {renderUndermountDrawer('p1', yUpper, upperH, parseColor(cDrawers, drawerFrontMaterial, 'drawer-1'), 'drawer-1')}
+               </>
+            );
+         }
+
+         if (effectiveVariant === '2_drawers_1_pot') {
+            if (isGolaActive) {
+               const golaRegruesoDeduct = Math.max(0, rawRegruesoCm - 3.5);
+               const availH = Math.max(20, cabH - 3.5 - 4.0 - gap * 4 - golaRegruesoDeduct);
+               const lowerH = availH * 0.5;
+               const upperH = availH * 0.25;
+               const yLower = legsHeight + gap + lowerH / 2;
+               const yGolaC = legsHeight + gap + lowerH + 2.0;
+               const yMid = legsHeight + gap + lowerH + 4.0 + gap + upperH / 2;
+               const yTop = legsHeight + gap + lowerH + 4.0 + gap + upperH + gap + upperH / 2;
+               return (
+                  <>
+                     {renderGolaL()}
+                     {renderGolaC(yGolaC)}
+                     {renderUndermountDrawer('p0', yLower, lowerH, parseColor(cDrawers, drawerFrontMaterial, 'drawer-0'), 'drawer-0')}
+                     {renderUndermountDrawer('d1', yMid, upperH, parseColor(cDrawers, drawerFrontMaterial, 'drawer-1'), 'drawer-1')}
+                     {renderUndermountDrawer('d2', yTop, upperH, parseColor(cDrawers, drawerFrontMaterial, 'drawer-2'), 'drawer-2')}
+                  </>
+               );
+            }
+            const deduct = isBaseOrIsland ? regruesoDeduct : 0;
+            const availableH = cabH - gap * 4;
+            const lowerH = Math.round(availableH * 0.5 * 10) / 10;
+            const upperBaseH = (availableH - lowerH) / 2;
+            const topDrawerH = Math.max(8, upperBaseH - deduct);
+            const midDrawerH = upperBaseH;
+            const yLower = legsHeight + gap + lowerH / 2;
+            const yMid = legsHeight + gap + lowerH + gap + midDrawerH / 2;
+            const yTop = legsHeight + gap + lowerH + gap + midDrawerH + gap + topDrawerH / 2;
+            return (
+               <>
+                  {renderUndermountDrawer('p0', yLower, lowerH, parseColor(cDrawers, drawerFrontMaterial, 'drawer-0'), 'drawer-0')}
+                  {renderUndermountDrawer('d1', yMid, midDrawerH, parseColor(cDrawers, drawerFrontMaterial, 'drawer-1'), 'drawer-1')}
+                  {renderUndermountDrawer('d2', yTop, topDrawerH, parseColor(cDrawers, drawerFrontMaterial, 'drawer-2'), 'drawer-2')}
                </>
             );
          }
@@ -1702,17 +1895,26 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                      doorH={doorH}
                      thickness={thickness}
                      isRightHinge={!isRight}
+                     isUpper={false}
                      colorProps={parseColor(cDoors, doorMaterial, 'door-0')}
                      forceOpen={isElementOpen('door-0')}
                      globalPosition={[position[0] + doorX, position[1] + doorY, position[2] + frontZ]}
+                     handleConfig={handleConfig}
                   />
 
-                  {/* Repisa Interior Transversal */}
-                  <Board
-                     position={[0, legsHeight + cabH / 2, 0]}
-                     args={[innerW, thickness, depth - 4]}
-                     {...parseColor(shelfColor || cStructure, shelfMaterial)}
-                  />
+                  {/* Repisa Interior Transversal Paramétrica con Anti-Colisión */}
+                  {(() => {
+                     const cabObj: CabinetType = { id, type, variant, width, height, depth, position, rotation, color, shelvesCount };
+                     const shelfElevations = getResolvedCabinetShelfElevations(cabObj, thickness);
+                     return shelfElevations.map((elev, sIdx) => (
+                        <Board
+                           key={`cb-shelf-${sIdx}`}
+                           position={[0, legsHeight + elev, 0]}
+                           args={[innerW, thickness, depth - 4]}
+                           {...parseColor(shelfColor || cStructure, shelfMaterial)}
+                        />
+                     ));
+                  })()}
                </>
             );
          }
@@ -1754,17 +1956,26 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                      doorH={doorH}
                      thickness={thickness}
                      isRightHinge={!isRight}
+                     isUpper={true}
                      colorProps={parseColor(cDoors, doorMaterial, 'door-0')}
                      forceOpen={isElementOpen('door-0')}
                      globalPosition={[position[0] + doorX, position[1] + doorY, position[2] + frontZ]}
+                     handleConfig={handleConfig}
                   />
 
-                  {/* Repisa Interior Regulable a media altura */}
-                  <Board
-                     position={[0, legsHeight + cabH / 2, 0]}
-                     args={[innerW, thickness, depth - 4]}
-                     {...parseColor(shelfColor || cStructure, shelfMaterial)}
-                  />
+                  {/* Repisas Interiores Regulables con Anti-Colisión */}
+                  {(() => {
+                     const cabObj: CabinetType = { id, type, variant, width, height, depth, position, rotation, color, shelvesCount };
+                     const shelfElevations = getResolvedCabinetShelfElevations(cabObj, thickness);
+                     return shelfElevations.map((elev, sIdx) => (
+                        <Board
+                           key={`wcb-shelf-${sIdx}`}
+                           position={[0, legsHeight + elev, 0]}
+                           args={[innerW, thickness, depth - 4]}
+                           {...parseColor(shelfColor || cStructure, shelfMaterial)}
+                        />
+                     ));
+                  })()}
                </>
             );
          }
@@ -1874,6 +2085,7 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                      forceOpen={isElementOpen('door-lift')}
                      globalPosition={[position[0], position[1] + legsHeight + cabH / 2, position[2] + frontZ]}
                      innerDepth={depth - 2}
+                     handleConfig={handleConfig}
                   />
                   {cabH > 50 && renderShelfWithJoints(legsHeight + cabH / 2, 'wlu1')}
                </>
@@ -1898,6 +2110,7 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                      forceOpen={isElementOpen('door-lower')}
                      globalPosition={[position[0], position[1] + lowerY, position[2] + frontZ]}
                      innerDepth={depth - 2}
+                     handleConfig={handleConfig}
                   />
                   {/* Divisor horizontal fijo */}
                   {renderShelfWithJoints(legsHeight + lowerDoorH + gap * 1.5, 'wlud_div')}
@@ -1911,6 +2124,7 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                      forceOpen={isElementOpen('door-upper')}
                      globalPosition={[position[0], position[1] + upperY, position[2] + frontZ]}
                      innerDepth={depth - 2}
+                     handleConfig={handleConfig}
                   />
                </>
             );
@@ -1939,6 +2153,7 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                      forceOpen={isElementOpen('door-top')}
                      globalPosition={[position[0], position[1] + topY, position[2] + frontZ]}
                      innerDepth={depth - 2}
+                     handleConfig={handleConfig}
                   />
                   {topH > 45 && renderShelfWithJoints(legsHeight + nicheH + topH / 2, 'wmn_top_shelf')}
                </>
@@ -1973,6 +2188,8 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                      forceOpen={isLOpen}
                      onClickAction={() => setOpenElement(id, 'door-0', !isLOpen)}
                      safePos={safePos}
+                     isUpper={type === 'wall'}
+                     handleConfig={handleConfig}
                   />
                </group>
             );
@@ -1982,17 +2199,20 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
             const baseH = 70;
             const ovenH = 60;
             const microH = 38;
-            const topH = Math.max(10, cabH - (baseH + ovenH + microH));
+            const topStart = baseH + ovenH + microH;
+            const topH = Math.max(10, cabH - topStart);
             const lowerDoorH = baseH - gap * 2;
             const topDoorH = topH - gap * 2;
             const lowerY = legsHeight + gap + lowerDoorH / 2;
             const ovenY = legsHeight + baseH + ovenH / 2;
             const microY = legsHeight + baseH + ovenH + microH / 2;
-            const topY = legsHeight + baseH + ovenH + microH + gap + topDoorH / 2;
+            const topY = legsHeight + topStart + gap + topDoorH / 2;
             
             // Retranqueo técnico de 50mm para chimenea térmica: repisas interiores tienen 5cm menos de fondo
             const ventDepth = depth - 5;
             const ventZ = 2.5; // desplazado hacia el frente para dejar el vano de 50mm atrás
+            const cabObj: CabinetType = { id, type, variant, width, height, depth, position, rotation, color, shelvesCount, shelvesCountLower, shelvesCountUpper };
+            const shelfElevations = getResolvedCabinetShelfElevations(cabObj, thickness);
 
             return (
                <>
@@ -2003,11 +2223,18 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                      doorH={lowerDoorH}
                      thickness={thickness}
                      isRightHinge={false}
+                     isUpper={false}
                      colorProps={parseColor(cDoors, doorMaterial, 'door-lower')}
                      forceOpen={isElementOpen('door-lower')}
                      globalPosition={[safePos[0], safePos[1] + lowerY, safePos[2] + frontZ]}
+                     handleConfig={handleConfig}
                   />
-                  <Board position={[0, legsHeight + baseH / 2, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(shelfColor || cStructure, shelfMaterial)} />
+                  {/* Repisas Dinámicas en Puerta Inferior (Anti-Colisión) */}
+                  {shelfElevations.filter(e => e < baseH).map((elev, sIdx) => (
+                     <React.Fragment key={`oven-vent-low-${sIdx}`}>
+                        {renderShelfWithJoints(legsHeight + elev, `oven-vent-low-${sIdx}`)}
+                     </React.Fragment>
+                  ))}
                   
                   {/* Base soporte horno con Rejilla de Ventilación Técnica Frontal */}
                   <Board position={[0, legsHeight + baseH, ventZ]} args={[innerW, thickness, ventDepth]} {...parseColor(shelfColor || cStructure, shelfMaterial)} />
@@ -2041,7 +2268,7 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                   </group>
                   
                   {/* Techo del nicho torre con holgura de convección */}
-                  <Board position={[0, legsHeight + baseH + ovenH + microH, ventZ]} args={[innerW, thickness, ventDepth]} {...parseColor(shelfColor || cStructure, shelfMaterial)} />
+                  <Board position={[0, legsHeight + topStart, ventZ]} args={[innerW, thickness, ventDepth]} {...parseColor(shelfColor || cStructure, shelfMaterial)} />
                   
                   {topDoorH > 10 && (
                      <AnimatedDoor
@@ -2050,14 +2277,19 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                         doorH={topDoorH}
                         thickness={thickness}
                         isRightHinge={false}
+                        isUpper={true}
                         colorProps={parseColor(cDoors, doorMaterial, 'door-top')}
                         forceOpen={isElementOpen('door-top')}
                         globalPosition={[safePos[0], safePos[1] + topY, safePos[2] + frontZ]}
+                        handleConfig={handleConfig}
                      />
                   )}
-                  {topDoorH > 35 && (
-                     <Board position={[0, legsHeight + baseH + ovenH + microH + topH / 2, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(shelfColor || cStructure, shelfMaterial)} />
-                  )}
+                  {/* Repisas Dinámicas en Puerta Superior (Anti-Colisión) */}
+                  {shelfElevations.filter(e => e > topStart).map((elev, sIdx) => (
+                     <React.Fragment key={`oven-vent-up-${sIdx}`}>
+                        {renderShelfWithJoints(legsHeight + elev, `oven-vent-up-${sIdx}`)}
+                     </React.Fragment>
+                  ))}
                </>
             );
          }
@@ -2085,9 +2317,11 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                      doorH={doorH}
                      thickness={thickness}
                      isRightHinge={false}
+                     isUpper={false}
                      colorProps={parseColor(cDoors, doorMaterial, 'door-0')}
                      forceOpen={isElementOpen('door-0')}
                      globalPosition={[position[0], position[1] + doorY, position[2] + frontZ]}
+                     handleConfig={handleConfig}
                   />
 
                   {/* 4 Gavetas Interiores Extraíbles con uñero ergonómico calado */}
@@ -2485,6 +2719,7 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                   {variant === 'deco_stove' ? 'COCINA FDV 90' :
                    variant === 'deco_fridge' ? 'REFRIGERADOR SBS' :
                    variant === 'deco_plant' ? 'PLANTA INTERIOR' :
+                   variant === 'deco_dishwasher' ? 'LAVAVAJILLAS 12C' :
                    variant?.startsWith('wall_corner_blind') ? 'AÉREO ESQUINERO' :
                    variant?.includes('wine_rack') ? 'BOTELLERO' :
                    (variant ? variant.replace(/_/g, ' ').toUpperCase() : type.toUpperCase())}
@@ -2492,7 +2727,7 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
             )}
 
             {/* Si es elemento de decoración o electrodoméstico fijo, omitir cotas de carpintería interna */}
-            {type === 'decoration' || variant === 'deco_stove' || variant === 'deco_fridge' || variant === 'deco_plant' ? null : (
+            {type === 'decoration' || variant === 'deco_stove' || variant === 'deco_fridge' || variant === 'deco_plant' || variant === 'deco_dishwasher' ? null : (
                <>
                   {/* --- NIVEL >= 2: Cotas de Módulo (Azul) --- */}
                   {dimensionLevel >= 2 && (
@@ -2582,55 +2817,142 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                </>
             )}
 
-            {/* --- NIVEL >= 4: Cotas de Cajones (Verde) --- */}
-            {dimensionLevel >= 4 && (!rightNeighbor || isActive) && (
-               <>
-                  {variant === '1_door_1_drawer' && (
-                     <group position={[width / 2 + 5, -height / 2 + legsHeight + gap*2 + (cabH - 15 - gap*3) + 7.5, frontZ + 2]}>
-                        <Line points={[[0, -7.5, 0], [0, 7.5, 0]]} color="#10b981" lineWidth={1.5} depthTest={false} renderOrder={999} />
-                        <Line points={[[-2, -7.5, 0], [2, -7.5, 0]]} color="#10b981" lineWidth={1.5} depthTest={false} renderOrder={999} />
-                        <Line points={[[-2, 7.5, 0], [2, 7.5, 0]]} color="#10b981" lineWidth={1.5} depthTest={false} renderOrder={999} />
-                        <Text position={[3, 0, 0]} fontSize={4.5} color="#10b981" anchorX="left" anchorY="middle" material-depthTest={false} material-toneMapped={false} renderOrder={1000}>15.0</Text>
-                     </group>
-                  )}
-                  {variant === '4_drawers' && (() => {
-                     const dH = (cabH - gap*5) / 4;
-                     return (
-                        <>
-                           {[0, 1, 2, 3].map((i) => {
-                              const yC = -height / 2 + legsHeight + gap + dH/2 + i*(dH + gap);
-                              return (
-                                 <group key={`dim-dr-${i}`} position={[width / 2 + 5, yC, frontZ + 2]}>
-                                    <Line points={[[0, -dH/2, 0], [0, dH/2, 0]]} color="#10b981" lineWidth={1.5} depthTest={false} renderOrder={999} />
-                                    <Line points={[[-2, -dH/2, 0], [2, -dH/2, 0]]} color="#10b981" lineWidth={1.5} depthTest={false} renderOrder={999} />
-                                    <Line points={[[-2, dH/2, 0], [2, dH/2, 0]]} color="#10b981" lineWidth={1.5} depthTest={false} renderOrder={999} />
-                                    <Text position={[3, 0, 0]} fontSize={4.5} color="#10b981" anchorX="left" anchorY="middle" material-depthTest={false} material-toneMapped={false} renderOrder={1000}>{dH.toFixed(1)}</Text>
-                                 </group>
-                              );
-                           })}
-                        </>
-                     );
-                  })()}
-                  {variant === '2_pot_drawers' && (() => {
-                     const dH = (cabH - gap*3) / 2;
-                     return (
-                        <>
-                           {[0, 1].map((i) => {
-                              const yC = -height / 2 + legsHeight + gap + dH/2 + i*(dH + gap);
-                              return (
-                                 <group key={`dim-pot-${i}`} position={[width / 2 + 5, yC, frontZ + 2]}>
-                                    <Line points={[[0, -dH/2, 0], [0, dH/2, 0]]} color="#10b981" lineWidth={1.5} depthTest={false} renderOrder={999} />
-                                    <Line points={[[-2, -dH/2, 0], [2, -dH/2, 0]]} color="#10b981" lineWidth={1.5} depthTest={false} renderOrder={999} />
-                                    <Line points={[[-2, dH/2, 0], [2, dH/2, 0]]} color="#10b981" lineWidth={1.5} depthTest={false} renderOrder={999} />
-                                    <Text position={[3, 0, 0]} fontSize={4.5} color="#10b981" anchorX="left" anchorY="middle" material-depthTest={false} material-toneMapped={false} renderOrder={1000}>{dH.toFixed(1)}</Text>
-                                 </group>
-                              );
-                           })}
-                        </>
-                     );
-                  })()}
-               </>
-            )}
+            {/* --- NIVEL >= 4: Cotas de Frentes de Cajón (Verde Esmeralda) --- */}
+            {dimensionLevel >= 4 && (() => {
+               const drawerFronts: Array<{ yCenter: number; frontH: number }> = [];
+               const effVar = effectiveVariant;
+
+               if (effVar === '1_door_1_drawer') {
+                  if (isGolaActive) {
+                     const golaRegruesoDeduct = Math.max(0, rawRegruesoCm - 3.5);
+                     const drawerH = Math.max(8, 14.5 - golaRegruesoDeduct);
+                     const yBoxCenter = legsHeight + cabH - 3.5 - drawerH / 2;
+                     drawerFronts.push({ yCenter: -height / 2 + yBoxCenter, frontH: drawerH });
+                  } else {
+                     const deduct = isBaseOrIsland ? regruesoDeduct : 0;
+                     const drawerH = Math.max(8, 15 - deduct);
+                     const doorH = cabH - 15 - gap * 3;
+                     const yBoxCenter = legsHeight + gap * 2 + doorH + drawerH / 2;
+                     drawerFronts.push({ yCenter: -height / 2 + yBoxCenter, frontH: drawerH });
+                  }
+               } else if (effVar === '4_drawers') {
+                  if (isGolaActive) {
+                     const golaRegruesoDeduct = Math.max(0, rawRegruesoCm - 3.5);
+                     const availH = Math.max(20, cabH - 3.5 - 4.0 - gap * 5 - golaRegruesoDeduct);
+                     const drawerH = availH / 4;
+                     for (let i = 0; i < 4; i++) {
+                        const yBoxCenter = legsHeight + gap + drawerH / 2 + i * (drawerH + gap) + (i >= 2 ? 4.0 : 0);
+                        drawerFronts.push({ yCenter: -height / 2 + yBoxCenter, frontH: drawerH });
+                     }
+                  } else {
+                     const deduct = isBaseOrIsland ? regruesoDeduct : 0;
+                     const baseDrawerH = (cabH - gap * 5) / 4;
+                     const topDrawerH = Math.max(8, baseDrawerH - deduct);
+                     for (let i = 0; i < 4; i++) {
+                        const currentH = i === 3 ? topDrawerH : baseDrawerH;
+                        const yBoxCenter = i === 3
+                           ? legsHeight + gap + 3 * (baseDrawerH + gap) + topDrawerH / 2
+                           : legsHeight + gap + baseDrawerH / 2 + i * (baseDrawerH + gap);
+                        drawerFronts.push({ yCenter: -height / 2 + yBoxCenter, frontH: currentH });
+                     }
+                  }
+               } else if (effVar === '2_pot_drawers') {
+                  if (isGolaActive) {
+                     const golaRegruesoDeduct = Math.max(0, rawRegruesoCm - 3.5);
+                     const availH = Math.max(20, cabH - 3.5 - 4.0 - gap * 3 - golaRegruesoDeduct);
+                     const drawerH = availH / 2;
+                     const yLower = legsHeight + gap + drawerH / 2;
+                     const yUpper = legsHeight + gap + drawerH + 4.0 + gap + drawerH / 2;
+                     drawerFronts.push({ yCenter: -height / 2 + yLower, frontH: drawerH });
+                     drawerFronts.push({ yCenter: -height / 2 + yUpper, frontH: drawerH });
+                  } else {
+                     const deduct = isBaseOrIsland ? regruesoDeduct : 0;
+                     const baseH = (cabH - gap * 3) / 2;
+                     const lowerH = baseH;
+                     const upperH = Math.max(10, baseH - deduct);
+                     const yLower = legsHeight + gap + lowerH / 2;
+                     const yUpper = legsHeight + gap + lowerH + gap + upperH / 2;
+                     drawerFronts.push({ yCenter: -height / 2 + yLower, frontH: lowerH });
+                     drawerFronts.push({ yCenter: -height / 2 + yUpper, frontH: upperH });
+                  }
+               } else if (effVar === '2_drawers_1_pot') {
+                  if (isGolaActive) {
+                     const golaRegruesoDeduct = Math.max(0, rawRegruesoCm - 3.5);
+                     const availH = Math.max(20, cabH - 3.5 - 4.0 - gap * 4 - golaRegruesoDeduct);
+                     const lowerH = availH * 0.5;
+                     const upperH = availH * 0.25;
+                     const yLower = legsHeight + gap + lowerH / 2;
+                     const yMid = legsHeight + gap + lowerH + 4.0 + gap + upperH / 2;
+                     const yTop = legsHeight + gap + lowerH + 4.0 + gap + upperH + gap + upperH / 2;
+                     drawerFronts.push({ yCenter: -height / 2 + yLower, frontH: lowerH });
+                     drawerFronts.push({ yCenter: -height / 2 + yMid, frontH: upperH });
+                     drawerFronts.push({ yCenter: -height / 2 + yTop, frontH: upperH });
+                  } else {
+                     const deduct = isBaseOrIsland ? regruesoDeduct : 0;
+                     const availableH = cabH - gap * 4;
+                     const lowerH = Math.round(availableH * 0.5 * 10) / 10;
+                     const upperBaseH = (availableH - lowerH) / 2;
+                     const topDrawerH = Math.max(8, upperBaseH - deduct);
+                     const midDrawerH = upperBaseH;
+                     const yLower = legsHeight + gap + lowerH / 2;
+                     const yMid = legsHeight + gap + lowerH + gap + midDrawerH / 2;
+                     const yTop = legsHeight + gap + lowerH + gap + midDrawerH + gap + topDrawerH / 2;
+                     drawerFronts.push({ yCenter: -height / 2 + yLower, frontH: lowerH });
+                     drawerFronts.push({ yCenter: -height / 2 + yMid, frontH: midDrawerH });
+                     drawerFronts.push({ yCenter: -height / 2 + yTop, frontH: topDrawerH });
+                  }
+               } else if (effVar === 'sink_u_drawer') {
+                  if (isGolaActive) {
+                     const golaRegruesoDeduct = Math.max(0, rawRegruesoCm - 3.5);
+                     const availH = Math.max(20, cabH - 3.5 - 4.0 - gap * 3 - golaRegruesoDeduct);
+                     const drawerH = availH / 2;
+                     const yLower = legsHeight + gap + drawerH / 2;
+                     const yUpper = legsHeight + gap + drawerH + 4.0 + gap + drawerH / 2;
+                     drawerFronts.push({ yCenter: -height / 2 + yLower, frontH: drawerH });
+                     drawerFronts.push({ yCenter: -height / 2 + yUpper, frontH: drawerH });
+                  } else {
+                     const deduct = isBaseOrIsland ? regruesoDeduct : 0;
+                     const baseH = (cabH - gap * 3) / 2;
+                     const lowerH = baseH;
+                     const upperH = Math.max(10, baseH - deduct);
+                     const yLower = legsHeight + gap + lowerH / 2;
+                     const yUpper = legsHeight + gap + lowerH + gap + upperH / 2;
+                     drawerFronts.push({ yCenter: -height / 2 + yLower, frontH: lowerH });
+                     drawerFronts.push({ yCenter: -height / 2 + yUpper, frontH: upperH });
+                  }
+               }
+
+               if (drawerFronts.length === 0) return null;
+
+               const isEndCabinet = !rightNeighbor || isActive;
+               const posX = isEndCabinet ? (width / 2 + 5) : (width / 2 - 3.5);
+               const textOffset = isEndCabinet ? 3.5 : -3.5;
+               const textAnchor = isEndCabinet ? 'left' : 'right';
+
+               return (
+                  <>
+                     {drawerFronts.map((df, idx) => (
+                        <group key={`dim-drawer-front-${idx}`} position={[posX, df.yCenter, frontZ + 2]}>
+                           <Line points={[[0, -df.frontH / 2, 0], [0, df.frontH / 2, 0]]} color="#10b981" lineWidth={1.6} depthTest={false} renderOrder={999} />
+                           <Line points={[[-1.5, -df.frontH / 2, 0], [1.5, -df.frontH / 2, 0]]} color="#10b981" lineWidth={1.6} depthTest={false} renderOrder={999} />
+                           <Line points={[[-1.5, df.frontH / 2, 0], [1.5, df.frontH / 2, 0]]} color="#10b981" lineWidth={1.6} depthTest={false} renderOrder={999} />
+                           <Text
+                              position={[textOffset, 0, 0]}
+                              fontSize={4.6}
+                              color="#10b981"
+                              anchorX={textAnchor}
+                              anchorY="middle"
+                              material-depthTest={false}
+                              material-toneMapped={false}
+                              renderOrder={1000}
+                           >
+                              {df.frontH.toFixed(1)} cm
+                           </Text>
+                        </group>
+                     ))}
+                  </>
+               );
+            })()}
 
             {/* --- NIVEL >= 4: Cotas de Interiores / Repisas (Morado) --- */}
             {dimensionLevel >= 4 && (
@@ -2708,13 +3030,20 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
        position={safePos}
        rotation={[0, safeRot, 0]}
        onPointerDown={(e) => {
+          if (e.button !== 0) return;
           const currentTool = useKitchenStore.getState().toolMode;
           if (currentTool.startsWith('place_') || currentTool === 'move_active') {
             return;
           }
           e.stopPropagation();
           setActiveCabinet(id);
-          setToolMode('move_active');
+          setDraggingCabinetId(id);
+        }}
+        onPointerUp={(e) => {
+          const currentDragging = useKitchenStore.getState().draggingCabinetId;
+          if (currentDragging === id) {
+            setDraggingCabinetId(null);
+          }
         }}
      >
        {renderParametricBody()}

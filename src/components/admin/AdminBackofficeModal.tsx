@@ -35,7 +35,7 @@ import { Wrench } from 'lucide-react';
 interface AdminBackofficeModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onNavigateToModule: (route: 'sip-house' | 'kitchen' | 'closet' | 'special' | 'hpl-bathroom' | 'concrete-house' | 'office' | 'chair' | 'clt-house') => void;
+  onNavigateToModule: (route: 'kitchen' | 'closet' | 'special' | 'hpl-bathroom' | 'office' | 'chair') => void;
 }
 
 export function AdminBackofficeModal({
@@ -68,7 +68,7 @@ export function AdminBackofficeModal({
     onClose();
   };
 
-  const handleLoadProject = (route: 'sip-house' | 'kitchen' | 'closet' | 'special') => {
+  const handleLoadProject = (route: 'kitchen' | 'closet' | 'special' | 'hpl-bathroom' | 'office' | 'chair') => {
     onClose();
     onNavigateToModule(route);
   };
