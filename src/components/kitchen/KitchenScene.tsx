@@ -14,7 +14,7 @@ import { ArchitecturalElementsRenderer } from './ArchitecturalElementsRenderer';
 import { KitchenCountertop3D } from './KitchenCountertop3D';
 import { KitchenIslandBackPanel } from './KitchenIslandBackPanel';
 import { KitchenMepScene } from './KitchenMepScene';
-import { resolvePlacement, getCabinetSpecsFromTool } from '../../utils/kitchenCollision';
+import { resolvePlacement, getCabinetSpecsFromTool, getWallInwardNormal } from '../../utils/kitchenCollision';
 
 function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
   const { viewMode, toolMode, walls, cabinets, addWall, drawingStart, setDrawingStart, addCabinet, setToolMode, setActiveCabinet, roomConfig, activeCabinetId, addArchitecturalElement, draggingArchElementId, draggingCabinetId, setDraggingCabinetId, updateCabinet, architecturalElements, activeArchElementId, setActiveArchElement } = useKitchenStore();
@@ -44,17 +44,6 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
   }, [walls, roomConfig]);
 
   // Al activar la herramienta "Mover", situar de inmediato el ghost y la flecha sobre el mueble activo
-  useEffect(() => {
-    const handleGlobalPointerUp = () => {
-      const store = useKitchenStore.getState();
-      if (store.draggingArchElementId) {
-        store.setDraggingArchElementId(null);
-      }
-    };
-    window.addEventListener('pointerup', handleGlobalPointerUp);
-    return () => window.removeEventListener('pointerup', handleGlobalPointerUp);
-  }, []);
-
   useEffect(() => {
     if (toolMode === 'move_active') {
       if (activeCabinetId) {
@@ -102,7 +91,18 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
         state.setDraggingCabinetId(null);
       }
       if (state.draggingArchElementId) {
+        const dragId = state.draggingArchElementId;
+        const el = state.architecturalElements.find((a) => a.id === dragId);
+        if (el) {
+          state.updateArchitecturalElement(dragId, {
+            position: el.position,
+            rotation: el.rotation,
+            wallId: el.wallId,
+            offset: el.offset,
+          });
+        }
         state.setDraggingArchElementId(null);
+        setGhostCabinet(null);
       }
     };
     window.addEventListener('pointerup', handleGlobalPointerUp);
@@ -139,7 +139,7 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
                 architecturalElements,
              });
 
-             if (result.position[0] !== cab.position[0] || result.position[2] !== cab.position[2] || result.rotation !== cab.rotation) {
+             if (!result.isColliding && (result.position[0] !== cab.position[0] || result.position[2] !== cab.position[2] || result.rotation !== cab.rotation)) {
                 useKitchenStore.getState().updateCabinet(draggingCabinetId, {
                    position: result.position,
                    rotation: result.rotation,
@@ -251,26 +251,72 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
       let customY: number | undefined = undefined;
       const activeCabId = useKitchenStore.getState().activeCabinetId;
       const activeArchId = useKitchenStore.getState().activeArchElementId;
-      
-      if (toolMode === 'move_active') {
-         if (activeArchId) {
-            const activeArch = architecturalElements.find(e => e.id === activeArchId);
-            if (activeArch) {
-               const archWidth = activeArch.width;
-               const archHeight = activeArch.height;
-               const archElevation = activeArch.elevation || 0;
-               const defaultY = archElevation + archHeight / 2;
+      const draggingArchId = useKitchenStore.getState().draggingArchElementId;
+      const targetArchId = draggingArchId || (toolMode === 'move_active' ? activeArchId : null);
 
-               let bestPos: [number, number, number] = [rawX, defaultY, rawZ];
-               let bestRot = activeArch.rotation || 0;
+      if (targetArchId) {
+         const activeArch = architecturalElements.find(e => e.id === targetArchId);
+         if (activeArch) {
+            const archWidth = activeArch.width;
+            const archHeight = activeArch.height;
+            const archElevation = activeArch.elevation || 0;
+            const defaultY = archElevation + archHeight / 2;
 
-               const effectiveWalls = walls && walls.length > 0 ? walls : (roomConfig?.vertices && roomConfig.vertices.length >= 3 ? roomConfig.vertices.map((v, i, arr) => {
-                  const next = arr[(i + 1) % arr.length];
-                  return { start: [v.x, v.y], end: [next.x, next.y], thickness: 20, height: 240 };
-               }) : []);
+            let bestPos: [number, number, number] = [rawX, defaultY, rawZ];
+            let bestRot = activeArch.rotation || 0;
+            let bestWallId = activeArch.wallId || '';
+            let bestOffset = activeArch.offset || 0;
+            let bestWallThick = 20;
 
-               let minDist = Infinity;
-               if (effectiveWalls.length > 0) {
+            const effectiveWalls = walls && walls.length > 0 ? walls : (roomConfig?.vertices && roomConfig.vertices.length >= 3 ? roomConfig.vertices.map((v, i, arr) => {
+               const next = arr[(i + 1) % arr.length];
+               return { id: `wall_v_${i}`, start: [v.x, v.y], end: [next.x, next.y], thickness: 20, height: 240 };
+            }) : []);
+
+            let minDist = Infinity;
+            if (effectiveWalls.length > 0) {
+               const poly = roomConfig?.vertices?.map(v => [v.x, v.y] as [number, number]) || [];
+               const camPos = camera.position;
+
+               // 1. Raycast contra el plano vertical de cada muro
+               for (const w of effectiveWalls) {
+                  const [x1, z1] = w.start;
+                  const [x2, z2] = w.end;
+                  const wLen = Math.hypot(x2 - x1, z2 - z1);
+                  if (wLen < 10) continue;
+
+                  const inwardNormal = getWallInwardNormal(x1, z1, x2, z2, poly);
+                  const cx = (x1 + x2) / 2;
+                  const cz = (z1 + z2) / 2;
+
+                  const wallPlane = new THREE.Plane().setFromNormalAndCoplanarPoint(
+                     new THREE.Vector3(inwardNormal[0], 0, inwardNormal[1]),
+                     new THREE.Vector3(cx, defaultY, cz)
+                  );
+                  const planeHit = new THREE.Vector3();
+                  if (raycaster.ray.intersectPlane(wallPlane, planeHit)) {
+                     const uX = (x2 - x1) / wLen;
+                     const uZ = (z2 - z1) / wLen;
+                     const s = (planeHit.x - x1) * uX + (planeHit.z - z1) * uZ;
+                     if (s >= -20 && s <= wLen + 20 && planeHit.y >= -10 && planeHit.y <= 300) {
+                        const sClamped = Math.max(archWidth / 2 + 2, Math.min(wLen - archWidth / 2 - 2, s));
+                        const pX = x1 + sClamped * uX;
+                        const pZ = z1 + sClamped * uZ;
+                        const dist = Math.hypot(planeHit.x - pX, planeHit.z - pZ);
+                        if (dist < minDist) {
+                           minDist = dist;
+                           bestRot = Math.atan2(x1 - x2, z1 - z2);
+                           bestPos = [pX, defaultY, pZ];
+                           bestWallId = w.id || `wall_${Math.random()}`;
+                           bestOffset = sClamped - wLen / 2;
+                           bestWallThick = w.thickness || 20;
+                        }
+                     }
+                  }
+               }
+
+               // 2. Si no intersectó planos verticales directos, proyectar desde el suelo
+               if (minDist === Infinity) {
                   for (const w of effectiveWalls) {
                      const [x1, z1] = w.start;
                      const [x2, z2] = w.end;
@@ -290,14 +336,33 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
                         minDist = dist;
                         bestRot = Math.atan2(x1 - x2, z1 - z2);
                         bestPos = [pX, defaultY, pZ];
+                        bestWallId = w.id || `wall_${Math.random()}`;
+                        bestOffset = sClamped - wLen / 2;
+                        bestWallThick = w.thickness || 20;
                      }
                   }
                }
-
-               setGhostCabinet({ pos: bestPos, rot: bestRot, isColliding: false });
-               return;
             }
+
+            // Actualización instantánea en el store: el muro recalcula wallOpenings y abre el vano en vivo
+            useKitchenStore.getState().moveArchElementTransient(targetArchId, {
+               position: bestPos,
+               rotation: bestRot,
+               wallId: bestWallId,
+               offset: bestOffset,
+            });
+
+            setGhostCabinet({
+               pos: bestPos,
+               rot: bestRot,
+               isColliding: false,
+               wallThickness: bestWallThick,
+            } as any);
+            return;
          }
+      }
+
+      if (toolMode === 'move_active') {
 
          const activeCab = cabinets.find(c => c.id === activeCabId) || null;
          if (activeCab) {
@@ -341,32 +406,79 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
 
          const effectiveWalls = walls && walls.length > 0 ? walls : (roomConfig?.vertices && roomConfig.vertices.length >= 3 ? roomConfig.vertices.map((v, i, arr) => {
             const next = arr[(i + 1) % arr.length];
-            return { start: [v.x, v.y], end: [next.x, next.y], thickness: 20, height: 240 };
+            return { id: `wall_v_${i}`, start: [v.x, v.y], end: [next.x, next.y], thickness: 20, height: 240 };
          }) : []);
 
          let minDist = Infinity;
          if (effectiveWalls.length > 0) {
+            const poly = roomConfig?.vertices?.map(v => [v.x, v.y] as [number, number]) || [];
+            const camPos = camera.position;
+
+            let bestWallThick = 20;
+
+            // 1. Raycast contra el plano vertical de cada muro
             for (const w of effectiveWalls) {
                const [x1, z1] = w.start;
                const [x2, z2] = w.end;
                const wLen = Math.hypot(x2 - x1, z2 - z1);
                if (wLen < 10) continue;
-               const uX = (x2 - x1) / wLen;
-               const uZ = (z2 - z1) / wLen;
 
-               const s = (rawX - x1) * uX + (rawZ - z1) * uZ;
-               const sClamped = Math.max(archWidth / 2 + 2, Math.min(wLen - archWidth / 2 - 2, s));
+               const inwardNormal = getWallInwardNormal(x1, z1, x2, z2, poly);
+               const cx = (x1 + x2) / 2;
+               const cz = (z1 + z2) / 2;
 
-               const pX = x1 + sClamped * uX;
-               const pZ = z1 + sClamped * uZ;
-               const dist = Math.hypot(rawX - pX, rawZ - pZ);
-
-               if (dist < minDist) {
-                  minDist = dist;
-                  bestRot = Math.atan2(x1 - x2, z1 - z2);
-                  bestPos = [pX, defaultY, pZ];
+               const wallPlane = new THREE.Plane().setFromNormalAndCoplanarPoint(
+                  new THREE.Vector3(inwardNormal[0], 0, inwardNormal[1]),
+                  new THREE.Vector3(cx, defaultY, cz)
+               );
+               const planeHit = new THREE.Vector3();
+               if (raycaster.ray.intersectPlane(wallPlane, planeHit)) {
+                  const uX = (x2 - x1) / wLen;
+                  const uZ = (z2 - z1) / wLen;
+                  const s = (planeHit.x - x1) * uX + (planeHit.z - z1) * uZ;
+                  if (s >= -20 && s <= wLen + 20 && planeHit.y >= -10 && planeHit.y <= 300) {
+                     const sClamped = Math.max(archWidth / 2 + 2, Math.min(wLen - archWidth / 2 - 2, s));
+                     const pX = x1 + sClamped * uX;
+                     const pZ = z1 + sClamped * uZ;
+                     const dist = Math.hypot(planeHit.x - pX, planeHit.z - pZ);
+                     if (dist < minDist) {
+                        minDist = dist;
+                        bestRot = Math.atan2(x1 - x2, z1 - z2);
+                        bestPos = [pX, defaultY, pZ];
+                        bestWallThick = w.thickness || 20;
+                     }
+                  }
                }
             }
+
+            // 2. Si no intersectó planos verticales directos, proyectar desde el suelo
+            if (minDist === Infinity) {
+               for (const w of effectiveWalls) {
+                  const [x1, z1] = w.start;
+                  const [x2, z2] = w.end;
+                  const wLen = Math.hypot(x2 - x1, z2 - z1);
+                  if (wLen < 10) continue;
+                  const uX = (x2 - x1) / wLen;
+                  const uZ = (z2 - z1) / wLen;
+
+                  const s = (rawX - x1) * uX + (rawZ - z1) * uZ;
+                  const sClamped = Math.max(archWidth / 2 + 2, Math.min(wLen - archWidth / 2 - 2, s));
+
+                  const pX = x1 + sClamped * uX;
+                  const pZ = z1 + sClamped * uZ;
+                  const dist = Math.hypot(rawX - pX, rawZ - pZ);
+
+                  if (dist < minDist) {
+                     minDist = dist;
+                     bestRot = Math.atan2(x1 - x2, z1 - z2);
+                     bestPos = [pX, defaultY, pZ];
+                     bestWallThick = w.thickness || 20;
+                  }
+               }
+            }
+
+            setGhostCabinet({ pos: bestPos, rot: bestRot, isColliding: false, wallThickness: bestWallThick } as any);
+            return;
          }
 
          setGhostCabinet({ pos: bestPos, rot: bestRot, isColliding: false });
@@ -487,6 +599,7 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
       });
       setToolMode('select');
     } else if (toolMode === 'move_active' && ghostCabinet && ghostCabinet.pos) {
+        if (ghostCabinet.isColliding) return;
         const activeCabId = useKitchenStore.getState().activeCabinetId;
         const activeArchId = useKitchenStore.getState().activeArchElementId;
         if (activeCabId) {
@@ -539,7 +652,7 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
            }
         }
         setToolMode('select');
-    } else if (toolMode.startsWith('place_') && ghostCabinet) {
+    } else if (toolMode.startsWith('place_') && ghostCabinet && !ghostCabinet.isColliding) {
       const specs = getCabinetSpecsFromTool(toolMode, cabinets);
       const cabType = specs.type;
       const cabVariant = specs.variant;
@@ -696,45 +809,75 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
               previewD = specs.depth;
            }
 
+           const wallThickness = (ghostCabinet as any).wallThickness || 20;
+           const casingDepth = Math.max(previewD, wallThickness + 4);
            const posX = ghostCabinet.pos[0];
            const posY = isArch ? (archType === 'window' ? 90 + previewH / 2 : previewH / 2) : ghostCabinet.pos[1];
            const posZ = ghostCabinet.pos[2];
 
            return (
-             <group position={[posX, posY, posZ]} rotation={[0, ghostCabinet.rot, 0]}>
+             <group position={[posX, posY, posZ]} rotation={[0, isArch ? ghostCabinet.rot + Math.PI / 2 : ghostCabinet.rot, 0]}>
                {isArch ? (
                  <group>
                    {archType === 'door' && (
                      <group>
+                       {/* Marco perimetral abrazando el espesor del muro */}
                        <mesh position={[0, 0, 0]}>
-                         <boxGeometry args={[previewW, previewH, 16]} />
-                         <meshStandardMaterial color="#38bdf8" transparent opacity={0.6} />
-                         <Edges scale={1.0} color="#0284c7" />
+                         <boxGeometry args={[previewW, previewH, casingDepth]} />
+                         <meshStandardMaterial color="#38bdf8" transparent opacity={0.35} side={THREE.DoubleSide} />
+                         <Edges scale={1.0} color="#0284c7" renderOrder={2000} />
                        </mesh>
+                       {/* Tapajuntas frontal cara interior */}
+                       <mesh position={[0, 0, casingDepth / 2 + 0.6]}>
+                         <boxGeometry args={[previewW + 8, previewH + 4, 1.2]} />
+                         <meshStandardMaterial color="#0284c7" transparent opacity={0.7} side={THREE.DoubleSide} />
+                         <Edges scale={1.0} color="#0369a1" renderOrder={2001} />
+                       </mesh>
+                       {/* Tapajuntas trasero cara exterior */}
+                       <mesh position={[0, 0, -casingDepth / 2 - 0.6]}>
+                         <boxGeometry args={[previewW + 8, previewH + 4, 1.2]} />
+                         <meshStandardMaterial color="#0284c7" transparent opacity={0.7} side={THREE.DoubleSide} />
+                         <Edges scale={1.0} color="#0369a1" renderOrder={2001} />
+                       </mesh>
+                       {/* Hoja de puerta interior */}
                        <mesh position={[0, 0, 0]}>
-                         <boxGeometry args={[previewW - 6, previewH - 4, 4]} />
-                         <meshStandardMaterial color="#cbd5e1" transparent opacity={0.7} />
+                         <boxGeometry args={[previewW - 8, previewH - 6, 3.8]} />
+                         <meshStandardMaterial color="#cbd5e1" transparent opacity={0.65} side={THREE.DoubleSide} />
                        </mesh>
                      </group>
                    )}
                    {archType === 'window' && (
                      <group>
+                       {/* Marco perimetral abrazando el espesor del muro */}
                        <mesh position={[0, 0, 0]}>
-                         <boxGeometry args={[previewW, previewH, 16]} />
-                         <meshStandardMaterial color="#38bdf8" transparent opacity={0.6} />
-                         <Edges scale={1.0} color="#0284c7" />
+                         <boxGeometry args={[previewW, previewH, casingDepth]} />
+                         <meshStandardMaterial color="#38bdf8" transparent opacity={0.35} side={THREE.DoubleSide} />
+                         <Edges scale={1.0} color="#0284c7" renderOrder={2000} />
                        </mesh>
-                       <mesh position={[0, 0, 2]}>
-                         <boxGeometry args={[previewW - 12, previewH - 12, 2]} />
-                         <meshStandardMaterial color="#e0f2fe" transparent opacity={0.4} />
+                       {/* Chambrana frontal cara interior */}
+                       <mesh position={[0, 0, casingDepth / 2 + 0.6]}>
+                         <boxGeometry args={[previewW + 8, previewH + 8, 1.2]} />
+                         <meshStandardMaterial color="#0284c7" transparent opacity={0.7} side={THREE.DoubleSide} />
+                         <Edges scale={1.0} color="#0369a1" renderOrder={2001} />
+                       </mesh>
+                       {/* Chambrana trasera cara exterior */}
+                       <mesh position={[0, 0, -casingDepth / 2 - 0.6]}>
+                         <boxGeometry args={[previewW + 8, previewH + 8, 1.2]} />
+                         <meshStandardMaterial color="#0284c7" transparent opacity={0.7} side={THREE.DoubleSide} />
+                         <Edges scale={1.0} color="#0369a1" renderOrder={2001} />
+                       </mesh>
+                       {/* Vidrio central */}
+                       <mesh position={[0, 0, 0]}>
+                         <boxGeometry args={[previewW - 10, previewH - 10, 1.5]} />
+                         <meshStandardMaterial color="#bae6fd" transparent opacity={0.5} side={THREE.DoubleSide} />
                        </mesh>
                      </group>
                    )}
                    {archType === 'pillar' && (
                      <mesh position={[0, 0, 0]}>
                        <boxGeometry args={[previewW, previewH, previewD]} />
-                       <meshStandardMaterial color="#38bdf8" transparent opacity={0.6} />
-                       <Edges scale={1.0} color="#0284c7" />
+                       <meshStandardMaterial color="#38bdf8" transparent opacity={0.6} side={THREE.DoubleSide} />
+                       <Edges scale={1.0} color="#0284c7" renderOrder={2000} />
                      </mesh>
                    )}
                  </group>

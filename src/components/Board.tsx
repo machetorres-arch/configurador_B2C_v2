@@ -114,7 +114,7 @@ export function Board({ position, args, color, textureUrl, materialType, transpa
       isActive = false;
       if (currentTexture) currentTexture.dispose();
     };
-  }, [textureUrl, materialType, args[0], args[1], args[2], position[0], position[1], totalWidth, isFrontPanel, grainDirection]);
+  }, [textureUrl, materialType, args[0], args[1], args[2], position[0], position[1], position[2], totalWidth, isFrontPanel, grainDirection, globalPosition]);
 
   const storeColor = useStore((state) => state.structureColor);
   const isTransparentGlobal = useStore((state) => state.isTransparent);
@@ -179,7 +179,7 @@ export function Board({ position, args, color, textureUrl, materialType, transpa
         const props = idx === trascaraFace ? whiteMatProps : baseMatProps;
         return (
           <meshStandardMaterial 
-            key={`${idx}-${texture ? texture.uuid : 'no-tex'}-${idx === trascaraFace}`}
+            key={`${idx}-${texture ? texture.uuid : (props.color || 'solid')}-${idx === trascaraFace}`}
             attach={`material-${idx}`}
             color={props.color}
             map={props.map}

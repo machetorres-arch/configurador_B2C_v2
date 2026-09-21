@@ -736,6 +736,9 @@ export function Closet() {
           <Board key={`drawer-B-${mod.id}-${d}`} position={[innerCenterX, yBoxCenter, boxZCenter - drawerBoxLength/2 + thickness/2]} args={[boxOuterWidth - thickness*2, sideHeight, thickness]} {...modDrawerInnerProps} />
         );
         drawerElements.push(
+          <Board key={`drawer-F-${mod.id}-${d}`} position={[innerCenterX, yBoxCenter, boxZCenter + drawerBoxLength/2 - thickness/2]} args={[boxOuterWidth - thickness*2, sideHeight, thickness]} {...modDrawerInnerProps} />
+        );
+        drawerElements.push(
           <Board key={`drawer-Bot-${mod.id}-${d}`} position={[innerCenterX, yBoxBase + 0.3, boxZCenter]} args={[boxOuterWidth - thickness*2, 0.3, drawerBoxLength - thickness*2]} color="#dddddd" />
         );
         

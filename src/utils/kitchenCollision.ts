@@ -1169,17 +1169,18 @@ export function resolvePlacement({
       // La rotación asegura que la trasera (-Z) esté contra la pared y el frente (+Z) hacia la habitación
       const wallRot = Math.atan2(nX, nZ);
 
-      // --- COMPROBACIÓN Y RESOLUCIÓN DE COLISIÓN RIGUROSA A LO LARGO DEL MURO ---
-      // 1. Recolectar todos los muebles y pilares que comparten este tramo de muro o nivel de altura
-      const onWallObstacles: { sMin: number; sMax: number; sCenter: number; width: number }[] = [];
+      // --- COMPROBACIÓN Y RESOLUCIÓN DE COLISIÓN RIGUROSA A LO LARGO DEL MURO (1D INTERVAL FREE GAP) ---
+      // 1. Recolectar todos los muebles y pilares que comparten este tramo de muro y solapan verticalmente en altura
+      const rawIntervals: [number, number][] = [];
+      const candYMin = defaultY - cabHeight / 2;
+      const candYMax = defaultY + cabHeight / 2;
+
       for (const otherCab of otherCabinets) {
         // Verificar si se solapan verticalmente (Y)
         const otherYMin = otherCab.position[1] - otherCab.height / 2;
         const otherYMax = otherCab.position[1] + otherCab.height / 2;
-        const candYMin = defaultY - cabHeight / 2;
-        const candYMax = defaultY + cabHeight / 2;
         if (Math.min(otherYMax, candYMax) - Math.max(otherYMin, candYMin) <= 2) {
-          continue; // No chocan en altura (ej. aéreo vs base)
+          continue; // No chocan en altura (ej. aéreo sobre mueble base)
         }
 
         // Comprobar si el otro mueble está cerca de la línea del muro proyectando sus esquinas
@@ -1198,17 +1199,13 @@ export function resolvePlacement({
           if (normProj > nMax) nMax = normProj;
         }
 
+        // Si el mueble intersecta la franja frontal del muro
         if (nMax > 0.5 && nMin < flushDist + cabDepth / 2 + 10) {
-          onWallObstacles.push({
-            sMin: pMin,
-            sMax: pMax,
-            sCenter: (pMin + pMax) / 2,
-            width: pMax - pMin,
-          });
+          rawIntervals.push([Math.max(0, pMin), Math.min(wallLen, pMax)]);
         }
       }
 
-      // Incorporar pilares arquitectónicos como obstáculos físicos en el muro usando sus esquinas exactas
+      // Incorporar pilares arquitectónicos como obstáculos físicos en el muro
       for (const pBox of pillarBoxes) {
         let pMin = Infinity;
         let pMax = -Infinity;
@@ -1225,64 +1222,65 @@ export function resolvePlacement({
         }
 
         if (nMax > 0.5 && nMin < flushDist + cabDepth / 2 + 10) {
-          onWallObstacles.push({
-            sMin: pMin,
-            sMax: pMax,
-            sCenter: (pMin + pMax) / 2,
-            width: pMax - pMin,
-          });
+          rawIntervals.push([Math.max(0, pMin), Math.min(wallLen, pMax)]);
         }
       }
 
-      // Ordenar obstáculos a lo largo del muro (de s=0 a s=wallLen)
-      onWallObstacles.sort((a, b) => a.sCenter - b.sCenter);
+      // 2. Fusionar intervalos solapados o contiguos a lo largo del muro
+      rawIntervals.sort((a, b) => a[0] - b[0]);
+      const mergedIntervals: [number, number][] = [];
+      for (const iv of rawIntervals) {
+        if (mergedIntervals.length === 0) {
+          mergedIntervals.push([iv[0], iv[1]]);
+        } else {
+          const prev = mergedIntervals[mergedIntervals.length - 1];
+          if (iv[0] <= prev[1] + 0.1) {
+            prev[1] = Math.max(prev[1], iv[1]);
+          } else {
+            mergedIntervals.push([iv[0], iv[1]]);
+          }
+        }
+      }
 
-      // Deslizar sClamped para evitar cualquier solapamiento
+      // 3. Extraer vanos libres continuos (Free Gaps) en el muro
+      const freeGaps: [number, number][] = [];
+      let currentEdge = 0.5;
+      for (const [oStart, oEnd] of mergedIntervals) {
+        if (oStart > currentEdge + 0.1) {
+          freeGaps.push([currentEdge, Math.min(wallLen - 0.5, oStart)]);
+        }
+        currentEdge = Math.max(currentEdge, oEnd);
+      }
+      if (currentEdge < wallLen - 0.5 - 0.1) {
+        freeGaps.push([currentEdge, wallLen - 0.5]);
+      }
+
+      // 4. Filtrar vanos donde quepa físicamente el ancho del módulo (capacidad >= cabWidth)
+      const validGaps = freeGaps.filter(([gStart, gEnd]) => (gEnd - gStart) >= cabWidth - 0.05);
+
       let resolvedS = sClamped;
-      const halfW = cabWidth / 2;
+      let hasValidWallSlot = false;
 
-      for (let iter = 0; iter < 4; iter++) {
-        for (const obs of onWallObstacles) {
-          const myMin = resolvedS - halfW;
-          const myMax = resolvedS + halfW;
-          // Hay solapamiento 1D si se cruzan los intervalos
-          if (myMin < obs.sMax - 0.05 && myMax > obs.sMin + 0.05) {
-            const canFitLeft = (obs.sMin - halfW) >= (cabWidth / 2 + 0.5);
-            const canFitRight = (obs.sMax + halfW) <= (wallLen - cabWidth / 2 - 0.5);
+      if (validGaps.length > 0) {
+        hasValidWallSlot = true;
+        let bestGapDist = Infinity;
+        let bestGapS = sClamped;
 
-            if (s >= obs.sCenter) {
-              if (canFitRight || !canFitLeft) {
-                resolvedS = obs.sMax + halfW + 0.02;
-              } else {
-                resolvedS = obs.sMin - halfW - 0.02;
-              }
-            } else {
-              if (canFitLeft || !canFitRight) {
-                resolvedS = obs.sMin - halfW - 0.02;
-              } else {
-                resolvedS = obs.sMax + halfW + 0.02;
-              }
-            }
+        for (const [gStart, gEnd] of validGaps) {
+          const minCenter = gStart + cabWidth / 2;
+          const maxCenter = gEnd - cabWidth / 2;
+          const clampedInGap = Math.max(minCenter, Math.min(maxCenter, s));
+          const dist = Math.abs(s - clampedInGap);
+          if (dist < bestGapDist) {
+            bestGapDist = dist;
+            bestGapS = clampedInGap;
           }
         }
-      }
-
-      // Re-clamp a límites de muro
-      resolvedS = Math.max(cabWidth / 2 + 0.5, Math.min(wallLen - cabWidth / 2 - 0.5, resolvedS));
-
-      // Doble verificación: si tras el re-clamp sigue solapando algún obstáculo, forzar al lado con espacio válido
-      for (const obs of onWallObstacles) {
-        if (resolvedS - halfW < obs.sMax - 0.05 && resolvedS + halfW > obs.sMin + 0.05) {
-          const optRight = obs.sMax + halfW + 0.02;
-          const optLeft = obs.sMin - halfW - 0.02;
-          const rightValid = optRight + halfW <= wallLen - 0.5;
-          const leftValid = optLeft - halfW >= 0.5;
-          if (rightValid && (!leftValid || Math.abs(s - optRight) <= Math.abs(s - optLeft))) {
-            resolvedS = optRight;
-          } else if (leftValid) {
-            resolvedS = optLeft;
-          }
-        }
+        resolvedS = bestGapS;
+      } else {
+        // En caso de muro saturado sin vanos disponibles para este módulo
+        hasValidWallSlot = false;
+        resolvedS = sClamped;
       }
 
       snapPosX = x1 + resolvedS * uX + flushDist * nX;
@@ -1291,52 +1289,7 @@ export function resolvePlacement({
       let snapCandidatePos: [number, number, number] = [snapPosX, defaultY, snapPosZ];
       snapCandidatePos = constrainInsideRoomAndWalls(snapCandidatePos, wallRot, cabWidth, cabDepth, cabHeight, effectiveWalls, roomPoly, architecturalElements);
 
-      // Paso de resolución fina con SAT MTV (Separating Axis Theorem) si queda algún milímetro de intersección
-      for (let iter = 0; iter < 4; iter++) {
-        let hasCol = false;
-        const curBox = getCabinetBox2D({
-          position: snapCandidatePos,
-          width: cabWidth,
-          depth: cabDepth,
-          height: cabHeight,
-          rotation: wallRot,
-          type: cabType,
-        });
-
-        for (const otherCab of otherCabinets) {
-          const otherBox = getCabinetBox2D(otherCab);
-          const col = checkOBBCollision(curBox, otherBox, 0.2);
-          if (col.colliding && col.mtvAxis && col.overlap > 0.1) {
-            hasCol = true;
-            // Proyectar el empuje sobre la dirección del muro (uX, uZ)
-            const dotU = col.mtvAxis[0] * uX + col.mtvAxis[1] * uZ;
-            const pushS = Math.sign(dotU || 1) * col.overlap;
-            snapCandidatePos[0] += pushS * uX;
-            snapCandidatePos[2] += pushS * uZ;
-            snapCandidatePos = constrainInsideRoomAndWalls(snapCandidatePos, wallRot, cabWidth, cabDepth, cabHeight, effectiveWalls, roomPoly, architecturalElements);
-            break;
-          }
-        }
-
-        if (!hasCol) {
-          for (const pBox of pillarBoxes) {
-            const col = checkOBBCollision(curBox, pBox, 0.2);
-            if (col.colliding && col.mtvAxis && col.overlap > 0.1) {
-              hasCol = true;
-              const dotU = col.mtvAxis[0] * uX + col.mtvAxis[1] * uZ;
-              const pushS = Math.sign(dotU || 1) * col.overlap;
-              snapCandidatePos[0] += pushS * uX;
-              snapCandidatePos[2] += pushS * uZ;
-              snapCandidatePos = constrainInsideRoomAndWalls(snapCandidatePos, wallRot, cabWidth, cabDepth, cabHeight, effectiveWalls, roomPoly, architecturalElements);
-              break;
-            }
-          }
-        }
-
-        if (!hasCol) break;
-      }
-
-      // Comprobar si tras todas las resoluciones aún colisiona
+      // Comprobar colisión volumétrica precisa OBB
       const finalCandBox = getCabinetBox2D({
         position: snapCandidatePos,
         width: cabWidth,
@@ -1346,12 +1299,14 @@ export function resolvePlacement({
         type: cabType,
       });
 
-      let isStillColliding = false;
-      for (const otherCab of otherCabinets) {
-        const otherBox = getCabinetBox2D(otherCab);
-        if (checkOBBCollision(finalCandBox, otherBox, 0.4).colliding) {
-          isStillColliding = true;
-          break;
+      let isStillColliding = !hasValidWallSlot;
+      if (!isStillColliding) {
+        for (const otherCab of otherCabinets) {
+          const otherBox = getCabinetBox2D(otherCab);
+          if (checkOBBCollision(finalCandBox, otherBox, 0.4).colliding) {
+            isStillColliding = true;
+            break;
+          }
         }
       }
 
@@ -1367,7 +1322,7 @@ export function resolvePlacement({
       const distToSnap = Math.hypot(mouseX - snapCandidatePos[0], mouseZ - snapCandidatePos[2]);
 
       if (distToSnap < wallSnapThreshold) {
-        if (!bestWallSnap || distToSnap < bestWallSnap.dist) {
+        if (!bestWallSnap || (!isStillColliding && bestWallSnap.isColliding) || (distToSnap < bestWallSnap.dist && isStillColliding === bestWallSnap.isColliding)) {
           bestWallSnap = {
             pos: snapCandidatePos,
             rot: wallRot,
@@ -1551,4 +1506,330 @@ export function getCabinetSpecsFromTool(toolMode: string, existingCabinets: any[
   if (toolMode === 'place_deco_dishwasher') return { type: 'decoration', variant: 'deco_dishwasher', name: 'Lavavajillas FDV 12C', width: 59.8, height: 84.5, depth: 60 };
 
   return { type: 'base', variant: '1_door', name: 'Módulo Base', width: 60, height: 80, depth: 60 };
+}
+
+/**
+ * Busca de forma autónoma la ubicación paramétrica ideal y 100% libre de colisiones
+ * para insertar un nuevo módulo en la cocina (evitando sobreposiciones de Aéreos sobre Torres,
+ * o Despensas sobre Muebles Base).
+ */
+export function findSmartWallPlacement(
+  specs: CabinetToolSpecs,
+  currentCabinets: CabinetType[],
+  walls: any[] = [],
+  roomVertices: { x: number; y: number }[] = [],
+  architecturalElements: ArchitecturalElement[] = []
+): { position: [number, number, number]; rotation: number } {
+  let roomPoly: [number, number][] = [];
+  if (roomVertices && roomVertices.length >= 3) {
+    roomPoly = roomVertices.map((v) => [v.x, v.y]);
+  } else if (walls && walls.length >= 3) {
+    roomPoly = walls.map((w) => [w.start[0], w.start[1]]);
+  }
+
+  let effectiveWalls = walls && walls.length > 0 ? walls : [];
+  if (effectiveWalls.length === 0 && roomVertices && roomVertices.length >= 3) {
+    effectiveWalls = roomVertices.map((v, i, arr) => {
+      const next = arr[(i + 1) % arr.length];
+      return { id: `wall_v_${i}`, start: [v.x, v.y] as [number, number], end: [next.x, next.y] as [number, number], thickness: 20, height: 240 };
+    });
+  }
+
+  const defaultY =
+    specs.defaultY !== undefined
+      ? specs.defaultY
+      : specs.type === 'wall'
+      ? 140 + specs.height / 2
+      : specs.variant === 'deco_hood'
+      ? 145 + specs.height / 2
+      : specs.type === 'decoration' && specs.variant === 'window'
+      ? 90 + specs.height / 2
+      : specs.height / 2;
+
+  // 1. ISLAS
+  if (specs.type === 'island') {
+    const islandCabinets = currentCabinets.filter((c) => c.type === 'island');
+    if (islandCabinets.length > 0) {
+      const lastIsland = islandCabinets[islandCabinets.length - 1];
+      const rot = lastIsland.rotation || 0;
+      const rightDist = (lastIsland.width + specs.width) / 2;
+      const cos = Math.cos(rot);
+      const sin = Math.sin(rot);
+      const targetPos: [number, number, number] = [
+        lastIsland.position[0] + rightDist * cos,
+        defaultY,
+        lastIsland.position[2] + rightDist * sin,
+      ];
+      if (
+        isCandidateValid(
+          { position: targetPos, width: specs.width, depth: specs.depth, height: specs.height, rotation: rot, type: specs.type },
+          currentCabinets,
+          effectiveWalls,
+          null,
+          roomPoly,
+          architecturalElements
+        )
+      ) {
+        return { position: targetPos, rotation: rot };
+      }
+    }
+
+    let centerX = 0;
+    let centerZ = 0;
+    if (roomPoly.length >= 3) {
+      const xs = roomPoly.map((p) => p[0]);
+      const zs = roomPoly.map((p) => p[1]);
+      centerX = Math.round((Math.min(...xs) + Math.max(...xs)) / 2 / 5) * 5;
+      centerZ = Math.round((Math.min(...zs) + Math.max(...zs)) / 2 / 5) * 5;
+    }
+    const result = resolvePlacement({
+      mouseX: centerX,
+      mouseZ: centerZ,
+      cabWidth: specs.width,
+      cabHeight: specs.height,
+      cabDepth: specs.depth,
+      cabType: specs.type,
+      variant: specs.variant,
+      customY: defaultY,
+      preferredRot: 0,
+      cabinets: currentCabinets,
+      walls: effectiveWalls,
+      roomVertices,
+      architecturalElements,
+    });
+    return { position: result.position, rotation: result.rotation };
+  }
+
+  // 2. MUEBLES ADOSADOS A MUROS (BASE, TALL, WALL, DECORATION)
+  if (effectiveWalls.length === 0) {
+    const result = resolvePlacement({
+      mouseX: 0,
+      mouseZ: 0,
+      cabWidth: specs.width,
+      cabHeight: specs.height,
+      cabDepth: specs.depth,
+      cabType: specs.type,
+      variant: specs.variant,
+      customY: defaultY,
+      preferredRot: 0,
+      cabinets: currentCabinets,
+      walls: effectiveWalls,
+      roomVertices,
+      architecturalElements,
+    });
+    return { position: result.position, rotation: result.rotation };
+  }
+
+  // Si es mueble AÉREO y ya existen aéreos, intentar acoplar lateralmente al último aéreo
+  if (specs.type === 'wall') {
+    const existingWalls = currentCabinets.filter((c) => c.type === 'wall');
+    if (existingWalls.length > 0) {
+      const lastWallCab = existingWalls[existingWalls.length - 1];
+      const rot = lastWallCab.rotation || 0;
+      const cos = Math.cos(rot);
+      const sin = Math.sin(rot);
+      const rightDist = (lastWallCab.width + specs.width) / 2;
+
+      // Intentar a la derecha
+      const candRight: [number, number, number] = [
+        lastWallCab.position[0] + rightDist * cos,
+        defaultY,
+        lastWallCab.position[2] + rightDist * sin,
+      ];
+      if (
+        isCandidateValid(
+          { position: candRight, width: specs.width, depth: specs.depth, height: specs.height, rotation: rot, type: specs.type },
+          currentCabinets,
+          effectiveWalls,
+          null,
+          roomPoly,
+          architecturalElements
+        )
+      ) {
+        return { position: candRight, rotation: rot };
+      }
+
+      // Intentar a la izquierda
+      const candLeft: [number, number, number] = [
+        lastWallCab.position[0] - rightDist * cos,
+        defaultY,
+        lastWallCab.position[2] - rightDist * sin,
+      ];
+      if (
+        isCandidateValid(
+          { position: candLeft, width: specs.width, depth: specs.depth, height: specs.height, rotation: rot, type: specs.type },
+          currentCabinets,
+          effectiveWalls,
+          null,
+          roomPoly,
+          architecturalElements
+        )
+      ) {
+        return { position: candLeft, rotation: rot };
+      }
+    }
+  }
+
+  // Buscar el primer vano libre disponible en los muros que contenga espacio para este mueble
+  for (const w of effectiveWalls) {
+    const [x1, z1] = w.start;
+    const [x2, z2] = w.end;
+    const wallLen = Math.hypot(x2 - x1, z2 - z1);
+    if (wallLen < specs.width + 1) continue;
+
+    const uX = (x2 - x1) / wallLen;
+    const uZ = (z2 - z1) / wallLen;
+    const [nX, nZ] = getWallInwardNormal(x1, z1, x2, z2, roomPoly);
+    const wallRot = Math.atan2(nX, nZ);
+    const wallThickness = w.thickness || 20;
+    const flushDist = wallThickness / 2 + specs.depth / 2;
+
+    const rawIntervals: [number, number][] = [];
+    const candYMin = defaultY - specs.height / 2;
+    const candYMax = defaultY + specs.height / 2;
+
+    // Obtener obstáculos verticales en este muro
+    for (const otherCab of currentCabinets) {
+      const otherYMin = otherCab.position[1] - otherCab.height / 2;
+      const otherYMax = otherCab.position[1] + otherCab.height / 2;
+      if (Math.min(otherYMax, candYMax) - Math.max(otherYMin, candYMin) <= 2) {
+        continue;
+      }
+
+      const otherBox = getCabinetBox2D(otherCab);
+      let pMin = Infinity;
+      let pMax = -Infinity;
+      let nMin = Infinity;
+      let nMax = -Infinity;
+
+      for (const c of otherBox.corners) {
+        const sProj = (c[0] - x1) * uX + (c[1] - z1) * uZ;
+        if (sProj < pMin) pMin = sProj;
+        if (sProj > pMax) pMax = sProj;
+        const normProj = (c[0] - x1) * nX + (c[1] - z1) * nZ;
+        if (normProj < nMin) nMin = normProj;
+        if (normProj > nMax) nMax = normProj;
+      }
+
+      if (nMax > 0.5 && nMin < flushDist + specs.depth / 2 + 10) {
+        rawIntervals.push([Math.max(0, pMin), Math.min(wallLen, pMax)]);
+      }
+    }
+
+    // Incorporar pilares
+    const pillarBoxes = getPillarsBox2D(architecturalElements, effectiveWalls, roomPoly);
+    for (const pBox of pillarBoxes) {
+      let pMin = Infinity;
+      let pMax = -Infinity;
+      let nMin = Infinity;
+      let nMax = -Infinity;
+
+      for (const c of pBox.corners) {
+        const sProj = (c[0] - x1) * uX + (c[1] - z1) * uZ;
+        if (sProj < pMin) pMin = sProj;
+        if (sProj > pMax) pMax = sProj;
+        const normProj = (c[0] - x1) * nX + (c[1] - z1) * nZ;
+        if (normProj < nMin) nMin = normProj;
+        if (normProj > nMax) nMax = normProj;
+      }
+
+      if (nMax > 0.5 && nMin < flushDist + specs.depth / 2 + 10) {
+        rawIntervals.push([Math.max(0, pMin), Math.min(wallLen, pMax)]);
+      }
+    }
+
+    // Fusionar intervalos
+    rawIntervals.sort((a, b) => a[0] - b[0]);
+    const mergedIntervals: [number, number][] = [];
+    for (const iv of rawIntervals) {
+      if (mergedIntervals.length === 0) {
+        mergedIntervals.push([iv[0], iv[1]]);
+      } else {
+        const prev = mergedIntervals[mergedIntervals.length - 1];
+        if (iv[0] <= prev[1] + 0.1) {
+          prev[1] = Math.max(prev[1], iv[1]);
+        } else {
+          mergedIntervals.push([iv[0], iv[1]]);
+        }
+      }
+    }
+
+    // Extraer vanos libres
+    const freeGaps: [number, number][] = [];
+    let currentEdge = 0.5;
+    for (const [oStart, oEnd] of mergedIntervals) {
+      if (oStart > currentEdge + 0.1) {
+        freeGaps.push([currentEdge, Math.min(wallLen - 0.5, oStart)]);
+      }
+      currentEdge = Math.max(currentEdge, oEnd);
+    }
+    if (currentEdge < wallLen - 0.5 - 0.1) {
+      freeGaps.push([currentEdge, wallLen - 0.5]);
+    }
+
+    // Filtrar vanos válidos
+    const validGaps = freeGaps.filter(([gStart, gEnd]) => (gEnd - gStart) >= specs.width - 0.05);
+
+    if (validGaps.length > 0) {
+      // Para muebles aéreos, si hay muebles base en este muro, alinear con el inicio de los muebles base
+      let preferredS = validGaps[0][0] + specs.width / 2;
+      if (specs.type === 'wall') {
+        const basesOnWall = currentCabinets.filter((c) => c.type === 'base');
+        let minBaseS = Infinity;
+        for (const b of basesOnWall) {
+          const sB = (b.position[0] - x1) * uX + (b.position[2] - z1) * uZ;
+          const leftB = sB - b.width / 2;
+          if (leftB < minBaseS) minBaseS = leftB;
+        }
+
+        if (minBaseS < Infinity) {
+          for (const [gStart, gEnd] of validGaps) {
+            if (minBaseS >= gStart - 0.1 && minBaseS + specs.width <= gEnd + 0.1) {
+              preferredS = Math.max(gStart + specs.width / 2, Math.min(gEnd - specs.width / 2, minBaseS + specs.width / 2));
+              break;
+            }
+          }
+        }
+      }
+
+      const candX = x1 + preferredS * uX + flushDist * nX;
+      const candZ = z1 + preferredS * uZ + flushDist * nZ;
+      const candPos: [number, number, number] = [candX, defaultY, candZ];
+
+      if (
+        isCandidateValid(
+          { position: candPos, width: specs.width, depth: specs.depth, height: specs.height, rotation: wallRot, type: specs.type },
+          currentCabinets,
+          effectiveWalls,
+          null,
+          roomPoly,
+          architecturalElements
+        )
+      ) {
+        return { position: candPos, rotation: wallRot };
+      }
+    }
+  }
+
+  // Fallback con resolvePlacement
+  const firstWall = effectiveWalls[0];
+  const [wx1, wz1] = firstWall.start;
+  const [wx2, wz2] = firstWall.end;
+  const fallbackResult = resolvePlacement({
+    mouseX: (wx1 + wx2) / 2,
+    mouseZ: (wz1 + wz2) / 2,
+    cabWidth: specs.width,
+    cabHeight: specs.height,
+    cabDepth: specs.depth,
+    cabType: specs.type,
+    variant: specs.variant,
+    customY: defaultY,
+    preferredRot: 0,
+    cabinets: currentCabinets,
+    walls: effectiveWalls,
+    roomVertices,
+    architecturalElements,
+  });
+
+  return { position: fallbackResult.position, rotation: fallbackResult.rotation };
 }

@@ -55,7 +55,7 @@ export function ArchitecturalDoor({
           receiveShadow
         >
           <boxGeometry args={[frameThick, height, frameDepth]} />
-          <meshStandardMaterial color={frameColor} roughness={0.35} metalness={0.05} />
+          <meshStandardMaterial color={frameColor} roughness={0.35} metalness={0.05} side={THREE.DoubleSide} />
           <Edges scale={1} threshold={20} color={isSelected ? '#0284c7' : '#cbd5e1'} />
         </mesh>
 
@@ -66,7 +66,7 @@ export function ArchitecturalDoor({
           receiveShadow
         >
           <boxGeometry args={[frameThick, height, frameDepth]} />
-          <meshStandardMaterial color={frameColor} roughness={0.35} metalness={0.05} />
+          <meshStandardMaterial color={frameColor} roughness={0.35} metalness={0.05} side={THREE.DoubleSide} />
           <Edges scale={1} threshold={20} color={isSelected ? '#0284c7' : '#cbd5e1'} />
         </mesh>
 
@@ -77,7 +77,7 @@ export function ArchitecturalDoor({
           receiveShadow
         >
           <boxGeometry args={[width, frameThick, frameDepth]} />
-          <meshStandardMaterial color={frameColor} roughness={0.35} metalness={0.05} />
+          <meshStandardMaterial color={frameColor} roughness={0.35} metalness={0.05} side={THREE.DoubleSide} />
           <Edges scale={1} threshold={20} color={isSelected ? '#0284c7' : '#cbd5e1'} />
         </mesh>
       </group>
@@ -90,19 +90,19 @@ export function ArchitecturalDoor({
         {/* Tapajuntas Izquierdo */}
         <mesh position={[-width / 2 - casingWidth / 2 + frameThick, 0, 0]} castShadow>
           <boxGeometry args={[casingWidth, height + casingWidth, casingThick]} />
-          <meshStandardMaterial color={casingColor} roughness={0.4} metalness={0.05} />
+          <meshStandardMaterial color={casingColor} roughness={0.4} metalness={0.05} side={THREE.DoubleSide} />
           <Edges scale={1} threshold={20} color="#cbd5e1" />
         </mesh>
         {/* Tapajuntas Derecho */}
         <mesh position={[width / 2 + casingWidth / 2 - frameThick, 0, 0]} castShadow>
           <boxGeometry args={[casingWidth, height + casingWidth, casingThick]} />
-          <meshStandardMaterial color={casingColor} roughness={0.4} metalness={0.05} />
+          <meshStandardMaterial color={casingColor} roughness={0.4} metalness={0.05} side={THREE.DoubleSide} />
           <Edges scale={1} threshold={20} color="#cbd5e1" />
         </mesh>
         {/* Tapajuntas Superior */}
         <mesh position={[0, height / 2 + casingWidth / 2 - frameThick / 2, 0]} castShadow>
           <boxGeometry args={[width + 2 * casingWidth - 2 * frameThick, casingWidth, casingThick]} />
-          <meshStandardMaterial color={casingColor} roughness={0.4} metalness={0.05} />
+          <meshStandardMaterial color={casingColor} roughness={0.4} metalness={0.05} side={THREE.DoubleSide} />
           <Edges scale={1} threshold={20} color="#cbd5e1" />
         </mesh>
       </group>
@@ -112,19 +112,19 @@ export function ArchitecturalDoor({
         {/* Tapajuntas Izquierdo */}
         <mesh position={[-width / 2 - casingWidth / 2 + frameThick, 0, 0]} castShadow>
           <boxGeometry args={[casingWidth, height + casingWidth, casingThick]} />
-          <meshStandardMaterial color={casingColor} roughness={0.4} metalness={0.05} />
+          <meshStandardMaterial color={casingColor} roughness={0.4} metalness={0.05} side={THREE.DoubleSide} />
           <Edges scale={1} threshold={20} color="#cbd5e1" />
         </mesh>
         {/* Tapajuntas Derecho */}
         <mesh position={[width / 2 + casingWidth / 2 - frameThick, 0, 0]} castShadow>
           <boxGeometry args={[casingWidth, height + casingWidth, casingThick]} />
-          <meshStandardMaterial color={casingColor} roughness={0.4} metalness={0.05} />
+          <meshStandardMaterial color={casingColor} roughness={0.4} metalness={0.05} side={THREE.DoubleSide} />
           <Edges scale={1} threshold={20} color="#cbd5e1" />
         </mesh>
         {/* Tapajuntas Superior */}
         <mesh position={[0, height / 2 + casingWidth / 2 - frameThick / 2, 0]} castShadow>
           <boxGeometry args={[width + 2 * casingWidth - 2 * frameThick, casingWidth, casingThick]} />
-          <meshStandardMaterial color={casingColor} roughness={0.4} metalness={0.05} />
+          <meshStandardMaterial color={casingColor} roughness={0.4} metalness={0.05} side={THREE.DoubleSide} />
           <Edges scale={1} threshold={20} color="#cbd5e1" />
         </mesh>
       </group>
@@ -140,6 +140,7 @@ export function ArchitecturalDoor({
             color={doorPanelColor}
             roughness={0.45}
             metalness={0.08}
+            side={THREE.DoubleSide}
           />
           <Edges scale={1} threshold={15} color="#78350f" />
         </mesh>

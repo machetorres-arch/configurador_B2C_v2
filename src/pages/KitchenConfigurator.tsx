@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useKitchenStore, CabinetType, getCabinetLabel } from '../store/kitchenStore';
 import { useStore } from '../store';
 import { TexturesSection } from '../components/TexturesSection';
@@ -19,7 +19,7 @@ import { KitchenB2BQuoteModal } from '../components/kitchen/KitchenB2BQuoteModal
 import { calculatePolygonArea } from '../utils/roomGeometry';
 import { KitchenMepPanel } from '../components/kitchen/KitchenMepPanel';
 import { detectMepClashes } from '../utils/mepClashDetection';
-import { resolvePlacement, getCabinetSpecsFromTool } from '../utils/kitchenCollision';
+import { resolvePlacement, getCabinetSpecsFromTool, findSmartWallPlacement } from '../utils/kitchenCollision';
 import { ArrowLeft, Box, Square, Move3D, PenTool, LayoutGrid, Trash2, RotateCw, Undo2, Redo2, Flame, Refrigerator, Flower2, Utensils, Info, Sparkles, Maximize2, Layers, Palette, ListOrdered, Save, Columns, Sliders, Sun, Moon, Wine, Wrench, DollarSign, ChevronDown, ChevronRight } from 'lucide-react';
 import { HandlesSection } from '../components/kitchen/HandlesSection';
 import { HANDLE_CATALOG } from '../types/handle';
@@ -97,7 +97,7 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
 
   const isLight = theme === 'light';
 
-  const { viewMode, setViewMode, toolMode, setToolMode, cabinets, addCabinet, activeCabinetId, updateCabinet, removeCabinet, setActiveCabinet, applyGlobalTexture, showSocle, setShowSocle, roomConfig, setRoomPlannerOpen, architecturalElements, activeArchElementId, addArchitecturalElement, updateArchitecturalElement, removeArchitecturalElement, setActiveArchElement, golaSystem, setGolaSystem, countertopConfig, setCountertopConfig, qstoneCatalog, islandBackConfig, setIslandBackConfig, mepPoints, handleConfig, undo, redo, canUndo, canRedo } = useKitchenStore();
+  const { viewMode, setViewMode, toolMode, setToolMode, cabinets, addCabinet, activeCabinetId, updateCabinet, removeCabinet, setActiveCabinet, applyGlobalTexture, showSocle, setShowSocle, socleFinish, setSocleFinish, roomConfig, setRoomPlannerOpen, walls, architecturalElements, activeArchElementId, addArchitecturalElement, updateArchitecturalElement, removeArchitecturalElement, setActiveArchElement, golaSystem, setGolaSystem, countertopConfig, setCountertopConfig, qstoneCatalog, islandBackConfig, setIslandBackConfig, mepPoints, handleConfig, undo, redo, canUndo, canRedo } = useKitchenStore();
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -115,11 +115,19 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
   }, [undo, redo]);
   const [openAccordions, setOpenAccordions] = useState<Record<string, boolean>>({
     gola: false,
+    socle: false,
     handles: true,
     tapacantos: false,
     assembly: false,
     view: false,
   });
+
+  const effectiveWalls = useMemo(() => {
+    return walls && walls.length > 0 ? walls : (roomConfig?.vertices && roomConfig.vertices.length >= 3 ? roomConfig.vertices.map((v, i, arr) => {
+      const next = arr[(i + 1) % arr.length];
+      return { id: `wall_v_${i}`, start: [v.x, v.y] as [number, number], end: [next.x, next.y] as [number, number], thickness: 20, height: 240 };
+    }) : []);
+  }, [walls, roomConfig]);
 
   const handleInsertModule = (tool: string) => {
     setViewMode('3d');
@@ -139,74 +147,13 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
     const specs = getCabinetSpecsFromTool(tool, currentCabinets);
     const newId = `cab_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
 
-    let targetX = 0;
-    let targetZ = 0;
-    let preferredRot = 0;
-
-    if (specs.type === 'island') {
-      const islandCabinets = currentCabinets.filter(c => c.type === 'island');
-      if (islandCabinets.length === 0) {
-        if (state.roomConfig?.vertices && state.roomConfig.vertices.length >= 3) {
-          const xs = state.roomConfig.vertices.map(v => v.x);
-          const ys = state.roomConfig.vertices.map(v => v.y);
-          targetX = Math.round((Math.min(...xs) + Math.max(...xs)) / 2 / 5) * 5;
-          targetZ = Math.round((Math.min(...ys) + Math.max(...ys)) / 2 / 5) * 5;
-        } else {
-          targetX = 0;
-          targetZ = 0;
-        }
-        preferredRot = 0;
-      } else {
-        const lastIsland = islandCabinets[islandCabinets.length - 1];
-        preferredRot = lastIsland.rotation || 0;
-        const rightDist = (lastIsland.width + specs.width) / 2;
-        const cos = Math.cos(preferredRot);
-        const sin = Math.sin(preferredRot);
-        targetX = Math.round((lastIsland.position[0] + rightDist * cos) / 5) * 5;
-        targetZ = Math.round((lastIsland.position[2] + rightDist * sin) / 5) * 5;
-      }
-    } else {
-      const candidateLastCabs = specs.type === 'wall'
-        ? currentCabinets.filter(c => c.type === 'wall')
-        : currentCabinets.filter(c => c.type === 'base' || c.type === 'tall' || c.type === 'decoration');
-      const lastCab = candidateLastCabs.slice(-1)[0] || currentCabinets.filter(c => c.type !== 'island').slice(-1)[0];
-
-      if (lastCab) {
-        preferredRot = lastCab.rotation || 0;
-        const rightDist = (lastCab.width + specs.width) / 2;
-        const cos = Math.cos(preferredRot);
-        const sin = Math.sin(preferredRot);
-        targetX = lastCab.position[0] + rightDist * cos;
-        targetZ = lastCab.position[2] + rightDist * sin;
-      } else if (effectiveWalls.length > 0) {
-        const w = effectiveWalls[0];
-        const [x1, z1] = w.start;
-        const [x2, z2] = w.end;
-        const wLen = Math.hypot(x2 - x1, z2 - z1);
-        preferredRot = Math.atan2(x1 - x2, z1 - z2);
-        const uX = (x2 - x1) / (wLen || 1);
-        const uZ = (z2 - z1) / (wLen || 1);
-        const offset = Math.min(wLen / 2, specs.width / 2 + 10);
-        targetX = x1 + offset * uX;
-        targetZ = z1 + offset * uZ;
-      }
-    }
-
-    const placement = resolvePlacement({
-      mouseX: targetX,
-      mouseZ: targetZ,
-      cabWidth: specs.width,
-      cabHeight: specs.height,
-      cabDepth: specs.depth,
-      cabType: specs.type,
-      variant: specs.variant,
-      customY: specs.defaultY,
-      preferredRot,
-      cabinets: currentCabinets,
-      walls: effectiveWalls,
-      roomVertices: state.roomConfig?.vertices,
-      architecturalElements: state.architecturalElements,
-    });
+    const placement = findSmartWallPlacement(
+      specs,
+      currentCabinets,
+      effectiveWalls,
+      state.roomConfig?.vertices,
+      state.architecturalElements
+    );
 
     state.addCabinet({
       id: newId,
@@ -326,6 +273,7 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
 
     if (!activeCabinetId) return;
     const part = globalState.targetPart;
+    const activeCabinet = cabinets.find((c) => c.id === activeCabinetId);
     if (part === 'all') {
       updateCabinet(activeCabinetId, {
         structureColor: url, structureMaterial: mat as any,
@@ -335,6 +283,8 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
         shelfColor: url, shelfMaterial: mat as any,
         backColor: url, backMaterial: mat as any,
         socleColor: url, socleMaterial: mat as any,
+        leftCoverPanel: activeCabinet?.leftCoverPanel?.enabled ? { ...activeCabinet.leftCoverPanel, color: url, material: mat as any } : undefined,
+        rightCoverPanel: activeCabinet?.rightCoverPanel?.enabled ? { ...activeCabinet.rightCoverPanel, color: url, material: mat as any } : undefined,
       });
     } else if (part === 'structure') updateCabinet(activeCabinetId, { structureColor: url, structureMaterial: mat as any });
     else if (part === 'doors') updateCabinet(activeCabinetId, { doorColor: url, doorMaterial: mat as any });
@@ -343,6 +293,32 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
     else if (part === 'shelves') updateCabinet(activeCabinetId, { shelfColor: url, shelfMaterial: mat as any });
     else if (part === 'back') updateCabinet(activeCabinetId, { backColor: url, backMaterial: mat as any });
     else if (part === 'socle') updateCabinet(activeCabinetId, { socleColor: url, socleMaterial: mat as any });
+    else if (part === 'coverPanels') {
+      updateCabinet(activeCabinetId, {
+        leftCoverPanel: activeCabinet?.leftCoverPanel?.enabled ? { ...activeCabinet.leftCoverPanel, color: url, material: mat as any } : undefined,
+        rightCoverPanel: activeCabinet?.rightCoverPanel?.enabled ? { ...activeCabinet.rightCoverPanel, color: url, material: mat as any } : undefined,
+      });
+    } else if (part === 'leftCoverPanel') {
+      updateCabinet(activeCabinetId, {
+        leftCoverPanel: {
+          enabled: true,
+          extendToFloor: activeCabinet?.leftCoverPanel?.extendToFloor ?? false,
+          color: url,
+          material: mat as any,
+          thickness: activeCabinet?.leftCoverPanel?.thickness,
+        }
+      });
+    } else if (part === 'rightCoverPanel') {
+      updateCabinet(activeCabinetId, {
+        rightCoverPanel: {
+          enabled: true,
+          extendToFloor: activeCabinet?.rightCoverPanel?.extendToFloor ?? false,
+          color: url,
+          material: mat as any,
+          thickness: activeCabinet?.rightCoverPanel?.thickness,
+        }
+      });
+    }
   };
 
   const handleGlobalTextureSelect = (url: string, mat: string) => {
@@ -1030,35 +1006,91 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                   </div>
 
                   <div className="flex flex-col gap-3 pt-2">
-                    <SliderControl
-                      isLight={isLight}
-                      label="Ancho (cm)"
-                      value={activeArchElement.width}
-                      min={30}
-                      max={300}
-                      step={5}
-                      onChange={(val) => updateArchitecturalElement(activeArchElement.id, { width: val })}
-                    />
-                    <SliderControl
-                      isLight={isLight}
-                      label="Alto (cm)"
-                      value={activeArchElement.height}
-                      min={30}
-                      max={300}
-                      step={5}
-                      onChange={(val) => updateArchitecturalElement(activeArchElement.id, { height: val })}
-                    />
+                    {(() => {
+                      const currentArchWall = effectiveWalls.find(w => w.id === activeArchElement.wallId || `wall_${w.id}` === activeArchElement.wallId || w.id === `wall_${activeArchElement.wallId}`) || effectiveWalls[0];
+                      const currentArchWallLen = currentArchWall ? Math.hypot(currentArchWall.end[0] - currentArchWall.start[0], currentArchWall.end[1] - currentArchWall.start[1]) : 300;
+                      const maxArchOffset = Math.max(20, Math.floor(currentArchWallLen / 2 - activeArchElement.width / 2 - 2));
 
-                    {/* Ajuste milimétrico de posición en el muro */}
-                    <SliderControl
-                      isLight={isLight}
-                      label="Posición en Muro (Desplazamiento cm)"
-                      value={Math.round(activeArchElement.offset || 0)}
-                      min={-250}
-                      max={250}
-                      step={1}
-                      onChange={(val) => updateArchitecturalElement(activeArchElement.id, { offset: val })}
-                    />
+                      return (
+                        <>
+                          {effectiveWalls.length > 0 && (
+                            <div className="flex flex-col gap-1.5">
+                              <div className={`text-[10px] uppercase tracking-wider font-bold ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
+                                Muro Asignado (Clic para reubicar)
+                              </div>
+                              <div className="grid grid-cols-2 gap-1.5">
+                                {effectiveWalls.map((w, idx) => {
+                                  const isThisWall = currentArchWall?.id === w.id;
+                                  const wLength = Math.round(Math.hypot(w.end[0] - w.start[0], w.end[1] - w.start[1]));
+                                  return (
+                                    <button
+                                      key={w.id || idx}
+                                      type="button"
+                                      onClick={() => {
+                                        const [x1, z1] = w.start;
+                                        const [x2, z2] = w.end;
+                                        const len = Math.hypot(x2 - x1, z2 - z1);
+                                        const uX = (x2 - x1) / len;
+                                        const uZ = (z2 - z1) / len;
+                                        const pX = x1 + (len / 2) * uX;
+                                        const pZ = z1 + (len / 2) * uZ;
+                                        const rot = Math.atan2(x1 - x2, z1 - z2);
+                                        updateArchitecturalElement(activeArchElement.id, {
+                                          wallId: w.id,
+                                          offset: 0,
+                                          position: [pX, activeArchElement.elevation + activeArchElement.height / 2, pZ],
+                                          rotation: rot,
+                                        });
+                                      }}
+                                      className={`py-1.5 px-2 rounded text-xs font-semibold flex items-center justify-between border transition-all cursor-pointer ${
+                                        isThisWall
+                                          ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
+                                          : isLight
+                                          ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+                                          : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                                      }`}
+                                    >
+                                      <span>Muro {idx + 1}</span>
+                                      <span className="text-[10px] opacity-75">{wLength} cm</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          <SliderControl
+                            isLight={isLight}
+                            label="Ancho (cm)"
+                            value={activeArchElement.width}
+                            min={30}
+                            max={300}
+                            step={5}
+                            onChange={(val) => updateArchitecturalElement(activeArchElement.id, { width: val })}
+                          />
+                          <SliderControl
+                            isLight={isLight}
+                            label="Alto (cm)"
+                            value={activeArchElement.height}
+                            min={30}
+                            max={300}
+                            step={5}
+                            onChange={(val) => updateArchitecturalElement(activeArchElement.id, { height: val })}
+                          />
+
+                          {/* Ajuste milimétrico de posición en el muro */}
+                          <SliderControl
+                            isLight={isLight}
+                            label="Posición en Muro (Desplazamiento cm)"
+                            value={Math.round(activeArchElement.offset || 0)}
+                            min={-maxArchOffset}
+                            max={maxArchOffset}
+                            step={1}
+                            onChange={(val) => updateArchitecturalElement(activeArchElement.id, { offset: val })}
+                          />
+                        </>
+                      );
+                    })()}
 
                     {activeArchElement.type === 'window' && (
                       <SliderControl
@@ -1170,6 +1202,46 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                       <ToggleBtn isLight={isLight} active={globalState.isTransparent} onClick={globalState.toggleTransparent} label="Transparente" />
                       <ToggleBtn isLight={isLight} active={showSocle} onClick={() => setShowSocle(!showSocle)} label="Zócalo" />
                     </div>
+
+                    {showSocle && (
+                      <div className={`flex flex-col gap-1.5 p-2.5 rounded-lg border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-white/[0.02] border-white/10'}`}>
+                        <div className="flex items-center justify-between">
+                          <label className={isLight ? "text-[11px] uppercase tracking-wider text-slate-700 font-bold" : "text-[11px] uppercase tracking-wider text-slate-300 font-bold"}>Acabado de Zócalo</label>
+                          <span className="text-[10px] font-semibold text-orange-500">10 cm</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setSocleFinish('aluminum')}
+                            className={`py-1.5 px-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${
+                              socleFinish === 'aluminum'
+                                ? 'bg-orange-500 text-black shadow-sm'
+                                : isLight
+                                  ? 'bg-white text-slate-800 border border-slate-300 hover:border-orange-500'
+                                  : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50'
+                            }`}
+                          >
+                            <span className="w-2.5 h-2.5 rounded-full bg-slate-300 border border-slate-400 shrink-0" />
+                            Gris Satinado
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSocleFinish('black')}
+                            className={`py-1.5 px-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${
+                              socleFinish === 'black'
+                                ? 'bg-orange-500 text-black shadow-sm'
+                                : isLight
+                                  ? 'bg-white text-slate-800 border border-slate-300 hover:border-orange-500'
+                                  : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50'
+                            }`}
+                          >
+                            <span className="w-2.5 h-2.5 rounded-full bg-zinc-900 border border-zinc-700 shrink-0" />
+                            Negro Mate
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
                     <div className={`flex flex-col gap-1.5 pt-2 border-t ${isLight ? 'border-slate-200' : 'border-white/10'}`}>
                       <label className={isLight ? "text-xs uppercase tracking-wider text-slate-700 font-bold" : labelClass}>Sistema Riel Gola (Provelcar)</label>
                       <div className="grid grid-cols-3 gap-1.5">
@@ -1187,7 +1259,7 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                         </button>
                         <button
                           onClick={() => setGolaSystem('aluminum')}
-                          className={`py-1.5 px-1 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-colors cursor-pointer ${
+                          className={`py-1.5 px-1 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-colors cursor-pointer flex items-center justify-center gap-1 ${
                             golaSystem === 'aluminum'
                               ? 'bg-orange-500 text-black shadow-sm'
                               : isLight
@@ -1195,11 +1267,12 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                                 : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50'
                           }`}
                         >
-                          Aluminio
+                          <span className="w-2 h-2 rounded-full bg-slate-300 border border-slate-400 shrink-0" />
+                          Gris Satin
                         </button>
                         <button
                           onClick={() => setGolaSystem('black')}
-                          className={`py-1.5 px-1 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-colors cursor-pointer ${
+                          className={`py-1.5 px-1 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-colors cursor-pointer flex items-center justify-center gap-1 ${
                             golaSystem === 'black'
                               ? 'bg-orange-500 text-black shadow-sm'
                               : isLight
@@ -1207,7 +1280,8 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                                 : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50'
                           }`}
                         >
-                          Negro Mate
+                          <span className="w-2 h-2 rounded-full bg-zinc-900 border border-zinc-700 shrink-0" />
+                          Negro
                         </button>
                       </div>
                     </div>
@@ -1297,7 +1371,7 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                       ? (isLight ? 'bg-orange-100 text-orange-800 border-orange-200' : 'bg-orange-500/20 text-orange-400 border-orange-500/30')
                       : (isLight ? 'bg-slate-100 text-slate-600 border-slate-200' : 'bg-white/5 text-slate-400 border-white/10')
                   }`}>
-                    {golaSystem === 'none' ? 'Sin Gola' : golaSystem === 'black' ? 'Negro Mate' : 'Aluminio'}
+                    {golaSystem === 'none' ? 'Sin Gola' : golaSystem === 'black' ? 'Negro Mate' : 'Gris Satinado'}
                   </span>
                   {openAccordions.gola ? (
                     <ChevronDown size={16} className={isLight ? "text-orange-600" : "text-orange-400"} />
@@ -1312,14 +1386,14 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                   <div className="flex flex-col gap-2">
                     <div className="grid grid-cols-3 gap-1.5">
                       {[
-                        { id: 'none', label: 'Sin Gola' },
-                        { id: 'aluminum', label: 'Aluminio' },
-                        { id: 'black', label: 'Negro Mate' },
+                        { id: 'none', label: 'Sin Gola', colorDot: null },
+                        { id: 'aluminum', label: 'Gris Satinado', colorDot: 'bg-slate-300 border-slate-400' },
+                        { id: 'black', label: 'Negro Mate', colorDot: 'bg-zinc-900 border-zinc-700' },
                       ].map((opt) => (
                         <button
                           key={opt.id}
                           onClick={() => setGolaSystem(opt.id as any)}
-                          className={`py-2 px-1 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer text-center ${
+                          className={`py-2 px-1 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer flex flex-col items-center justify-center gap-1 ${
                             golaSystem === opt.id
                               ? 'bg-orange-500 text-black shadow-[0_0_10px_rgba(249,115,22,0.25)]'
                               : isLight
@@ -1327,15 +1401,124 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                                 : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50'
                           }`}
                         >
-                          {opt.label}
+                          {opt.colorDot && (
+                            <span className={`w-2.5 h-2.5 rounded-full border ${opt.colorDot}`} />
+                          )}
+                          <span>{opt.label}</span>
                         </button>
                       ))}
                     </div>
                     <p className={`text-[11px] leading-relaxed mt-1 ${isLight ? 'text-slate-600 font-medium' : 'text-slate-400'}`}>
                       {golaSystem === 'none'
                         ? 'Los muebles se fabrican con tiradores tradicionales estándar y frentes a cota completa.'
-                        : `Perfil Provelcar x175 (L superior -35mm) y x176 (C intermedio 40mm) en acabado ${golaSystem === 'black' ? 'Negro Mate' : 'Aluminio Anodizado'}. Descuenta alturas automáticamente y suprime tiradores convencionales.`}
+                        : `Perfil Provelcar x175 (L superior -35mm) y x176 (C intermedio 40mm) en acabado ${golaSystem === 'black' ? 'Negro Mate Anodizado' : 'Aluminio Gris Satinado / Claro'}. Descuenta alturas automáticamente y suprime tiradores convencionales.`}
                     </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 1.1 Zócalo & Perfilería de Piso */}
+            <div className={`rounded-xl border overflow-hidden transition-all ${
+              isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-white/[0.03] border-white/10'
+            }`}>
+              <button
+                type="button"
+                onClick={() => toggleAccordion('socle')}
+                className={`w-full flex items-center justify-between p-3 text-left transition-colors cursor-pointer select-none ${
+                  openAccordions.socle 
+                    ? (isLight ? 'bg-orange-50/50' : 'bg-white/[0.04]') 
+                    : (isLight ? 'hover:bg-slate-50' : 'hover:bg-white/[0.02]')
+                }`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className={`p-1.5 rounded-lg shrink-0 ${
+                    openAccordions.socle 
+                      ? 'bg-orange-500 text-black shadow-sm' 
+                      : (isLight ? 'bg-slate-100 text-slate-700' : 'bg-white/10 text-slate-300')
+                  }`}>
+                    <Layers size={14} />
+                  </div>
+                  <span className={`text-xs font-bold uppercase tracking-wider truncate ${
+                    openAccordions.socle 
+                      ? (isLight ? 'text-orange-600' : 'text-orange-400') 
+                      : (isLight ? 'text-slate-800' : 'text-slate-200')
+                  }`}>
+                    Zócalo & Perfilería
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0 ml-2">
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                    openAccordions.socle
+                      ? (isLight ? 'bg-orange-100 text-orange-800 border-orange-200' : 'bg-orange-500/20 text-orange-400 border-orange-500/30')
+                      : (isLight ? 'bg-slate-100 text-slate-600 border-slate-200' : 'bg-white/5 text-slate-400 border-white/10')
+                  }`}>
+                    {!showSocle ? 'Sin Zócalo' : socleFinish === 'black' ? 'Negro Mate (10cm)' : 'Gris Satinado (10cm)'}
+                  </span>
+                  {openAccordions.socle ? (
+                    <ChevronDown size={16} className={isLight ? "text-orange-600" : "text-orange-400"} />
+                  ) : (
+                    <ChevronRight size={16} className={isLight ? "text-slate-400" : "text-slate-500"} />
+                  )}
+                </div>
+              </button>
+
+              {openAccordions.socle && (
+                <div className={`p-3.5 border-t ${isLight ? 'border-slate-100 bg-slate-50/40' : 'border-white/5 bg-black/10'}`}>
+                  <div className="flex flex-col gap-3">
+                    <div className="flex items-center justify-between">
+                      <span className={`text-xs font-bold ${isLight ? 'text-slate-800' : 'text-slate-200'}`}>
+                        Mostrar Zócalo Continuo
+                      </span>
+                      <ToggleBtn
+                        isLight={isLight}
+                        active={showSocle}
+                        onClick={() => setShowSocle(!showSocle)}
+                        label={showSocle ? "Activo (10cm)" : "Oculto"}
+                      />
+                    </div>
+
+                    {showSocle && (
+                      <div className="flex flex-col gap-2 pt-2 border-t border-slate-200 dark:border-white/10">
+                        <label className={isLight ? "text-xs uppercase tracking-wider text-slate-700 font-bold" : labelClass}>
+                          Acabado de Zócalo & Conectores
+                        </label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setSocleFinish('aluminum')}
+                            className={`py-2 px-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer flex items-center justify-center gap-2 ${
+                              socleFinish === 'aluminum'
+                                ? 'bg-orange-500 text-black shadow-sm'
+                                : isLight
+                                  ? 'bg-white text-slate-800 border border-slate-300 hover:border-orange-500'
+                                  : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50'
+                            }`}
+                          >
+                            <span className="w-3 h-3 rounded-full bg-slate-300 border border-slate-400 shrink-0" />
+                            Gris Satinado
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSocleFinish('black')}
+                            className={`py-2 px-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer flex items-center justify-center gap-2 ${
+                              socleFinish === 'black'
+                                ? 'bg-orange-500 text-black shadow-sm'
+                                : isLight
+                                  ? 'bg-white text-slate-800 border border-slate-300 hover:border-orange-500'
+                                  : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50'
+                            }`}
+                          >
+                            <span className="w-3 h-3 rounded-full bg-zinc-900 border border-zinc-700 shrink-0" />
+                            Negro Mate
+                          </button>
+                        </div>
+                        <p className={`text-[11px] leading-relaxed mt-1 ${isLight ? 'text-slate-600 font-medium' : 'text-slate-400'}`}>
+                          Perfil continuo estándar de 3000mm (3m) con sello de agua inferior en acabado {socleFinish === 'black' ? 'Negro Mate' : 'Aluminio Satinado / Gris Claro'}. Los esquineros 90° y empalmes 180° se calibran automáticamente en el render y cotización.
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}

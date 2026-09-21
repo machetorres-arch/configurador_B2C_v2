@@ -9,8 +9,10 @@ import {
   ChevronDown, 
   ChevronUp, 
   Sparkles,
-  Palette
+  Palette,
+  Sliders
 } from 'lucide-react';
+import { DottedDepthSlider } from './DottedDepthSlider';
 
 const DEFAULT_TEXTURES = [
   { id: 'def_mas_blanco', name: 'Masisa Blanco', url: '#FFFFFF', brand: 'Masisa' },
@@ -88,6 +90,13 @@ export function IslandBackPanelConfigSection({ isLight = false }: { isLight?: bo
         : allTextures;
 
   const isCountertopMat = islandBackConfig.materialType === 'countertop';
+
+  // Referencias de profundidad para laterales decorativos de isla
+  const islandCab = cabinets.find((c) => c.type === 'island');
+  const minDepth = islandCab?.depth || 60;
+  const overhang = countertopConfig.islandOverhangCm ?? 30;
+  const maxDepth = minDepth + overhang;
+  const currentSideDepth = islandBackConfig.sideDepthCm ?? minDepth;
 
   const handleSelectTexture = (url: string, name: string) => {
     const nameLower = name.toLowerCase();
@@ -629,6 +638,118 @@ export function IslandBackPanelConfigSection({ isLight = false }: { isLight?: bo
               </div>
             )}
           </div>
+
+          {/* 4. Costados Laterales Decorativos de Isla (Melamina / HPL / MDF Laminado) */}
+          {!isCountertopMat && (
+            <div
+              className={`p-3.5 rounded-xl border flex flex-col gap-3 transition-all ${
+                islandBackConfig.sidesEnabled
+                  ? isLight
+                    ? 'bg-orange-50/40 border-orange-300 shadow-sm'
+                    : 'bg-orange-500/10 border-orange-500/30'
+                  : isLight
+                    ? 'bg-white border-slate-200'
+                    : 'bg-white/5 border-white/10'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Sliders size={14} className={isLight ? 'text-orange-600' : 'text-orange-400'} />
+                  <span
+                    className={`text-[11px] uppercase tracking-wider font-bold ${
+                      isLight ? 'text-slate-800' : 'text-slate-200'
+                    }`}
+                  >
+                    4. Costados Laterales de Isla:
+                  </span>
+                </div>
+
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={!!islandBackConfig.sidesEnabled}
+                    onChange={(e) => setIslandBackConfig({ sidesEnabled: e.target.checked })}
+                    className="sr-only peer"
+                  />
+                  <div className="w-8 h-4 bg-slate-400 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-orange-500"></div>
+                </label>
+              </div>
+
+              {islandBackConfig.sidesEnabled && (
+                <div className="flex flex-col gap-3 pt-2.5 border-t border-orange-200/60 dark:border-white/10">
+                  {/* Flancos habilitados */}
+                  <div>
+                    <label
+                      className={`block text-[10px] uppercase tracking-wider font-bold mb-1.5 ${
+                        isLight ? 'text-slate-600' : 'text-slate-400'
+                      }`}
+                    >
+                      Flancos con Lateral:
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setIslandBackConfig({
+                            sideLeftEnabled: !(islandBackConfig.sideLeftEnabled !== false),
+                          })
+                        }
+                        className={`flex items-center justify-between p-2 rounded-lg border text-xs font-semibold cursor-pointer transition-all ${
+                          islandBackConfig.sideLeftEnabled !== false
+                            ? isLight
+                              ? 'bg-orange-50 border-orange-400 text-orange-900 font-bold'
+                              : 'bg-orange-500/20 border-orange-500 text-orange-300 font-bold'
+                            : isLight
+                              ? 'bg-white border-slate-300 text-slate-500'
+                              : 'bg-white/5 border-white/10 text-slate-400'
+                        }`}
+                      >
+                        <span>Lateral Izquierdo</span>
+                        {islandBackConfig.sideLeftEnabled !== false && (
+                          <Check size={13} className="text-orange-500" strokeWidth={3} />
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setIslandBackConfig({
+                            sideRightEnabled: !(islandBackConfig.sideRightEnabled !== false),
+                          })
+                        }
+                        className={`flex items-center justify-between p-2 rounded-lg border text-xs font-semibold cursor-pointer transition-all ${
+                          islandBackConfig.sideRightEnabled !== false
+                            ? isLight
+                              ? 'bg-orange-50 border-orange-400 text-orange-900 font-bold'
+                              : 'bg-orange-500/20 border-orange-500 text-orange-300 font-bold'
+                            : isLight
+                              ? 'bg-white border-slate-300 text-slate-500'
+                              : 'bg-white/5 border-white/10 text-slate-400'
+                        }`}
+                      >
+                        <span>Lateral Derecho</span>
+                        {islandBackConfig.sideRightEnabled !== false && (
+                          <Check size={13} className="text-orange-500" strokeWidth={3} />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Slider de profundidad del lateral con diseño de puntos y cota flotante */}
+                  <DottedDepthSlider
+                    min={minDepth}
+                    max={maxDepth}
+                    step={1}
+                    value={currentSideDepth}
+                    onChange={(val) => setIslandBackConfig({ sideDepthCm: val })}
+                    label="Profundidad del Lateral"
+                    overhangCm={overhang}
+                    isLight={isLight}
+                  />
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

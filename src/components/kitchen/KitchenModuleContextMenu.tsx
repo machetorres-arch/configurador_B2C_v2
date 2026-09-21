@@ -3,8 +3,10 @@ import { useKitchenStore, CabinetType } from '../../store/kitchenStore';
 import { useStore, PartType } from '../../store';
 import { useAdminStore } from '../../store/adminStore';
 import { isCabinetWithDoors, getDefaultShelvesCount, isCabinetWithSplitDoors, getSplitCabinetShelvesCounts } from '../../utils/kitchenManufacturing';
-import { SlidersHorizontal, X, RefreshCw, ArrowUpDown, ArrowLeftRight, RotateCw, Move3D, DoorOpen, DoorClosed, Layers, Trash2, Palette, Sparkles, Box, Info, Check, ShieldAlert } from 'lucide-react';
+import { SlidersHorizontal, X, RefreshCw, ArrowUpDown, ArrowLeftRight, RotateCw, Move3D, DoorOpen, DoorClosed, Layers, Trash2, Palette, Sparkles, Box, Info, Check, ShieldAlert, Sliders } from 'lucide-react';
 import { HANDLE_CATALOG, FINISH_LABELS, FINISH_HEX, HandleModelId, HandleFinish, KitchenHandleConfig } from '../../types/handle';
+import { IslandBackPanelConfigSection } from './IslandBackPanelConfigSection';
+import { DottedDepthSlider } from './DottedDepthSlider';
 
 const DEFAULT_TEXTURES = [
   { id: 'def_mas_blanco', name: 'Masisa Blanco', url: '#FFFFFF' },
@@ -23,7 +25,20 @@ export function KitchenModuleContextMenu({
   inline?: boolean;
   onOpenIslandBack?: () => void;
 } = {}) {
-  const { activeCabinetId, cabinets, updateCabinet, removeCabinet, setActiveCabinet, setToolMode, setViewMode, handleConfig: globalHandleConfig, golaSystem } = useKitchenStore();
+  const { 
+    activeCabinetId, 
+    cabinets, 
+    updateCabinet, 
+    removeCabinet, 
+    setActiveCabinet, 
+    setToolMode, 
+    setViewMode, 
+    handleConfig: globalHandleConfig, 
+    golaSystem,
+    islandBackConfig,
+    setIslandBackConfig,
+    countertopConfig
+  } = useKitchenStore();
   const globalStore = useStore();
   const adminTextures = useAdminStore((s) => s.textures);
   const [showCatalog, setShowCatalog] = useState(false);
@@ -210,6 +225,8 @@ export function KitchenModuleContextMenu({
       shelfColor: undefined,
       backColor: undefined,
       socleColor: undefined,
+      leftCoverPanel: undefined,
+      rightCoverPanel: undefined,
       structureMaterial: undefined,
       doorMaterial: undefined,
       drawerFrontMaterial: undefined,
@@ -288,6 +305,42 @@ export function KitchenModuleContextMenu({
         break;
       case 'socle':
         updateCabinet(activeCabinetId, { socleColor: url, socleMaterial: mat });
+        break;
+      case 'coverPanels':
+        updateCabinet(activeCabinetId, {
+          leftCoverPanel: activeCabinet.leftCoverPanel?.enabled ? {
+            ...activeCabinet.leftCoverPanel,
+            color: url,
+            material: mat
+          } : undefined,
+          rightCoverPanel: activeCabinet.rightCoverPanel?.enabled ? {
+            ...activeCabinet.rightCoverPanel,
+            color: url,
+            material: mat
+          } : undefined
+        });
+        break;
+      case 'leftCoverPanel':
+        updateCabinet(activeCabinetId, {
+          leftCoverPanel: {
+            enabled: true,
+            extendToFloor: activeCabinet.leftCoverPanel?.extendToFloor ?? false,
+            color: url,
+            material: mat,
+            thickness: activeCabinet.leftCoverPanel?.thickness
+          }
+        });
+        break;
+      case 'rightCoverPanel':
+        updateCabinet(activeCabinetId, {
+          rightCoverPanel: {
+            enabled: true,
+            extendToFloor: activeCabinet.rightCoverPanel?.extendToFloor ?? false,
+            color: url,
+            material: mat,
+            thickness: activeCabinet.rightCoverPanel?.thickness
+          }
+        });
         break;
     }
   };
@@ -648,6 +701,7 @@ export function KitchenModuleContextMenu({
                 (activeCabinet.variant?.startsWith('corner_blind') ? 80 : 30)
               }
               max={
+                activeCabinet.variant === "spice_rack" ? 30 :
                 activeCabinet.variant?.includes('wine_rack') ? 65 :
                 activeCabinet.variant?.startsWith('wall_corner_blind') ? 100 :
                 (activeCabinet.variant?.startsWith('corner_blind') ? 130 : 120)
@@ -693,6 +747,20 @@ export function KitchenModuleContextMenu({
             />
           </div>
         </div>
+
+        {/* INFO ESPECÍFICA ESPECIERO */}
+        {activeCabinet.variant === 'spice_rack' && (
+          <div className={`p-2.5 rounded-xl border text-xs ${isLight ? 'bg-orange-50 border-orange-200 text-orange-950' : 'bg-orange-950/20 border-orange-500/30 text-orange-200'}`}>
+            <div className="font-bold mb-1 flex items-center justify-between">
+              <span>Especiero Extraíble:</span>
+              <span className="text-orange-500 font-extrabold">{activeCabinet.width} cm</span>
+            </div>
+            <div className="text-[11px] opacity-90 leading-relaxed">
+              • Rango normativo: <span className="font-mono font-bold">15 - 30 cm</span><br/>
+              • Guías telescópicas laterales + carro melamina 2 niveles
+            </div>
+          </div>
+        )}
 
         {/* INFO ESPECÍFICA BOTILLERO O ESQUINERO */}
         {activeCabinet.variant?.includes('wine_rack') && (() => {
@@ -1360,6 +1428,324 @@ export function KitchenModuleContextMenu({
           </div>
         )}
 
+        {/* SECCIÓN: TAPAS LATERALES VISTAS (COSTADOS DECORATIVOS) */}
+        {!isDecoration && (
+          <div className={`flex flex-col gap-2.5 p-3 rounded-xl border ${
+            isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-black/30 border-white/5'
+          }`}>
+            <div className="flex items-center justify-between">
+              <div className={`text-[10px] uppercase font-bold tracking-widest flex items-center gap-1.5 ${
+                isLight ? 'text-slate-700' : 'text-zinc-300'
+              }`}>
+                <Box size={13} className={isLight ? 'text-orange-600' : 'text-orange-400'} />
+                <span>Tapas Laterales Vistas</span>
+              </div>
+              <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                (activeCabinet.leftCoverPanel?.enabled && activeCabinet.rightCoverPanel?.enabled)
+                  ? isLight ? 'bg-orange-100 text-orange-700 border border-orange-300' : 'bg-orange-500/20 text-orange-400 border border-orange-500/40'
+                  : (activeCabinet.leftCoverPanel?.enabled || activeCabinet.rightCoverPanel?.enabled)
+                    ? isLight ? 'bg-amber-100 text-amber-800 border border-amber-300' : 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
+                    : isLight ? 'bg-slate-100 text-slate-500 border border-slate-200' : 'bg-white/5 text-zinc-400 border border-white/10'
+              }`}>
+                {activeCabinet.leftCoverPanel?.enabled && activeCabinet.rightCoverPanel?.enabled
+                  ? 'Ambas Tapas'
+                  : activeCabinet.leftCoverPanel?.enabled
+                    ? 'Solo Izquierda'
+                    : activeCabinet.rightCoverPanel?.enabled
+                      ? 'Solo Derecha'
+                      : 'Sin Tapas'}
+              </span>
+            </div>
+
+            {/* Presets Rápidos */}
+            <div className="grid grid-cols-4 gap-1">
+              {[
+                { id: 'none', label: 'Ninguna', l: false, r: false },
+                { id: 'left', label: 'Solo Izq', l: true, r: false },
+                { id: 'right', label: 'Solo Der', l: false, r: true },
+                { id: 'both', label: 'Ambas', l: true, r: true },
+              ].map(preset => {
+                const isActive = (preset.l === !!activeCabinet.leftCoverPanel?.enabled) && (preset.r === !!activeCabinet.rightCoverPanel?.enabled);
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => {
+                      updateCabinet(activeCabinet.id, {
+                        leftCoverPanel: preset.l ? {
+                          enabled: true,
+                          extendToFloor: activeCabinet.leftCoverPanel?.extendToFloor ?? false,
+                          color: activeCabinet.leftCoverPanel?.color,
+                          material: activeCabinet.leftCoverPanel?.material,
+                          thickness: activeCabinet.leftCoverPanel?.thickness,
+                        } : { enabled: false },
+                        rightCoverPanel: preset.r ? {
+                          enabled: true,
+                          extendToFloor: activeCabinet.rightCoverPanel?.extendToFloor ?? false,
+                          color: activeCabinet.rightCoverPanel?.color,
+                          material: activeCabinet.rightCoverPanel?.material,
+                          thickness: activeCabinet.rightCoverPanel?.thickness,
+                        } : { enabled: false }
+                      });
+                    }}
+                    className={`py-1.5 px-1 rounded-lg text-[9px] font-bold uppercase tracking-wider transition-all text-center cursor-pointer ${
+                      isActive
+                        ? 'bg-orange-500 text-black shadow-sm font-extrabold'
+                        : isLight
+                          ? 'bg-slate-50 text-slate-700 border border-slate-200 hover:border-orange-500'
+                          : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50'
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Panel Izquierdo */}
+            <div className={`p-2.5 rounded-lg border flex flex-col gap-2 ${
+              activeCabinet.leftCoverPanel?.enabled
+                ? isLight ? 'bg-orange-50/50 border-orange-200' : 'bg-white/[0.03] border-orange-500/30'
+                : isLight ? 'bg-slate-50/60 border-slate-200 opacity-80' : 'bg-white/[0.01] border-white/5 opacity-70'
+            }`}>
+              <div className="flex items-center justify-between">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={!!activeCabinet.leftCoverPanel?.enabled}
+                    onChange={(e) => {
+                      const enabled = e.target.checked;
+                      updateCabinet(activeCabinet.id, {
+                        leftCoverPanel: enabled ? {
+                          enabled: true,
+                          extendToFloor: activeCabinet.leftCoverPanel?.extendToFloor ?? false,
+                          color: activeCabinet.leftCoverPanel?.color,
+                          material: activeCabinet.leftCoverPanel?.material,
+                          thickness: activeCabinet.leftCoverPanel?.thickness
+                        } : { enabled: false }
+                      });
+                    }}
+                    className="accent-orange-500 w-3.5 h-3.5 cursor-pointer rounded"
+                  />
+                  <span className={`text-[11px] font-bold ${isLight ? 'text-slate-800' : 'text-zinc-200'}`}>
+                    Tapa Lateral Izquierda
+                  </span>
+                </label>
+                {activeCabinet.leftCoverPanel?.enabled && (
+                  <span className="text-[9px] font-semibold text-orange-600 bg-orange-100 dark:bg-orange-950/40 dark:text-orange-400 px-1.5 py-0.5 rounded">
+                    {activeCabinet.leftCoverPanel.color ? 'Personalizado' : 'Igual a Puertas'}
+                  </span>
+                )}
+              </div>
+
+              {activeCabinet.leftCoverPanel?.enabled && (
+                <div className="flex flex-col gap-2 pt-1 border-t border-dashed border-slate-200 dark:border-white/10">
+                  {/* Selector rápido de acabado */}
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        updateCabinet(activeCabinet.id, {
+                          leftCoverPanel: {
+                            ...activeCabinet.leftCoverPanel,
+                            enabled: true,
+                            color: undefined,
+                            material: undefined
+                          }
+                        });
+                      }}
+                      className={`py-1 px-2 rounded-md text-[9px] font-bold transition-all cursor-pointer ${
+                        !activeCabinet.leftCoverPanel.color
+                          ? 'bg-orange-500 text-black font-extrabold'
+                          : isLight ? 'bg-white border border-slate-200 text-slate-700 hover:border-orange-400' : 'bg-white/5 border border-white/10 text-zinc-300'
+                      }`}
+                    >
+                      Color de Puertas
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTargetZone('leftCoverPanel');
+                        setShowCatalog(true);
+                      }}
+                      className={`py-1 px-2 rounded-md text-[9px] font-bold transition-all cursor-pointer ${
+                        activeCabinet.leftCoverPanel.color
+                          ? 'bg-orange-500 text-black font-extrabold'
+                          : isLight ? 'bg-white border border-slate-200 text-slate-700 hover:border-orange-400' : 'bg-white/5 border border-white/10 text-zinc-300'
+                      }`}
+                    >
+                      Elegir del Catálogo
+                    </button>
+                  </div>
+
+                  {/* Extensión al suelo para muebles de piso */}
+                  {(activeCabinet.type === 'base' || activeCabinet.type === 'tall' || activeCabinet.type === 'island') && (
+                    <label className="flex items-center justify-between gap-2 p-1.5 rounded bg-white/60 dark:bg-black/20 border border-slate-200 dark:border-white/5 cursor-pointer">
+                      <span className={`text-[10px] font-medium ${isLight ? 'text-slate-700' : 'text-zinc-300'}`}>
+                        Extender hasta el piso (Tapa zócalo)
+                      </span>
+                      <input
+                        type="checkbox"
+                        checked={!!activeCabinet.leftCoverPanel.extendToFloor}
+                        onChange={(e) => {
+                          updateCabinet(activeCabinet.id, {
+                            leftCoverPanel: {
+                              ...activeCabinet.leftCoverPanel,
+                              enabled: true,
+                              extendToFloor: e.target.checked
+                            }
+                          });
+                        }}
+                        className="accent-orange-500 w-3.5 h-3.5 cursor-pointer rounded"
+                      />
+                    </label>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Panel Derecho */}
+            <div className={`p-2.5 rounded-lg border flex flex-col gap-2 ${
+              activeCabinet.rightCoverPanel?.enabled
+                ? isLight ? 'bg-orange-50/50 border-orange-200' : 'bg-white/[0.03] border-orange-500/30'
+                : isLight ? 'bg-slate-50/60 border-slate-200 opacity-80' : 'bg-white/[0.01] border-white/5 opacity-70'
+            }`}>
+              <div className="flex items-center justify-between">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={!!activeCabinet.rightCoverPanel?.enabled}
+                    onChange={(e) => {
+                      const enabled = e.target.checked;
+                      updateCabinet(activeCabinet.id, {
+                        rightCoverPanel: enabled ? {
+                          enabled: true,
+                          extendToFloor: activeCabinet.rightCoverPanel?.extendToFloor ?? false,
+                          color: activeCabinet.rightCoverPanel?.color,
+                          material: activeCabinet.rightCoverPanel?.material,
+                          thickness: activeCabinet.rightCoverPanel?.thickness
+                        } : { enabled: false }
+                      });
+                    }}
+                    className="accent-orange-500 w-3.5 h-3.5 cursor-pointer rounded"
+                  />
+                  <span className={`text-[11px] font-bold ${isLight ? 'text-slate-800' : 'text-zinc-200'}`}>
+                    Tapa Lateral Derecha
+                  </span>
+                </label>
+                {activeCabinet.rightCoverPanel?.enabled && (
+                  <span className="text-[9px] font-semibold text-orange-600 bg-orange-100 dark:bg-orange-950/40 dark:text-orange-400 px-1.5 py-0.5 rounded">
+                    {activeCabinet.rightCoverPanel.color ? 'Personalizado' : 'Igual a Puertas'}
+                  </span>
+                )}
+              </div>
+
+              {activeCabinet.rightCoverPanel?.enabled && (
+                <div className="flex flex-col gap-2 pt-1 border-t border-dashed border-slate-200 dark:border-white/10">
+                  {/* Selector rápido de acabado */}
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        updateCabinet(activeCabinet.id, {
+                          rightCoverPanel: {
+                            ...activeCabinet.rightCoverPanel,
+                            enabled: true,
+                            color: undefined,
+                            material: undefined
+                          }
+                        });
+                      }}
+                      className={`py-1 px-2 rounded-md text-[9px] font-bold transition-all cursor-pointer ${
+                        !activeCabinet.rightCoverPanel.color
+                          ? 'bg-orange-500 text-black font-extrabold'
+                          : isLight ? 'bg-white border border-slate-200 text-slate-700 hover:border-orange-400' : 'bg-white/5 border border-white/10 text-zinc-300'
+                      }`}
+                    >
+                      Color de Puertas
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTargetZone('rightCoverPanel');
+                        setShowCatalog(true);
+                      }}
+                      className={`py-1 px-2 rounded-md text-[9px] font-bold transition-all cursor-pointer ${
+                        activeCabinet.rightCoverPanel.color
+                          ? 'bg-orange-500 text-black font-extrabold'
+                          : isLight ? 'bg-white border border-slate-200 text-slate-700 hover:border-orange-400' : 'bg-white/5 border border-white/10 text-zinc-300'
+                      }`}
+                    >
+                      Elegir del Catálogo
+                    </button>
+                  </div>
+
+                  {/* Extensión al suelo para muebles de piso */}
+                  {(activeCabinet.type === 'base' || activeCabinet.type === 'tall' || activeCabinet.type === 'island') && (
+                    <label className="flex items-center justify-between gap-2 p-1.5 rounded bg-white/60 dark:bg-black/20 border border-slate-200 dark:border-white/5 cursor-pointer">
+                      <span className={`text-[10px] font-medium ${isLight ? 'text-slate-700' : 'text-zinc-300'}`}>
+                        Extender hasta el piso (Tapa zócalo)
+                      </span>
+                      <input
+                        type="checkbox"
+                        checked={!!activeCabinet.rightCoverPanel.extendToFloor}
+                        onChange={(e) => {
+                          updateCabinet(activeCabinet.id, {
+                            rightCoverPanel: {
+                              ...activeCabinet.rightCoverPanel,
+                              enabled: true,
+                              extendToFloor: e.target.checked
+                            }
+                          });
+                        }}
+                        className="accent-orange-500 w-3.5 h-3.5 cursor-pointer rounded"
+                      />
+                    </label>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Control de Profundidad / Voladizo para Isla con Regla Punteada */}
+            {activeCabinet.type === 'island' && (activeCabinet.leftCoverPanel?.enabled || activeCabinet.rightCoverPanel?.enabled) && (() => {
+              const minDepth = activeCabinet.depth || 60;
+              const overhang = countertopConfig.islandOverhangCm ?? 30;
+              const maxDepth = minDepth + overhang;
+              const currentSideDepth = activeCabinet.leftCoverPanel?.depth || activeCabinet.rightCoverPanel?.depth || islandBackConfig.sideDepthCm || minDepth;
+
+              const handleDepthChange = (newDepth: number) => {
+                updateCabinet(activeCabinet.id, {
+                  leftCoverPanel: activeCabinet.leftCoverPanel?.enabled
+                    ? { ...activeCabinet.leftCoverPanel, depth: newDepth }
+                    : activeCabinet.leftCoverPanel,
+                  rightCoverPanel: activeCabinet.rightCoverPanel?.enabled
+                    ? { ...activeCabinet.rightCoverPanel, depth: newDepth }
+                    : activeCabinet.rightCoverPanel,
+                });
+                setIslandBackConfig({
+                  sidesEnabled: true,
+                  sideDepthCm: newDepth,
+                  sideLeftEnabled: !!activeCabinet.leftCoverPanel?.enabled,
+                  sideRightEnabled: !!activeCabinet.rightCoverPanel?.enabled,
+                });
+              };
+
+              return (
+                <DottedDepthSlider
+                  min={minDepth}
+                  max={maxDepth}
+                  step={1}
+                  value={currentSideDepth}
+                  onChange={handleDepthChange}
+                  label="Profundidad Lateral Isla"
+                  overhangCm={overhang}
+                  isLight={isLight}
+                />
+              );
+            })()}
+          </div>
+        )}
+
         {/* Trascara HPL */}
         <div className="flex flex-col gap-1.5">
           <div className={`text-[10px] uppercase font-bold tracking-widest ${isLight ? 'text-slate-600' : 'text-zinc-400'}`}>Trascara HPL</div>
@@ -1382,23 +1768,10 @@ export function KitchenModuleContextMenu({
           </button>
         </div>
 
-        {/* Acceso a Revestimiento Trasero de Isla */}
-        {activeCabinet.type === 'island' && onOpenIslandBack && (
-          <div className={`flex flex-col gap-1.5 pt-2 border-t ${isLight ? 'border-slate-200' : 'border-white/10'}`}>
-            <button
-              onClick={onOpenIslandBack}
-              className={`w-full flex items-center justify-between p-2.5 rounded-xl border text-xs uppercase font-bold tracking-wider transition-colors cursor-pointer ${
-                isLight
-                  ? 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300'
-                  : 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border-amber-500/30'
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <Layers size={14} />
-                <span>Revestimiento Trasera Isla</span>
-              </div>
-              <span className="text-[10px] underline">Configurar</span>
-            </button>
+        {/* Configuración de Revestimiento Exterior & Costados para Muebles Tipo Isla */}
+        {activeCabinet.type === 'island' && (
+          <div className="flex flex-col gap-2 pt-2 border-t border-slate-200 dark:border-white/10">
+            <IslandBackPanelConfigSection isLight={isLight} />
           </div>
         )}
 
@@ -1440,6 +1813,7 @@ export function KitchenModuleContextMenu({
                 {[
                   { id: 'doors', label: 'Puertas' },
                   { id: 'drawerFronts', label: 'Frentes Cajón' },
+                  { id: 'coverPanels', label: 'Tapas Laterales' },
                   { id: 'structure', label: 'Paredes / Casco' },
                   { id: 'drawerInner', label: 'Cajas Cajón' },
                   { id: 'shelves', label: 'Repisas' },

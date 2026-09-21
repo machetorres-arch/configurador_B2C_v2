@@ -39,7 +39,7 @@ interface ProjectsManagerTabProps {
 }
 
 export function ProjectsManagerTab({ onLoadProjectToModule }: ProjectsManagerTabProps) {
-  const { projects, saveProject, renameProject, duplicateProject, deleteProject, syncCloudProjects } = useAdminStore();
+  const { projects, saveProject, renameProject, duplicateProject, deleteProject, clearAllProjects, syncCloudProjects } = useAdminStore();
   const { user: supabaseUser, tenant: supabaseTenant } = useSupabaseAuthStore();
   const { saveProjectToCloud } = useTenantDataStore();
 
@@ -364,6 +364,22 @@ export function ProjectsManagerTab({ onLoadProjectToModule }: ProjectsManagerTab
 
         {/* Actions Buttons */}
         <div className="flex items-center gap-2 shrink-0">
+          {projects.length > 0 && (
+            <button
+              onClick={() => {
+                if (window.confirm('¿Confirmas eliminar TODOS los proyectos guardados y reiniciar desde cero?')) {
+                  clearAllProjects();
+                  showNotification('Todos los proyectos han sido eliminados.');
+                }
+              }}
+              className="px-3 py-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 hover:text-red-300 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+              title="Eliminar todos los proyectos y partir desde cero"
+            >
+              <Trash2 size={14} />
+              <span className="hidden sm:inline">Vaciar Todo</span>
+            </button>
+          )}
+
           {supabaseUser && supabaseTenant && (
             <button
               onClick={handleManualSync}

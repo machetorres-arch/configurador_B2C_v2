@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { RoomConfig, getPresetRoomVertices, generateWallsFromRoom } from '../utils/roomGeometry';
-import { constrainInsideRoomAndWalls, repositionCabinetsOnRoomChange, resolveCabinetsAgainstPillars } from '../utils/kitchenCollision';
+import { constrainInsideRoomAndWalls, repositionCabinetsOnRoomChange, resolveCabinetsAgainstPillars, getWallInwardNormal } from '../utils/kitchenCollision';
 import { 
   CountertopConfig, 
   DEFAULT_COUNTERTOP_CONFIG, 
@@ -95,6 +95,15 @@ export interface ArchitecturalElement {
   rotation: number;
 }
 
+export interface CoverPanelConfig {
+  enabled: boolean;
+  material?: 'melamina' | 'hpl';
+  color?: string;
+  thickness?: number;
+  extendToFloor?: boolean;
+  depth?: number; // Profundidad personalizada (ej. cubrir voladizo de isla)
+}
+
 export interface CabinetType {
   id: string;
   type: 'base' | 'wall' | 'tall' | 'island' | 'decoration';
@@ -128,6 +137,8 @@ export interface CabinetType {
   shelvesCountLower?: number;
   shelvesCountUpper?: number;
   handleConfig?: KitchenHandleConfig;
+  leftCoverPanel?: CoverPanelConfig;
+  rightCoverPanel?: CoverPanelConfig;
 }
 
 export interface GolaIncompatibilityAlert {
@@ -194,6 +205,7 @@ interface KitchenState {
   cabinets: CabinetType[];
   activeCabinetId: string | null;
   showSocle: boolean;
+  socleFinish: 'aluminum' | 'black';
   golaSystem: GolaSystem;
   golaIncompatibilityAlert: GolaIncompatibilityAlert | null;
   drawingStart: [number, number] | null;
@@ -220,20 +232,23 @@ interface KitchenState {
   setActiveCabinet: (id: string | null) => void;
   addArchitecturalElement: (el: ArchitecturalElement) => void;
   updateArchitecturalElement: (id: string, updates: Partial<ArchitecturalElement>) => void;
+  moveArchElementTransient: (id: string, updates: Partial<ArchitecturalElement>) => void;
   removeArchitecturalElement: (id: string) => void;
   setActiveArchElement: (id: string | null) => void;
   setDraggingArchElementId: (id: string | null) => void;
   setDraggingCabinetId: (id: string | null) => void;
   setDrawingStart: (pos: [number, number] | null) => void;
   setShowSocle: (val: boolean) => void;
+  setSocleFinish: (finish: 'aluminum' | 'black') => void;
   setGolaSystem: (system: GolaSystem) => void;
   setGolaIncompatibilityAlert: (alert: GolaIncompatibilityAlert | null) => void;
   updateCabinet: (id: string, updates: Partial<CabinetType>) => void;
+  setOpenElement: (id: string, elementKey: string, isOpen: boolean) => void;
   setRoomPlannerOpen: (open: boolean) => void;
   setRoomConfig: (config: RoomConfig) => void;
   setWallColor: (color: string) => void;
   setFloorType: (floorType: string) => void;
-  applyGlobalTexture: (part: 'structure' | 'doors' | 'drawerFronts' | 'drawerInner' | 'shelves' | 'back' | 'socle' | 'islandBack' | 'all', url: string, mat: 'melamina' | 'hpl') => void;
+  applyGlobalTexture: (part: 'structure' | 'doors' | 'drawerFronts' | 'drawerInner' | 'shelves' | 'back' | 'socle' | 'islandBack' | 'coverPanels' | 'all', url: string, mat: 'melamina' | 'hpl') => void;
   setCountertopConfig: (config: Partial<CountertopConfig>) => void;
   setIslandBackConfig: (updates: Partial<IslandBackConfig>) => void;
   setCountertopSink: (model: SinkModelId, cabinetId?: string | null) => { success: boolean; error?: string };
@@ -305,6 +320,11 @@ function resolveCabinetsWithResize(
   // Apply direct updates
   Object.assign(updatedTarget, updates);
 
+  // Strictly enforce spice_rack width limits: min 15cm, max 30cm
+  if (updatedTarget.variant === 'spice_rack') {
+    updatedTarget.width = Math.min(30, Math.max(15, updatedTarget.width));
+  }
+
   // Helper to get left and right flanks in XZ
   const getFlanks = (cab: CabinetType) => {
     const cCos = Math.cos(cab.rotation || 0);
@@ -375,6 +395,28 @@ function resolveCabinetsWithResize(
     } else if (updatedTarget.type === 'wall' || updatedTarget.variant === 'deco_hood') {
       const currentBottom = target.position[1] - target.height / 2;
       updatedTarget.position = [updatedTarget.position[0], currentBottom + newHeight / 2, updatedTarget.position[2]];
+    }
+  }
+
+  // If depth changed and position wasn't explicitly overridden, recalculate center along cabinet normal so the back remains anchored to the wall
+  if (updates.depth !== undefined && (!updates.position || updates.position[0] === undefined || updates.position[2] === undefined)) {
+    const oldDepth = target.depth;
+    const newDepth = updates.depth;
+    if (newDepth !== oldDepth) {
+      const deltaD = newDepth - oldDepth;
+      const rot = target.rotation || 0;
+      const sin = Math.sin(rot);
+      const cos = Math.cos(rot);
+      // For wall, base, tall, and deco cabinets (except freestanding islands):
+      // The rear face is at center - (depth/2)*[sin, cos].
+      // To keep the rear face stationary against the wall, center moves forward by (deltaD/2)*[sin, cos].
+      if (updatedTarget.type !== 'island') {
+        updatedTarget.position = [
+          updatedTarget.position[0] + (deltaD / 2) * sin,
+          updatedTarget.position[1],
+          updatedTarget.position[2] + (deltaD / 2) * cos,
+        ];
+      }
     }
   }
 
@@ -479,6 +521,7 @@ export const useKitchenStore = create<KitchenState>((set, get) => {
       cabinets: JSON.parse(JSON.stringify(state.cabinets)),
       architecturalElements: JSON.parse(JSON.stringify(state.architecturalElements)),
       showSocle: state.showSocle,
+      socleFinish: state.socleFinish,
       golaSystem: state.golaSystem,
       countertopConfig: JSON.parse(JSON.stringify(state.countertopConfig)),
       islandBackConfig: JSON.parse(JSON.stringify(state.islandBackConfig)),
@@ -496,6 +539,7 @@ export const useKitchenStore = create<KitchenState>((set, get) => {
   cabinets: [],
   activeCabinetId: null,
   showSocle: false,
+  socleFinish: 'aluminum',
   golaSystem: 'none',
   drawingStart: null,
   isRoomPlannerOpen: false,
@@ -537,6 +581,7 @@ export const useKitchenStore = create<KitchenState>((set, get) => {
       cabinets: JSON.parse(JSON.stringify(state.cabinets)),
       architecturalElements: JSON.parse(JSON.stringify(state.architecturalElements)),
       showSocle: state.showSocle,
+      socleFinish: state.socleFinish,
       golaSystem: state.golaSystem,
       countertopConfig: JSON.parse(JSON.stringify(state.countertopConfig)),
       islandBackConfig: JSON.parse(JSON.stringify(state.islandBackConfig)),
@@ -551,6 +596,7 @@ export const useKitchenStore = create<KitchenState>((set, get) => {
       cabinets: previousState.cabinets,
       architecturalElements: previousState.architecturalElements,
       showSocle: previousState.showSocle,
+      socleFinish: (previousState as any).socleFinish || 'aluminum',
       golaSystem: previousState.golaSystem,
       countertopConfig: previousState.countertopConfig,
       islandBackConfig: previousState.islandBackConfig,
@@ -573,6 +619,7 @@ export const useKitchenStore = create<KitchenState>((set, get) => {
       cabinets: JSON.parse(JSON.stringify(state.cabinets)),
       architecturalElements: JSON.parse(JSON.stringify(state.architecturalElements)),
       showSocle: state.showSocle,
+      socleFinish: state.socleFinish,
       golaSystem: state.golaSystem,
       countertopConfig: JSON.parse(JSON.stringify(state.countertopConfig)),
       islandBackConfig: JSON.parse(JSON.stringify(state.islandBackConfig)),
@@ -587,6 +634,7 @@ export const useKitchenStore = create<KitchenState>((set, get) => {
       cabinets: nextState.cabinets,
       architecturalElements: nextState.architecturalElements,
       showSocle: nextState.showSocle,
+      socleFinish: (nextState as any).socleFinish || 'aluminum',
       golaSystem: nextState.golaSystem,
       countertopConfig: nextState.countertopConfig,
       islandBackConfig: nextState.islandBackConfig,
@@ -601,7 +649,14 @@ export const useKitchenStore = create<KitchenState>((set, get) => {
 
   setViewMode: (mode) => set({ viewMode: mode }),
   setToolMode: (mode) => set({ toolMode: mode, drawingStart: null }),
-  setHandleConfig: (config) => set((state) => ({ handleConfig: { ...state.handleConfig, ...config } })),
+  setHandleConfig: (config) =>
+    set((state) => ({
+      handleConfig: { ...state.handleConfig, ...config },
+      cabinets: state.cabinets.map((cab) => ({
+        ...cab,
+        handleConfig: undefined,
+      })),
+    })),
   addWall: (wall) => set((state) => ({ walls: [...state.walls, wall] })),
   setWalls: (walls) =>
     set((state) => {
@@ -712,10 +767,22 @@ export const useKitchenStore = create<KitchenState>((set, get) => {
       activeArchElementId: id,
       activeCabinetId: id ? null : state.activeCabinetId,
     })),
-  setDraggingArchElementId: (id) => set({ draggingArchElementId: id }),
+  moveArchElementTransient: (id, updates) =>
+    set((state) => ({
+      architecturalElements: state.architecturalElements.map((el) => {
+        if (el.id !== id) return el;
+        return { ...el, ...updates };
+      }),
+    })),
+  setDraggingArchElementId: (id) =>
+    set((state) => ({
+      history: id && !state.draggingArchElementId ? saveSnapshot(state) : state.history,
+      draggingArchElementId: id,
+    })),
   setDraggingCabinetId: (id) => set({ draggingCabinetId: id }),
   setDrawingStart: (pos) => set({ drawingStart: pos }),
   setShowSocle: (val) => set((state) => ({ history: saveSnapshot(state), showSocle: val })),
+  setSocleFinish: (finish) => set((state) => ({ history: saveSnapshot(state), socleFinish: finish })),
   setGolaIncompatibilityAlert: (alert) => set({ golaIncompatibilityAlert: alert }),
   setGolaSystem: (system) => {
     const state = useKitchenStore.getState();
@@ -740,10 +807,104 @@ export const useKitchenStore = create<KitchenState>((set, get) => {
   updateCabinet: (id, updates) =>
     set((state) => {
       const history = saveSnapshot(state);
+      const targetCab = state.cabinets.find((c) => c.id === id);
+      const isBaseOrIsland = targetCab?.type === 'base' || targetCab?.type === 'island';
+
+      let nextCountertopConfig = state.countertopConfig;
+      if (isBaseOrIsland) {
+        let changedCountertop = false;
+        let newWaterfallLeft = state.countertopConfig.waterfallLeft;
+        let newWaterfallRight = state.countertopConfig.waterfallRight;
+
+        if (updates.leftCoverPanel?.enabled && state.countertopConfig.waterfallLeft) {
+          newWaterfallLeft = false;
+          changedCountertop = true;
+        }
+        if (updates.rightCoverPanel?.enabled && state.countertopConfig.waterfallRight) {
+          newWaterfallRight = false;
+          changedCountertop = true;
+        }
+        if (changedCountertop) {
+          nextCountertopConfig = {
+            ...state.countertopConfig,
+            waterfallLeft: newWaterfallLeft,
+            waterfallRight: newWaterfallRight,
+          };
+        }
+      }
+
       const resolved = resolveCabinetsWithResize(state.cabinets, id, updates);
-      const walls = state.walls;
+      const effectiveWalls = (state.walls && state.walls.length > 0)
+        ? state.walls
+        : (state.roomConfig?.vertices && state.roomConfig.vertices.length >= 3
+            ? generateWallsFromRoom(state.roomConfig)
+            : []);
       const roomPoly = state.roomConfig?.vertices?.map((v) => [v.x, v.y] as [number, number]) || [];
-      const clamped = resolved.map((c) => ({
+
+      const aligned = resolved.map((c) => {
+        // Enforce flush wall alignment for wall cabinets (muebles aéreos) or when depth was modified on a wall-bound cabinet
+        if (effectiveWalls.length > 0 && (c.type === 'wall' || (c.id === id && updates.depth !== undefined && (c.type === 'base' || c.type === 'tall' || c.variant === 'deco_hood')))) {
+          let bestWall: any = null;
+          let bestDist = Infinity;
+          let bestS = 0;
+          let bestNormal: [number, number] = [0, 1];
+          let bestWallLen = 0;
+
+          const cabSin = Math.sin(c.rotation || 0);
+          const cabCos = Math.cos(c.rotation || 0);
+
+          for (const w of effectiveWalls) {
+            const x1 = w.start[0];
+            const z1 = w.start[1];
+            const x2 = w.end[0];
+            const z2 = w.end[1];
+            const dx = x2 - x1;
+            const dz = z2 - z1;
+            const wallLen = Math.hypot(dx, dz);
+            if (wallLen < 1) continue;
+
+            const uX = dx / wallLen;
+            const uZ = dz / wallLen;
+            const [nX, nZ] = getWallInwardNormal(x1, z1, x2, z2, roomPoly);
+
+            const s = (c.position[0] - x1) * uX + (c.position[2] - z1) * uZ;
+            const sClamped = Math.max(c.width / 2 + 0.5, Math.min(wallLen - c.width / 2 - 0.5, s));
+            const projX = x1 + sClamped * uX;
+            const projZ = z1 + sClamped * uZ;
+            const dist = Math.hypot(c.position[0] - projX, c.position[2] - projZ);
+
+            const dot = nX * cabSin + nZ * cabCos;
+            const penalty = dot > 0.4 ? 0 : 50;
+
+            if (dist + penalty < bestDist) {
+              bestDist = dist + penalty;
+              bestWall = w;
+              bestS = sClamped;
+              bestNormal = [nX, nZ];
+              bestWallLen = wallLen;
+            }
+          }
+
+          if (bestWall && bestDist < 120) {
+            const wallThickness = bestWall.thickness || state.roomConfig?.wallThickness || 20;
+            const flushDist = wallThickness / 2 + c.depth / 2;
+            const uX = (bestWall.end[0] - bestWall.start[0]) / bestWallLen;
+            const uZ = (bestWall.end[1] - bestWall.start[1]) / bestWallLen;
+            const newX = bestWall.start[0] + bestS * uX + flushDist * bestNormal[0];
+            const newZ = bestWall.start[1] + bestS * uZ + flushDist * bestNormal[1];
+            const rot = Math.atan2(bestNormal[0], bestNormal[1]);
+
+            return {
+              ...c,
+              position: [newX, c.position[1], newZ] as [number, number, number],
+              rotation: rot,
+            };
+          }
+        }
+        return c;
+      });
+
+      const clamped = aligned.map((c) => ({
         ...c,
         position: constrainInsideRoomAndWalls(
           c.position,
@@ -751,13 +912,22 @@ export const useKitchenStore = create<KitchenState>((set, get) => {
           c.width,
           c.depth,
           c.height,
-          walls,
+          effectiveWalls,
           roomPoly,
           state.architecturalElements
         ),
       }));
-      return { history, cabinets: clamped };
+      return { history, cabinets: clamped, countertopConfig: nextCountertopConfig };
     }),
+  setOpenElement: (id, elementKey, isOpen) =>
+    set((state) => ({
+      cabinets: state.cabinets.map((cab) => {
+        if (cab.id !== id) return cab;
+        const openElements = { ...(cab.openElements || {}) };
+        openElements[elementKey] = isOpen;
+        return { ...cab, openElements };
+      }),
+    })),
   setRoomPlannerOpen: (open) => set({ isRoomPlannerOpen: open }),
   setRoomConfig: (config) => {
     const generatedWalls = generateWallsFromRoom(config);
@@ -859,6 +1029,14 @@ export const useKitchenStore = create<KitchenState>((set, get) => {
           updates.socleColor = url;
           updates.socleMaterial = mat;
         }
+        if (part === 'coverPanels' || part === 'all') {
+          if (c.leftCoverPanel) {
+            updates.leftCoverPanel = { ...c.leftCoverPanel, color: url, material: mat };
+          }
+          if (c.rightCoverPanel) {
+            updates.rightCoverPanel = { ...c.rightCoverPanel, color: url, material: mat };
+          }
+        }
         return { ...c, ...updates };
       });
       return { cabinets: updatedCabinets };
@@ -870,6 +1048,38 @@ export const useKitchenStore = create<KitchenState>((set, get) => {
     const thicknessCm = (prod?.thicknessMm || 20) / 10;
     const targetRegrueso = updates.regruesoCm !== undefined ? updates.regruesoCm : state.countertopConfig.regruesoCm;
 
+    const normalizedUpdates = { ...updates };
+    if (normalizedUpdates.waterfallLeft) {
+      normalizedUpdates.overhangLeftCm = 0;
+      if (normalizedUpdates.baseWaterfallLeft === undefined) normalizedUpdates.baseWaterfallLeft = true;
+      if (normalizedUpdates.islandWaterfallLeft === undefined) normalizedUpdates.islandWaterfallLeft = true;
+    }
+    if (normalizedUpdates.waterfallRight) {
+      normalizedUpdates.overhangRightCm = 0;
+      if (normalizedUpdates.baseWaterfallRight === undefined) normalizedUpdates.baseWaterfallRight = true;
+      if (normalizedUpdates.islandWaterfallRight === undefined) normalizedUpdates.islandWaterfallRight = true;
+    }
+    if (normalizedUpdates.baseWaterfallLeft) {
+      normalizedUpdates.baseOverhangLeftCm = 0;
+    }
+    if (normalizedUpdates.baseWaterfallRight) {
+      normalizedUpdates.baseOverhangRightCm = 0;
+    }
+    if (normalizedUpdates.islandWaterfallLeft) {
+      normalizedUpdates.islandOverhangLeftCm = 0;
+    }
+    if (normalizedUpdates.islandWaterfallRight) {
+      normalizedUpdates.islandOverhangRightCm = 0;
+    }
+
+    if (normalizedUpdates.islandOverhangBackCm !== undefined) {
+      normalizedUpdates.islandOverhangCm = normalizedUpdates.islandOverhangBackCm;
+      normalizedUpdates.overhangBackCm = normalizedUpdates.islandOverhangBackCm;
+    } else if (normalizedUpdates.islandOverhangCm !== undefined) {
+      normalizedUpdates.islandOverhangBackCm = normalizedUpdates.islandOverhangCm;
+      normalizedUpdates.overhangBackCm = normalizedUpdates.islandOverhangCm;
+    }
+
     if (state.golaSystem !== 'none' && targetRegrueso > thicknessCm + 2.0) {
       set({
         golaIncompatibilityAlert: {
@@ -880,15 +1090,51 @@ export const useKitchenStore = create<KitchenState>((set, get) => {
         },
       });
       // Aplicar las demás actualizaciones sin modificar regruesoCm incompatible
-      const { regruesoCm, ...safeUpdates } = updates;
-      set((s) => ({
-        countertopConfig: { ...s.countertopConfig, ...safeUpdates },
-      }));
+      const { regruesoCm, ...safeUpdates } = normalizedUpdates;
+      set((s) => {
+        let nextCabinets = s.cabinets;
+        if (safeUpdates.waterfallLeft) {
+          nextCabinets = nextCabinets.map((c) =>
+            (c.type === 'base' || c.type === 'island') && c.leftCoverPanel?.enabled
+              ? { ...c, leftCoverPanel: { ...c.leftCoverPanel, enabled: false } }
+              : c
+          );
+        }
+        if (safeUpdates.waterfallRight) {
+          nextCabinets = nextCabinets.map((c) =>
+            (c.type === 'base' || c.type === 'island') && c.rightCoverPanel?.enabled
+              ? { ...c, rightCoverPanel: { ...c.rightCoverPanel, enabled: false } }
+              : c
+          );
+        }
+        return {
+          cabinets: nextCabinets,
+          countertopConfig: { ...s.countertopConfig, ...safeUpdates },
+        };
+      });
       return;
     }
-    set((s) => ({
-      countertopConfig: { ...s.countertopConfig, ...updates },
-    }));
+    set((s) => {
+      let nextCabinets = s.cabinets;
+      if (normalizedUpdates.waterfallLeft) {
+        nextCabinets = nextCabinets.map((c) =>
+          (c.type === 'base' || c.type === 'island') && c.leftCoverPanel?.enabled
+            ? { ...c, leftCoverPanel: { ...c.leftCoverPanel, enabled: false } }
+            : c
+        );
+      }
+      if (normalizedUpdates.waterfallRight) {
+        nextCabinets = nextCabinets.map((c) =>
+          (c.type === 'base' || c.type === 'island') && c.rightCoverPanel?.enabled
+            ? { ...c, rightCoverPanel: { ...c.rightCoverPanel, enabled: false } }
+            : c
+        );
+      }
+      return {
+        cabinets: nextCabinets,
+        countertopConfig: { ...s.countertopConfig, ...normalizedUpdates },
+      };
+    });
   },
   setIslandBackConfig: (updates) =>
     set((state) => {

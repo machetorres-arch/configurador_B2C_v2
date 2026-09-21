@@ -131,6 +131,7 @@ export interface AdminState {
   renameProject: (id: string, newName: string, newClient?: string) => void;
   duplicateProject: (id: string) => string;
   deleteProject: (id: string) => void;
+  clearAllProjects: () => void;
   syncCloudProjects: () => Promise<void>;
 
   // Estadísticas Anónimas para Proveedores
@@ -1413,68 +1414,19 @@ export const DEFAULT_PROVIDERS: ProviderItem[] = [
   }
 ];
 
-export const DEFAULT_PROJECTS: ProjectItem[] = [
-  {
-    id: 'proj-kitchen-loft-01',
-    name: 'Cocina Isla Integral Roble & Grafito',
-    client: 'Arquitecto Martín Silva',
-    date: '2026-08-22',
-    type: 'kitchen',
-    description: 'Cocina lineal de 4.8m con isla central, módulos torre horno-microondas y frentes con amortiguación suave.',
-    totalCostEstimateClp: 4850000,
-    data: {
-      thickness: 18,
-      cabinets: [
-        { id: 'cab-1', type: 'base', width: 80, height: 85, depth: 60, position: [-120, 0, 0], rotation: 0, color: '#FFFFFF', structureColor: '#FFFFFF', doorColor: '#373E44' },
-        { id: 'cab-2', type: 'base', width: 90, height: 85, depth: 60, position: [-30, 0, 0], rotation: 0, color: '#FFFFFF', structureColor: '#FFFFFF', doorColor: '#373E44' },
-        { id: 'cab-3', type: 'tall', width: 60, height: 215, depth: 60, position: [60, 0, 0], rotation: 0, color: '#FFFFFF', structureColor: '#FFFFFF', doorColor: '#D4A373' }
-      ]
-    }
-  },
-  {
-    id: 'proj-closet-master-01',
-    name: 'Clóset Walk-In Suite Principal 3 Módulos',
-    client: 'Familia Valenzuela',
-    date: '2026-08-23',
-    type: 'closet',
-    description: 'Clóset modular de 3 secciones con cajoneras ocultas, repisas iluminadas y percheros dobles.',
-    totalCostEstimateClp: 1890000,
-    data: {
-      height: 240,
-      depth: 60,
-      thickness: 18,
-      structureColor: '#FFFFFF',
-      doorColor: '#F8F9FA',
-      drawerFrontColor: '#D4A373',
-      modules: [
-        { id: 'mod-1', width: 90, shelves: 3, drawers: 3, doors: false, hasHanger: true },
-        { id: 'mod-2', width: 100, shelves: 4, drawers: 0, doors: false, hasHanger: true },
-        { id: 'mod-3', width: 80, shelves: 2, drawers: 4, doors: true, hasHanger: false }
-      ]
-    }
-  },
-  {
-    id: 'proj-special-vitrina-01',
-    name: 'Aparador Vitrina Autor Abet Broccato',
-    client: 'Galería & Diseño Contemporáneo',
-    date: '2026-08-24',
-    type: 'special',
-    description: 'Mueble de autor con laminado decorativo italiano Abet Broccato 2831, marco en madera noble y base en acero lacado.',
-    totalCostEstimateClp: 1350000,
-    data: {
-      width: 90,
-      height: 180,
-      depth: 42,
-      thickness: 1.8,
-      legHeight: 25,
-      abetTextureId: 'abet_broccato_2831',
-      woodColor: '#1E4D54',
-      legColor: '#1C1C1C'
-    }
-  }
-];
+export const DEFAULT_PROJECTS: ProjectItem[] = [];
 
 const LOCAL_STORAGE_KEY = 'mueblestudio_admin_store_v1';
+
+// IDs de proyectos de muestra para depuración automática
+const DEMO_PROJECT_IDS = new Set([
+  'proj-kitchen-loft-01',
+  'proj-closet-master-01',
+  'proj-special-vitrina-01',
+  'proj-bath-suite-01',
+  'proj-office-executive-01',
+  'proj-chair-parametric-01',
+]);
 
 const getInitialState = () => {
   try {
@@ -1495,7 +1447,11 @@ const getInitialState = () => {
           });
           return Array.from(map.values());
         })(),
-        projects: Array.isArray(parsed.projects) ? parsed.projects : DEFAULT_PROJECTS,
+        projects: Array.isArray(parsed.projects)
+          ? (parsed.projects as ProjectItem[]).filter(
+              (p) => p && p.id && !DEMO_PROJECT_IDS.has(p.id) && !p.id.startsWith('proj-kitchen-loft') && !p.id.startsWith('proj-closet-master') && !p.id.startsWith('proj-special-vitrina')
+            )
+          : [],
         supplies: (() => {
           if (!Array.isArray(parsed.supplies) || parsed.supplies.length === 0) return DEFAULT_SUPPLIES;
           const map = new Map<string, SupplyItem>();
@@ -1532,7 +1488,7 @@ const getInitialState = () => {
     adminEmail: null,
     themeMode: 'dark' as 'dark' | 'light',
     providers: DEFAULT_PROVIDERS,
-    projects: DEFAULT_PROJECTS,
+    projects: [],
     supplies: DEFAULT_SUPPLIES,
     textures: DEFAULT_CUSTOM_TEXTURES,
     manufacturingRates: DEFAULT_MANUFACTURING_RATES,
@@ -1723,6 +1679,10 @@ export const useAdminStore = create<AdminState>((set, get) => {
     deleteProject: (id) => {
       const currentProjects = get().projects.filter((p) => p.id !== id);
       persist({ projects: currentProjects });
+    },
+
+    clearAllProjects: () => {
+      persist({ projects: [] });
     },
 
     syncCloudProjects: async () => {

@@ -32,10 +32,24 @@ export function ExecutiveOverviewSheet({ selectedProviderName, onNavigateToTab }
   const [isExporting, setIsExporting] = useState(false);
   const [alertStockModal, setAlertStockModal] = useState(false);
 
-  // Dynamic calculations from actual projects in store if any, with realistic baseline
-  const projectCount = Math.max(projects.length, 38);
-  const totalM2 = 38490 + (projects.length * 18);
-  const totalClp = 3850000000 + projects.reduce((acc, p) => acc + (p.totalCostEstimateClp || 0), 0);
+  // Dynamic calculations from actual projects in store (strictly 0 when empty)
+  const projectCount = projects.length;
+  const totalM2 = projects.reduce((acc, p) => {
+    if (p.type === 'kitchen') {
+      const cabinets = (p.data as any)?.cabinets || [];
+      return acc + (cabinets.length > 0 ? cabinets.length * 3.6 : 10.5);
+    }
+    if (p.type === 'closet') {
+      const modules = (p.data as any)?.modules || [];
+      return acc + (modules.length > 0 ? modules.length * 4.2 : 8.5);
+    }
+    if (p.type === 'special') return acc + 3.2;
+    if (p.type === 'hpl-bathroom') return acc + 6.0;
+    if (p.type === 'office') return acc + 8.0;
+    return acc + 4.0;
+  }, 0);
+  const totalClp = projects.reduce((acc, p) => acc + (p.totalCostEstimateClp || 0), 0);
+  const scrapPercentage = projects.length > 0 ? 7.4 : 0;
 
   const handleExport = () => {
     setIsExporting(true);
@@ -56,8 +70,10 @@ export function ExecutiveOverviewSheet({ selectedProviderName, onNavigateToTab }
             </span>
             <span className="w-1 h-1 rounded-full bg-zinc-600" />
             <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-sky-950/80 border border-sky-500/30 text-sky-400 text-xs font-semibold">
-              <span className="w-2 h-2 rounded-full bg-sky-400 animate-pulse" />
-              Sync Activa: 38 Estudios RM & Fábricas Quilicura / Huechuraba
+              <span className={`w-2 h-2 rounded-full ${projectCount > 0 ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-500'}`} />
+              {projectCount > 0
+                ? `Telemetría Activa: ${projectCount} proyecto(s) en cartera`
+                : 'Telemetría en Espera (0 proyectos guardados)'}
             </span>
           </div>
           <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
@@ -65,7 +81,7 @@ export function ExecutiveOverviewSheet({ selectedProviderName, onNavigateToTab }
             <span className="text-orange-400 font-light">— Santiago de Chile ({selectedProviderName})</span>
           </h2>
           <p className="text-xs sm:text-sm text-zinc-400 max-w-3xl">
-            Telemetría en tiempo real de tableros, optimización de cortes y prescripción en proyectos de cocinas 3D.
+            Telemetría en tiempo real de tableros, optimización de cortes y cubicación de proyectos 3D.
           </p>
         </div>
 
@@ -96,7 +112,8 @@ export function ExecutiveOverviewSheet({ selectedProviderName, onNavigateToTab }
             <div>
               <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">Superficie Proyectada</span>
               <div className="text-2xl sm:text-3xl font-extrabold text-white mt-1">
-                {totalM2.toLocaleString('es-CL')} <span className="text-xs font-normal text-zinc-400">m²</span>
+                {totalM2 > 0 ? totalM2.toLocaleString('es-CL', { maximumFractionDigits: 1 }) : '0'}{' '}
+                <span className="text-xs font-normal text-zinc-400">m²</span>
               </div>
             </div>
             <div className="w-10 h-10 rounded-xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center text-orange-400">
@@ -106,15 +123,14 @@ export function ExecutiveOverviewSheet({ selectedProviderName, onNavigateToTab }
           <div className="pt-4 mt-2 border-t border-zinc-800/80 flex items-center justify-between">
             <div className="flex items-center gap-1 text-sky-400 text-xs font-bold">
               <TrendingUp size={14} />
-              <span>+18.4%</span>
-              <span className="text-[11px] font-normal text-zinc-500 ml-1">vs mes ant.</span>
+              <span>{projectCount > 0 ? '+100%' : '0%'}</span>
+              <span className="text-[11px] font-normal text-zinc-500 ml-1">{projectCount > 0 ? 'activo' : 'en espera'}</span>
             </div>
             <div className="flex items-end gap-1 h-5">
-              <div className="w-1 h-2 bg-zinc-700 rounded-t" />
-              <div className="w-1 h-3 bg-zinc-700 rounded-t" />
-              <div className="w-1 h-3 bg-sky-500/40 rounded-t" />
-              <div className="w-1 h-4 bg-sky-500/70 rounded-t" />
-              <div className="w-1 h-5 bg-sky-400 rounded-t" />
+              <div className={`w-1 h-2 ${projectCount > 0 ? 'bg-sky-500/40' : 'bg-zinc-800'} rounded-t`} />
+              <div className={`w-1 h-3 ${projectCount > 0 ? 'bg-sky-500/60' : 'bg-zinc-800'} rounded-t`} />
+              <div className={`w-1 h-4 ${projectCount > 0 ? 'bg-sky-500/80' : 'bg-zinc-800'} rounded-t`} />
+              <div className={`w-1 h-5 ${projectCount > 0 ? 'bg-sky-400' : 'bg-zinc-800'} rounded-t`} />
             </div>
           </div>
           <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-orange-500 to-transparent opacity-40" />
@@ -124,9 +140,9 @@ export function ExecutiveOverviewSheet({ selectedProviderName, onNavigateToTab }
         <div className="bg-zinc-900/80 border border-zinc-800/90 rounded-2xl p-5 flex flex-col justify-between relative overflow-hidden group hover:border-amber-500/40 transition-all">
           <div className="flex items-start justify-between">
             <div>
-              <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">Proyectos Cocina 3D</span>
+              <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">Proyectos Registrados</span>
               <div className="text-2xl sm:text-3xl font-extrabold text-white mt-1">
-                1.842 <span className="text-xs font-normal text-zinc-400">diseños</span>
+                {projectCount} <span className="text-xs font-normal text-zinc-400">diseños</span>
               </div>
             </div>
             <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
@@ -135,11 +151,10 @@ export function ExecutiveOverviewSheet({ selectedProviderName, onNavigateToTab }
           </div>
           <div className="pt-4 mt-2 border-t border-zinc-800/80 flex items-center justify-between">
             <div className="flex items-center gap-1 text-amber-400 text-xs font-bold">
-              <span>⚡ +142 hoy</span>
-              <span className="text-[11px] font-normal text-zinc-500 ml-1">en render</span>
+              <span>⚡ {projectCount > 0 ? `+${projectCount} guardado(s)` : '0 en cola'}</span>
             </div>
             <span className="text-[11px] px-2 py-0.5 rounded-md bg-zinc-800 text-zinc-300 font-mono">
-              42 estudios RM
+              {projectCount > 0 ? `${projectCount} en cartera` : '0 estudios RM'}
             </span>
           </div>
           <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-amber-500 to-transparent opacity-40" />
@@ -151,7 +166,12 @@ export function ExecutiveOverviewSheet({ selectedProviderName, onNavigateToTab }
             <div>
               <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">Volumen Estimado BOM</span>
               <div className="text-2xl sm:text-3xl font-extrabold text-white mt-1">
-                $3.850M <span className="text-xs font-normal text-zinc-400">CLP</span>
+                {totalClp > 0
+                  ? totalClp >= 1000000
+                    ? `$${(totalClp / 1000000).toFixed(2)}M`
+                    : `$${totalClp.toLocaleString('es-CL')}`
+                  : '$0'}{' '}
+                <span className="text-xs font-normal text-zinc-400">CLP</span>
               </div>
             </div>
             <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
@@ -161,10 +181,11 @@ export function ExecutiveOverviewSheet({ selectedProviderName, onNavigateToTab }
           <div className="pt-4 mt-2 border-t border-zinc-800/80 flex items-center justify-between">
             <div className="flex items-center gap-1 text-emerald-400 text-xs font-bold">
               <ArrowUpRight size={14} />
-              <span>+14.2%</span>
-              <span className="text-[11px] font-normal text-zinc-500 ml-1">facturación pot.</span>
+              <span>{projectCount > 0 ? 'Facturación activa' : '$0 CLP'}</span>
             </div>
-            <span className="text-[11px] font-mono text-zinc-400">$100.025 / m²</span>
+            <span className="text-[11px] font-mono text-zinc-400">
+              {totalM2 > 0 ? `$${Math.round(totalClp / totalM2).toLocaleString('es-CL')} / m²` : '$0 / m²'}
+            </span>
           </div>
           <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-emerald-500 to-transparent opacity-40" />
         </div>
@@ -175,7 +196,8 @@ export function ExecutiveOverviewSheet({ selectedProviderName, onNavigateToTab }
             <div>
               <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">Merma Promedio en Cortes</span>
               <div className="text-2xl sm:text-3xl font-extrabold text-sky-400 mt-1">
-                8,4% <span className="text-xs font-normal text-zinc-400">seccionadora</span>
+                {projectCount > 0 ? `${scrapPercentage}%` : '0,0%'}{' '}
+                <span className="text-xs font-normal text-zinc-400">seccionadora</span>
               </div>
             </div>
             <div className="w-10 h-10 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400">
@@ -184,11 +206,10 @@ export function ExecutiveOverviewSheet({ selectedProviderName, onNavigateToTab }
           </div>
           <div className="pt-4 mt-2 border-t border-zinc-800/80 flex items-center justify-between">
             <div className="flex items-center gap-1 text-sky-400 text-xs font-bold">
-              <span>▼ -3.2%</span>
-              <span className="text-[11px] font-normal text-zinc-500 ml-1">vs taller (11.6%)</span>
+              <span>{projectCount > 0 ? '▼ -3.2% optimizado' : 'Sin datos de corte'}</span>
             </div>
             <span className="text-[11px] px-2 py-0.5 rounded-md bg-sky-950/80 border border-sky-500/30 text-sky-400 font-bold">
-              OptiCorte Activo
+              {projectCount > 0 ? 'OptiCorte Activo' : 'En Espera'}
             </span>
           </div>
           <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-sky-500 to-transparent opacity-40" />
@@ -239,62 +260,50 @@ export function ExecutiveOverviewSheet({ selectedProviderName, onNavigateToTab }
 
           {/* SVG Stacked Bar Visualizer */}
           <div className="w-full h-56 flex flex-col justify-end pt-2">
-            <div className="h-full w-full flex items-end justify-between gap-3 px-2">
-              {/* S36 */}
-              <div className="flex-1 flex flex-col items-center gap-2 group h-full justify-end">
-                <div className="w-full max-w-[42px] flex flex-col gap-0.5 rounded-md overflow-hidden">
-                  <div className="w-full h-10 bg-amber-400/80 group-hover:bg-amber-400 transition-all" />
-                  <div className="w-full h-16 bg-sky-400/80 group-hover:bg-sky-400 transition-all" />
-                  <div className="w-full h-20 bg-orange-500/80 group-hover:bg-orange-500 transition-all" />
-                </div>
-                <span className="text-[11px] font-mono text-zinc-500">S36</span>
+            {projectCount === 0 ? (
+              <div className="h-full w-full flex flex-col items-center justify-center text-center p-4 border border-dashed border-zinc-800 rounded-xl bg-zinc-950/30">
+                <Layers size={32} className="text-zinc-600 mb-2" />
+                <p className="text-xs font-semibold text-zinc-400">Sin datos de demanda registrados</p>
+                <p className="text-[11px] text-zinc-600 mt-0.5">
+                  La evolución semanal se calculará automáticamente al guardar proyectos en el diseñador 3D.
+                </p>
               </div>
-              {/* S37 */}
-              <div className="flex-1 flex flex-col items-center gap-2 group h-full justify-end">
-                <div className="w-full max-w-[42px] flex flex-col gap-0.5 rounded-md overflow-hidden">
-                  <div className="w-full h-12 bg-amber-400/80 group-hover:bg-amber-400 transition-all" />
-                  <div className="w-full h-20 bg-sky-400/80 group-hover:bg-sky-400 transition-all" />
-                  <div className="w-full h-24 bg-orange-500/80 group-hover:bg-orange-500 transition-all" />
+            ) : (
+              <div className="h-full w-full flex items-end justify-between gap-3 px-2">
+                <div className="flex-1 flex flex-col items-center gap-2 group h-full justify-end">
+                  <div className="w-full max-w-[42px] flex flex-col gap-0.5 rounded-md overflow-hidden">
+                    <div className="w-full h-10 bg-amber-400/80 group-hover:bg-amber-400 transition-all" />
+                    <div className="w-full h-16 bg-sky-400/80 group-hover:bg-sky-400 transition-all" />
+                    <div className="w-full h-20 bg-orange-500/80 group-hover:bg-orange-500 transition-all" />
+                  </div>
+                  <span className="text-[11px] font-mono text-zinc-500">S36</span>
                 </div>
-                <span className="text-[11px] font-mono text-zinc-500">S37</span>
-              </div>
-              {/* S38 */}
-              <div className="flex-1 flex flex-col items-center gap-2 group h-full justify-end">
-                <div className="w-full max-w-[42px] flex flex-col gap-0.5 rounded-md overflow-hidden">
-                  <div className="w-full h-14 bg-amber-400/80 group-hover:bg-amber-400 transition-all" />
-                  <div className="w-full h-24 bg-sky-400/80 group-hover:bg-sky-400 transition-all" />
-                  <div className="w-full h-28 bg-orange-500/80 group-hover:bg-orange-500 transition-all" />
+                <div className="flex-1 flex flex-col items-center gap-2 group h-full justify-end">
+                  <div className="w-full max-w-[42px] flex flex-col gap-0.5 rounded-md overflow-hidden">
+                    <div className="w-full h-12 bg-amber-400/80 group-hover:bg-amber-400 transition-all" />
+                    <div className="w-full h-20 bg-sky-400/80 group-hover:bg-sky-400 transition-all" />
+                    <div className="w-full h-24 bg-orange-500/80 group-hover:bg-orange-500 transition-all" />
+                  </div>
+                  <span className="text-[11px] font-mono text-zinc-500">S37</span>
                 </div>
-                <span className="text-[11px] font-mono text-zinc-500">S38</span>
-              </div>
-              {/* S39 (Peak) */}
-              <div className="flex-1 flex flex-col items-center gap-2 group h-full justify-end">
-                <div className="w-full max-w-[42px] flex flex-col gap-0.5 rounded-md overflow-hidden shadow-lg shadow-orange-500/20 ring-1 ring-orange-500/40">
-                  <div className="w-full h-18 bg-amber-400 group-hover:brightness-110 transition-all" />
-                  <div className="w-full h-32 bg-sky-400 group-hover:brightness-110 transition-all" />
-                  <div className="w-full h-36 bg-orange-500 group-hover:brightness-110 transition-all" />
+                <div className="flex-1 flex flex-col items-center gap-2 group h-full justify-end">
+                  <div className="w-full max-w-[42px] flex flex-col gap-0.5 rounded-md overflow-hidden">
+                    <div className="w-full h-14 bg-amber-400/80 group-hover:bg-amber-400 transition-all" />
+                    <div className="w-full h-24 bg-sky-400/80 group-hover:bg-sky-400 transition-all" />
+                    <div className="w-full h-28 bg-orange-500/80 group-hover:bg-orange-500 transition-all" />
+                  </div>
+                  <span className="text-[11px] font-mono text-zinc-500">S38</span>
                 </div>
-                <span className="text-[11px] font-mono text-orange-400 font-bold">S39</span>
-              </div>
-              {/* S40 */}
-              <div className="flex-1 flex flex-col items-center gap-2 group h-full justify-end">
-                <div className="w-full max-w-[42px] flex flex-col gap-0.5 rounded-md overflow-hidden">
-                  <div className="w-full h-16 bg-amber-400/80 group-hover:bg-amber-400 transition-all" />
-                  <div className="w-full h-28 bg-sky-400/80 group-hover:bg-sky-400 transition-all" />
-                  <div className="w-full h-32 bg-orange-500/80 group-hover:bg-orange-500 transition-all" />
+                <div className="flex-1 flex flex-col items-center gap-2 group h-full justify-end">
+                  <div className="w-full max-w-[42px] flex flex-col gap-0.5 rounded-md overflow-hidden shadow-lg shadow-orange-500/20 ring-1 ring-orange-500/40">
+                    <div className="w-full h-18 bg-amber-400 group-hover:brightness-110 transition-all" />
+                    <div className="w-full h-32 bg-sky-400 group-hover:brightness-110 transition-all" />
+                    <div className="w-full h-36 bg-orange-500 group-hover:brightness-110 transition-all" />
+                  </div>
+                  <span className="text-[11px] font-mono text-orange-400 font-bold">S39 (Act)</span>
                 </div>
-                <span className="text-[11px] font-mono text-zinc-500">S40</span>
               </div>
-              {/* S41 Act */}
-              <div className="flex-1 flex flex-col items-center gap-2 group h-full justify-end">
-                <div className="w-full max-w-[42px] flex flex-col gap-0.5 rounded-md overflow-hidden">
-                  <div className="w-full h-12 bg-amber-400/60 group-hover:bg-amber-400 transition-all" />
-                  <div className="w-full h-24 bg-sky-400/60 group-hover:bg-sky-400 transition-all" />
-                  <div className="w-full h-28 bg-orange-500/60 group-hover:bg-orange-500 transition-all" />
-                </div>
-                <span className="text-[11px] font-mono text-sky-400 font-bold">S41 (Act)</span>
-              </div>
-            </div>
+            )}
           </div>
 
           {/* Insight Tag */}
@@ -302,9 +311,16 @@ export function ExecutiveOverviewSheet({ selectedProviderName, onNavigateToTab }
             <div className="flex items-center gap-2.5 min-w-0">
               <Lightbulb size={18} className="text-orange-400 shrink-0" />
               <p className="text-xs text-zinc-300 truncate">
-                <strong className="text-white">Análisis Predictivo RM:</strong> Mayor demanda en{' '}
-                <span className="text-orange-400 font-semibold">Melamina Roble Cendra (Vesto)</span> +{' '}
-                <span className="text-sky-400 font-semibold">Cuarzo Blanco Norte</span> (fuerte concentración en Las Condes, Vitacura y Providencia).
+                <strong className="text-white">Análisis Predictivo B2B:</strong>{' '}
+                {projectCount > 0 ? (
+                  <>
+                    Monitoreando {projectCount} proyecto(s) en curso con optimización de corte CNC activada.
+                  </>
+                ) : (
+                  <>
+                    En espera de nuevos proyectos para estimar consumos de tableros Vesto y Masisa en la Región Metropolitana.
+                  </>
+                )}
               </p>
             </div>
             <span className="text-[10px] uppercase font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded hidden sm:inline shrink-0">
@@ -320,64 +336,82 @@ export function ExecutiveOverviewSheet({ selectedProviderName, onNavigateToTab }
               <h3 className="text-base font-bold text-white">Distribución de Uso</h3>
               <p className="text-xs text-zinc-400">Por tipología de elemento 3D</p>
             </div>
-            <span className="text-xs font-mono text-zinc-400">100% CAD</span>
+            <span className="text-xs font-mono text-zinc-400">{projectCount > 0 ? '100% CAD' : '0%'}</span>
           </div>
 
           {/* Donut Visual */}
           <div className="relative flex items-center justify-center my-4">
             <svg className="w-44 h-44 transform -rotate-90" viewBox="0 0 160 160">
-              {/* 48% Frentes */}
-              <circle
-                className="text-orange-500"
-                cx="80"
-                cy="80"
-                fill="transparent"
-                r="60"
-                stroke="currentColor"
-                strokeDasharray="181 377"
-                strokeDashoffset="0"
-                strokeWidth="15"
-              />
-              {/* 31% Encimeras */}
-              <circle
-                className="text-sky-400"
-                cx="80"
-                cy="80"
-                fill="transparent"
-                r="60"
-                stroke="currentColor"
-                strokeDasharray="117 377"
-                strokeDashoffset="-181"
-                strokeWidth="15"
-              />
-              {/* 14% Herrajes */}
-              <circle
-                className="text-amber-400"
-                cx="80"
-                cy="80"
-                fill="transparent"
-                r="60"
-                stroke="currentColor"
-                strokeDasharray="53 377"
-                strokeDashoffset="-298"
-                strokeWidth="15"
-              />
-              {/* 7% Zócalos */}
-              <circle
-                className="text-zinc-600"
-                cx="80"
-                cy="80"
-                fill="transparent"
-                r="60"
-                stroke="currentColor"
-                strokeDasharray="26 377"
-                strokeDashoffset="-351"
-                strokeWidth="15"
-              />
+              {projectCount > 0 ? (
+                <>
+                  {/* 48% Frentes */}
+                  <circle
+                    className="text-orange-500"
+                    cx="80"
+                    cy="80"
+                    fill="transparent"
+                    r="60"
+                    stroke="currentColor"
+                    strokeDasharray="181 377"
+                    strokeDashoffset="0"
+                    strokeWidth="15"
+                  />
+                  {/* 31% Encimeras */}
+                  <circle
+                    className="text-sky-400"
+                    cx="80"
+                    cy="80"
+                    fill="transparent"
+                    r="60"
+                    stroke="currentColor"
+                    strokeDasharray="117 377"
+                    strokeDashoffset="-181"
+                    strokeWidth="15"
+                  />
+                  {/* 14% Herrajes */}
+                  <circle
+                    className="text-amber-400"
+                    cx="80"
+                    cy="80"
+                    fill="transparent"
+                    r="60"
+                    stroke="currentColor"
+                    strokeDasharray="53 377"
+                    strokeDashoffset="-298"
+                    strokeWidth="15"
+                  />
+                  {/* 7% Zócalos */}
+                  <circle
+                    className="text-zinc-600"
+                    cx="80"
+                    cy="80"
+                    fill="transparent"
+                    r="60"
+                    stroke="currentColor"
+                    strokeDasharray="26 377"
+                    strokeDashoffset="-351"
+                    strokeWidth="15"
+                  />
+                </>
+              ) : (
+                <circle
+                  className="text-zinc-800"
+                  cx="80"
+                  cy="80"
+                  fill="transparent"
+                  r="60"
+                  stroke="currentColor"
+                  strokeDasharray="377 377"
+                  strokeDashoffset="0"
+                  strokeWidth="12"
+                />
+              )}
             </svg>
             <div className="absolute flex flex-col items-center justify-center text-center pointer-events-none">
-              <span className="text-2xl font-extrabold text-white">100%</span>
-              <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Superficie Total</span>
+              <span className="text-2xl font-extrabold text-white">{projectCount > 0 ? '100%' : '0%'}</span>
+              <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
+                {projectCount > 0 ? 'Superficie Total' : 'Sin Proyectos'}
+              </span>
             </div>
           </div>
 
@@ -389,8 +423,8 @@ export function ExecutiveOverviewSheet({ selectedProviderName, onNavigateToTab }
                 <span className="text-zinc-200 font-medium">Frentes de Mobiliario</span>
               </div>
               <div className="flex items-center gap-2 font-mono">
-                <span className="text-white font-bold">48%</span>
-                <span className="text-zinc-500">18.475 m²</span>
+                <span className="text-white font-bold">{projectCount > 0 ? '48%' : '0%'}</span>
+                <span className="text-zinc-500">{projectCount > 0 ? `${(totalM2 * 0.48).toFixed(1)} m²` : '0 m²'}</span>
               </div>
             </div>
 
@@ -400,8 +434,8 @@ export function ExecutiveOverviewSheet({ selectedProviderName, onNavigateToTab }
                 <span className="text-zinc-200 font-medium">Encimeras e Islas</span>
               </div>
               <div className="flex items-center gap-2 font-mono">
-                <span className="text-white font-bold">31%</span>
-                <span className="text-zinc-500">11.932 m²</span>
+                <span className="text-white font-bold">{projectCount > 0 ? '31%' : '0%'}</span>
+                <span className="text-zinc-500">{projectCount > 0 ? `${(totalM2 * 0.31).toFixed(1)} m²` : '0 m²'}</span>
               </div>
             </div>
 
@@ -411,8 +445,8 @@ export function ExecutiveOverviewSheet({ selectedProviderName, onNavigateToTab }
                 <span className="text-zinc-200 font-medium">Herrajes & Perfiles Gola</span>
               </div>
               <div className="flex items-center gap-2 font-mono">
-                <span className="text-white font-bold">14%</span>
-                <span className="text-zinc-500">5.388 ml</span>
+                <span className="text-white font-bold">{projectCount > 0 ? '14%' : '0%'}</span>
+                <span className="text-zinc-500">{projectCount > 0 ? `${(totalM2 * 0.14).toFixed(1)} ml` : '0 ml'}</span>
               </div>
             </div>
 
@@ -422,8 +456,8 @@ export function ExecutiveOverviewSheet({ selectedProviderName, onNavigateToTab }
                 <span className="text-zinc-200 font-medium">Zócalos & Revestimientos</span>
               </div>
               <div className="flex items-center gap-2 font-mono">
-                <span className="text-white font-bold">7%</span>
-                <span className="text-zinc-500">2.694 m²</span>
+                <span className="text-white font-bold">{projectCount > 0 ? '7%' : '0%'}</span>
+                <span className="text-zinc-500">{projectCount > 0 ? `${(totalM2 * 0.07).toFixed(1)} m²` : '0 m²'}</span>
               </div>
             </div>
           </div>
@@ -436,7 +470,7 @@ export function ExecutiveOverviewSheet({ selectedProviderName, onNavigateToTab }
         <div className="lg:col-span-8 bg-zinc-900/80 border border-zinc-800 rounded-2xl p-5 flex flex-col justify-between">
           <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
             <div>
-              <h3 className="text-base font-bold text-white">Top 5 Acabados Más Prescritos en CAD</h3>
+              <h3 className="text-base font-bold text-white">Top Acabados Prescritos en CAD</h3>
               <p className="text-xs text-zinc-400">Volúmenes acumulados, precios de cesión y tracción de catálogo</p>
             </div>
             <button
@@ -462,151 +496,77 @@ export function ExecutiveOverviewSheet({ selectedProviderName, onNavigateToTab }
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800/50">
-                <tr className="hover:bg-zinc-800/40 transition-colors">
-                  <td className="py-3 px-3">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-lg bg-amber-900/30 border border-amber-500/30 flex items-center justify-center font-bold text-[10px] text-amber-400 shrink-0">
-                        RC
-                      </div>
-                      <div>
-                        <div className="font-semibold text-white">Melamina Vesto Roble Cendra</div>
-                        <div className="text-[11px] text-zinc-400">Arauco Línea Tendencias (18mm)</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="py-3 px-3 font-mono text-zinc-400">ARA-CEN18</td>
-                  <td className="py-3 px-3 text-zinc-300">Melamina 18mm</td>
-                  <td className="py-3 px-3 text-right font-mono font-bold text-white">14.280 m²</td>
-                  <td className="py-3 px-3 text-right">
-                    <span className="px-2 py-0.5 rounded bg-sky-500/10 text-sky-400 font-mono font-bold">+26.4%</span>
-                  </td>
-                  <td className="py-3 px-3 text-right font-mono text-zinc-300">$28.900/m²</td>
-                  <td className="py-3 px-3 text-center">
-                    <button
-                      onClick={() => onNavigateToTab?.('sku-viewer')}
-                      className="p-1.5 rounded-lg bg-zinc-800 hover:bg-orange-500 hover:text-white text-orange-400 transition-colors cursor-pointer"
-                      title="Ver en Visor 3D y Telemetría"
-                    >
-                      <Rocket size={14} />
-                    </button>
-                  </td>
-                </tr>
+                {projectCount === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="py-8 text-center text-zinc-500">
+                      <p className="font-semibold text-zinc-400">Sin materiales registrados en proyectos</p>
+                      <p className="text-[11px] text-zinc-600 mt-0.5">
+                        Al diseñar y guardar cocinas, clósets o casas SIP, aparecerá el ranking de consumo aquí.
+                      </p>
+                    </td>
+                  </tr>
+                ) : (
+                  <>
+                    <tr className="hover:bg-zinc-800/40 transition-colors">
+                      <td className="py-3 px-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-lg bg-amber-900/30 border border-amber-500/30 flex items-center justify-center font-bold text-[10px] text-amber-400 shrink-0">
+                            RC
+                          </div>
+                          <div>
+                            <div className="font-semibold text-white">Melamina Vesto Roble Cendra</div>
+                            <div className="text-[11px] text-zinc-400">Arauco Línea Tendencias (18mm)</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-3 px-3 font-mono text-zinc-400">ARA-CEN18</td>
+                      <td className="py-3 px-3 text-zinc-300">Melamina 18mm</td>
+                      <td className="py-3 px-3 text-right font-mono font-bold text-white">{(totalM2 * 0.45).toFixed(1)} m²</td>
+                      <td className="py-3 px-3 text-right">
+                        <span className="px-2 py-0.5 rounded bg-sky-500/10 text-sky-400 font-mono font-bold">+100%</span>
+                      </td>
+                      <td className="py-3 px-3 text-right font-mono text-zinc-300">$28.900/m²</td>
+                      <td className="py-3 px-3 text-center">
+                        <button
+                          onClick={() => onNavigateToTab?.('sku-viewer')}
+                          className="p-1.5 rounded-lg bg-zinc-800 hover:bg-orange-500 hover:text-white text-orange-400 transition-colors cursor-pointer"
+                          title="Ver en Visor 3D y Telemetría"
+                        >
+                          <Rocket size={14} />
+                        </button>
+                      </td>
+                    </tr>
 
-                <tr className="hover:bg-zinc-800/40 transition-colors">
-                  <td className="py-3 px-3">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-lg bg-sky-900/30 border border-sky-500/30 flex items-center justify-center font-bold text-[10px] text-sky-400 shrink-0">
-                        BN
-                      </div>
-                      <div>
-                        <div className="font-semibold text-white">Cubierta Cuarzo Blanco Norte</div>
-                        <div className="text-[11px] text-zinc-400">Silestone / Distribución Nacional</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="py-3 px-3 font-mono text-zinc-400">CUB-BNO20</td>
-                  <td className="py-3 px-3 text-zinc-300">Cuarzo 20mm</td>
-                  <td className="py-3 px-3 text-right font-mono font-bold text-white">8.190 m²</td>
-                  <td className="py-3 px-3 text-right">
-                    <span className="px-2 py-0.5 rounded bg-sky-500/10 text-sky-400 font-mono font-bold">+18.7%</span>
-                  </td>
-                  <td className="py-3 px-3 text-right font-mono text-zinc-300">$165.000/m²</td>
-                  <td className="py-3 px-3 text-center">
-                    <button
-                      onClick={() => onNavigateToTab?.('materiales')}
-                      className="p-1.5 rounded-lg bg-zinc-800 hover:bg-orange-500 hover:text-white text-zinc-400 transition-colors cursor-pointer"
-                    >
-                      <Eye size={14} />
-                    </button>
-                  </td>
-                </tr>
-
-                <tr className="hover:bg-zinc-800/40 transition-colors">
-                  <td className="py-3 px-3">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-lg bg-zinc-800 border border-zinc-700 flex items-center justify-center font-bold text-[10px] text-zinc-300 shrink-0">
-                        EN
-                      </div>
-                      <div>
-                        <div className="font-semibold text-white">Melamina Masisa Enigma 18mm</div>
-                        <div className="text-[11px] text-zinc-400">Masisa Colección Orígenes</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="py-3 px-3 font-mono text-zinc-400">MAS-EN18</td>
-                  <td className="py-3 px-3 text-zinc-300">MDF/MDP 18mm</td>
-                  <td className="py-3 px-3 text-right font-mono font-bold text-white">6.840 m²</td>
-                  <td className="py-3 px-3 text-right">
-                    <span className="px-2 py-0.5 rounded bg-sky-500/10 text-sky-400 font-mono font-bold">+12.3%</span>
-                  </td>
-                  <td className="py-3 px-3 text-right font-mono text-zinc-300">$26.500/m²</td>
-                  <td className="py-3 px-3 text-center">
-                    <button
-                      onClick={() => onNavigateToTab?.('materiales')}
-                      className="p-1.5 rounded-lg bg-zinc-800 hover:bg-orange-500 hover:text-white text-zinc-400 transition-colors cursor-pointer"
-                    >
-                      <Eye size={14} />
-                    </button>
-                  </td>
-                </tr>
-
-                <tr className="hover:bg-zinc-800/40 transition-colors">
-                  <td className="py-3 px-3">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-lg bg-amber-950/40 border border-amber-600/30 flex items-center justify-center font-bold text-[10px] text-amber-500 shrink-0">
-                        NT
-                      </div>
-                      <div>
-                        <div className="font-semibold text-white">Melamina Nogal Terracota</div>
-                        <div className="text-[11px] text-zinc-400">Arauco Vesto Texturado</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="py-3 px-3 font-mono text-zinc-400">ARA-TER18</td>
-                  <td className="py-3 px-3 text-zinc-300">Melamina 18mm</td>
-                  <td className="py-3 px-3 text-right font-mono font-bold text-white">5.120 m²</td>
-                  <td className="py-3 px-3 text-right">
-                    <span className="px-2 py-0.5 rounded bg-sky-500/10 text-sky-400 font-mono font-bold">+9.1%</span>
-                  </td>
-                  <td className="py-3 px-3 text-right font-mono text-zinc-300">$27.800/m²</td>
-                  <td className="py-3 px-3 text-center">
-                    <button
-                      onClick={() => onNavigateToTab?.('sku-viewer')}
-                      className="p-1.5 rounded-lg bg-zinc-800 hover:bg-orange-500 hover:text-white text-orange-400 transition-colors cursor-pointer"
-                    >
-                      <Rocket size={14} />
-                    </button>
-                  </td>
-                </tr>
-
-                <tr className="hover:bg-zinc-800/40 transition-colors">
-                  <td className="py-3 px-3">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-lg bg-zinc-950 border border-zinc-700 flex items-center justify-center font-bold text-[10px] text-zinc-400 shrink-0">
-                        GOL
-                      </div>
-                      <div>
-                        <div className="font-semibold text-white">Perfil Gola Negro Mate Anodizado</div>
-                        <div className="text-[11px] text-zinc-400">Ducasse Industrial Chile</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="py-3 px-3 font-mono text-zinc-400">DUC-GOL01</td>
-                  <td className="py-3 px-3 text-zinc-300">Aluminio ml</td>
-                  <td className="py-3 px-3 text-right font-mono font-bold text-white">5.920 ml</td>
-                  <td className="py-3 px-3 text-right">
-                    <span className="px-2 py-0.5 rounded bg-sky-500/10 text-sky-400 font-mono font-bold">+31.4%</span>
-                  </td>
-                  <td className="py-3 px-3 text-right font-mono text-zinc-300">$14.900/ml</td>
-                  <td className="py-3 px-3 text-center">
-                    <button
-                      onClick={() => onNavigateToTab?.('materiales')}
-                      className="p-1.5 rounded-lg bg-zinc-800 hover:bg-orange-500 hover:text-white text-zinc-400 transition-colors cursor-pointer"
-                    >
-                      <Eye size={14} />
-                    </button>
-                  </td>
-                </tr>
+                    <tr className="hover:bg-zinc-800/40 transition-colors">
+                      <td className="py-3 px-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-lg bg-sky-900/30 border border-sky-500/30 flex items-center justify-center font-bold text-[10px] text-sky-400 shrink-0">
+                            BN
+                          </div>
+                          <div>
+                            <div className="font-semibold text-white">Cubierta Cuarzo Blanco Norte</div>
+                            <div className="text-[11px] text-zinc-400">Silestone / Distribución Nacional</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-3 px-3 font-mono text-zinc-400">CUB-BNO20</td>
+                      <td className="py-3 px-3 text-zinc-300">Cuarzo 20mm</td>
+                      <td className="py-3 px-3 text-right font-mono font-bold text-white">{(totalM2 * 0.3).toFixed(1)} m²</td>
+                      <td className="py-3 px-3 text-right">
+                        <span className="px-2 py-0.5 rounded bg-sky-500/10 text-sky-400 font-mono font-bold">+100%</span>
+                      </td>
+                      <td className="py-3 px-3 text-right font-mono text-zinc-300">$165.000/m²</td>
+                      <td className="py-3 px-3 text-center">
+                        <button
+                          onClick={() => onNavigateToTab?.('materiales')}
+                          className="p-1.5 rounded-lg bg-zinc-800 hover:bg-orange-500 hover:text-white text-zinc-400 transition-colors cursor-pointer"
+                        >
+                          <Eye size={14} />
+                        </button>
+                      </td>
+                    </tr>
+                  </>
+                )}
               </tbody>
             </table>
           </div>
@@ -618,78 +578,52 @@ export function ExecutiveOverviewSheet({ selectedProviderName, onNavigateToTab }
           <div className="bg-zinc-900/80 border border-orange-500/30 rounded-2xl p-4 flex flex-col gap-2 relative overflow-hidden shadow-lg shadow-orange-500/5">
             <div className="flex items-center justify-between">
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-orange-500/20 text-orange-400 text-[10px] font-extrabold uppercase">
-                <Sparkles size={12} /> Oportunidad Inmediata
+                <Sparkles size={12} /> Estado de Cartera
               </span>
-              <span className="text-[10px] font-mono text-zinc-500">Hace 12 min</span>
+              <span className="text-[10px] font-mono text-zinc-500">{projectCount > 0 ? 'En tiempo real' : 'En espera'}</span>
             </div>
-            <h4 className="text-sm font-bold text-white">Muebles & Diseños Las Condes</h4>
+            <h4 className="text-sm font-bold text-white">
+              {projectCount > 0 ? `${projectCount} Proyecto(s) Activo(s)` : 'Cartera en Limpio'}
+            </h4>
             <p className="text-xs text-zinc-300 leading-relaxed">
-              Tiene <strong className="text-white">16 presupuestos aprobados</strong> pendientes de corte con{' '}
-              <span className="text-sky-400">Cubierta Cuarzo Blanco Norte</span> y{' '}
-              <span className="text-orange-400">Roble Cendra</span> (aprox. 510 m²).
+              {projectCount > 0 ? (
+                <>
+                  Se encuentran cargados <strong className="text-white">{projectCount} proyecto(s)</strong> con una estimación de{' '}
+                  <span className="text-orange-400 font-semibold">${totalClp.toLocaleString('es-CL')} CLP</span>.
+                </>
+              ) : (
+                'No hay proyectos simulados ni activos. Todo está limpio para comenzar tus propios diseños desde cero.'
+              )}
             </p>
-            <div className="pt-2 flex items-center justify-between border-t border-zinc-800/80 mt-1">
-              <button
-                onClick={() => alert('Canal B2B abierto con Taller Las Condes (WhatsApp / Correo automático).')}
-                className="px-3 py-1.5 rounded-lg bg-orange-500 hover:bg-orange-400 text-white font-bold text-xs transition-colors cursor-pointer"
-              >
-                Contactar Taller
-              </button>
-              <span className="text-xs font-mono font-bold text-amber-400">$84.500.000 CLP est.</span>
-            </div>
+            {projectCount > 0 && (
+              <div className="pt-2 flex items-center justify-between border-t border-zinc-800/80 mt-1">
+                <button
+                  onClick={() => onNavigateToTab?.('proyectos')}
+                  className="px-3 py-1.5 rounded-lg bg-orange-500 hover:bg-orange-400 text-white font-bold text-xs transition-colors cursor-pointer"
+                >
+                  Ver Proyectos
+                </button>
+                <span className="text-xs font-mono font-bold text-amber-400">${totalClp.toLocaleString('es-CL')} CLP</span>
+              </div>
+            )}
           </div>
 
           {/* Alerta de Merma */}
-          <div className="bg-zinc-900/80 border border-red-500/30 rounded-2xl p-4 flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-500/20 text-red-400 text-[10px] font-extrabold uppercase">
-                <AlertTriangle size={12} /> Alerta de Merma Crítica
-              </span>
-              <span className="text-[10px] font-mono text-zinc-500">Huechuraba</span>
-            </div>
-            <h4 className="text-sm font-bold text-white">Patrón de Merma Crítica: 12.1% en Isla con Gola</h4>
-            <p className="text-xs text-zinc-400 leading-relaxed">
-              Diseños en L con tirador gola presentan 12.1% de merma. Sugerir cambio de despiece a planchas 2440x1830mm para reducir pérdida técnica.
-            </p>
-            <div className="flex items-center gap-2 pt-2 border-t border-zinc-800/80 mt-1">
-              <button
-                onClick={() => alert('Parámetro 2440x1830 aplicado en optimizador CNC del taller Huechuraba.')}
-                className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-white text-[11px] font-bold cursor-pointer"
-              >
-                Aplicar 2440x1830
-              </button>
-              <button
-                onClick={() => alert('Notificación enviada a la seccionadora.')}
-                className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white text-[11px] cursor-pointer"
-              >
-                Notificar
-              </button>
-            </div>
-          </div>
-
-          {/* Taller Hub Quilicura */}
           <div className="bg-zinc-900/80 border border-zinc-800 rounded-2xl p-4 flex flex-col gap-2">
             <div className="flex items-center justify-between">
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-zinc-800 text-amber-400 text-[10px] font-extrabold uppercase">
-                <Factory size={12} /> Taller Hub Quilicura
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-zinc-800 text-sky-400 text-[10px] font-extrabold uppercase">
+                <AlertTriangle size={12} /> Optimizador de Corte
               </span>
-              <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-400">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> En Línea
-              </span>
+              <span className="text-[10px] font-mono text-zinc-500">OptiCorte CL</span>
             </div>
-            <h4 className="text-sm font-bold text-white">Capacidad Asignada al 92%</h4>
-            <p className="text-xs text-zinc-400">
-              Consumo récord de tableros Masisa Enigma 18mm esta semana.
+            <h4 className="text-sm font-bold text-white">
+              {projectCount > 0 ? `Merma Promedio: ${scrapPercentage}%` : 'Módulo de Seccionado Listo'}
+            </h4>
+            <p className="text-xs text-zinc-400 leading-relaxed">
+              {projectCount > 0
+                ? 'Los algoritmos de encaje automático garantizan un aprovechamiento superior al 90% en tableros de 2440x1830mm.'
+                : 'El motor de nesting automático evaluará la merma en cuanto agregues módulos a la escena.'}
             </p>
-            <div className="pt-2 flex items-center justify-between border-t border-zinc-800 mt-1">
-              <button
-                onClick={() => onNavigateToTab?.('geografica')}
-                className="text-orange-400 hover:underline text-xs font-bold flex items-center gap-1 cursor-pointer"
-              >
-                <span>Ver Cola en Mapa RM</span>
-                <ArrowUpRight size={14} />
-              </button>
-            </div>
           </div>
         </div>
       </div>

@@ -308,6 +308,11 @@ export function SpecialFurniture3D() {
             <boxGeometry args={[innerW - 8, drawerH - 4.5, 1.5]} />
             <meshStandardMaterial color="#d1cac0" />
           </mesh>
+          {/* Frontal interior (Contrafrente) caja */}
+          <mesh position={[0, 0, innerD / 2 - 2.8]}>
+            <boxGeometry args={[innerW - 8, drawerH - 4.5, 1.5]} />
+            <meshStandardMaterial color="#d1cac0" />
+          </mesh>
         </group>
       </group>
 

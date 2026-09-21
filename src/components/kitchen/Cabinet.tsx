@@ -919,7 +919,7 @@ interface CabinetProps extends CabinetType {
   index?: number;
 }
 
-export function Cabinet({ id, type, variant, width, height, depth, position, rotation, color, structureColor, doorColor, drawerFrontColor, drawerInnerColor, shelfColor, backColor, socleColor, structureMaterial, doorMaterial, drawerFrontMaterial, drawerInnerMaterial, shelfMaterial, backMaterial, socleMaterial, grainDirection, grainElements, hplBalancer, isOpen, openElements, index, shelvesCount, shelvesCountLower, shelvesCountUpper, handleConfig: propHandleConfig }: CabinetProps) {
+export function Cabinet({ id, type, variant, width, height, depth, position, rotation, color, structureColor, doorColor, drawerFrontColor, drawerInnerColor, shelfColor, backColor, socleColor, structureMaterial, doorMaterial, drawerFrontMaterial, drawerInnerMaterial, shelfMaterial, backMaterial, socleMaterial, grainDirection, grainElements, hplBalancer, isOpen, openElements, index, shelvesCount, shelvesCountLower, shelvesCountUpper, handleConfig: propHandleConfig, leftCoverPanel, rightCoverPanel }: CabinetProps) {
    const { activeCabinetId, setActiveCabinet, setDraggingCabinetId, setToolMode, showSocle, cabinets, viewMode, golaSystem, countertopConfig, qstoneCatalog, setOpenElement, handleConfig: storeHandleConfig } = useKitchenStore();
    const handleConfig = propHandleConfig || storeHandleConfig;
 
@@ -937,16 +937,16 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
 
    const cStructure = safeStructureColor || safeColor || '#f8fafc';
    const cDoors = safeDoorColor || safeColor || '#f8fafc';
-   const cDrawers = safeDrawerFrontColor || safeDoorColor || safeColor || '#f8fafc';
+   const cDrawers = safeDrawerFrontColor || safeColor || '#f8fafc';
    const cInner = drawerInnerColor || safeColor || '#f8fafc';
    const cBack = backColor || safeColor || '#f8fafc';
    const cSocle = socleColor || '#111';
    const cabinetIndex = typeof index === 'number' ? index : cabinets.findIndex((c) => c.id === id);
    const isBaseOrIsland = type === 'base' || type === 'island';
    const isGolaActive = (golaSystem === 'aluminum' || golaSystem === 'black') && isBaseOrIsland;
-   const golaColor = golaSystem === 'black' ? '#18181b' : '#d1d5db';
-   const golaMetalness = golaSystem === 'black' ? 0.85 : 0.92;
-   const golaRoughness = golaSystem === 'black' ? 0.35 : 0.20;
+   const golaColor = golaSystem === 'black' ? '#18181b' : '#e2e8f0';
+   const golaMetalness = golaSystem === 'black' ? 0.25 : 0.45;
+   const golaRoughness = golaSystem === 'black' ? 0.70 : 0.28;
 
    // Cálculo paramétrico de regrueso y holgura de faldón de cubierta
    const activeProduct = countertopConfig?.enabled && isBaseOrIsland
@@ -1094,6 +1094,60 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
          }
       }
 
+      const renderCoverPanels = () => {
+         const isWineRack = variant?.includes('wine_rack') || variant === 'base_wine_rack' || variant === 'wall_wine_rack' || variant === 'tall_wine_rack' || variant === 'island_wine_rack';
+         const hasFronts = !isWineRack && variant !== 'open' && variant !== 'tall_open' && variant !== 'wall_open';
+         const coverDepth = (hasFronts || isWineRack) ? depth + thickness : depth;
+         const coverZ = (hasFronts || isWineRack) ? thickness / 2 : 0;
+
+         return (
+            <>
+               {leftCoverPanel?.enabled && (() => {
+                  const coverThick = leftCoverPanel.thickness || thickness;
+                  const coverExtend = leftCoverPanel.extendToFloor && isBaseOrTall;
+                  const coverH = coverExtend ? height : cabH;
+                  const coverY = coverExtend ? height / 2 : legsHeight + cabH / 2;
+                  const coverColor = leftCoverPanel.color || cDoors;
+                  const coverMat = leftCoverPanel.material || doorMaterial;
+                  const effectiveCoverDepth = leftCoverPanel.depth || coverDepth;
+                  const effectiveCoverZ = leftCoverPanel.depth 
+                     ? ((depth / 2 + ((hasFronts || isWineRack) ? thickness : 0)) - effectiveCoverDepth / 2) 
+                     : coverZ;
+                  const xPos = -width / 2 - coverThick / 2;
+                  return (
+                     <Board
+                        key="cover-panel-left"
+                        position={[xPos, coverY, effectiveCoverZ]}
+                        args={[coverThick, coverH, effectiveCoverDepth]}
+                        {...parseColor(coverColor, coverMat, 'leftCover')}
+                     />
+                  );
+               })()}
+               {rightCoverPanel?.enabled && (() => {
+                  const coverThick = rightCoverPanel.thickness || thickness;
+                  const coverExtend = rightCoverPanel.extendToFloor && isBaseOrTall;
+                  const coverH = coverExtend ? height : cabH;
+                  const coverY = coverExtend ? height / 2 : legsHeight + cabH / 2;
+                  const coverColor = rightCoverPanel.color || cDoors;
+                  const coverMat = rightCoverPanel.material || doorMaterial;
+                  const effectiveCoverDepth = rightCoverPanel.depth || coverDepth;
+                  const effectiveCoverZ = rightCoverPanel.depth 
+                     ? ((depth / 2 + ((hasFronts || isWineRack) ? thickness : 0)) - effectiveCoverDepth / 2) 
+                     : coverZ;
+                  const xPos = width / 2 + coverThick / 2;
+                  return (
+                     <Board
+                        key="cover-panel-right"
+                        position={[xPos, coverY, effectiveCoverZ]}
+                        args={[coverThick, coverH, effectiveCoverDepth]}
+                        {...parseColor(coverColor, coverMat, 'rightCover')}
+                     />
+                  );
+               })()}
+            </>
+         );
+      };
+
       const renderFronts = () => {
          if (variant === 'open') return null;
          
@@ -1135,15 +1189,18 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                        </group>
                      )}
                      
-                     {/* Drawer Box (Sides, Back) */}
+                     {/* Drawer Box (Sides, Back, Front Contrafrente, Bottom) */}
                      <Board position={[-skw/2 + thickness/2, yBoxCenter, drawerBoxZCenter]} args={[thickness, sideHeight, drawerBoxLength]} {...parseColor(cInner, drawerInnerMaterial)} />
                      <Board position={[skw/2 - thickness/2, yBoxCenter, drawerBoxZCenter]} args={[thickness, sideHeight, drawerBoxLength]} {...parseColor(cInner, drawerInnerMaterial)} />
                      <Board position={[0, yBoxCenter + 0.6, drawerBoxZCenter - drawerBoxLength/2 + thickness/2]} args={[skw - thickness*2, sideHeight - 1.2, thickness]} {...parseColor(cInner, drawerInnerMaterial)} />
+                     <Board position={[0, yBoxCenter + 0.6, drawerBoxZCenter + drawerBoxLength/2 - thickness/2]} args={[skw - thickness*2, sideHeight - 1.2, thickness]} {...parseColor(cInner, drawerInnerMaterial)} />
                      <Board position={[0, yBottomPanel + 0.15, drawerBoxZCenter]} args={[skw - thickness*2, 0.3, drawerBoxLength - thickness*2]} color="#dddddd" />
                      
-                     {/* Uniones del Cajón a la Trasera */}
+                     {/* Uniones del Cajón a la Trasera y al Contrafrente */}
                      <AssemblyJoint position={[-skw/2 + thickness, yBoxCenter, drawerBoxZCenter - drawerBoxLength/2 + thickness]} length={sideHeight} axis="y" pointing="right" thickness={thickness} count={1} overrideAssemblyType={useStore.getState().drawerAssemblyType} />
                      <AssemblyJoint position={[skw/2 - thickness, yBoxCenter, drawerBoxZCenter - drawerBoxLength/2 + thickness]} length={sideHeight} axis="y" pointing="left" thickness={thickness} count={1} overrideAssemblyType={useStore.getState().drawerAssemblyType} />
+                     <AssemblyJoint position={[-skw/2 + thickness, yBoxCenter, drawerBoxZCenter + drawerBoxLength/2 - thickness]} length={sideHeight} axis="y" pointing="right" thickness={thickness} count={1} overrideAssemblyType={useStore.getState().drawerAssemblyType} />
+                     <AssemblyJoint position={[skw/2 - thickness, yBoxCenter, drawerBoxZCenter + drawerBoxLength/2 - thickness]} length={sideHeight} axis="y" pointing="left" thickness={thickness} count={1} overrideAssemblyType={useStore.getState().drawerAssemblyType} />
 
                      {/* Movable Undermount Slides */}
                      <mesh position={[-skw/2 + thickness + 1.0, yBoxBottom + 0.6, drawerBoxZCenter]}>
@@ -1265,6 +1322,17 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                         args={[thickness, sideHeight, uCutoutLength]}
                         {...parseColor(cInner, drawerInnerMaterial)}
                      />
+
+                     {/* Contrafrente frontal continuo del cajón en U */}
+                     <Board
+                        position={[0, yBoxCenter + 0.6, drawerBoxZCenter + drawerBoxLength / 2 - thickness / 2]}
+                        args={[skw - thickness * 2, sideHeight - 1.2, thickness]}
+                        {...parseColor(cInner, drawerInnerMaterial)}
+                     />
+
+                     {/* Uniones del Cajón al Contrafrente */}
+                     <AssemblyJoint position={[-skw / 2 + thickness, yBoxCenter, drawerBoxZCenter + drawerBoxLength / 2 - thickness]} length={sideHeight} axis="y" pointing="right" thickness={thickness} count={1} overrideAssemblyType={useStore.getState().drawerAssemblyType} />
+                     <AssemblyJoint position={[skw / 2 - thickness, yBoxCenter, drawerBoxZCenter + drawerBoxLength / 2 - thickness]} length={sideHeight} axis="y" pointing="left" thickness={thickness} count={1} overrideAssemblyType={useStore.getState().drawerAssemblyType} />
 
                      {/* Fondo de Cajón 3mm con forma en U (alas y unión frontal) */}
                      <Board
@@ -1557,33 +1625,207 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
          }
 
          if (effectiveVariant === 'spice_rack') {
-            const slideLength = depth - 5;
+            const innerDepthMm = (depth - 1.5) * 10;
+            const nominalLength = getNominalSlideLength(innerDepthMm) / 10;
+            const cartDepth = nominalLength - 1.0;
             const topDeduct = isGolaActive ? 3.5 : (isBaseOrIsland ? regruesoDeduct : 0);
             const doorH = Math.max(10, cabH - topDeduct - gap * 2);
             const doorY = isGolaActive ? (legsHeight + (cabH - topDeduct)/2) : (legsHeight + gap + doorH / 2);
+            
+            const cartW = Math.max(8, innerW - 2.6);
+            const cartH = Math.max(30, cabH - 12);
+            const cartZCenter = depth / 2 - cartDepth / 2;
+            const slideZCenter = depth / 2 - nominalLength / 2;
+            
+            const cartBottomY = legsHeight + thickness + 1.2;
+            const midShelfY = cartBottomY + cartH * 0.48;
+            const guardH = 6.0;
+            const isElongatedHandle = handleConfig?.model === 'madrid' || handleConfig?.model === 'forza' || handleConfig?.model === 'denver';
+            const handleOrientation = isElongatedHandle ? 'vertical' : 'horizontal';
+            const handleY = isPestanaHandle ? (doorY + doorH / 2) : (doorY + doorH * 0.28);
+            
             return (
                <>
                   {isGolaActive && renderGolaL()}
-                  <AnimatedDrawer openZOffset={slideLength - 8} forceOpen={isElementOpen('drawer-0')}>
-                     <Board position={[0, doorY, frontZ]} args={[width - gap * 2, doorH, thickness]} {...parseColor(cDoors, doorMaterial, 'drawer-0')} isFrontPanel={true} globalPosition={[position[0], position[1] + doorY, position[2] + frontZ]} />
-                     {/* Cestas metálicas de especiero extraíble */}
-                     <mesh position={[0, legsHeight + 8, 0]}>
-                        <boxGeometry args={[Math.max(4, width - 4), 1.5, depth - 8]} />
-                        <meshStandardMaterial color="#cccccc" metalness={0.8} roughness={0.2} />
+                  {/* Rieles / Correderas telescópicas fijadas a los laterales interiores del mueble */}
+                  <mesh position={[-innerW / 2 + 0.6, cartBottomY + 1.6, slideZCenter]}>
+                     <boxGeometry args={[1.2, 3.2, nominalLength]} />
+                     <meshStandardMaterial color="#64748b" metalness={0.85} roughness={0.25} />
+                  </mesh>
+                  <mesh position={[innerW / 2 - 0.6, cartBottomY + 1.6, slideZCenter]}>
+                     <boxGeometry args={[1.2, 3.2, nominalLength]} />
+                     <meshStandardMaterial color="#64748b" metalness={0.85} roughness={0.25} />
+                  </mesh>
+                  {cabH > 55 && (
+                     <>
+                        <mesh position={[-innerW / 2 + 0.6, midShelfY + 1.6, slideZCenter]}>
+                           <boxGeometry args={[1.2, 3.2, nominalLength]} />
+                           <meshStandardMaterial color="#64748b" metalness={0.85} roughness={0.25} />
+                        </mesh>
+                        <mesh position={[innerW / 2 - 0.6, midShelfY + 1.6, slideZCenter]}>
+                           <boxGeometry args={[1.2, 3.2, nominalLength]} />
+                           <meshStandardMaterial color="#64748b" metalness={0.85} roughness={0.25} />
+                        </mesh>
+                     </>
+                  )}
+
+                  {/* Carro extraíble animado completo */}
+                  <AnimatedDrawer 
+                     openZOffset={cartDepth - 3} 
+                     forceOpen={isElementOpen('drawer-0')}
+                     onClickAction={() => setOpenElement(id, 'drawer-0', !isElementOpen('drawer-0'))}
+                  >
+                     {/* Frente Exterior de Melamina */}
+                     <Board 
+                        position={[0, doorY, frontZ]} 
+                        args={[width - gap * 2, doorH, thickness]} 
+                        {...parseColor(cDoors, doorMaterial, 'drawer-0')} 
+                        isFrontPanel={true} 
+                        globalPosition={[position[0], position[1] + doorY, position[2] + frontZ]} 
+                     />
+                     
+                     {/* Tirador en orientación vertical si es alargado */}
+                     {showHandle && (
+                       <group position={[0, handleY, frontZ + thickness / 2]}>
+                         <KitchenHandle3D config={handleConfig} orientation={handleOrientation} isUpper={false} thickness={thickness} />
+                       </group>
+                     )}
+
+                     {/* Correderas móviles unidas al carro de melamina */}
+                     <mesh position={[-cartW / 2 - 0.45, cartBottomY + 1.6, cartZCenter]}>
+                        <boxGeometry args={[0.9, 2.8, cartDepth]} />
+                        <meshStandardMaterial color="#94a3b8" metalness={0.85} roughness={0.25} />
                      </mesh>
-                     <mesh position={[0, legsHeight + cabH / 2, 0]}>
-                        <boxGeometry args={[Math.max(4, width - 4), 1.5, depth - 8]} />
-                        <meshStandardMaterial color="#cccccc" metalness={0.8} roughness={0.2} />
+                     <mesh position={[cartW / 2 + 0.45, cartBottomY + 1.6, cartZCenter]}>
+                        <boxGeometry args={[0.9, 2.8, cartDepth]} />
+                        <meshStandardMaterial color="#94a3b8" metalness={0.85} roughness={0.25} />
                      </mesh>
-                     {/* Postes cromados */}
-                     <mesh position={[-width / 2 + 2.5, legsHeight + cabH / 2, -depth / 2 + 5]}>
-                        <cylinderGeometry args={[0.3, 0.3, cabH - 12, 8]} />
-                        <meshStandardMaterial color="#cccccc" metalness={0.9} roughness={0.1} />
+                     {cabH > 55 && (
+                        <>
+                           <mesh position={[-cartW / 2 - 0.45, midShelfY + 1.6, cartZCenter]}>
+                              <boxGeometry args={[0.9, 2.8, cartDepth]} />
+                              <meshStandardMaterial color="#94a3b8" metalness={0.85} roughness={0.25} />
+                           </mesh>
+                           <mesh position={[cartW / 2 + 0.45, midShelfY + 1.6, cartZCenter]}>
+                              <boxGeometry args={[0.9, 2.8, cartDepth]} />
+                              <meshStandardMaterial color="#94a3b8" metalness={0.85} roughness={0.25} />
+                           </mesh>
+                        </>
+                     )}
+
+                     {/* BASTIDOR DE MELAMINA DEL CARRO ESPECÍFICO (Misma melamina de cajones cInner) */}
+                     {/* 1. Base / Piso Inferior del Carro */}
+                     <Board 
+                        position={[0, cartBottomY + thickness / 2, cartZCenter]} 
+                        args={[cartW, thickness, cartDepth]} 
+                        {...parseColor(cInner, drawerInnerMaterial)} 
+                     />
+
+                     {/* 2. Montante / Trasera Vertical Posterior del Carro */}
+                     <Board 
+                        position={[0, cartBottomY + cartH / 2, cartZCenter - cartDepth / 2 + thickness / 2]} 
+                        args={[cartW, cartH, thickness]} 
+                        {...parseColor(cInner, drawerInnerMaterial)} 
+                     />
+
+                     {/* 3. Barandillas Laterales Inferiores de Melamina */}
+                     <Board 
+                        position={[-cartW / 2 + thickness / 2, cartBottomY + guardH / 2 + thickness, cartZCenter]} 
+                        args={[thickness, guardH, cartDepth]} 
+                        {...parseColor(cInner, drawerInnerMaterial)} 
+                     />
+                     <Board 
+                        position={[cartW / 2 - thickness / 2, cartBottomY + guardH / 2 + thickness, cartZCenter]} 
+                        args={[thickness, guardH, cartDepth]} 
+                        {...parseColor(cInner, drawerInnerMaterial)} 
+                     />
+
+                     {/* 4. Amarre / Contrafrente Frontal Inferior de Fijación al Frente Exterior */}
+                     <Board 
+                        position={[0, cartBottomY + guardH / 2 + thickness, cartZCenter + cartDepth / 2 - thickness / 2]} 
+                        args={[cartW - thickness * 2, guardH, thickness]} 
+                        {...parseColor(cInner, drawerInnerMaterial)} 
+                     />
+
+                     {/* 5. Repisa Intermedia de Melamina */}
+                     <Board 
+                        position={[0, midShelfY + thickness / 2, cartZCenter + thickness / 2]} 
+                        args={[cartW, thickness, cartDepth - thickness]} 
+                        {...parseColor(cInner, drawerInnerMaterial)} 
+                     />
+
+                     {/* 6. Barandillas Laterales Intermedias de Melamina */}
+                     <Board 
+                        position={[-cartW / 2 + thickness / 2, midShelfY + guardH / 2 + thickness, cartZCenter + thickness / 2]} 
+                        args={[thickness, guardH, cartDepth - thickness]} 
+                        {...parseColor(cInner, drawerInnerMaterial)} 
+                     />
+                     <Board 
+                        position={[cartW / 2 - thickness / 2, midShelfY + guardH / 2 + thickness, cartZCenter + thickness / 2]} 
+                        args={[thickness, guardH, cartDepth - thickness]} 
+                        {...parseColor(cInner, drawerInnerMaterial)} 
+                     />
+
+                     {/* 7. Amarre / Contrafrente Frontal Intermedio de Fijación al Frente Exterior */}
+                     <Board 
+                        position={[0, midShelfY + guardH / 2 + thickness, cartZCenter + cartDepth / 2 - thickness / 2]} 
+                        args={[cartW - thickness * 2, guardH, thickness]} 
+                        {...parseColor(cInner, drawerInnerMaterial)} 
+                     />
+
+                     {/* Varillas Cromadas de Protección / Contención Perimetral */}
+                     <mesh position={[-cartW / 2 + 1.2, cartBottomY + guardH + 4, cartZCenter]} rotation={[Math.PI / 2, 0, 0]}>
+                        <cylinderGeometry args={[0.25, 0.25, cartDepth - 2, 12]} />
+                        <meshStandardMaterial color="#cbd5e1" metalness={0.9} roughness={0.15} />
                      </mesh>
-                     <mesh position={[width / 2 - 2.5, legsHeight + cabH / 2, -depth / 2 + 5]}>
-                        <cylinderGeometry args={[0.3, 0.3, cabH - 12, 8]} />
-                        <meshStandardMaterial color="#cccccc" metalness={0.9} roughness={0.1} />
+                     <mesh position={[cartW / 2 - 1.2, cartBottomY + guardH + 4, cartZCenter]} rotation={[Math.PI / 2, 0, 0]}>
+                        <cylinderGeometry args={[0.25, 0.25, cartDepth - 2, 12]} />
+                        <meshStandardMaterial color="#cbd5e1" metalness={0.9} roughness={0.15} />
                      </mesh>
+                     <mesh position={[-cartW / 2 + 1.2, midShelfY + guardH + 4, cartZCenter + thickness / 2]} rotation={[Math.PI / 2, 0, 0]}>
+                        <cylinderGeometry args={[0.25, 0.25, cartDepth - 4, 12]} />
+                        <meshStandardMaterial color="#cbd5e1" metalness={0.9} roughness={0.15} />
+                     </mesh>
+                     <mesh position={[cartW / 2 - 1.2, midShelfY + guardH + 4, cartZCenter + thickness / 2]} rotation={[Math.PI / 2, 0, 0]}>
+                        <cylinderGeometry args={[0.25, 0.25, cartDepth - 4, 12]} />
+                        <meshStandardMaterial color="#cbd5e1" metalness={0.9} roughness={0.15} />
+                     </mesh>
+
+                     {/* Botellas de Aceite y Vinagre en Nivel Inferior */}
+                     {[-cartDepth * 0.25, 0, cartDepth * 0.25].map((zOffset, bIdx) => (
+                        <group key={`spice-oil-bot-${bIdx}`} position={[0, cartBottomY + thickness + 11, cartZCenter + zOffset]}>
+                           <mesh position={[0, 0, 0]}>
+                              <cylinderGeometry args={[2.4, 2.4, 16, 16]} />
+                              <meshStandardMaterial color={bIdx === 0 ? '#1e3a1e' : (bIdx === 1 ? '#451a03' : '#14532d')} roughness={0.2} metalness={0.2} />
+                           </mesh>
+                           <mesh position={[0, 9.5, 0]}>
+                              <cylinderGeometry args={[1.0, 2.4, 3, 16]} />
+                              <meshStandardMaterial color={bIdx === 0 ? '#1e3a1e' : (bIdx === 1 ? '#451a03' : '#14532d')} roughness={0.2} metalness={0.2} />
+                           </mesh>
+                           <mesh position={[0, 12, 0]}>
+                              <cylinderGeometry args={[0.9, 0.9, 2.5, 16]} />
+                              <meshStandardMaterial color="#e2e8f0" metalness={0.8} roughness={0.2} />
+                           </mesh>
+                        </group>
+                     ))}
+
+                     {/* Frascos de Especias en Nivel Superior */}
+                     {[-cartDepth * 0.32, -cartDepth * 0.11, cartDepth * 0.11, cartDepth * 0.32].map((zOffset, fIdx) => (
+                        <group key={`spice-jar-${fIdx}`} position={[0, midShelfY + thickness + 5, cartZCenter + zOffset]}>
+                           <mesh position={[0, 0, 0]}>
+                              <cylinderGeometry args={[2.0, 2.0, 7.5, 16]} />
+                              <meshStandardMaterial color="#f8fafc" roughness={0.1} transparent opacity={0.7} />
+                           </mesh>
+                           <mesh position={[0, -0.5, 0]}>
+                              <cylinderGeometry args={[1.85, 1.85, 6, 16]} />
+                              <meshStandardMaterial color={['#b45309', '#dc2626', '#15803d', '#ca8a04'][fIdx % 4]} roughness={0.7} />
+                           </mesh>
+                           <mesh position={[0, 4.3, 0]}>
+                              <cylinderGeometry args={[2.05, 2.05, 1.2, 16]} />
+                              <meshStandardMaterial color="#94a3b8" metalness={0.9} roughness={0.2} />
+                           </mesh>
+                        </group>
+                     ))}
                   </AnimatedDrawer>
                </>
             );
@@ -1643,9 +1885,10 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
             if (isGolaActive) {
                const golaRegruesoDeduct = Math.max(0, rawRegruesoCm - 3.5);
                const drawerH = Math.max(8, 14.5 - golaRegruesoDeduct);
-               const yBoxCenter = legsHeight + cabH - 3.5 - drawerH / 2;
-               const yGolaC = legsHeight + cabH - 3.5 - drawerH - 2.0;
-               const doorH = Math.max(15, cabH - 3.5 - drawerH - 4.0 - gap * 3);
+               const yTopFront = legsHeight + cabH - 3.5 - gap - golaRegruesoDeduct;
+               const yBoxCenter = yTopFront - drawerH / 2;
+               const yGolaC = yTopFront - drawerH - gap - 2.0;
+               const doorH = Math.max(15, cabH - 3.5 - drawerH - 4.0 - gap * 4 - golaRegruesoDeduct);
                const yDoorCenter = legsHeight + gap + doorH / 2;
                return (
                   <>
@@ -1663,7 +1906,7 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                         globalPosition={[position[0], position[1] + yDoorCenter, position[2] + frontZ]}
                         handleConfig={handleConfig}
                      />
-                     <Board position={[0, yGolaC, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(shelfColor || cStructure, shelfMaterial)} />
+                     
                      {(() => {
                         const cabObj: CabinetType = { id, type, variant, width, height, depth, position, rotation, color, shelvesCount };
                         const shelfElevations = getResolvedCabinetShelfElevations(cabObj, thickness);
@@ -2439,6 +2682,7 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                   <Board position={[15 - 5, height - thickness/2, 15 - 5]} args={[10, thickness, 10]} {...parseColor(cStructure, structureMaterial, 'top')} />
 
                   {renderFronts()}
+                  {renderCoverPanels()}
                </>
             ) : (
                <>
@@ -2515,12 +2759,9 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                      effVariant = width > 60 ? '2_doors' : '1_door';
                   }
                   const myHasGolaC = effVariant === '1_door_1_drawer' || effVariant === '2_pot_drawers' || effVariant === '4_drawers';
-                  const neighbor = isLeft ? leftNeighbor : rightNeighbor;
-                  const neighborVariant = neighbor?.variant;
-                  const neighborHasGolaC = neighborVariant === '1_door_1_drawer' || neighborVariant === '2_pot_drawers' || neighborVariant === '4_drawers';
-                  const hasGolaC = myHasGolaC || (Boolean(neighbor) && neighborHasGolaC);
+                  const hasGolaC = myHasGolaC;
 
-                  const effGolaCVariant = myHasGolaC ? effVariant : (neighborVariant || effVariant);
+                  const effGolaCVariant = effVariant;
                   let yGolaC = 0;
                   if (effGolaCVariant === '1_door_1_drawer') {
                      const drawerH = 14.5;
@@ -2650,6 +2891,7 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                </>
             )}
             {renderFronts()}
+            {renderCoverPanels()}
             </>
             )}
          </group>
@@ -2826,7 +3068,8 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                   if (isGolaActive) {
                      const golaRegruesoDeduct = Math.max(0, rawRegruesoCm - 3.5);
                      const drawerH = Math.max(8, 14.5 - golaRegruesoDeduct);
-                     const yBoxCenter = legsHeight + cabH - 3.5 - drawerH / 2;
+                     const yTopFront = legsHeight + cabH - 3.5 - gap - golaRegruesoDeduct;
+                     const yBoxCenter = yTopFront - drawerH / 2;
                      drawerFronts.push({ yCenter: -height / 2 + yBoxCenter, frontH: drawerH });
                   } else {
                      const deduct = isBaseOrIsland ? regruesoDeduct : 0;
@@ -2963,10 +3206,10 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
             )}
 
             {/* --- NIVEL >= 5: Identificación BIM de Módulos (N° y Nombre idéntico al Menú de Escena) --- */}
-            {dimensionLevel >= 5 && cabinetIndex >= 0 && (
+            {dimensionLevel >= 5 && cabinetIndex >= 0 && !isActive && (
                <group position={[0, height / 2 + 10, 0]} renderOrder={1000}>
                   {/* Línea conectora hacia la cubierta / cuerpo del mueble */}
-                  <Line points={[[0, 0, 0], [0, -8, 0]]} color={isActive ? "#f97316" : "#38bdf8"} lineWidth={1.6} dashed dashScale={1} depthTest={false} renderOrder={999} />
+                  <Line points={[[0, 0, 0], [0, -8, 0]]} color="#38bdf8" lineWidth={1.6} dashed dashScale={1} depthTest={false} renderOrder={999} />
 
                   {/* Badge Flotante con Orientación Billboard hacia la Cámara */}
                   <Billboard follow={true} lockX={false} lockY={false} lockZ={false}>
@@ -2979,7 +3222,7 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                               {/* Placa de fondo de alto contraste */}
                               <mesh position={[0, 0, -0.05]} renderOrder={999}>
                                  <planeGeometry args={[badgeW, 9]} />
-                                 <meshBasicMaterial color={isActive ? "#0f172a" : "#1e293b"} transparent opacity={0.92} depthTest={false} />
+                                 <meshBasicMaterial color="#1e293b" transparent opacity={0.92} depthTest={false} />
                               </mesh>
 
                               {/* Borde perimetral técnico */}
@@ -2989,7 +3232,7 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                                     [badgeW / 2, 4.5, 0], [-badgeW / 2, 4.5, 0],
                                     [-badgeW / 2, -4.5, 0]
                                  ]}
-                                 color={isActive ? "#f97316" : "#0284c7"}
+                                 color="#0284c7"
                                  lineWidth={1.8}
                                  depthTest={false}
                                  renderOrder={1000}
@@ -2999,7 +3242,7 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                               <Text
                                  position={[0, 0, 0.05]}
                                  fontSize={4.6}
-                                 color={isActive ? "#fb923c" : "#f8fafc"}
+                                 color="#f8fafc"
                                  anchorX="center"
                                  anchorY="middle"
                                  fontWeight="bold"
@@ -3025,6 +3268,190 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
 
    const isDecoration = type === 'decoration' || variant?.startsWith('deco_');
 
+   const renderSelectionHighlight = () => {
+      if (!isActive) return null;
+      const highlightColor = isDecoration ? "#38bdf8" : "#f97316";
+      const glowColor = isDecoration ? "#0284c7" : "#ea580c";
+      const badgeTextColor = isDecoration ? "#38bdf8" : "#fb923c";
+
+      const hw = width / 2;
+      const hh = height / 2;
+      const hd = depth / 2;
+      const bracketLen = Math.max(3, Math.min(8, width * 0.18, height * 0.18, depth * 0.18));
+
+      // 8 esquinas para vértices CAD
+      const corners: [number, number, number][] = [
+        [-hw, -hh, -hd],
+        [hw, -hh, -hd],
+        [-hw, hh, -hd],
+        [hw, hh, -hd],
+        [-hw, -hh, hd],
+        [hw, -hh, hd],
+        [-hw, hh, hd],
+        [hw, hh, hd],
+      ];
+
+      return (
+        <group name="active-cabinet-highlight" renderOrder={950}>
+          {/* 1. Volumetría translúcida envolvente con aristas definidas */}
+          <mesh renderOrder={950}>
+            <boxGeometry args={[width + 0.8, height + 0.8, depth + 0.8]} />
+            <meshBasicMaterial
+              color={glowColor}
+              transparent
+              opacity={0.16}
+              depthWrite={false}
+              side={THREE.DoubleSide}
+            />
+            <Edges scale={1.0} color={highlightColor} threshold={15} renderOrder={951} />
+          </mesh>
+
+          {/* 2. Vértices / Brackets CAD 3D en las 8 esquinas */}
+          {corners.map(([cx, cy, cz], idx) => {
+            const sx = cx < 0 ? 1 : -1;
+            const sy = cy < 0 ? 1 : -1;
+            const sz = cz < 0 ? 1 : -1;
+            return (
+              <group key={`bracket-${idx}`} position={[cx, cy, cz]} renderOrder={999}>
+                <Line
+                  points={[[0, 0, 0], [sx * bracketLen, 0, 0]]}
+                  color={highlightColor}
+                  lineWidth={3.5}
+                  depthTest={false}
+                  renderOrder={1000}
+                />
+                <Line
+                  points={[[0, 0, 0], [0, sy * bracketLen, 0]]}
+                  color={highlightColor}
+                  lineWidth={3.5}
+                  depthTest={false}
+                  renderOrder={1000}
+                />
+                <Line
+                  points={[[0, 0, 0], [0, 0, sz * bracketLen]]}
+                  color={highlightColor}
+                  lineWidth={3.5}
+                  depthTest={false}
+                  renderOrder={1000}
+                />
+              </group>
+            );
+          })}
+
+          {/* 3. Huella proyectada en piso (Ground Footprint / Halo) */}
+          <group position={[0, -height / 2 + 0.15, 0]} renderOrder={960}>
+            <mesh rotation={[-Math.PI / 2, 0, 0]} renderOrder={960}>
+              <planeGeometry args={[width + 3, depth + 3]} />
+              <meshBasicMaterial
+                color={highlightColor}
+                transparent
+                opacity={0.24}
+                depthWrite={false}
+                side={THREE.DoubleSide}
+              />
+            </mesh>
+            <Line
+              points={[
+                [-hw - 1.5, 0, -hd - 1.5],
+                [hw + 1.5, 0, -hd - 1.5],
+                [hw + 1.5, 0, hd + 1.5],
+                [-hw - 1.5, 0, hd + 1.5],
+                [-hw - 1.5, 0, -hd - 1.5],
+              ]}
+              color={highlightColor}
+              lineWidth={2.6}
+              depthTest={false}
+              renderOrder={962}
+            />
+            {[
+              [-hw - 1.5, -hd - 1.5],
+              [hw + 1.5, -hd - 1.5],
+              [hw + 1.5, hd + 1.5],
+              [-hw - 1.5, hd + 1.5],
+            ].map(([px, pz], pIdx) => (
+              <group key={`floor-cross-${pIdx}`} position={[px, 0.05, pz]}>
+                <Line points={[[-2, 0, 0], [2, 0, 0]]} color="#ffffff" lineWidth={2} depthTest={false} renderOrder={965} />
+                <Line points={[[0, 0, -2], [0, 0, 2]]} color="#ffffff" lineWidth={2} depthTest={false} renderOrder={965} />
+              </group>
+            ))}
+          </group>
+
+          {/* 4. Badge Flotante "MÓDULO ACTIVO" con dimensiones */}
+          {cabinetIndex >= 0 && (
+            <group position={[0, height / 2 + 12, 0]} renderOrder={1005}>
+              <Line
+                points={[[0, 0, 0], [0, -10, 0]]}
+                color={highlightColor}
+                lineWidth={2}
+                dashed
+                dashScale={1.2}
+                depthTest={false}
+                renderOrder={1004}
+              />
+              <Billboard follow={true}>
+                {(() => {
+                  const cabLabel = getCabinetLabel({ type, variant, width, height, depth }, cabinetIndex);
+                  const headerText = `MOD ${cabinetIndex + 1} • ${cabLabel}`;
+                  const dimText = `${width.toFixed(0)} × ${height.toFixed(0)} × ${depth.toFixed(0)} cm`;
+                  const badgeW = Math.max(34, Math.max(headerText.length, dimText.length) * 2.2 + 8);
+                  return (
+                    <group>
+                      <mesh position={[0, 0, -0.05]} renderOrder={1004}>
+                        <planeGeometry args={[badgeW, 12]} />
+                        <meshBasicMaterial color="#090d16" transparent opacity={0.94} depthTest={false} />
+                      </mesh>
+                      <Line
+                        points={[
+                          [-badgeW / 2, -6, 0],
+                          [badgeW / 2, -6, 0],
+                          [badgeW / 2, 6, 0],
+                          [-badgeW / 2, 6, 0],
+                          [-badgeW / 2, -6, 0],
+                        ]}
+                        color={highlightColor}
+                        lineWidth={2.2}
+                        depthTest={false}
+                        renderOrder={1005}
+                      />
+                      <Text
+                        position={[0, 2.2, 0.05]}
+                        fontSize={4.4}
+                        color={badgeTextColor}
+                        anchorX="center"
+                        anchorY="middle"
+                        fontWeight="bold"
+                        outlineWidth={0.4}
+                        outlineColor="#000000"
+                        material-depthTest={false}
+                        material-toneMapped={false}
+                        renderOrder={1006}
+                      >
+                        {headerText}
+                      </Text>
+                      <Text
+                        position={[0, -2.5, 0.05]}
+                        fontSize={3.5}
+                        color="#e2e8f0"
+                        anchorX="center"
+                        anchorY="middle"
+                        outlineWidth={0.3}
+                        outlineColor="#000000"
+                        material-depthTest={false}
+                        material-toneMapped={false}
+                        renderOrder={1006}
+                      >
+                        {dimText}
+                      </Text>
+                    </group>
+                  );
+                })()}
+              </Billboard>
+            </group>
+          )}
+        </group>
+      );
+   };
+
    return (
      <group
        position={safePos}
@@ -3047,13 +3474,7 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
         }}
      >
        {renderParametricBody()}
-       {isActive && (
-         <mesh>
-           <boxGeometry args={[width + 2, height + 2, depth + 2]} />
-           <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-           <Edges scale={1.0} color={isDecoration ? "#38bdf8" : "#f97316"} threshold={15} />
-         </mesh>
-       )}
+       {renderSelectionHighlight()}
        {renderDimensions()}
      </group>
    );

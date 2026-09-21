@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 
 export type MaterialType = 'melamina' | 'hpl';
-export type PartType = 'structure' | 'doors' | 'drawerFronts' | 'drawerInner' | 'shelves' | 'back' | 'socle' | 'islandBack' | 'all';
+export type PartType = 'structure' | 'doors' | 'drawerFronts' | 'drawerInner' | 'shelves' | 'back' | 'socle' | 'islandBack' | 'coverPanels' | 'leftCoverPanel' | 'rightCoverPanel' | 'all';
 
 export interface TextureItem {
   id: string;

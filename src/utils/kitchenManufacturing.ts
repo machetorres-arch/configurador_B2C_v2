@@ -332,6 +332,53 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
       notes: lateralNotes
     });
 
+    // 1.1 Tapas Laterales Vistas (Costados Decorativos de Terminación)
+    if (cab.leftCoverPanel?.enabled) {
+      const coverThick = cab.leftCoverPanel.thickness || thickness;
+      const isBaseOrTall = cab.type === 'base' || cab.type === 'tall' || cab.type === 'island';
+      const coverExtend = cab.leftCoverPanel.extendToFloor && isBaseOrTall;
+      const coverH = coverExtend ? h : cabH;
+      const hasFronts = !isWineRack && cab.variant !== 'open' && cab.variant !== 'tall_open' && cab.variant !== 'wall_open';
+      const coverDepth = (hasFronts || isWineRack) ? (d + thickness) : d;
+      const coverMat = cab.leftCoverPanel.color || cab.doorColor || state.doorColor;
+
+      parts.push({
+        name: `Tapa Lateral Izq. Vista ${cabName}`,
+        moduleId: cab.id,
+        moduleIndex: index,
+        qty: 1,
+        length: coverH * 10,
+        width: coverDepth * 10,
+        thickness: coverThick * 10,
+        material: coverMat,
+        edgeL1: true, edgeL2: true, edgeW1: true, edgeW2: true,
+        notes: `Tapa lateral decorativa izquierda vista (${coverExtend ? 'al suelo' : 'al casco'}) enrasada con frentes`
+      });
+    }
+
+    if (cab.rightCoverPanel?.enabled) {
+      const coverThick = cab.rightCoverPanel.thickness || thickness;
+      const isBaseOrTall = cab.type === 'base' || cab.type === 'tall' || cab.type === 'island';
+      const coverExtend = cab.rightCoverPanel.extendToFloor && isBaseOrTall;
+      const coverH = coverExtend ? h : cabH;
+      const hasFronts = !isWineRack && cab.variant !== 'open' && cab.variant !== 'tall_open' && cab.variant !== 'wall_open';
+      const coverDepth = (hasFronts || isWineRack) ? (d + thickness) : d;
+      const coverMat = cab.rightCoverPanel.color || cab.doorColor || state.doorColor;
+
+      parts.push({
+        name: `Tapa Lateral Der. Vista ${cabName}`,
+        moduleId: cab.id,
+        moduleIndex: index,
+        qty: 1,
+        length: coverH * 10,
+        width: coverDepth * 10,
+        thickness: coverThick * 10,
+        material: coverMat,
+        edgeL1: true, edgeL2: true, edgeW1: true, edgeW2: true,
+        notes: `Tapa lateral decorativa derecha vista (${coverExtend ? 'al suelo' : 'al casco'}) enrasada con frentes`
+      });
+    }
+
     // 2. Base
     parts.push({
       name: `Piso ${cabName}`,
@@ -1104,11 +1151,18 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
             notes: `P/ ${hwSpec.slideName} (NL=${nominalLength}mm)`
         });
         parts.push({
-            name: `Tr/Fr Cajón Inferior ${cabName}`,
-            moduleId: cab.id, moduleIndex: index, qty: 2,
+            name: `Contrafrente Cajón Inferior ${cabName}`,
+            moduleId: cab.id, moduleIndex: index, qty: 1,
             length: drawerFrontBackLength, width: 180, thickness: thickness * 10, material: cInnerMat,
             edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
-            notes: `P/ ${hwSpec.slideName}`
+            notes: `Testero frontal interior p/ fijación de frente exterior`
+        });
+        parts.push({
+            name: `Trasera Cajón Inferior ${cabName}`,
+            moduleId: cab.id, moduleIndex: index, qty: 1,
+            length: drawerFrontBackLength, width: 180, thickness: thickness * 10, material: cInnerMat,
+            edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
+            notes: `Testero posterior p/ ${hwSpec.slideName}`
         });
         parts.push({
             name: `Fondo Cajón Inferior ${cabName}`,
@@ -1132,6 +1186,13 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
             length: drawerBoxLength, width: sideH, thickness: thickness * 10, material: cInnerMat,
             edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
             notes: 'Costados laterales exteriores del cajón en U'
+        });
+        parts.push({
+            name: `Contrafrente Frontal Cajón en U ${cabName}`,
+            moduleId: cab.id, moduleIndex: index, qty: 1,
+            length: drawerFrontBackLength, width: sideH, thickness: thickness * 10, material: cInnerMat,
+            edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
+            notes: 'Testero frontal continuo para ensamble y fijación de frente exterior'
         });
         parts.push({
             name: `Traseras Alas Cajón en U ${cabName}`,
@@ -1161,7 +1222,120 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
             edgeL1: false, edgeL2: false, edgeW1: false, edgeW2: false,
             notes: 'Fondo de la unión frontal central del cajón en U'
         });
-    } else if (cab.variant === '1_door' || cab.variant === 'spice_rack' || cab.variant === 'tall_1_door') {
+    } else if (cab.variant === 'spice_rack') {
+        const isGola = (kState.golaSystem === 'aluminum' || kState.golaSystem === 'black') && (cab.type === 'base' || cab.type === 'island');
+        const regruesoCm = (ctConfig?.enabled && (cab.type === 'base' || cab.type === 'island')) ? (ctConfig.regruesoCm || 0) : 0;
+        const regruesoDeduction = isGola ? Math.max(0, regruesoCm - 3.5) : regruesoCm;
+        const doorH = isGola ? (cabH - 3.5 - gap * 2) : (cabH - regruesoDeduction - gap * 2);
+
+        // 1. Frente Exterior Especiero
+        parts.push({
+            name: `Frente Exterior Especiero Extraíble ${cabName}`,
+            moduleId: cab.id,
+            moduleIndex: index,
+            qty: 1,
+            length: doorH * 10,
+            width: (w - gap * 2) * 10,
+            thickness: thickness * 10,
+            material: cab.drawerFrontColor || frontMat,
+            edgeL1: true, edgeL2: true, edgeW1: true, edgeW2: true,
+            notes: 'Frente extraíble de mueble especiero con tirador vertical o gola'
+        });
+
+        // 2. Carro Interior de Melamina (misma melamina que cajones)
+        const innerDepthMm = (d - 1.5) * 10;
+        const nominalLength = getNominalSlideLength(innerDepthMm);
+        const cartDepthMm = nominalLength - 10;
+        const cartOuterWidthMm = innerW * 10 - hwSpec.slideClearanceTotal;
+        const cartInnerWidthMm = cartOuterWidthMm - (2 * thickness * 10);
+        const cInnerMat = cab.drawerInnerColor || state.structureColor;
+        const cartHeightMm = (cabH - 12) * 10;
+        const guardHeightMm = 60; // 60mm de alto para barandillas de contención
+
+        // Base / Piso inferior del carro
+        parts.push({
+            name: `Piso Base Carro Especiero ${cabName}`,
+            moduleId: cab.id,
+            moduleIndex: index,
+            qty: 1,
+            length: cartDepthMm,
+            width: cartOuterWidthMm,
+            thickness: thickness * 10,
+            material: cInnerMat,
+            edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
+            notes: `Base de melamina para soporte y anclaje de correderas ${hwSpec.slideName}`
+        });
+
+        // Montante / Trasera vertical posterior
+        parts.push({
+            name: `Trasera / Montante Vertical Especiero ${cabName}`,
+            moduleId: cab.id,
+            moduleIndex: index,
+            qty: 1,
+            length: cartHeightMm,
+            width: cartOuterWidthMm,
+            thickness: thickness * 10,
+            material: cInnerMat,
+            edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
+            notes: 'Estructura vertical posterior de unión entre niveles y repisas'
+        });
+
+        // Barandillas laterales inferiores
+        parts.push({
+            name: `Barandillas Laterales Inferiores Especiero ${cabName}`,
+            moduleId: cab.id,
+            moduleIndex: index,
+            qty: 2,
+            length: cartDepthMm,
+            width: guardHeightMm,
+            thickness: thickness * 10,
+            material: cInnerMat,
+            edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
+            notes: 'Costados de contención nivel inferior para botellas altas'
+        });
+
+        // Contrafrentes / Amarres frontales de fijación al frente exterior
+        parts.push({
+            name: `Amarres Frontales Fijación Especiero ${cabName}`,
+            moduleId: cab.id,
+            moduleIndex: index,
+            qty: 2,
+            length: cartInnerWidthMm,
+            width: guardHeightMm,
+            thickness: thickness * 10,
+            material: cInnerMat,
+            edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
+            notes: 'Amarres frontales atornillados al frente exterior de melamina'
+        });
+
+        // Repisa intermedia
+        parts.push({
+            name: `Repisa Intermedia Especiero ${cabName}`,
+            moduleId: cab.id,
+            moduleIndex: index,
+            qty: 1,
+            length: cartDepthMm - (thickness * 10),
+            width: cartOuterWidthMm,
+            thickness: thickness * 10,
+            material: cInnerMat,
+            edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
+            notes: 'Bandeja intermedia de melamina para frascos y especias'
+        });
+
+        // Barandillas laterales intermedias
+        parts.push({
+            name: `Barandillas Laterales Intermedias Especiero ${cabName}`,
+            moduleId: cab.id,
+            moduleIndex: index,
+            qty: 2,
+            length: cartDepthMm - (thickness * 10),
+            width: guardHeightMm,
+            thickness: thickness * 10,
+            material: cInnerMat,
+            edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
+            notes: 'Costados de contención nivel superior para frascos'
+        });
+    } else if (cab.variant === '1_door' || cab.variant === 'tall_1_door') {
         parts.push({
             name: `Puerta Frontal ${cabName}`,
             moduleId: cab.id,
@@ -1462,7 +1636,7 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
         });
 
         if (cab.variant === '1_door_1_drawer') {
-            const doorH = isGola ? (cabH - gap*3 - 14.5 - 4.0) : (cabH - gap*3 - 18);
+            const doorH = isGola ? Math.max(15, cabH - 3.5 - 14.5 - 4.0 - gap * 4 - regruesoDeduction) : (cabH - gap * 3 - 18);
             parts.push({
                 name: `Puerta Frontal ${cabName}`,
                 moduleId: cab.id,
@@ -1513,13 +1687,21 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
                 edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
                 notes: `P/ ${hwSpec.slideName} (NL=${nominalLength}mm)`
             });
-            // Frente y trasera caja
+            // Contrafrente (Frontal Interior) de caja
             parts.push({
-                name: `Tr/Fr Cajón ${cabName} (${i+1})`,
-                moduleId: cab.id, moduleIndex: index, qty: 2,
+                name: `Contrafrente Cajón ${cabName} (${i+1})`,
+                moduleId: cab.id, moduleIndex: index, qty: 1,
                 length: drawerFrontBackLength, width: currentSideH, thickness: thickness * 10, material: cInnerMat,
                 edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
-                notes: `P/ ${hwSpec.slideName}`
+                notes: `Testero frontal interior p/ fijación de frente exterior`
+            });
+            // Trasera de caja
+            parts.push({
+                name: `Trasera Cajón ${cabName} (${i+1})`,
+                moduleId: cab.id, moduleIndex: index, qty: 1,
+                length: drawerFrontBackLength, width: currentSideH, thickness: thickness * 10, material: cInnerMat,
+                edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
+                notes: `Testero posterior p/ ${hwSpec.slideName}`
             });
             // Fondo de cajón (3mm)
             parts.push({
@@ -1774,7 +1956,7 @@ export function generateKitchenHardwareList(cabinets: CabinetType[]) {
         }
 
         // Bisagras y Sistemas Elevadores
-        if (cab.variant === '1_door' || cab.variant === 'spice_rack' || cab.variant === '1_door_1_drawer' || cab.variant?.startsWith('corner_blind') || cab.variant === 'corner_blind' || cab.variant?.startsWith('wall_corner_blind')) {
+        if (cab.variant === '1_door' || cab.variant === '1_door_1_drawer' || cab.variant?.startsWith('corner_blind') || cab.variant === 'corner_blind' || cab.variant?.startsWith('wall_corner_blind')) {
             totalHinges += 2;
         } else if (cab.variant === '2_doors') {
             totalHinges += 4;
@@ -1809,13 +1991,14 @@ export function generateKitchenHardwareList(cabinets: CabinetType[]) {
             extraCornerLLegsCount += 1;  // Pata central de refuerzo en rincón
         }
         
-        // Cajones
+        // Cajones y Especieros Extraíbles
         let cabDrawers = 0;
         if (cab.variant === '4_drawers') cabDrawers = 4;
         if (cab.variant === '2_pot_drawers') cabDrawers = 2;
         if (cab.variant === '1_door_1_drawer') cabDrawers = 1;
         if (cab.variant === 'sink_u_drawer') cabDrawers = 2;
         if (cab.variant === 'tall_inner_drawers') cabDrawers = 4;
+        if (cab.variant === 'spice_rack') cabDrawers = 1;
 
         if (cabDrawers > 0) {
             totalDrawers += cabDrawers;
@@ -2103,13 +2286,14 @@ export function generateKitchenHardwareList(cabinets: CabinetType[]) {
         const cornerJoints90Count = socleSystem.corners.length;
         const exposedFlanksCount = socleSystem.laterals.length;
         const socleStrips = Math.max(1, Math.ceil((totalLinearLengthMm * 1.05) / 3000));
+        const socleFinishLabel = kState.socleFinish === 'black' ? 'Negro Mate' : 'Aluminio Satinado';
 
         hardware.push({
             Categoria: 'Zócalos',
-            Item: 'Zócalo de PVC/Aluminio con Sello de Agua (Tira 3000mm / 3m)',
+            Item: `Zócalo de PVC/Aluminio con Sello de Agua (${socleFinishLabel} - Tira 3000mm / 3m)`,
             Cantidad: socleStrips,
             Unidad: 'Tiras',
-            Detalles: `Protección hidrófuga perimetral 10cm. Optimizado a tiras comerciales continuas de 3m (${(totalLinearLengthMm/1000).toFixed(2)} m lineales)`
+            Detalles: `Protección hidrófuga perimetral 10cm en acabado ${socleFinishLabel}. Optimizado a tiras comerciales continuas de 3m (${(totalLinearLengthMm/1000).toFixed(2)} m lineales)`
         });
         if (straightJointsCount > 0) {
             hardware.push({

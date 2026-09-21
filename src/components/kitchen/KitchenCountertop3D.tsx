@@ -590,14 +590,41 @@ export function KitchenCountertop3D() {
     <group name="kitchen-qstone-countertops">
       {continuousRuns.map((run, runIndex) => {
         const isIsland = run.type === 'island';
+        const override = countertopConfig.runOverrides?.[run.id];
         const rot = run.rotation;
         const totalRunLengthCm = run.totalLengthMm / 10;
         const depthCm = run.depthMm / 10;
         const cabTopY = run.heightMm / 10;
         const slabCenterY = cabTopY + stoneThicknessCm / 2;
 
-        const frontOverhang = 2;
-        const rearOverhang = isIsland ? countertopConfig.islandOverhangCm : 0;
+        const regruesoCm = override?.regruesoCm !== undefined
+          ? override.regruesoCm
+          : (isIsland
+              ? (countertopConfig.islandRegruesoCm ?? countertopConfig.regruesoCm)
+              : (countertopConfig.baseRegruesoCm ?? countertopConfig.regruesoCm));
+
+        const backsplashMode = override?.backsplashMode !== undefined
+          ? override.backsplashMode
+          : countertopConfig.backsplashMode;
+
+        const backsplashHeightCm = override?.backsplashHeightCm !== undefined
+          ? override.backsplashHeightCm
+          : countertopConfig.backsplashHeightCm;
+
+        const isWaterLeft = override?.waterfallLeft !== undefined
+          ? override.waterfallLeft
+          : (isIsland
+              ? (countertopConfig.islandWaterfallLeft ?? countertopConfig.waterfallLeft)
+              : (countertopConfig.baseWaterfallLeft ?? countertopConfig.waterfallLeft));
+
+        const isWaterRight = override?.waterfallRight !== undefined
+          ? override.waterfallRight
+          : (isIsland
+              ? (countertopConfig.islandWaterfallRight ?? countertopConfig.waterfallRight)
+              : (countertopConfig.baseWaterfallRight ?? countertopConfig.waterfallRight));
+
+        const frontOverhang = (run.overhangFrontMm ?? (countertopConfig.overhangFrontCm ? countertopConfig.overhangFrontCm * 10 : 20)) / 10;
+        const rearOverhang = (run.overhangRearMm ?? (isIsland ? (countertopConfig.overhangBackCm ?? countertopConfig.islandOverhangCm ?? 30) * 10 : 0)) / 10;
         const localZShift = (frontOverhang - rearOverhang) / 2;
 
         // Verificar si la corrida contiene el lavaplatos o la encimera
@@ -609,6 +636,7 @@ export function KitchenCountertop3D() {
         );
 
         // Calcular posición relativa del lavaplatos dentro de la corrida
+        const leftCoverOffsetCm = (run.leftCoverThickMm || 0) / 10;
         let sinkRelX: number | null = null;
         let sinkSpec: SinkSpec | null = null;
         if (
@@ -618,7 +646,7 @@ export function KitchenCountertop3D() {
         ) {
           sinkSpec = QSTONE_SINKS[countertopConfig.sinkModel];
           // Calcular distancia desde el extremo izquierdo de la corrida hasta el centro del gabinete del lavaplatos
-          let currentDist = 0;
+          let currentDist = leftCoverOffsetCm;
           for (const cab of run.cabinets) {
             if (cab.id === sinkCabinet.id) {
               const centerDistFromLeft = currentDist + cab.width / 2;
@@ -636,7 +664,7 @@ export function KitchenCountertop3D() {
           countertopConfig.cooktopModel &&
           countertopConfig.cooktopModel !== 'none'
         ) {
-          let currentDist = 0;
+          let currentDist = leftCoverOffsetCm;
           for (const cab of run.cabinets) {
             if (cab.id === cooktopCabinet.id) {
               const centerDistFromLeft = currentDist + cab.width / 2;
@@ -650,9 +678,9 @@ export function KitchenCountertop3D() {
         // Renderizar los tramos de la corrida según segmentLengthsMm
         let currentSegStartCm = -totalRunLengthCm / 2;
         const totalExtLeftCm =
-          ((run.cornerExtensionLeftMm || 0) + (run.extensionToWallLeftMm || 0)) / 10;
+          ((run.cornerExtensionLeftMm || 0) + (run.extensionToWallLeftMm || 0) + (run.overhangLeftMm || 0)) / 10;
         const totalExtRightCm =
-          ((run.cornerExtensionRightMm || 0) + (run.extensionToWallRightMm || 0)) / 10;
+          ((run.cornerExtensionRightMm || 0) + (run.extensionToWallRightMm || 0) + (run.overhangRightMm || 0)) / 10;
         const trimLeftCm = (run.cornerTrimLeftMm || 0) / 10;
         const trimRightCm = (run.cornerTrimRightMm || 0) / 10;
 
@@ -843,27 +871,102 @@ export function KitchenCountertop3D() {
                 0.1,
                 totalRunLengthCm + (totalExtLeftCm - trimLeftCm) + (totalExtRightCm - trimRightCm)
               );
+              const isWaterLeft = isIsland
+                ? (countertopConfig.islandWaterfallLeft ?? countertopConfig.waterfallLeft)
+                : (countertopConfig.baseWaterfallLeft ?? countertopConfig.waterfallLeft);
+              const isWaterRight = isIsland
+                ? (countertopConfig.islandWaterfallRight ?? countertopConfig.waterfallRight)
+                : (countertopConfig.baseWaterfallRight ?? countertopConfig.waterfallRight);
+
               return (
-                <mesh
-                  position={[
-                    apronShiftX,
-                    cabTopY + stoneThicknessCm - regruesoCm / 2,
-                    run.cabinets[0].depth / 2 + frontOverhang - stoneThicknessCm / 2,
-                  ]}
-                  castShadow={!isTransparent}
-                  receiveShadow={!isTransparent}
-                >
-                  <boxGeometry args={[apronLen, regruesoCm, stoneThicknessCm]} />
-                  <meshStandardMaterial {...getCountertopMatProps()} />
-                  {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
-                </mesh>
+                <group>
+                  {/* Faldón frontal */}
+                  <mesh
+                    position={[
+                      apronShiftX,
+                      cabTopY + stoneThicknessCm - regruesoCm / 2,
+                      run.cabinets[0].depth / 2 + frontOverhang - stoneThicknessCm / 2,
+                    ]}
+                    castShadow={!isTransparent}
+                    receiveShadow={!isTransparent}
+                  >
+                    <boxGeometry args={[apronLen, regruesoCm, stoneThicknessCm]} />
+                    <meshStandardMaterial {...getCountertopMatProps()} />
+                    {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
+                  </mesh>
+
+                  {/* Faldón lateral izquierdo si no hay cascada y el extremo está libre */}
+                  {countertopConfig.regruesoOnOverhangSides !== false &&
+                    !isWaterLeft &&
+                    run.canWaterfallLeft &&
+                    run.cornerExtensionLeftMm === 0 &&
+                    (run.extensionToWallLeftMm || 0) === 0 && (
+                      <mesh
+                        position={[
+                          -totalRunLengthCm / 2 - (totalExtLeftCm - trimLeftCm) + stoneThicknessCm / 2,
+                          cabTopY + stoneThicknessCm - regruesoCm / 2,
+                          localZShift,
+                        ]}
+                        castShadow={!isTransparent}
+                        receiveShadow={!isTransparent}
+                      >
+                        <boxGeometry args={[stoneThicknessCm, regruesoCm, depthCm]} />
+                        <meshStandardMaterial {...getCountertopMatProps()} />
+                        {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
+                      </mesh>
+                    )}
+
+                  {/* Faldón lateral derecho si no hay cascada y el extremo está libre */}
+                  {countertopConfig.regruesoOnOverhangSides !== false &&
+                    !isWaterRight &&
+                    run.canWaterfallRight &&
+                    run.cornerExtensionRightMm === 0 &&
+                    (run.extensionToWallRightMm || 0) === 0 && (
+                      <mesh
+                        position={[
+                          totalRunLengthCm / 2 + (totalExtRightCm - trimRightCm) - stoneThicknessCm / 2,
+                          cabTopY + stoneThicknessCm - regruesoCm / 2,
+                          localZShift,
+                        ]}
+                        castShadow={!isTransparent}
+                        receiveShadow={!isTransparent}
+                      >
+                        <boxGeometry args={[stoneThicknessCm, regruesoCm, depthCm]} />
+                        <meshStandardMaterial {...getCountertopMatProps()} />
+                        {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
+                      </mesh>
+                    )}
+
+                  {/* Faldón posterior en isla (barra volada engrosada perimetralmente) */}
+                  {isIsland && rearOverhang > 0 && countertopConfig.regruesoOnOverhangSides !== false && (
+                    <mesh
+                      position={[
+                        apronShiftX,
+                        cabTopY + stoneThicknessCm - regruesoCm / 2,
+                        -run.cabinets[0].depth / 2 - rearOverhang + stoneThicknessCm / 2,
+                      ]}
+                      castShadow={!isTransparent}
+                      receiveShadow={!isTransparent}
+                    >
+                      <boxGeometry args={[apronLen, regruesoCm, stoneThicknessCm]} />
+                      <meshStandardMaterial {...getCountertopMatProps()} />
+                      {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
+                    </mesh>
+                  )}
+                </group>
               );
             })()}
 
-            {/* Respaldo / Zócalo Posterior Continuo (solo en muebles base contra muro) */}
-            {!isIsland && countertopConfig.backsplashMode !== 'none' && (() => {
-              const bsLenCm = totalRunLengthCm + bsExtLeftCm + bsExtRightCm;
-              const bsCenterShiftX = (bsExtRightCm - bsExtLeftCm) / 2;
+            {/* Respaldo / Zócalo Posterior Continuo (solo en muebles base contra muro, abarca 100% largo de la cubierta y patas) */}
+            {!isIsland && backsplashMode !== 'none' && (() => {
+              const waterLeftExtCm = isWaterLeft && run.canWaterfallLeft ? stoneThicknessCm : 0;
+              const waterRightExtCm = isWaterRight && run.canWaterfallRight ? stoneThicknessCm : 0;
+
+              const effectiveExtLeftCm = (totalExtLeftCm - trimLeftCm) + waterLeftExtCm;
+              const effectiveExtRightCm = (totalExtRightCm - trimRightCm) + waterRightExtCm;
+
+              const bsLenCm = Math.max(0.1, totalRunLengthCm + effectiveExtLeftCm + effectiveExtRightCm);
+              const bsCenterShiftX = (effectiveExtRightCm - effectiveExtLeftCm) / 2;
 
               return (
                 <mesh
@@ -871,7 +974,7 @@ export function KitchenCountertop3D() {
                     bsCenterShiftX,
                     cabTopY +
                       stoneThicknessCm +
-                      (countertopConfig.backsplashMode === 'standard_5cm' ? 2.5 : 27.5),
+                      (backsplashMode === 'standard_5cm' ? backsplashHeightCm / 2 : 27.5),
                     -run.cabinets[0].depth / 2 + stoneThicknessCm / 2,
                   ]}
                   castShadow={!isTransparent}
@@ -880,7 +983,7 @@ export function KitchenCountertop3D() {
                   <boxGeometry
                     args={[
                       bsLenCm,
-                      countertopConfig.backsplashMode === 'standard_5cm' ? 5 : 55,
+                      backsplashMode === 'standard_5cm' ? backsplashHeightCm : 55,
                       stoneThicknessCm,
                     ]}
                   />
@@ -891,42 +994,48 @@ export function KitchenCountertop3D() {
             })()}
 
             {/* Remate Lateral Cascada (Waterfall) Izquierda - Solo si el extremo está libre (sin despensa ni esquina) */}
-            {countertopConfig.waterfallLeft && run.canWaterfallLeft && (
-              <mesh
-                position={[
-                  -totalRunLengthCm / 2 - stoneThicknessCm / 2,
-                  (cabTopY + stoneThicknessCm) / 2,
-                  localZShift,
-                ]}
-                castShadow={!isTransparent}
-                receiveShadow={!isTransparent}
-              >
-                <boxGeometry
-                  args={[stoneThicknessCm, cabTopY + stoneThicknessCm, depthCm]}
-                />
-                <meshStandardMaterial {...getCountertopMatProps()} />
-                {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
-              </mesh>
-            )}
+            {(() => {
+              if (!isWaterLeft || !run.canWaterfallLeft) return null;
+              return (
+                <mesh
+                  position={[
+                    -totalRunLengthCm / 2 - stoneThicknessCm / 2,
+                    (cabTopY + stoneThicknessCm) / 2,
+                    localZShift,
+                  ]}
+                  castShadow={!isTransparent}
+                  receiveShadow={!isTransparent}
+                >
+                  <boxGeometry
+                    args={[stoneThicknessCm, cabTopY + stoneThicknessCm, depthCm]}
+                  />
+                  <meshStandardMaterial {...getCountertopMatProps()} />
+                  {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
+                </mesh>
+              );
+            })()}
 
             {/* Remate Lateral Cascada (Waterfall) Derecha - Solo si el extremo está libre (sin despensa ni esquina) */}
-            {countertopConfig.waterfallRight && run.canWaterfallRight && (
-              <mesh
-                position={[
-                  totalRunLengthCm / 2 + stoneThicknessCm / 2,
-                  (cabTopY + stoneThicknessCm) / 2,
-                  localZShift,
-                ]}
-                castShadow={!isTransparent}
-                receiveShadow={!isTransparent}
-              >
-                <boxGeometry
-                  args={[stoneThicknessCm, cabTopY + stoneThicknessCm, depthCm]}
-                />
-                <meshStandardMaterial {...getCountertopMatProps()} />
-                {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
-              </mesh>
-            )}
+            {(() => {
+              if (!isWaterRight || !run.canWaterfallRight) return null;
+              return (
+                <mesh
+                  position={[
+                    totalRunLengthCm / 2 + stoneThicknessCm / 2,
+                    (cabTopY + stoneThicknessCm) / 2,
+                    localZShift,
+                  ]}
+                  castShadow={!isTransparent}
+                  receiveShadow={!isTransparent}
+                >
+                  <boxGeometry
+                    args={[stoneThicknessCm, cabTopY + stoneThicknessCm, depthCm]}
+                  />
+                  <meshStandardMaterial {...getCountertopMatProps()} />
+                  {isTransparent && <Edges scale={1} threshold={15} color="#555555" />}
+                </mesh>
+              );
+            })()}
           </group>
         );
       })}

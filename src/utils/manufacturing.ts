@@ -274,16 +274,29 @@ export function generatePartsList(data: ManufacturingData): Part[] {
       });
 
       parts.push({
-        name: `Tr/Fr Cajón Int. ${modName}`,
+        name: `Contrafrente Cajón Int. ${modName}`,
         moduleId: mod.id,
         moduleIndex: index,
-        qty: mod.drawers * 2,
+        qty: mod.drawers,
         length: drawerFrontBackLength,
         width: drawerSideHeight,
         thickness: thickness * 10,
         material: 'Melamina Cuerpo',
         edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
-        notes: `P/ ${hwSpec.slideName}`
+        notes: 'Testero frontal interior p/ fijación de frente exterior'
+      });
+
+      parts.push({
+        name: `Trasera Cajón Int. ${modName}`,
+        moduleId: mod.id,
+        moduleIndex: index,
+        qty: mod.drawers,
+        length: drawerFrontBackLength,
+        width: drawerSideHeight,
+        thickness: thickness * 10,
+        material: 'Melamina Cuerpo',
+        edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
+        notes: `Testero posterior p/ ${hwSpec.slideName}`
       });
 
       parts.push({

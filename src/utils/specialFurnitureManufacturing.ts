@@ -218,6 +218,19 @@ export function generateSpecialPartsList(state: SpecialFurnitureState): SpecialP
   });
 
   parts.push({
+    id: 'cajon_contrafrente',
+    name: 'Contrafrente de Cajón Interior',
+    category: 'Cajón',
+    qty: 1,
+    lengthMm: drawerBoxWidthMm - 30,
+    widthMm: drawerBoxHeightMm - 15,
+    thicknessMm: 15,
+    material: 'Melamina Lino / Gris Texturado 15mm',
+    edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
+    notes: 'Testero frontal interior para ensamble y fijación de frente exterior'
+  });
+
+  parts.push({
     id: 'cajon_trasera',
     name: 'Trasera de Cajón Interior',
     category: 'Cajón',

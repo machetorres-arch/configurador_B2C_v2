@@ -1,13 +1,32 @@
-import React from 'react';
-import { useKitchenStore, ArchitecturalElement } from '../../store/kitchenStore';
-import { Edges, Line } from '@react-three/drei';
+import React, { useMemo } from 'react';
+import { useKitchenStore } from '../../store/kitchenStore';
+import { Edges } from '@react-three/drei';
 import { ArchitecturalDoor } from './ArchitecturalDoor';
+import { ArchitecturalWindow } from './ArchitecturalWindow';
 
 export function ArchitecturalElementsRenderer() {
   const { architecturalElements, activeArchElementId, setActiveArchElement, setDraggingArchElementId, wallColor, toolMode, viewMode } = useKitchenStore();
+  const walls = useKitchenStore((s) => s.walls);
+  const roomConfig = useKitchenStore((s) => s.roomConfig);
 
-  // Elements with wallId are rendered inside Wall components
-  const standaloneElements = architecturalElements?.filter(el => !el.wallId) || [];
+  const effectiveWallIds = useMemo(() => {
+    const ids = new Set<string>();
+    (walls || []).forEach(w => {
+      if (w.id) {
+        ids.add(w.id);
+        ids.add(`wall_${w.id}`);
+      }
+    });
+    if (roomConfig?.vertices && roomConfig.vertices.length >= 3) {
+      roomConfig.vertices.forEach((_, i) => {
+        ids.add(`wall_v_${i}`);
+      });
+    }
+    return ids;
+  }, [walls, roomConfig]);
+
+  // Elements with a valid wallId are rendered inside Wall components; standalone or orphaned elements render here
+  const standaloneElements = architecturalElements?.filter(el => !el.wallId || !effectiveWallIds.has(el.wallId)) || [];
 
   if (standaloneElements.length === 0) return null;
 
@@ -25,7 +44,7 @@ export function ArchitecturalElementsRenderer() {
           <group
             key={el.id}
             position={[x, y, z]}
-            rotation={[0, rot, 0]}
+            rotation={[0, rot + Math.PI / 2, 0]}
             onPointerDown={(e) => {
               e.stopPropagation();
               if (e.nativeEvent && e.nativeEvent.stopImmediatePropagation) {
@@ -50,71 +69,13 @@ export function ArchitecturalElementsRenderer() {
             )}
 
             {el.type === 'window' && (
-              <group name="archRealWindow">
-                {/* Marco Perimetral de PVC Blanco (4 Perfiles Huecos) */}
-                {/* Perfil Superior */}
-                <mesh position={[0, (el.height - 4.5) / 2, 0]} castShadow receiveShadow>
-                  <boxGeometry args={[el.width, 4.5, depth]} />
-                  <meshStandardMaterial color="#ffffff" roughness={0.15} metalness={0.05} />
-                  <Edges scale={1} threshold={15} color={isSelected ? '#0284c7' : '#cbd5e1'} />
-                </mesh>
-                {/* Perfil Inferior */}
-                <mesh position={[0, -(el.height - 4.5) / 2, 0]} castShadow receiveShadow>
-                  <boxGeometry args={[el.width, 4.5, depth]} />
-                  <meshStandardMaterial color="#ffffff" roughness={0.15} metalness={0.05} />
-                  <Edges scale={1} threshold={15} color={isSelected ? '#0284c7' : '#cbd5e1'} />
-                </mesh>
-                {/* Perfil Izquierdo */}
-                <mesh position={[-(el.width - 4.5) / 2, 0, 0]} castShadow receiveShadow>
-                  <boxGeometry args={[4.5, el.height - 9, depth]} />
-                  <meshStandardMaterial color="#ffffff" roughness={0.15} metalness={0.05} />
-                  <Edges scale={1} threshold={15} color={isSelected ? '#0284c7' : '#cbd5e1'} />
-                </mesh>
-                {/* Perfil Derecho */}
-                <mesh position={[(el.width - 4.5) / 2, 0, 0]} castShadow receiveShadow>
-                  <boxGeometry args={[4.5, el.height - 9, depth]} />
-                  <meshStandardMaterial color="#ffffff" roughness={0.15} metalness={0.05} />
-                  <Edges scale={1} threshold={15} color={isSelected ? '#0284c7' : '#cbd5e1'} />
-                </mesh>
-
-                {/* Travesaño / Perfil central de corrediza */}
-                <mesh position={[0, 0, 0]} castShadow receiveShadow>
-                  <boxGeometry args={[3.5, el.height - 9, depth - 2]} />
-                  <meshStandardMaterial color="#f1f5f9" roughness={0.2} metalness={0.1} />
-                </mesh>
-
-                {/* Hoja Izquierda con Vidrio Transparente Cristalino */}
-                <group position={[-el.width / 4 + 2, 0, 1]}>
-                  <mesh castShadow receiveShadow>
-                    <boxGeometry args={[el.width / 2 - 6, el.height - 11, 1.2]} />
-                    <meshStandardMaterial color="#bae6fd" transparent={true} opacity={0.22} roughness={0.02} metalness={0.95} />
-                  </mesh>
-                </group>
-
-                {/* Hoja Derecha con Vidrio Transparente Cristalino */}
-                <group position={[el.width / 4 - 2, 0, -1]}>
-                  <mesh castShadow receiveShadow>
-                    <boxGeometry args={[el.width / 2 - 6, el.height - 11, 1.2]} />
-                    <meshStandardMaterial color="#bae6fd" transparent={true} opacity={0.22} roughness={0.02} metalness={0.95} />
-                  </mesh>
-                </group>
-
-                {/* Manilla metálica de ventana corrediza */}
-                <group position={[-8, 0, depth / 2 - 0.5]}>
-                  <mesh castShadow rotation={[0, 0, Math.PI / 2]}>
-                    <cylinderGeometry args={[0.4, 0.4, 4.5, 16]} />
-                    <meshStandardMaterial color="#94a3b8" metalness={0.95} roughness={0.1} />
-                  </mesh>
-                </group>
-
-                {/* 2D Architectural Window Double Line */}
-                {viewMode === "2d" && (
-                  <group renderOrder={1005} position={[0, el.height / 2 + 2, 0]}>
-                    <Line points={[[-el.width / 2, 0, -depth / 4], [el.width / 2, 0, -depth / 4]]} color="#0284c7" lineWidth={2} depthTest={false} material-toneMapped={false} />
-                    <Line points={[[-el.width / 2, 0, depth / 4], [el.width / 2, 0, depth / 4]]} color="#0284c7" lineWidth={2} depthTest={false} material-toneMapped={false} />
-                  </group>
-                )}
-              </group>
+              <ArchitecturalWindow
+                width={el.width}
+                height={el.height}
+                depth={depth}
+                isSelected={isSelected}
+                viewMode={viewMode}
+              />
             )}
 
             {el.type === 'pillar' && (

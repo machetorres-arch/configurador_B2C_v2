@@ -65,6 +65,12 @@ export interface ContinuousRunInfo {
   backsplashExtRightMm?: number;
   extensionToWallLeftMm?: number;
   extensionToWallRightMm?: number;
+  overhangFrontMm?: number;
+  overhangRearMm?: number;
+  overhangLeftMm?: number;
+  overhangRightMm?: number;
+  leftCoverThickMm?: number;
+  rightCoverThickMm?: number;
 }
 
 export interface CountertopBOM {
@@ -622,9 +628,13 @@ export function detectContinuousCabinetRuns(
 
       // Procesar esta corrida
       const isIsland = chain[0].type === 'island';
-      const overhangFront = 2;
-      const overhangRear = isIsland ? (config?.islandOverhangCm ?? 30) : 0;
-      const depthMm = ((chain[0].depth || 60) + overhangFront + overhangRear) * 10;
+      const overhangFront = isIsland
+        ? (config?.islandOverhangFrontCm ?? config?.overhangFrontCm ?? 2)
+        : (config?.baseOverhangFrontCm ?? config?.overhangFrontCm ?? 2);
+      const overhangRear = isIsland
+        ? (config?.islandOverhangBackCm ?? config?.islandOverhangCm ?? config?.overhangBackCm ?? 30)
+        : 0; // Muebles base contra muro SIEMPRE tienen 0 mm de voladizo posterior
+      const depthMm = Math.round(((chain[0].depth || 60) + overhangFront + overhangRear) * 10);
       // Altura exacta de la cara superior de los gabinetes de la corrida (apoyo real sin flotar)
       const cabTopCm = Math.max(
         ...chain.map((c) =>
@@ -632,20 +642,41 @@ export function detectContinuousCabinetRuns(
         )
       );
       const heightMm = Math.round(cabTopCm * 10);
-      const totalLengthMm = Math.round(chain.reduce((acc, c) => acc + c.width * 10, 0));
+      const firstCab = chain[0];
+      const lastCab = chain[chain.length - 1];
+      const leftCoverThickCm = firstCab.leftCoverPanel?.enabled ? (firstCab.leftCoverPanel.thickness || 1.5) : 0;
+      const rightCoverThickCm = lastCab.rightCoverPanel?.enabled ? (lastCab.rightCoverPanel.thickness || 1.5) : 0;
+      const leftCoverThickMm = Math.round(leftCoverThickCm * 10);
+      const rightCoverThickMm = Math.round(rightCoverThickCm * 10);
 
-      const firstFlanks = getFlanks(chain[0]);
-      const lastFlanks = getFlanks(chain[chain.length - 1]);
-      const runRot = chain[0].rotation || 0;
+      const baseLengthMm = Math.round(chain.reduce((acc, c) => acc + c.width * 10, 0));
+      const totalLengthMm = baseLengthMm + leftCoverThickMm + rightCoverThickMm;
+
+      const firstFlanks = getFlanks(firstCab);
+      const lastFlanks = getFlanks(lastCab);
+      const runRot = firstCab.rotation || 0;
+      const runCos = Math.cos(runRot);
+      const runSin = Math.sin(runRot);
+
+      // Flancos exteriores extendidos por el espesor de las tapas laterales
+      const effectiveStartFlank: [number, number] = [
+        firstFlanks.left[0] - leftCoverThickCm * runCos,
+        firstFlanks.left[1] + leftCoverThickCm * runSin,
+      ];
+      const effectiveEndFlank: [number, number] = [
+        lastFlanks.right[0] + rightCoverThickCm * runCos,
+        lastFlanks.right[1] - rightCoverThickCm * runSin,
+      ];
+
       const runCabIds = new Set(chain.map((c) => c.id));
 
       // Detección de bloqueos de cascada
-      const isLeftBlockedByTall = isFlankBlockedByTall(firstFlanks.left, cabinets);
-      const isLeftBlockedByAny = isFlankBlockedByAnyCabinet(firstFlanks.left, runCabIds, cabinets);
-      const isLeftBlockedByPillar = isFlankBlockedByPillar(firstFlanks.left, architecturalElements, walls);
-      const isRightBlockedByTall = isFlankBlockedByTall(lastFlanks.right, cabinets);
-      const isRightBlockedByAny = isFlankBlockedByAnyCabinet(lastFlanks.right, runCabIds, cabinets);
-      const isRightBlockedByPillar = isFlankBlockedByPillar(lastFlanks.right, architecturalElements, walls);
+      const isLeftBlockedByTall = isFlankBlockedByTall(effectiveStartFlank, cabinets);
+      const isLeftBlockedByAny = isFlankBlockedByAnyCabinet(effectiveStartFlank, runCabIds, cabinets);
+      const isLeftBlockedByPillar = isFlankBlockedByPillar(effectiveStartFlank, architecturalElements, walls);
+      const isRightBlockedByTall = isFlankBlockedByTall(effectiveEndFlank, cabinets);
+      const isRightBlockedByAny = isFlankBlockedByAnyCabinet(effectiveEndFlank, runCabIds, cabinets);
+      const isRightBlockedByPillar = isFlankBlockedByPillar(effectiveEndFlank, architecturalElements, walls);
 
       const canWaterfallLeft = !isLeftBlockedByTall && !isLeftBlockedByAny && !isLeftBlockedByPillar;
       const canWaterfallRight = !isRightBlockedByTall && !isRightBlockedByAny && !isRightBlockedByPillar;
@@ -665,9 +696,9 @@ export function detectContinuousCabinetRuns(
 
       const runId = `${isIsland ? 'ISL' : 'BASE'}-RUN-${runs.length + 1}`;
       const centerWorld: [number, number, number] = [
-        (firstFlanks.left[0] + lastFlanks.right[0]) / 2,
+        (effectiveStartFlank[0] + effectiveEndFlank[0]) / 2,
         chain[0].position[1] + chain[0].height / 2,
-        (firstFlanks.left[1] + lastFlanks.right[1]) / 2,
+        (effectiveStartFlank[1] + effectiveEndFlank[1]) / 2,
       ];
 
       runs.push({
@@ -682,8 +713,8 @@ export function detectContinuousCabinetRuns(
         segmentLengthsMm,
         buildingType: bType,
         maxTransportLengthMm: maxSegmentLengthMm,
-        startFlankWorld: firstFlanks.left,
-        endFlankWorld: lastFlanks.right,
+        startFlankWorld: effectiveStartFlank,
+        endFlankWorld: effectiveEndFlank,
         centerWorld,
         rotation: runRot,
         canWaterfallLeft,
@@ -696,6 +727,12 @@ export function detectContinuousCabinetRuns(
         backsplashExtRightMm: 0,
         extensionToWallLeftMm: 0,
         extensionToWallRightMm: 0,
+        overhangFrontMm: Math.round(overhangFront * 10),
+        overhangRearMm: Math.round(overhangRear * 10),
+        overhangLeftMm: 0,
+        overhangRightMm: 0,
+        leftCoverThickMm,
+        rightCoverThickMm,
       });
     }
   }
@@ -705,20 +742,50 @@ export function detectContinuousCabinetRuns(
     if (visited.has(cab.id)) continue;
     visited.add(cab.id);
     const isIsland = cab.type === 'island';
-    const depthMm = ((cab.depth || 60) + 2 + (isIsland ? (config?.islandOverhangCm ?? 30) : 0)) * 10;
+    const overhangFront = isIsland
+      ? (config?.islandOverhangFrontCm ?? config?.overhangFrontCm ?? 2)
+      : (config?.baseOverhangFrontCm ?? config?.overhangFrontCm ?? 2);
+    const overhangRear = isIsland
+      ? (config?.islandOverhangBackCm ?? config?.islandOverhangCm ?? config?.overhangBackCm ?? 30)
+      : 0;
+    const depthMm = Math.round(((cab.depth || 60) + overhangFront + overhangRear) * 10);
     const cabTopCm = cab.position ? cab.position[1] + cab.height / 2 : cab.height || 85;
     const heightMm = Math.round(cabTopCm * 10);
-    const totalLengthMm = Math.round(cab.width * 10);
+
+    const leftCoverThickCm = cab.leftCoverPanel?.enabled ? (cab.leftCoverPanel.thickness || 1.5) : 0;
+    const rightCoverThickCm = cab.rightCoverPanel?.enabled ? (cab.rightCoverPanel.thickness || 1.5) : 0;
+    const leftCoverThickMm = Math.round(leftCoverThickCm * 10);
+    const rightCoverThickMm = Math.round(rightCoverThickCm * 10);
+
+    const totalLengthMm = Math.round(cab.width * 10) + leftCoverThickMm + rightCoverThickMm;
     const flanks = getFlanks(cab);
     const cabRot = cab.rotation || 0;
+    const cabCos = Math.cos(cabRot);
+    const cabSin = Math.sin(cabRot);
+
+    const effectiveStartFlank: [number, number] = [
+      flanks.left[0] - leftCoverThickCm * cabCos,
+      flanks.left[1] + leftCoverThickCm * cabSin,
+    ];
+    const effectiveEndFlank: [number, number] = [
+      flanks.right[0] + rightCoverThickCm * cabCos,
+      flanks.right[1] - rightCoverThickCm * cabSin,
+    ];
+
     const cabIds = new Set([cab.id]);
 
-    const isLeftBlockedByTall = isFlankBlockedByTall(flanks.left, cabinets);
-    const isLeftBlockedByAny = isFlankBlockedByAnyCabinet(flanks.left, cabIds, cabinets);
-    const isLeftBlockedByPillar = isFlankBlockedByPillar(flanks.left, architecturalElements, walls);
-    const isRightBlockedByTall = isFlankBlockedByTall(flanks.right, cabinets);
-    const isRightBlockedByAny = isFlankBlockedByAnyCabinet(flanks.right, cabIds, cabinets);
-    const isRightBlockedByPillar = isFlankBlockedByPillar(flanks.right, architecturalElements, walls);
+    const isLeftBlockedByTall = isFlankBlockedByTall(effectiveStartFlank, cabinets);
+    const isLeftBlockedByAny = isFlankBlockedByAnyCabinet(effectiveStartFlank, cabIds, cabinets);
+    const isLeftBlockedByPillar = isFlankBlockedByPillar(effectiveStartFlank, architecturalElements, walls);
+    const isRightBlockedByTall = isFlankBlockedByTall(effectiveEndFlank, cabinets);
+    const isRightBlockedByAny = isFlankBlockedByAnyCabinet(effectiveEndFlank, cabIds, cabinets);
+    const isRightBlockedByPillar = isFlankBlockedByPillar(effectiveEndFlank, architecturalElements, walls);
+
+    const centerWorld: [number, number, number] = [
+      (effectiveStartFlank[0] + effectiveEndFlank[0]) / 2,
+      cab.position[1] + cab.height / 2,
+      (effectiveStartFlank[1] + effectiveEndFlank[1]) / 2,
+    ];
 
     runs.push({
       id: `${isIsland ? 'ISL' : 'BASE'}-RUN-${runs.length + 1}`,
@@ -732,9 +799,9 @@ export function detectContinuousCabinetRuns(
       segmentLengthsMm: [totalLengthMm],
       buildingType: bType,
       maxTransportLengthMm: maxSegmentLengthMm,
-      startFlankWorld: flanks.left,
-      endFlankWorld: flanks.right,
-      centerWorld: [cab.position[0], cab.position[1] + cab.height / 2, cab.position[2]],
+      startFlankWorld: effectiveStartFlank,
+      endFlankWorld: effectiveEndFlank,
+      centerWorld,
       rotation: cabRot,
       canWaterfallLeft: !isLeftBlockedByTall && !isLeftBlockedByAny && !isLeftBlockedByPillar,
       canWaterfallRight: !isRightBlockedByTall && !isRightBlockedByAny && !isRightBlockedByPillar,
@@ -746,6 +813,12 @@ export function detectContinuousCabinetRuns(
       backsplashExtRightMm: 0,
       extensionToWallLeftMm: 0,
       extensionToWallRightMm: 0,
+      overhangFrontMm: Math.round(overhangFront * 10),
+      overhangRearMm: Math.round(overhangRear * 10),
+      overhangLeftMm: 0,
+      overhangRightMm: 0,
+      leftCoverThickMm,
+      rightCoverThickMm,
     });
   }
 
@@ -792,6 +865,53 @@ export function detectContinuousCabinetRuns(
         run.canWaterfallRight = false;
       }
     }
+  }
+
+  // 5. Aplicar voladizos laterales paramétricos y sobreescrituras por tramo
+  for (const run of runs) {
+    const isIsland = run.type === 'island';
+    const override = config?.runOverrides?.[run.id];
+
+    const isWaterLeft = override?.waterfallLeft !== undefined
+      ? override.waterfallLeft
+      : (isIsland
+          ? (config?.islandWaterfallLeft ?? config?.waterfallLeft ?? false)
+          : (config?.baseWaterfallLeft ?? config?.waterfallLeft ?? false));
+
+    const isWaterRight = override?.waterfallRight !== undefined
+      ? override.waterfallRight
+      : (isIsland
+          ? (config?.islandWaterfallRight ?? config?.waterfallRight ?? false)
+          : (config?.baseWaterfallRight ?? config?.waterfallRight ?? false));
+
+    const canLeft = run.canWaterfallLeft && !isWaterLeft && run.cornerExtensionLeftMm === 0 && (run.extensionToWallLeftMm || 0) === 0;
+    const canRight = run.canWaterfallRight && !isWaterRight && run.cornerExtensionRightMm === 0 && (run.extensionToWallRightMm || 0) === 0;
+
+    const lateralOverhangLeftCm = override?.overhangLeftCm !== undefined
+      ? override.overhangLeftCm
+      : (isIsland
+          ? (config?.islandOverhangLeftCm ?? config?.overhangLeftCm ?? 0)
+          : (config?.baseOverhangLeftCm ?? config?.overhangLeftCm ?? 0));
+
+    const lateralOverhangRightCm = override?.overhangRightCm !== undefined
+      ? override.overhangRightCm
+      : (isIsland
+          ? (config?.islandOverhangRightCm ?? config?.overhangRightCm ?? 0)
+          : (config?.baseOverhangRightCm ?? config?.overhangRightCm ?? 0));
+
+    run.overhangLeftMm = canLeft ? Math.round(lateralOverhangLeftCm * 10) : 0;
+    run.overhangRightMm = canRight ? Math.round(lateralOverhangRightCm * 10) : 0;
+
+    // Actualizar también front y rear overhang si fueron sobreescritos por este tramo
+    if (override?.overhangFrontCm !== undefined) {
+      run.overhangFrontMm = Math.round(override.overhangFrontCm * 10);
+    }
+    if (override?.overhangBackCm !== undefined && isIsland) {
+      run.overhangRearMm = Math.round(override.overhangBackCm * 10);
+    }
+    // Re-calcular depthMm si cambiaron los voladizos
+    const cabDepth = run.cabinets[0]?.depth || 60;
+    run.depthMm = Math.round(cabDepth * 10) + (run.overhangFrontMm || 0) + (run.overhangRearMm || 0);
   }
 
   return runs;
@@ -1007,6 +1127,31 @@ export function generateCountertopPieces(
   for (const run of continuousRuns) {
     const isIsland = run.type === 'island';
     const prefix = isIsland ? 'ISL' : 'BASE';
+    const override = config.runOverrides?.[run.id];
+
+    const runRegruesoCm = override?.regruesoCm !== undefined
+      ? override.regruesoCm
+      : (isIsland ? (config.islandRegruesoCm ?? config.regruesoCm) : (config.baseRegruesoCm ?? config.regruesoCm));
+
+    const runBacksplashMode = override?.backsplashMode !== undefined
+      ? override.backsplashMode
+      : config.backsplashMode;
+
+    const runBacksplashHeightCm = override?.backsplashHeightCm !== undefined
+      ? override.backsplashHeightCm
+      : config.backsplashHeightCm;
+
+    const isWaterLeft = override?.waterfallLeft !== undefined
+      ? override.waterfallLeft
+      : (isIsland
+          ? (config.islandWaterfallLeft ?? config.waterfallLeft)
+          : (config.baseWaterfallLeft ?? config.waterfallLeft));
+
+    const isWaterRight = override?.waterfallRight !== undefined
+      ? override.waterfallRight
+      : (isIsland
+          ? (config.islandWaterfallRight ?? config.waterfallRight)
+          : (config.baseWaterfallRight ?? config.waterfallRight));
 
     // Chequear si esta corrida contiene encastre de lavaplatos o encimera
     const hasSinkInRun = run.cabinets.some((c) => c.id === config.sinkCabinetId);
@@ -1020,11 +1165,11 @@ export function generateCountertopPieces(
 
       const extraLeft =
         segIdx === 0
-          ? (run.cornerExtensionLeftMm || 0) + (run.extensionToWallLeftMm || 0)
+          ? (run.cornerExtensionLeftMm || 0) + (run.extensionToWallLeftMm || 0) + (run.overhangLeftMm || 0)
           : 0;
       const extraRight =
         segIdx === run.segmentLengthsMm.length - 1
-          ? (run.cornerExtensionRightMm || 0) + (run.extensionToWallRightMm || 0)
+          ? (run.cornerExtensionRightMm || 0) + (run.extensionToWallRightMm || 0) + (run.overhangRightMm || 0)
           : 0;
       const trimLeft = segIdx === 0 ? (run.cornerTrimLeftMm || 0) : 0;
       const trimRight = segIdx === run.segmentLengthsMm.length - 1 ? (run.cornerTrimRightMm || 0) : 0;
@@ -1039,7 +1184,7 @@ export function generateCountertopPieces(
       if (hasSinkInRun && segIdx === 0) cutoutType = 'sink';
       else if (hasCooktopInRun) cutoutType = 'cooktop';
 
-      // 1. Tramo horizontal de cubierta (cubre la totalidad de la superficie hasta el muro/pilar)
+      // 1. Tramo horizontal de cubierta (cubre la totalidad de la superficie hasta el muro/pilar y voladizos)
       pieces.push({
         id: pieceId,
         name: slabName,
@@ -1052,15 +1197,15 @@ export function generateCountertopPieces(
           (totalSlabLengthMm + (segIdx === 0 || segIdx === run.segmentLengthsMm.length - 1 ? run.depthMm : 0)) /
           1000,
         notes: isSingleSegment
-          ? `Tramo continuo entero sin uniones intermedias (${config.buildingType === 'casa' ? 'Casa: máx 2500mm' : 'Edificio: máx 2000mm'})${extraLeft || extraRight ? ' (incluye extensión a muro/pilar/esquina pasante)' : ''}.`
-          : `Junta ortogonal a 90° rectificada con disco diamantado kerf 3.5mm${extraLeft || extraRight ? ' (incluye extensión a muro/pilar/esquina pasante)' : ''}.`,
+          ? `Tramo continuo entero sin uniones intermedias (${config.buildingType === 'casa' ? 'Casa: máx 2500mm' : 'Edificio: máx 2000mm'})${extraLeft || extraRight ? ' (incluye voladizo/extensión a muro/pilar/esquina)' : ''}.`
+          : `Junta ortogonal a 90° rectificada con disco diamantado kerf 3.5mm${extraLeft || extraRight ? ' (incluye voladizo/extensión a muro/pilar/esquina)' : ''}.`,
         runId: run.id,
         hasCutout: cutoutType,
       });
 
       // 2. Faldón Delantero / Regrueso
-      if (config.regruesoCm > 0) {
-        const apronHeightMm = Math.round(config.regruesoCm * 10);
+      if (runRegruesoCm > 0) {
+        const apronHeightMm = Math.round(runRegruesoCm * 10);
         const apronLengthMm = Math.max(100, segLengthMm + extraLeft + extraRight - trimLeft - trimRight);
         pieces.push({
           id: `${pieceId}-FALDON`,
@@ -1071,31 +1216,33 @@ export function generateCountertopPieces(
           thicknessMm: product.thicknessMm,
           areaM2: (apronLengthMm * apronHeightMm) / 1000000,
           edgePolishingM: apronLengthMm / 1000,
-          notes: `Tira de regrueso frontal ${config.regruesoCm}cm ingletada o a tope 90°.`,
+          notes: `Tira de regrueso frontal ${runRegruesoCm}cm ingletada o a tope 90°.`,
           runId: run.id,
         });
       }
 
-      // 3. Respaldo / Zócalo Posterior (solo en muros pegados a pared)
-      if (!isIsland && config.backsplashMode !== 'none') {
+      // 3. Respaldo / Zócalo Posterior (solo en muros pegados a pared, abarca TODO el largo de la cubierta y patas)
+      if (!isIsland && runBacksplashMode !== 'none') {
         const bsHeightMm =
-          config.backsplashMode === 'standard_5cm'
-            ? Math.round(config.backsplashHeightCm * 10)
+          runBacksplashMode === 'standard_5cm'
+            ? Math.round(runBacksplashHeightCm * 10)
             : 550; // 55cm revestimiento completo
+        const waterLeftExtMm = isWaterLeft && run.canWaterfallLeft ? product.thicknessMm : 0;
+        const waterRightExtMm = isWaterRight && run.canWaterfallRight ? product.thicknessMm : 0;
         const bsLeft =
           segIdx === 0
-            ? (run.backsplashExtLeftMm || 0) + (run.extensionToWallLeftMm || 0)
+            ? (run.backsplashExtLeftMm || 0) + (run.extensionToWallLeftMm || 0) + (run.overhangLeftMm || 0) + waterLeftExtMm
             : 0;
         const bsRight =
           segIdx === run.segmentLengthsMm.length - 1
-            ? (run.backsplashExtRightMm || 0) + (run.extensionToWallRightMm || 0)
+            ? (run.backsplashExtRightMm || 0) + (run.extensionToWallRightMm || 0) + (run.overhangRightMm || 0) + waterRightExtMm
             : 0;
         const totalBsLengthMm = segLengthMm + bsLeft + bsRight;
 
         pieces.push({
           id: `${pieceId}-RESPALDO`,
           name: `${
-            config.backsplashMode === 'standard_5cm'
+            runBacksplashMode === 'standard_5cm'
               ? 'Zócalo / Respaldo 5cm'
               : 'Revestimiento Muro Completo'
           } ${pieceId} (${totalBsLengthMm}x${bsHeightMm}mm)`,
@@ -1106,9 +1253,9 @@ export function generateCountertopPieces(
           areaM2: (totalBsLengthMm * bsHeightMm) / 1000000,
           edgePolishingM: totalBsLengthMm / 1000,
           notes:
-            config.backsplashMode === 'standard_5cm'
-              ? `Zócalo de protección perimetral 50mm con canto superior pulido${bsLeft || bsRight ? ' (incluye extensión continua a esquina/muro)' : ''}`
-              : `Revestimiento de muro completo hasta muebles aéreos${bsLeft || bsRight ? ' (incluye extensión continua a esquina/muro)' : ''}`,
+            runBacksplashMode === 'standard_5cm'
+              ? `Zócalo de protección perimetral 50mm con canto superior pulido${bsLeft || bsRight ? ' (incluye extensión continua a cubierta y cascadas)' : ''}`
+              : `Revestimiento de muro completo hasta muebles aéreos${bsLeft || bsRight ? ' (incluye extensión continua a cubierta y cascadas)' : ''}`,
           runId: run.id,
         });
       }
@@ -1116,8 +1263,60 @@ export function generateCountertopPieces(
       pieceCounter++;
     }
 
-    // 4. Patas Cascada (Waterfall) laterales - Solo si el extremo está libre (sin despensa ni esquina)
-    if (config.waterfallLeft && run.canWaterfallLeft) {
+    // 4. Faldones Laterales y Traseros en Extremos Libres con Regrueso (si no hay pata cascada)
+    if (runRegruesoCm > 0 && config.regruesoOnOverhangSides !== false) {
+      const apronHeightMm = Math.round(runRegruesoCm * 10);
+      if (!isWaterLeft && run.canWaterfallLeft && run.cornerExtensionLeftMm === 0 && (run.extensionToWallLeftMm || 0) === 0) {
+        pieces.push({
+          id: `${prefix}-FALDON-LAT-IZQ`,
+          name: `Faldón Lateral Izquierdo (${run.depthMm}x${apronHeightMm}mm)`,
+          type: 'apron',
+          lengthMm: run.depthMm,
+          widthMm: apronHeightMm,
+          thicknessMm: product.thicknessMm,
+          areaM2: (run.depthMm * apronHeightMm) / 1000000,
+          edgePolishingM: run.depthMm / 1000,
+          notes: `Tira de faldón/regrueso lateral izquierdo ${runRegruesoCm}cm ingletada o a tope 90°.`,
+          runId: run.id,
+        });
+      }
+      if (!isWaterRight && run.canWaterfallRight && run.cornerExtensionRightMm === 0 && (run.extensionToWallRightMm || 0) === 0) {
+        pieces.push({
+          id: `${prefix}-FALDON-LAT-DER`,
+          name: `Faldón Lateral Derecho (${run.depthMm}x${apronHeightMm}mm)`,
+          type: 'apron',
+          lengthMm: run.depthMm,
+          widthMm: apronHeightMm,
+          thicknessMm: product.thicknessMm,
+          areaM2: (run.depthMm * apronHeightMm) / 1000000,
+          edgePolishingM: run.depthMm / 1000,
+          notes: `Tira de faldón/regrueso lateral derecho ${runRegruesoCm}cm ingletada o a tope 90°.`,
+          runId: run.id,
+        });
+      }
+
+      // Faldón Trasero en Isla (barra volada con regrueso perimetral continuo)
+      if (isIsland && (run.overhangRearMm || 0) > 0) {
+        const extraLeft = (run.cornerExtensionLeftMm || 0) + (run.extensionToWallLeftMm || 0) + (run.overhangLeftMm || 0);
+        const extraRight = (run.cornerExtensionRightMm || 0) + (run.extensionToWallRightMm || 0) + (run.overhangRightMm || 0);
+        const totalRearApronLen = Math.max(100, run.totalLengthMm + extraLeft + extraRight);
+        pieces.push({
+          id: `${prefix}-FALDON-TRASERO`,
+          name: `Faldón Trasero Barra Isla (${totalRearApronLen}x${apronHeightMm}mm)`,
+          type: 'apron',
+          lengthMm: totalRearApronLen,
+          widthMm: apronHeightMm,
+          thicknessMm: product.thicknessMm,
+          areaM2: (totalRearApronLen * apronHeightMm) / 1000000,
+          edgePolishingM: totalRearApronLen / 1000,
+          notes: `Tira de faldón/regrueso trasero ${runRegruesoCm}cm para barra volada ingletada 90°.`,
+          runId: run.id,
+        });
+      }
+    }
+
+    // 5. Patas Cascada (Waterfall) laterales - Solo si el extremo está libre (sin despensa ni esquina)
+    if (isWaterLeft && run.canWaterfallLeft) {
       pieces.push({
         id: `${prefix}-CASCADA-IZQ`,
         name: `Pata Cascada Lateral Izquierda (${run.heightMm}x${run.depthMm}mm)`,
@@ -1132,7 +1331,7 @@ export function generateCountertopPieces(
       });
     }
 
-    if (config.waterfallRight && run.canWaterfallRight) {
+    if (isWaterRight && run.canWaterfallRight) {
       pieces.push({
         id: `${prefix}-CASCADA-DER`,
         name: `Pata Cascada Lateral Derecha (${run.heightMm}x${run.depthMm}mm)`,

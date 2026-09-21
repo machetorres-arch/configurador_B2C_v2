@@ -518,16 +518,57 @@ export const DEFAULT_QSTONE_CATALOG: QstoneProductItem[] = [
   }
 ];
 
+export interface CountertopRunOverride {
+  overhangFrontCm?: number;
+  overhangBackCm?: number;
+  overhangLeftCm?: number;
+  overhangRightCm?: number;
+  waterfallLeft?: boolean;
+  waterfallRight?: boolean;
+  regruesoCm?: number;
+  backsplashMode?: BacksplashMode;
+  backsplashHeightCm?: number;
+}
+
 export interface CountertopConfig {
   enabled: boolean;
   provider: 'qstone';
   selectedProductId: string;
   regruesoCm: number; // 0 a 5 cm (0, 1, 2, 3, 4, 5 cm)
+  regruesoOnOverhangSides?: boolean; // Aplicar faldón perimetral en los laterales con voladizo (default: true)
+  baseRegruesoCm?: number; // Regrueso para muebles base (hereda de regruesoCm si no está definido)
+  islandRegruesoCm?: number; // Regrueso para islas (hereda de regruesoCm si no está definido)
   backsplashMode: BacksplashMode;
   backsplashHeightCm: number; // 5 cm por defecto o automático a aéreos
-  waterfallLeft: boolean; // Remate lateral cascada al suelo
-  waterfallRight: boolean; // Remate lateral cascada al suelo
-  islandOverhangCm: number; // 0 a 35 cm (barra desayunadora para pisos)
+
+  // --- SOBREESCRITURAS INDEPENDIENTES POR CUBIERTA/TRAMO DETECTADO ---
+  runOverrides?: Record<string, CountertopRunOverride>;
+  selectedRunId?: string | null;
+
+  // --- PARÁMETROS MUEBLES BASE CONTRA MURO ---
+  baseOverhangFrontCm?: number; // 0 a 5 cm (frente sobre puertas/cajones, default: 2)
+  baseOverhangLeftCm?: number; // 0 a 30 cm (lateral izquierdo libre en muebles base)
+  baseOverhangRightCm?: number; // 0 a 30 cm (lateral derecho libre en muebles base)
+  baseWaterfallLeft?: boolean; // Remate cascada lateral izquierdo exclusivo para muebles base
+  baseWaterfallRight?: boolean; // Remate cascada lateral derecho exclusivo para muebles base
+
+  // --- PARÁMETROS MUEBLES ISLA ---
+  islandOverhangFrontCm?: number; // 0 a 10 cm (frente isla, default: 2)
+  islandOverhangBackCm?: number; // 0 a 50 cm (barra desayunadora trasera en isla, default: 30)
+  islandOverhangLeftCm?: number; // 0 a 40 cm (lateral izquierdo isla libre)
+  islandOverhangRightCm?: number; // 0 a 40 cm (lateral derecho isla libre)
+  islandWaterfallLeft?: boolean; // Remate cascada lateral izquierdo exclusivo para isla
+  islandWaterfallRight?: boolean; // Remate cascada lateral derecho exclusivo para isla
+
+  // --- CAMPOS DE RETROCOMPATIBILIDAD Y GENERALES ---
+  waterfallLeft: boolean; // Remate lateral cascada al suelo (global/fallback)
+  waterfallRight: boolean; // Remate lateral cascada al suelo (global/fallback)
+  islandOverhangCm: number; // 0 a 40 cm (barra desayunadora para pisos - retrocompatibilidad)
+  overhangFrontCm?: number; // 2 a 10 cm (frente sobre puertas/cajones, fallback)
+  overhangBackCm?: number; // 0 a 40 cm (fondo/trasera en isla, fallback)
+  overhangLeftCm?: number; // 0 a 40 cm (lateral izquierdo libre, fallback)
+  overhangRightCm?: number; // 0 a 40 cm (lateral derecho libre, fallback)
+
   buildingType: BuildingType; // 'casa' (250 cm max) | 'edificio' (200 cm max)
   sinkModel: SinkModelId;
   sinkCabinetId: string | null;
@@ -544,11 +585,27 @@ export const DEFAULT_COUNTERTOP_CONFIG: CountertopConfig = {
   provider: 'qstone',
   selectedProductId: 'qs-pure-white-18',
   regruesoCm: 0, // 0 cm = canto simple
+  regruesoOnOverhangSides: true,
   backsplashMode: 'standard_5cm',
   backsplashHeightCm: 5,
   waterfallLeft: false,
   waterfallRight: false,
+  baseWaterfallLeft: false,
+  baseWaterfallRight: false,
+  islandWaterfallLeft: false,
+  islandWaterfallRight: false,
+  baseOverhangFrontCm: 2,
+  baseOverhangLeftCm: 0,
+  baseOverhangRightCm: 0,
+  islandOverhangFrontCm: 2,
+  islandOverhangBackCm: 30,
+  islandOverhangLeftCm: 0,
+  islandOverhangRightCm: 0,
   islandOverhangCm: 30, // 30 cm para barra isla
+  overhangFrontCm: 2,
+  overhangBackCm: 30,
+  overhangLeftCm: 0,
+  overhangRightCm: 0,
   buildingType: 'casa',
   sinkModel: 'none',
   sinkCabinetId: null,
@@ -567,6 +624,11 @@ export interface IslandBackConfig {
   decorativeMaterial: 'melamina' | 'hpl';
   heightMode: 'to_floor' | 'with_socle'; // estrictamente 'to_floor' cuando materialType === 'countertop'
   thicknessCm: number;
+  sidesEnabled?: boolean; // Activar costados/laterales decorativos en isla
+  sideLeftEnabled?: boolean; // Lateral izquierdo habilitado
+  sideRightEnabled?: boolean; // Lateral derecho habilitado
+  sideDepthCm?: number; // Profundidad ajustable con scroll/slider (mínimo profundidad mueble ~60cm, máx ~90cm cubierta)
+  sideHeightMode?: 'to_floor' | 'with_socle'; // Encuentro inferior de los laterales
 }
 
 export const DEFAULT_ISLAND_BACK_CONFIG: IslandBackConfig = {
@@ -576,5 +638,10 @@ export const DEFAULT_ISLAND_BACK_CONFIG: IslandBackConfig = {
   decorativeMaterial: 'melamina',
   heightMode: 'to_floor',
   thicknessCm: 1.8,
+  sidesEnabled: false,
+  sideLeftEnabled: true,
+  sideRightEnabled: true,
+  sideDepthCm: 60,
+  sideHeightMode: 'to_floor',
 };
 

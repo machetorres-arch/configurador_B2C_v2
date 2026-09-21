@@ -179,6 +179,7 @@ export const TexturesSection = ({
             { id: 'doors' as PartType, label: 'Puertas' },
             { id: 'drawerFronts' as PartType, label: 'Frentes Cajón' },
             { id: 'structure' as PartType, label: 'Paredes / Casco' },
+            { id: 'coverPanels' as PartType, label: 'Tapas Laterales' },
             { id: 'drawerInner' as PartType, label: 'Cajas Cajón' },
             { id: 'shelves' as PartType, label: 'Repisas' },
             { id: 'back' as PartType, label: 'Fondo Interior' },

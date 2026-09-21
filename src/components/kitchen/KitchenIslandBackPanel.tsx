@@ -211,6 +211,65 @@ export function KitchenIslandBackPanel() {
                 </group>
               );
             })()}
+
+            {/* === COSTADOS / LATERALES DECORATIVOS DE ISLA (MELAMINA / HPL / MDF LAMINADO) === */}
+            {!isCountertopMaterial && islandBackConfig.sidesEnabled && (() => {
+              const sideLeft = islandBackConfig.sideLeftEnabled !== false && !countertopConfig.waterfallLeft;
+              const sideRight = islandBackConfig.sideRightEnabled !== false && !countertopConfig.waterfallRight;
+              const sideDepthCm = islandBackConfig.sideDepthCm ?? cabDepthCm;
+              const sideHeightMode = islandBackConfig.sideHeightMode || effectiveHeightMode;
+
+              let sideHeightCm: number;
+              let sideCenterY: number;
+
+              if (sideHeightMode === 'to_floor') {
+                sideHeightCm = cabTopY;
+                sideCenterY = sideHeightCm / 2;
+              } else {
+                const socleGapCm = 10;
+                sideHeightCm = Math.max(10, cabTopY - socleGapCm);
+                sideCenterY = socleGapCm + sideHeightCm / 2;
+              }
+
+              // Posición Z: El frente del mueble está en +cabDepthCm/2 y el panel corre hacia el fondo
+              const localSideZ = (cabDepthCm / 2) - (sideDepthCm / 2);
+              const localLeftX = -totalLengthCm / 2 - thicknessCm / 2;
+              const localRightX = totalLengthCm / 2 + thicknessCm / 2;
+
+              return (
+                <group name="islandDecorativeSidePanels">
+                  {sideLeft && (
+                    <Board
+                      position={[localLeftX, sideCenterY, localSideZ]}
+                      args={[thicknessCm, sideHeightCm, sideDepthCm]}
+                      color={islandBackConfig.decorativeColor}
+                      textureUrl={
+                        islandBackConfig.decorativeColor.startsWith('#')
+                          ? undefined
+                          : islandBackConfig.decorativeColor
+                      }
+                      materialType={islandBackConfig.decorativeMaterial}
+                      isFrontPanel={true}
+                    />
+                  )}
+
+                  {sideRight && (
+                    <Board
+                      position={[localRightX, sideCenterY, localSideZ]}
+                      args={[thicknessCm, sideHeightCm, sideDepthCm]}
+                      color={islandBackConfig.decorativeColor}
+                      textureUrl={
+                        islandBackConfig.decorativeColor.startsWith('#')
+                          ? undefined
+                          : islandBackConfig.decorativeColor
+                      }
+                      materialType={islandBackConfig.decorativeMaterial}
+                      isFrontPanel={true}
+                    />
+                  )}
+                </group>
+              );
+            })()}
           </group>
         );
       })}

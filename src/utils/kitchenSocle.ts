@@ -47,18 +47,21 @@ export interface ProcessedSocleSystem {
 export function calculateSocleSystem(
   cabinets: CabinetType[],
   walls: WallType[] = [],
-  _roomVertices: any[] = []
+  _roomVertices: any[] = [],
+  socleFinish: 'aluminum' | 'black' | string = 'aluminum'
 ): ProcessedSocleSystem {
   // Filter all floor-standing cabinets that have legs/socle
   const floorCabinets = cabinets.filter(
     (c) => c.type === 'base' || c.type === 'island' || c.type === 'tall'
   );
 
+  const defaultColor = socleFinish === 'black' ? '#18181b' : '#e2e8f0';
+
   if (floorCabinets.length === 0) {
-    return { pieces: [], straightJoints: [], laterals: [], corners: [], socleColor: '#d1d5db' };
+    return { pieces: [], straightJoints: [], laterals: [], corners: [], socleColor: defaultColor };
   }
 
-  const socleColor = floorCabinets[0]?.socleColor || '#d1d5db';
+  const socleColor = socleFinish === 'black' ? '#18181b' : (socleFinish === 'aluminum' ? '#e2e8f0' : (floorCabinets[0]?.socleColor || '#e2e8f0'));
   const legsHeight = 10;
   const socleY = legsHeight / 2;
 
