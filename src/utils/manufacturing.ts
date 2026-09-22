@@ -357,7 +357,7 @@ export function generatePartsList(data: ManufacturingData): Part[] {
   return parts;
 }
 
-export function generateEdgeBandingList(parts: Part[]) {
+export function generateEdgeBandingList(parts: Part[], edgeFronts = 2.0, edgeCabinets = 0.45) {
   let edge2mm = 0; // en milímetros
   let edge045mm = 0; // en milímetros
 
@@ -372,10 +372,10 @@ export function generateEdgeBandingList(parts: Part[]) {
     const totalEdgeForPart = partEdgeLength * part.qty;
 
     if (part.material === 'Melamina Frente' || part.material === 'Melamina Frente Cajón') {
-      // Puertas y Frentes de Cajón usan tapacanto de 2mm
+      // Puertas y Frentes de Cajón usan tapacanto de frentes
       edge2mm += totalEdgeForPart;
     } else if (part.material === 'Melamina Cuerpo' || part.material === 'Melamina Fondo' || part.material === 'Melamina Zócalo') {
-      // Gabinetes y Repisas usan tapacanto de 0.45mm
+      // Gabinetes y Repisas usan tapacanto de cuerpo
       edge045mm += totalEdgeForPart;
     }
   });
@@ -389,7 +389,7 @@ export function generateEdgeBandingList(parts: Part[]) {
   if (meters2mm > 0) {
     edgeList.push({
       Especialidad: 'Insumos',
-      Item: 'Tapacanto PVC 2mm (Frentes)',
+      Item: `Tapacanto PVC ${edgeFronts.toFixed(2)}mm (Frentes)`,
       Cantidad: Number(meters2mm.toFixed(1)),
       Unidad: 'Metros',
       Notas: 'Incluye 10% desperdicio'
@@ -398,7 +398,7 @@ export function generateEdgeBandingList(parts: Part[]) {
   if (meters045mm > 0) {
     edgeList.push({
       Especialidad: 'Insumos',
-      Item: 'Tapacanto PVC 0.45mm (Cuerpo)',
+      Item: `Tapacanto PVC ${edgeCabinets.toFixed(2)}mm (Cuerpo)`,
       Cantidad: Number(meters045mm.toFixed(1)),
       Unidad: 'Metros',
       Notas: 'Incluye 10% desperdicio'

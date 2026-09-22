@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Printer, Download, X, HelpCircle, FileText, CheckCircle2, Loader2, QrCode, Cpu, FileSpreadsheet, DollarSign } from 'lucide-react';
+import { Printer, Download, X, HelpCircle, FileText, CheckCircle2, Loader2, QrCode, Cpu, FileSpreadsheet, DollarSign, Edit3 } from 'lucide-react';
 import { useStore } from '../store';
 import { useKitchenStore, CabinetType } from '../store/kitchenStore';
 import { analyzeRoomWalls } from '../utils/roomGeometry';
@@ -27,6 +27,13 @@ export function KitchenBlueprint() {
   const [isB2BQuoteOpen, setIsB2BQuoteOpen] = useState(false);
   const [exportProgress, setExportProgress] = useState<{ current: number; total: number } | null>(null);
   const [generatedPdfUrl, setGeneratedPdfUrl] = useState<string | null>(null);
+
+  // Estados persistentes para datos de proyecto y cliente
+  const [projectName, setProjectName] = useState(() => localStorage.getItem('arquify_project_name') || 'PROYECTO COCINA ARQUIFY');
+  const [clientName, setClientName] = useState(() => localStorage.getItem('arquify_client_name') || 'CLIENTE PARTICULAR');
+  const [isEditingInfo, setIsEditingInfo] = useState(false);
+  const [tempProjectName, setTempProjectName] = useState(projectName);
+  const [tempClientName, setTempClientName] = useState(clientName);
 
   if (!state.isPrinting) return null;
 
@@ -149,14 +156,23 @@ export function KitchenBlueprint() {
     const tagPrefix = cab.type === 'wall' ? 'A' : cab.type === 'tall' ? 'T' : cab.type === 'island' ? 'I' : 'B';
     const identTag = `${tagPrefix}-${index + 1}`;
 
-    // Agrupar piezas únicas
+    // Agrupar piezas únicas consolidando piezas idénticas de cajones (ej. Lateral Cajón (1), (2)... con mismas dimensiones)
     const uniqueParts: Part[] = [];
     cabParts.forEach(p => {
-      const existing = uniqueParts.find(up => up.name === p.name && Math.abs(up.length - p.length) < 1 && Math.abs(up.width - p.width) < 1 && up.material === p.material);
+      // Normalizar nombre base quitando índice de cajón "(1)", "(2)" para agrupar piezas idénticas
+      const baseName = p.name.replace(/\s*\(\d+\)/g, '').replace(/\(Cab \d+ [^)]+\)/g, '').trim();
+      const existing = uniqueParts.find(up => {
+        const upBaseName = up.name.replace(/\s*\(\d+\)/g, '').replace(/\(Cab \d+ [^)]+\)/g, '').trim();
+        return (upBaseName === baseName || up.name === p.name) && 
+          Math.abs(up.length - p.length) < 1 && 
+          Math.abs(up.width - p.width) < 1 && 
+          up.material === p.material &&
+          up.thickness === p.thickness;
+      });
       if (existing) {
         existing.qty += p.qty;
       } else {
-        uniqueParts.push({ ...p });
+        uniqueParts.push({ ...p, name: baseName || p.name });
       }
     });
 
@@ -302,8 +318,11 @@ export function KitchenBlueprint() {
    * Calibrado para que la pieza y cotas ocupen ~80% del recuadro disponible con tipografías legibles (mínimo 9-11pt).
    */
   const renderUnifiedPartSVG = (part: Part, cab: CabinetType) => {
-    const pw = Math.round(part.width);
-    const pl = Math.round(part.length);
+    const isFrenteCajon = part.name.includes("Frente Cajón");
+    // En despiece industrial estándar, length es la dimensión longitudinal (ancho del frente de cajón) y width es la altura
+    // Para visualización técnica horizontal en plano: pw debe ser la dimensión horizontal y pl la vertical
+    const pw = Math.round(isFrenteCajon && part.length > part.width ? part.length : part.width);
+    const pl = Math.round(isFrenteCajon && part.length > part.width ? part.width : part.length);
     const baseDim = Math.max(pw, pl, 200);
 
     const isLateral = part.name.includes("Lateral") && !part.name.includes("Cajón");
@@ -312,7 +331,6 @@ export function KitchenBlueprint() {
     const isBarraAmarre = part.name.includes("Barra") || part.name.includes("Amarre");
     const isRepisa = part.name.includes("Repisa") || part.name.includes("Divisor");
     const isPuerta = part.name.includes("Puerta");
-    const isFrenteCajon = part.name.includes("Frente Cajón");
     const isLateralCajon = part.name.includes("Lateral Cajón");
 
     const isMinifix = state.assemblyType === 'minifix';
@@ -323,20 +341,19 @@ export function KitchenBlueprint() {
 
     const vMax = Math.max(pw, pl, 300);
 
-    // Tipografía CAD nítida y de alta legibilidad calibrada para pantalla y A3
-    // Se escala matemáticamente para asegurar números grandes (mínimo 13-16px reales en pantalla)
-    const fSizeCotaGeneral = Math.max(48, Math.round(vMax * 0.105));
+    // Tipografía CAD nítida y calibrada para lámina A3 según norma ISO 128 / DIN
+    const fSizeCotaGeneral = Math.max(32, Math.min(52, Math.round(vMax * 0.068)));
     // En piezas angostas (barras 100mm, laterales cajón) se ajusta proporcionalmente para no desbordar
-    const fSizeCotaHoriz = Math.min(fSizeCotaGeneral, Math.max(34, Math.round(pw * 0.38)));
+    const fSizeCotaHoriz = Math.min(fSizeCotaGeneral, Math.max(24, Math.round(pw * 0.22)));
     const fSizeCotaVert = fSizeCotaGeneral;
-    // Cota técnica de mecanizados (34, 32, 50, 15, 22.5, 9.5)
-    const fSizeSm = Math.max(38, Math.round(vMax * 0.088));
+    // Cota técnica de mecanizados (34, 32, 50, 15, 22.5, 9.5) - mínimo garantizado 22px
+    const fSizeSm = Math.max(22, Math.min(34, Math.round(vMax * 0.048)));
 
-    // Espesores de trazo sólidos y definidos (elimina líneas subpixel borrosas)
-    const strokeThick = Math.max(3.8, Math.round(vMax * 0.012));
-    const strokeMed = Math.max(2.6, Math.round(vMax * 0.008));
-    const strokeThin = Math.max(1.8, Math.round(vMax * 0.0055));
-    const haloWidth = Math.max(4.2, strokeMed * 2.2);
+    // Espesores de trazo normalizados (plumas técnicas de contorno, medio y auxiliar)
+    const strokeThick = Math.max(2.4, Math.round(vMax * 0.0055));
+    const strokeMed = Math.max(1.7, Math.round(vMax * 0.0038));
+    const strokeThin = Math.max(1.2, Math.round(vMax * 0.0024));
+    const haloWidth = Math.max(3.2, strokeMed * 2.0);
 
     const isNarrowPiece = isBarraAmarre || pw < 280;
 
@@ -351,24 +368,24 @@ export function KitchenBlueprint() {
     const COLOR_DETALLE = "#1e40af"; // Cotas de Ejes y Perforaciones (Azul técnico alto contraste)
     const COLOR_CANAL = "#7e22ce";   // Canal Durolac
 
-    // CÁLCULO RIGUROSO DE PADDINGS PARA EVITAR CORTES DE COTAS Y TEXTOS
+    // CÁLCULO RIGUROSO DE PADDINGS PARA EVITAR CORTES DE COTAS Y TEXTOS EN A3
     const padT = hasTopMachining 
-      ? (isMinifix ? Math.max(125, Math.round(vMax * 0.25)) : Math.max(95, Math.round(vMax * 0.20))) 
-      : Math.max(40, Math.round(vMax * 0.08));
+      ? (isMinifix ? Math.max(88, Math.round(vMax * 0.18)) : Math.max(72, Math.round(vMax * 0.14))) 
+      : Math.max(42, Math.round(vMax * 0.08));
 
     const padL = hasLeftMachining 
-      ? Math.max(105, Math.round(vMax * 0.22)) 
-      : Math.max(40, Math.round(vMax * 0.08));
+      ? Math.max(88, Math.round(vMax * 0.18)) 
+      : Math.max(42, Math.round(vMax * 0.08));
 
     // Espacio inferior (padB): cotas de detalle + Cota General + Altura de texto
-    const distB = isLateral ? Math.max(75, Math.round(vMax * 0.16)) : Math.max(55, Math.round(vMax * 0.12));
+    const distB = isLateral ? Math.max(58, Math.round(vMax * 0.12)) : Math.max(48, Math.round(vMax * 0.10));
     const cotaBottomY = pl + distB;
-    const padB = (cotaBottomY - pl) + fSizeCotaHoriz * 1.6 + 28;
+    const padB = (cotaBottomY - pl) + fSizeCotaHoriz * 1.4 + 18;
 
     // Espacio derecho (padR): Cota General Vertical + Texto Rotado
-    const distR = Math.max(55, Math.round(vMax * 0.12));
+    const distR = Math.max(48, Math.round(vMax * 0.10));
     const cotaRightX = pw + distR;
-    const padR = (cotaRightX - pw) + fSizeCotaVert * 1.6 + 28;
+    const padR = (cotaRightX - pw) + fSizeCotaVert * 1.4 + 18;
 
     const viewBoxW = pw + padL + padR;
     const viewBoxH = pl + padT + padB;
@@ -376,7 +393,7 @@ export function KitchenBlueprint() {
     return (
       <svg 
         viewBox={`-${padL} -${padT} ${viewBoxW} ${viewBoxH}`} 
-        className="w-full h-[215px] max-h-[225px] overflow-visible"
+        className="w-full h-[225px] max-h-[240px] overflow-visible"
         preserveAspectRatio="xMidYMid meet"
       >
         {/* 1. Superficie de la Pieza */}
@@ -694,25 +711,6 @@ export function KitchenBlueprint() {
                             ? (elevMm <= 700 ? `2x Ø5 SOP. REPISA INF (H=${elevMm})` : `2x Ø5 SOP. REPISA SUP (H=${elevMm})`)
                             : `2x Ø5 SOPORTE REPISA (H=${elevMm})`}
                         </text>
-
-                        {/* Cota vertical de elevación desde base */}
-                        <line x1={xRearHole + 20} y1={pl} x2={xRearHole + 20} y2={yHole} stroke="#0284c7" strokeWidth={strokeThin * 0.7} strokeDasharray="2,2" />
-                        <text 
-                          x={xRearHole + 24} 
-                          y={yHole + Math.round(fSizeSm * 0.3)} 
-                          fontSize={Math.round(fSizeSm * 0.65)} 
-                          fill="#0369a1" 
-                          stroke="#ffffff" 
-                          strokeWidth={haloWidth} 
-                          paintOrder="stroke fill" 
-                          strokeLinejoin="round" 
-                          textAnchor="start" 
-                          fontWeight="900" 
-                          fontFamily="monospace" 
-                          textRendering="geometricPrecision"
-                        >
-                          H={elevMm}
-                        </text>
                       </g>
                     );
                   })}
@@ -1025,7 +1023,7 @@ export function KitchenBlueprint() {
                   <line x1={cx1} y1={cy} x2={cx2} y2={cy} stroke="#2563eb" strokeWidth={strokeThin} strokeDasharray="4,2" />
                   {/* Cota horizontal entre centros */}
                   <line x1={cx1} y1={cy - 18} x2={cx2} y2={cy - 18} stroke="#2563eb" strokeWidth={strokeThin} />
-                  <line x1={cx1} y1={cy - 24} x2={cx1} y2={cx1} stroke="#2563eb" strokeWidth={strokeThin} />
+                  <line x1={cx1} y1={cy - 24} x2={cx1} y2={cy} stroke="#2563eb" strokeWidth={strokeThin} />
                   <line x1={cx2} y1={cy - 24} x2={cx2} y2={cy} stroke="#2563eb" strokeWidth={strokeThin} />
                   <text x={pw / 2} y={cy - 22} fontSize={Math.round(fSizeSm * 0.85)} fill="#2563eb" stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" textAnchor="middle" fontWeight="900" fontFamily="monospace">{hLen}</text>
                   <text x={pw / 2} y={cy + 18} fontSize={Math.round(fSizeSm * 0.8)} fill="#2563eb" stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" textAnchor="middle" fontWeight="bold">2x Ø4.5 Tirador ({hLen}mm)</text>
@@ -1038,23 +1036,65 @@ export function KitchenBlueprint() {
         {/* Laterales de Cajón: Perforaciones para corredera y ensamble */}
         {isLateralCajon && (
           <g key="machining-lateral-cajon">
-            {/* Eje corredera a 25mm del fondo */}
-            <line x1={0} y1={pl - 25} x2={pw} y2={pl - 25} stroke={COLOR_DETALLE} strokeWidth={strokeThin} strokeDasharray="4,2" />
-            <circle cx={37} cy={pl - 25} r={Math.max(4, Math.round(vMax * 0.012))} fill={COLOR_SPAX} />
-            <circle cx={pw - 37} cy={pl - 25} r={Math.max(4, Math.round(vMax * 0.012))} fill={COLOR_SPAX} />
+            {pl >= pw ? (
+              // Pieza orientada con profundidad longitudinal en Y
+              <g>
+                <line x1={pw - 25} y1={15} x2={pw - 25} y2={pl - 15} stroke={COLOR_DETALLE} strokeWidth={strokeThin} strokeDasharray="4,2" />
+                <circle cx={pw - 25} cy={37} r={Math.max(4, Math.round(vMax * 0.012))} fill={COLOR_SPAX} />
+                <circle cx={pw - 25} cy={pl - 37} r={Math.max(4, Math.round(vMax * 0.012))} fill={COLOR_SPAX} />
 
-            {/* Cota horizontal 37mm */}
-            <line x1={0} y1={-padT * 0.38} x2={37} y2={-padT * 0.38} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
-            <line x1={0} y1={-padT * 0.50} x2={0} y2={0} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
-            <line x1={37} y1={-padT * 0.50} x2={37} y2={pl - 25} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
-            <text x={18.5} y={-padT * 0.38 - 6} fontSize={fSizeSm} fill={COLOR_DETALLE} stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" textAnchor="middle" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision">37</text>
+                {/* Cota horizontal 25mm al borde inferior */}
+                <line x1={pw - 25} y1={-padT * 0.38} x2={pw} y2={-padT * 0.38} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                <line x1={pw - 25} y1={-padT * 0.50} x2={pw - 25} y2={0} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                <line x1={pw} y1={-padT * 0.50} x2={pw} y2={0} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                <text x={pw - 12.5} y={-padT * 0.38 - 6} fontSize={fSizeSm} fill={COLOR_DETALLE} stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" textAnchor="middle" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision">25</text>
 
-            {/* Cota vertical 25mm eje corredera */}
-            <line x1={-padL * 0.38} y1={pl - 25} x2={-padL * 0.38} y2={pl} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
-            <line x1={-padL * 0.50} y1={pl - 25} x2={37} y2={pl - 25} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
-            <line x1={-padL * 0.50} y1={pl} x2={0} y2={pl} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
-            <text x={-padL * 0.62} y={pl - 12 + fSizeSm * 0.35} fontSize={fSizeSm} fill={COLOR_DETALLE} stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" textAnchor="middle" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision">25</text>
-            <text x={pw / 2} y={pl - 32} fontSize={Math.round(fSizeSm * 0.85)} fill={COLOR_DETALLE} stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" textAnchor="middle" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision">Eje Corredera Ø4</text>
+                {/* Cota vertical 37mm */}
+                <line x1={-padL * 0.38} y1={0} x2={-padL * 0.38} y2={37} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                <line x1={-padL * 0.50} y1={0} x2={0} y2={0} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                <line x1={-padL * 0.50} y1={37} x2={pw - 25} y2={37} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                <text x={-padL * 0.62} y={18.5 + fSizeSm * 0.35} fontSize={fSizeSm} fill={COLOR_DETALLE} stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" textAnchor="middle" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision">37</text>
+
+                {/* Texto sobre el eje con espacio suficiente */}
+                <text 
+                  x={pw - 32} 
+                  y={pl / 2} 
+                  fontSize={Math.round(fSizeSm * 0.85)} 
+                  fill={COLOR_DETALLE} 
+                  stroke="#ffffff" 
+                  strokeWidth={haloWidth} 
+                  paintOrder="stroke fill" 
+                  strokeLinejoin="round" 
+                  textAnchor="middle" 
+                  fontWeight="900" 
+                  fontFamily="monospace" 
+                  textRendering="geometricPrecision"
+                  transform={`rotate(-90 ${pw - 32} ${pl / 2})`}
+                >
+                  Eje Corredera Ø4
+                </text>
+              </g>
+            ) : (
+              // Pieza orientada con profundidad longitudinal en X
+              <g>
+                <line x1={15} y1={pl - 25} x2={pw - 15} y2={pl - 25} stroke={COLOR_DETALLE} strokeWidth={strokeThin} strokeDasharray="4,2" />
+                <circle cx={37} cy={pl - 25} r={Math.max(4, Math.round(vMax * 0.012))} fill={COLOR_SPAX} />
+                <circle cx={pw - 37} cy={pl - 25} r={Math.max(4, Math.round(vMax * 0.012))} fill={COLOR_SPAX} />
+
+                {/* Cota horizontal 37mm */}
+                <line x1={0} y1={-padT * 0.38} x2={37} y2={-padT * 0.38} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                <line x1={0} y1={-padT * 0.50} x2={0} y2={0} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                <line x1={37} y1={-padT * 0.50} x2={37} y2={pl - 25} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                <text x={18.5} y={-padT * 0.38 - 6} fontSize={fSizeSm} fill={COLOR_DETALLE} stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" textAnchor="middle" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision">37</text>
+
+                {/* Cota vertical 25mm eje corredera */}
+                <line x1={-padL * 0.38} y1={pl - 25} x2={-padL * 0.38} y2={pl} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                <line x1={-padL * 0.50} y1={pl - 25} x2={37} y2={pl - 25} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                <line x1={-padL * 0.50} y1={pl} x2={0} y2={pl} stroke={COLOR_DETALLE} strokeWidth={strokeThin} />
+                <text x={-padL * 0.62} y={pl - 12 + fSizeSm * 0.35} fontSize={fSizeSm} fill={COLOR_DETALLE} stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" textAnchor="middle" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision">25</text>
+                <text x={pw / 2} y={pl - 32} fontSize={Math.round(fSizeSm * 0.85)} fill={COLOR_DETALLE} stroke="#ffffff" strokeWidth={haloWidth} paintOrder="stroke fill" strokeLinejoin="round" textAnchor="middle" fontWeight="900" fontFamily="monospace" textRendering="geometricPrecision">Eje Corredera Ø4</text>
+              </g>
+            )}
           </g>
         )}
       </svg>
@@ -1082,30 +1122,39 @@ export function KitchenBlueprint() {
     const fSizeP = Math.max(28, Math.round(baseDimP * 0.075));
     const strokeP = Math.max(1.5, baseDimP * 0.0035);
 
-    // VISTA FRONTAL: cotas en TOP (Ancho) y LEFT (Alto)
-    const baseDimF = Math.max(cabW, cabH, 400);
-    const padLeftF = Math.max(150, Math.round(cabH * 0.22));
-    const padTopF = Math.max(75, Math.round(cabW * 0.14));
-    const padRightF = Math.max(25, Math.round(cabW * 0.04));
-    const padBottomF = Math.max(30, Math.round(cabH * 0.05));
-    const fSizeF = Math.max(30, Math.round(baseDimF * 0.075));
-    const strokeF = Math.max(1.5, baseDimF * 0.0035);
-
-    // VISTA LATERAL: cotas en TOP (Profundidad) y RIGHT (Alto) - Evita colisión en zona media
-    const baseDimL = Math.max(cabD, cabH, 400);
-    const padLeftL = Math.max(25, Math.round(cabD * 0.04));
-    const padTopL = Math.max(75, Math.round(cabD * 0.14));
-    const padRightL = Math.max(150, Math.round(cabH * 0.22));
-    const padBottomL = Math.max(30, Math.round(cabH * 0.05));
-    const fSizeL = Math.max(30, Math.round(baseDimL * 0.075));
-    const strokeL = Math.max(1.5, baseDimL * 0.0035);
+    // VISTAS ELEVACIÓN UNIFICADAS (FRONTAL Y LATERAL): Escala diédrica 1:1 idéntica (ISO 128 / DIN)
+    const viewGap = Math.max(120, Math.round(cabW * 0.18));
+    const totalElevW = cabW + viewGap + cabD;
+    const padLeftElev = Math.max(140, Math.round(cabH * 0.20));
+    const padRightElev = Math.max(140, Math.round(cabH * 0.20));
+    const padTopElev = Math.max(130, Math.round(Math.max(cabW, cabD) * 0.26));
+    const padBottomElev = Math.max(35, Math.round(cabH * 0.06));
+    const fSizeElev = Math.max(32, Math.round(Math.max(cabW, cabH, cabD) * 0.075));
+    const strokeElev = Math.max(1.6, Math.max(totalElevW, cabH) * 0.0028);
 
     const COLOR_MAGENTA = "#d946ef";
 
     const isBaseGola = (kState.golaSystem === 'aluminum' || kState.golaSystem === 'black') && (cab.type === 'base' || cab.type === 'island');
-    const hasGolaC = isBaseGola && (cab.variant === '1_door_1_drawer' || cab.variant === '2_pot_drawers' || cab.variant === '4_drawers');
-    const golaCY_lat = Math.round(bodyH * 0.35);
+    const hasGolaC = isBaseGola && (cab.variant === '1_door_1_drawer' || cab.variant === '2_pot_drawers' || cab.variant === '4_drawers' || cab.variant === '2_drawers_1_pot' || cab.variant === 'sink_u_drawer');
     const golaColorHex = kState.golaSystem === 'black' ? '#18181b' : '#94a3b8';
+
+    // Cálculo dinámico de altura útil y posición milimétrica exacta del perfil Gola C
+    const golaAvailH = Math.max(20, bodyH - 35 - 40);
+    let golaCY_lat = Math.round(bodyH * 0.35);
+    const drH_2pot = Math.round(golaAvailH / 2);
+    const drH_4dr = Math.round(golaAvailH / 4);
+    const drH_1d1dr = Math.min(145, Math.round(bodyH * 0.22));
+
+    if (cab.variant === '2_pot_drawers' || cab.variant === 'sink_u_drawer') {
+      golaCY_lat = Math.round(35 + drH_2pot + 20);
+    } else if (cab.variant === '4_drawers') {
+      golaCY_lat = Math.round(35 + drH_4dr * 2 + 20);
+    } else if (cab.variant === '1_door_1_drawer') {
+      golaCY_lat = Math.round(35 + drH_1d1dr + 20);
+    } else if (cab.variant === '2_drawers_1_pot') {
+      const topDrH = Math.round(golaAvailH * 0.25);
+      golaCY_lat = Math.round(35 + topDrH * 2 + 20);
+    }
 
     return (
       <div className="flex flex-col justify-between items-center w-full h-full py-2 gap-4">
@@ -1180,62 +1229,192 @@ export function KitchenBlueprint() {
           </svg>
         </div>
 
-        {/* VISTAS ELEVACIÓN: FRONTAL Y LATERAL */}
-        <div className="flex gap-4 w-full justify-center items-end">
-          {/* VISTA FRONTAL */}
-          <div className="flex-1 flex flex-col items-center">
-            <div className="text-xs font-black tracking-widest text-slate-800 mb-1.5 uppercase">
-              VISTA FRONTAL
-            </div>
-            <svg 
-              viewBox={`-${padLeftF} -${padTopF} ${cabW + padLeftF + padRightF} ${cabH + padTopF + padBottomF}`}
-              className="w-full h-[300px] max-h-[320px] overflow-visible"
-              preserveAspectRatio="xMidYMid meet"
-            >
-              <rect x={0} y={0} width={cabW} height={bodyH} fill="#ffffff" stroke="#0f172a" strokeWidth={strokeF * 1.5} />
+        {/* VISTAS ELEVACIÓN UNIFICADAS: FRONTAL Y LATERAL A ESCALA IDÉNTICA 1:1 */}
+        <div className="w-full flex flex-col items-center">
+          <svg 
+            viewBox={`-${padLeftElev} -${padTopElev} ${totalElevW + padLeftElev + padRightElev} ${cabH + padTopElev + padBottomElev}`}
+            className="w-full h-[300px] max-h-[320px] overflow-visible"
+            preserveAspectRatio="xMidYMid meet"
+          >
+            {/* Títulos de Vistas Superiores Desacoplados de las Cotas (Norma ISO/DIN) */}
+            <text x={cabW / 2} y={-padTopElev + Math.max(16, fSizeElev * 0.6)} fontSize={Math.max(16, fSizeElev * 0.6)} fill="#0f172a" fontWeight="900" textAnchor="middle" letterSpacing="0.08em">VISTA FRONTAL</text>
+            <text x={cabW + viewGap + cabD / 2} y={-padTopElev + Math.max(16, fSizeElev * 0.6)} fontSize={Math.max(16, fSizeElev * 0.6)} fill="#0f172a" fontWeight="900" textAnchor="middle" letterSpacing="0.08em">VISTA LATERAL</text>
+
+            {/* Líneas de Correspondencia Proyectiva Diédrica (ISO 128) */}
+            <line x1={cabW} y1={0} x2={cabW + viewGap} y2={0} stroke="#cbd5e1" strokeWidth={strokeElev * 0.7} strokeDasharray="4,4" />
+            <line x1={cabW} y1={bodyH} x2={cabW + viewGap} y2={bodyH} stroke="#cbd5e1" strokeWidth={strokeElev * 0.7} strokeDasharray="4,4" />
+            {legsH > 0 && (
+              <line x1={cabW} y1={cabH} x2={cabW + viewGap} y2={cabH} stroke="#94a3b8" strokeWidth={strokeElev * 0.9} strokeDasharray="3,3" />
+            )}
+
+            {/* ======================================================== */}
+            {/* 1. VISTA FRONTAL (X = 0 hasta cabW)                       */}
+            {/* ======================================================== */}
+            <g>
+              <rect x={0} y={0} width={cabW} height={bodyH} fill="#ffffff" stroke="#0f172a" strokeWidth={strokeElev * 1.5} />
+              
               {/* Perfiles Gola L y Gola C en Vista Frontal */}
               {isBaseGola && (
                 <g>
-                  <rect x={0} y={0} width={cabW} height={35} fill={golaColorHex} stroke="#0f172a" strokeWidth={strokeF * 0.8} />
-                  <text x={cabW / 2} y={23} fontSize={Math.max(14, fSizeF * 0.42)} fill={kState.golaSystem === 'black' ? '#ffffff' : '#0f172a'} fontWeight="bold" textAnchor="middle" fontFamily="monospace">RIEL GOLA L (CONTINUO)</text>
+                  <rect x={0} y={0} width={cabW} height={35} fill={golaColorHex} stroke="#0f172a" strokeWidth={strokeElev * 0.8} />
+                  <text x={cabW / 2} y={23} fontSize={Math.max(14, fSizeElev * 0.42)} fill={kState.golaSystem === 'black' ? '#ffffff' : '#0f172a'} fontWeight="bold" textAnchor="middle" fontFamily="monospace">RIEL GOLA L (CONTINUO)</text>
                 </g>
               )}
               {hasGolaC && (
                 <g>
-                  <rect x={0} y={golaCY_lat - 20} width={cabW} height={40} fill={golaColorHex} stroke="#0f172a" strokeWidth={strokeF * 0.8} />
-                  <text x={cabW / 2} y={golaCY_lat + 6} fontSize={Math.max(14, fSizeF * 0.42)} fill={kState.golaSystem === 'black' ? '#ffffff' : '#0f172a'} fontWeight="bold" textAnchor="middle" fontFamily="monospace">RIEL GOLA C (CONTINUO)</text>
+                  <rect x={0} y={golaCY_lat - 20} width={cabW} height={40} fill={golaColorHex} stroke="#0f172a" strokeWidth={strokeElev * 0.8} />
+                  <text x={cabW / 2} y={golaCY_lat + 6} fontSize={Math.max(14, fSizeElev * 0.42)} fill={kState.golaSystem === 'black' ? '#ffffff' : '#0f172a'} fontWeight="bold" textAnchor="middle" fontFamily="monospace">RIEL GOLA C (CONTINUO)</text>
                 </g>
               )}
               {legsH > 0 && (
                 <g>
-                  <rect x={15} y={bodyH} width={cabW - 30} height={legsH} fill="#e2e8f0" stroke="#475569" strokeWidth={strokeF} />
+                  <rect x={15} y={bodyH} width={cabW - 30} height={legsH} fill="#e2e8f0" stroke="#475569" strokeWidth={strokeElev} />
                   <rect x={35} y={bodyH} width={25} height={legsH} fill="#94a3b8" />
                   <rect x={cabW - 60} y={bodyH} width={25} height={legsH} fill="#94a3b8" />
-                  <text x={cabW / 2} y={bodyH + legsH * 0.65} fontSize={Math.max(20, fSizeF * 0.6)} fill="#475569" fontWeight="bold" textAnchor="middle">ZÓCALO H=150</text>
+                  <text x={cabW / 2} y={bodyH + legsH * 0.65} fontSize={Math.max(18, fSizeElev * 0.55)} fill="#475569" fontWeight="bold" textAnchor="middle">ZÓCALO H={legsH}</text>
                 </g>
-              )}
-              {cab.variant === '4_drawers' ? (
-                Array.from({ length: 4 }).map((_, di) => {
-                  const dy = (bodyH / 4) * di;
-                  const dh = bodyH / 4;
-                  return (
-                    <g key={di}>
-                      <line x1={0} y1={dy} x2={cabW} y2={dy} stroke="#0f172a" strokeWidth={strokeF * 0.8} />
-                      <text x={cabW / 2} y={dy + dh * 0.6} fontSize={Math.max(18, fSizeF * 0.55)} fill="#64748b" textAnchor="middle" fontFamily="monospace">Cajón {di + 1}</text>
-                    </g>
-                  );
-                })
-              ) : cab.variant === '2_doors' ? (
-                <g>
-                  <line x1={cabW / 2} y1={0} x2={cabW / 2} y2={bodyH} stroke="#0f172a" strokeWidth={strokeF} />
-                  <path d={`M 0 ${bodyH / 2} L ${cabW / 2} 0 L ${cabW / 2} ${bodyH} Z`} fill="none" stroke="#c026d3" strokeWidth={strokeF * 0.8} strokeDasharray="4,4" />
-                  <path d={`M ${cabW} ${bodyH / 2} L ${cabW / 2} 0 L ${cabW / 2} ${bodyH} Z`} fill="none" stroke="#c026d3" strokeWidth={strokeF * 0.8} strokeDasharray="4,4" />
-                </g>
-              ) : (
-                <path d={`M 0 ${bodyH / 2} L ${cabW} 0 L ${cabW} ${bodyH} Z`} fill="none" stroke="#c026d3" strokeWidth={strokeF * 0.8} strokeDasharray="4,4" />
               )}
 
-              {/* Repisas Interiores en Vista Frontal (proyección oculta) */}
+              {/* Frentes / Puertas / Cajones según tipología exacta */}
+              {cab.variant === '4_drawers' ? (
+                isBaseGola ? (
+                  <g>
+                    {/* Cajón 1 (Superior) */}
+                    <text x={cabW / 2} y={35 + drH_4dr * 0.6} fontSize={Math.max(15, fSizeElev * 0.45)} fill="#475569" fontWeight="bold" textAnchor="middle" fontFamily="monospace">Cajón 1</text>
+                    
+                    {/* Línea divisoria Cajón 1 / Cajón 2 */}
+                    <line x1={0} y1={35 + drH_4dr} x2={cabW} y2={35 + drH_4dr} stroke="#0f172a" strokeWidth={strokeElev * 0.8} />
+                    
+                    {/* Cajón 2 */}
+                    <text x={cabW / 2} y={35 + drH_4dr * 1.6} fontSize={Math.max(15, fSizeElev * 0.45)} fill="#475569" fontWeight="bold" textAnchor="middle" fontFamily="monospace">Cajón 2</text>
+                    
+                    {/* Gola C se ubica entre 35 + drH_4dr*2 y 35 + drH_4dr*2 + 40 */}
+                    
+                    {/* Cajón 3 */}
+                    <text x={cabW / 2} y={35 + drH_4dr * 2 + 40 + drH_4dr * 0.6} fontSize={Math.max(15, fSizeElev * 0.45)} fill="#475569" fontWeight="bold" textAnchor="middle" fontFamily="monospace">Cajón 3</text>
+                    
+                    {/* Línea divisoria Cajón 3 / Cajón 4 */}
+                    <line x1={0} y1={35 + drH_4dr * 3 + 40} x2={cabW} y2={35 + drH_4dr * 3 + 40} stroke="#0f172a" strokeWidth={strokeElev * 0.8} />
+                    
+                    {/* Cajón 4 (Inferior) */}
+                    <text x={cabW / 2} y={35 + drH_4dr * 3 + 40 + (bodyH - (35 + drH_4dr * 3 + 40)) * 0.6} fontSize={Math.max(15, fSizeElev * 0.45)} fill="#475569" fontWeight="bold" textAnchor="middle" fontFamily="monospace">Cajón 4</text>
+                  </g>
+                ) : (
+                  Array.from({ length: 4 }).map((_, di) => {
+                    const dy = (bodyH / 4) * di;
+                    const dh = bodyH / 4;
+                    return (
+                      <g key={di}>
+                        {di > 0 && <line x1={0} y1={dy} x2={cabW} y2={dy} stroke="#0f172a" strokeWidth={strokeElev * 0.8} />}
+                        <text x={cabW / 2} y={dy + dh * 0.6} fontSize={Math.max(16, fSizeElev * 0.48)} fill="#64748b" textAnchor="middle" fontFamily="monospace">Cajón {di + 1}</text>
+                      </g>
+                    );
+                  })
+                )
+              ) : cab.variant === '2_pot_drawers' || cab.variant === 'sink_u_drawer' ? (
+                isBaseGola ? (
+                  <g>
+                    {/* Ollero 1 (Superior) */}
+                    <text x={cabW / 2} y={35 + drH_2pot * 0.58} fontSize={Math.max(16, fSizeElev * 0.48)} fill="#475569" fontWeight="bold" textAnchor="middle" fontFamily="monospace">Cajón Ollero 1</text>
+                    
+                    {/* Gola C se ubica entre 35 + drH_2pot y 35 + drH_2pot + 40 */}
+                    
+                    {/* Ollero 2 (Inferior) */}
+                    <text x={cabW / 2} y={35 + drH_2pot + 40 + (bodyH - (35 + drH_2pot + 40)) * 0.58} fontSize={Math.max(16, fSizeElev * 0.48)} fill="#475569" fontWeight="bold" textAnchor="middle" fontFamily="monospace">Cajón Ollero 2</text>
+                  </g>
+                ) : (
+                  <g>
+                    <line x1={0} y1={bodyH / 2} x2={cabW} y2={bodyH / 2} stroke="#0f172a" strokeWidth={strokeElev * 0.8} />
+                    <text x={cabW / 2} y={bodyH * 0.28} fontSize={Math.max(16, fSizeElev * 0.48)} fill="#64748b" textAnchor="middle" fontFamily="monospace">Cajón Ollero 1</text>
+                    <text x={cabW / 2} y={bodyH * 0.78} fontSize={Math.max(16, fSizeElev * 0.48)} fill="#64748b" textAnchor="middle" fontFamily="monospace">Cajón Ollero 2</text>
+                  </g>
+                )
+              ) : cab.variant === '2_drawers_1_pot' ? (
+                isBaseGola ? (
+                  (() => {
+                    const topDrH = Math.round(golaAvailH * 0.25);
+                    return (
+                      <g>
+                        <text x={cabW / 2} y={35 + topDrH * 0.6} fontSize={Math.max(15, fSizeElev * 0.45)} fill="#475569" fontWeight="bold" textAnchor="middle" fontFamily="monospace">Cajón 1</text>
+                        <line x1={0} y1={35 + topDrH} x2={cabW} y2={35 + topDrH} stroke="#0f172a" strokeWidth={strokeElev * 0.8} />
+                        <text x={cabW / 2} y={35 + topDrH * 1.6} fontSize={Math.max(15, fSizeElev * 0.45)} fill="#475569" fontWeight="bold" textAnchor="middle" fontFamily="monospace">Cajón 2</text>
+                        <text x={cabW / 2} y={35 + topDrH * 2 + 40 + (bodyH - (35 + topDrH * 2 + 40)) * 0.58} fontSize={Math.max(16, fSizeElev * 0.48)} fill="#475569" fontWeight="bold" textAnchor="middle" fontFamily="monospace">Cajón Ollero</text>
+                      </g>
+                    );
+                  })()
+                ) : (
+                  <g>
+                    <line x1={0} y1={bodyH * 0.25} x2={cabW} y2={bodyH * 0.25} stroke="#0f172a" strokeWidth={strokeElev * 0.8} />
+                    <line x1={0} y1={bodyH * 0.5} x2={cabW} y2={bodyH * 0.5} stroke="#0f172a" strokeWidth={strokeElev * 0.8} />
+                    <text x={cabW / 2} y={bodyH * 0.15} fontSize={Math.max(14, fSizeElev * 0.42)} fill="#64748b" textAnchor="middle" fontFamily="monospace">Cajón 1</text>
+                    <text x={cabW / 2} y={bodyH * 0.40} fontSize={Math.max(14, fSizeElev * 0.42)} fill="#64748b" textAnchor="middle" fontFamily="monospace">Cajón 2</text>
+                    <text x={cabW / 2} y={bodyH * 0.78} fontSize={Math.max(16, fSizeElev * 0.48)} fill="#64748b" textAnchor="middle" fontFamily="monospace">Cajón Ollero</text>
+                  </g>
+                )
+              ) : cab.variant === '1_door_1_drawer' ? (
+                isBaseGola ? (
+                  <g>
+                    {/* Cajón Superior */}
+                    <text x={cabW / 2} y={35 + drH_1d1dr * 0.6} fontSize={Math.max(15, fSizeElev * 0.45)} fill="#475569" fontWeight="bold" textAnchor="middle" fontFamily="monospace">Cajón 1</text>
+                    
+                    {/* Gola C se ubica entre 35 + drH_1d1dr y 35 + drH_1d1dr + 40 */}
+                    
+                    {/* Puerta Inferior con diagonal de apertura */}
+                    {(() => {
+                      const yDoorT = 35 + drH_1d1dr + 40;
+                      const yDoorMid = (yDoorT + bodyH) / 2;
+                      return (
+                        <g>
+                          <path d={`M 0 ${yDoorMid} L ${cabW} ${yDoorT} L ${cabW} ${bodyH} Z`} fill="none" stroke="#c026d3" strokeWidth={strokeElev * 0.8} strokeDasharray="4,4" />
+                          <text x={cabW / 2} y={yDoorMid + 6} fontSize={Math.max(15, fSizeElev * 0.45)} fill="#c026d3" fontWeight="bold" textAnchor="middle" fontFamily="monospace">Puerta</text>
+                        </g>
+                      );
+                    })()}
+                  </g>
+                ) : (
+                  <g>
+                    <line x1={0} y1={150} x2={cabW} y2={150} stroke="#0f172a" strokeWidth={strokeElev * 0.8} />
+                    <text x={cabW / 2} y={90} fontSize={Math.max(15, fSizeElev * 0.45)} fill="#64748b" textAnchor="middle" fontFamily="monospace">Cajón 1</text>
+                    <path d={`M 0 ${(150 + bodyH) / 2} L ${cabW} 150 L ${cabW} ${bodyH} Z`} fill="none" stroke="#c026d3" strokeWidth={strokeElev * 0.8} strokeDasharray="4,4" />
+                  </g>
+                )
+              ) : cab.variant === 'spice_rack' ? (
+                <g>
+                  <text x={cabW / 2} y={bodyH / 2} fontSize={Math.max(12, fSizeElev * 0.35)} fill="#ea580c" fontWeight="bold" textAnchor="middle" fontFamily="monospace" transform={`rotate(-90 ${cabW / 2} ${bodyH / 2})`}>ESPECIERO EXTRAÍBLE</text>
+                </g>
+              ) : cab.variant === '2_doors' || cab.variant === 'wall_2_doors' || cab.variant === 'tall_2_doors' ? (
+                (() => {
+                  const yDoorT = isBaseGola ? 35 : 0;
+                  const yDoorMid = (yDoorT + bodyH) / 2;
+                  return (
+                    <g>
+                      <line x1={cabW / 2} y1={yDoorT} x2={cabW / 2} y2={bodyH} stroke="#0f172a" strokeWidth={strokeElev} />
+                      <path d={`M 0 ${yDoorMid} L ${cabW / 2} ${yDoorT} L ${cabW / 2} ${bodyH} Z`} fill="none" stroke="#c026d3" strokeWidth={strokeElev * 0.8} strokeDasharray="4,4" />
+                      <path d={`M ${cabW} ${yDoorMid} L ${cabW / 2} ${yDoorT} L ${cabW / 2} ${bodyH} Z`} fill="none" stroke="#c026d3" strokeWidth={strokeElev * 0.8} strokeDasharray="4,4" />
+                    </g>
+                  );
+                })()
+              ) : isTall ? (
+                <g stroke="#0f172a" strokeWidth="0.7">
+                  <line x1={0} y1={bodyH * 0.3} x2={cabW} y2={bodyH * 0.3} />
+                  <line x1={0} y1={bodyH * 0.7} x2={cabW} y2={bodyH * 0.7} />
+                  <text x={cabW / 2} y={bodyH * 0.52} fontSize={Math.max(14, fSizeElev * 0.42)} fill="#ea580c" fontWeight="bold" textAnchor="middle">
+                    HORNO EMPOTRADO
+                  </text>
+                  <path d={`M 0 ${bodyH * 0.15} L ${cabW} 0 L ${cabW} ${bodyH * 0.3} Z`} fill="none" stroke="#c026d3" strokeWidth={strokeElev * 0.8} strokeDasharray="4,4" />
+                  <path d={`M 0 ${bodyH * 0.85} L ${cabW} ${bodyH * 0.7} L ${cabW} ${bodyH} Z`} fill="none" stroke="#c026d3" strokeWidth={strokeElev * 0.8} strokeDasharray="4,4" />
+                </g>
+              ) : (
+                (() => {
+                  const yDoorT = isBaseGola ? 35 : 0;
+                  const yDoorMid = (yDoorT + bodyH) / 2;
+                  return (
+                    <path d={`M 0 ${yDoorMid} L ${cabW} ${yDoorT} L ${cabW} ${bodyH} Z`} fill="none" stroke="#c026d3" strokeWidth={strokeElev * 0.8} strokeDasharray="4,4" />
+                  );
+                })()
+              )}
+
+              {/* Repisas Interiores en Vista Frontal */}
               {isCabinetWithDoors(cab) && (() => {
                 const shelfElevations = getResolvedCabinetShelfElevations(cab, state.thickness);
                 const thickMm = (state.thickness || 1.8) * 10;
@@ -1251,7 +1430,7 @@ export function KitchenBlueprint() {
                         x2={cabW - sideThickMm} 
                         y2={yShelf + thickMm / 2} 
                         stroke="#0284c7" 
-                        strokeWidth={strokeF * 0.8} 
+                        strokeWidth={strokeElev * 0.8} 
                         strokeDasharray="4,3" 
                       />
                     </g>
@@ -1259,19 +1438,19 @@ export function KitchenBlueprint() {
                 });
               })()}
 
-              {/* Cota Ancho Superior */}
-              <line x1={0} y1={-padTopF * 0.42} x2={cabW} y2={-padTopF * 0.42} stroke={COLOR_MAGENTA} strokeWidth={strokeF} />
-              <line x1={0} y1={-padTopF * 0.52} x2={0} y2={0} stroke={COLOR_MAGENTA} strokeWidth={strokeF * 0.8} />
-              <line x1={cabW} y1={-padTopF * 0.52} x2={cabW} y2={0} stroke={COLOR_MAGENTA} strokeWidth={strokeF * 0.8} />
-              <line x1={-5} y1={-padTopF * 0.42 + 5} x2={5} y2={-padTopF * 0.42 - 5} stroke={COLOR_MAGENTA} strokeWidth={strokeF * 1.6} />
-              <line x1={cabW - 5} y1={-padTopF * 0.42 + 5} x2={cabW + 5} y2={-padTopF * 0.42 - 5} stroke={COLOR_MAGENTA} strokeWidth={strokeF * 1.6} />
+              {/* Cota Ancho Superior Frontal */}
+              <line x1={0} y1={-padTopElev * 0.38} x2={cabW} y2={-padTopElev * 0.38} stroke={COLOR_MAGENTA} strokeWidth={strokeElev} />
+              <line x1={0} y1={-padTopElev * 0.48} x2={0} y2={0} stroke={COLOR_MAGENTA} strokeWidth={strokeElev * 0.8} />
+              <line x1={cabW} y1={-padTopElev * 0.48} x2={cabW} y2={0} stroke={COLOR_MAGENTA} strokeWidth={strokeElev * 0.8} />
+              <line x1={-5} y1={-padTopElev * 0.38 + 5} x2={5} y2={-padTopElev * 0.38 - 5} stroke={COLOR_MAGENTA} strokeWidth={strokeElev * 1.6} />
+              <line x1={cabW - 5} y1={-padTopElev * 0.38 + 5} x2={cabW + 5} y2={-padTopElev * 0.38 - 5} stroke={COLOR_MAGENTA} strokeWidth={strokeElev * 1.6} />
               <text 
                 x={cabW / 2} 
-                y={-padTopF * 0.42 - 8} 
-                fontSize={fSizeF} 
+                y={-padTopElev * 0.38 - 8} 
+                fontSize={fSizeElev} 
                 fill={COLOR_MAGENTA} 
                 stroke="#ffffff"
-                strokeWidth={strokeF * 2}
+                strokeWidth={strokeElev * 2}
                 paintOrder="stroke fill"
                 strokeLinejoin="round"
                 fontWeight="900" 
@@ -1282,285 +1461,484 @@ export function KitchenBlueprint() {
                 {cabW}
               </text>
               
-              {/* Cota Alto Izquierda (Nunca se corta) */}
-              <line x1={-padLeftF * 0.42} y1={0} x2={-padLeftF * 0.42} y2={cabH} stroke={COLOR_MAGENTA} strokeWidth={strokeF} />
-              <line x1={-padLeftF * 0.52} y1={0} x2={0} y2={0} stroke={COLOR_MAGENTA} strokeWidth={strokeF * 0.8} />
-              <line x1={-padLeftF * 0.52} y1={cabH} x2={0} y2={cabH} stroke={COLOR_MAGENTA} strokeWidth={strokeF * 0.8} />
-              <line x1={-padLeftF * 0.42 - 5} y1={5} x2={-padLeftF * 0.42 + 5} y2={-5} stroke={COLOR_MAGENTA} strokeWidth={strokeF * 1.6} />
-              <line x1={-padLeftF * 0.42 - 5} y1={cabH + 5} x2={-padLeftF * 0.42 + 5} y2={cabH - 5} stroke={COLOR_MAGENTA} strokeWidth={strokeF * 1.6} />
+              {/* Cota Alto Izquierda Frontal */}
+              <line x1={-padLeftElev * 0.42} y1={0} x2={-padLeftElev * 0.42} y2={cabH} stroke={COLOR_MAGENTA} strokeWidth={strokeElev} />
+              <line x1={-padLeftElev * 0.52} y1={0} x2={0} y2={0} stroke={COLOR_MAGENTA} strokeWidth={strokeElev * 0.8} />
+              <line x1={-padLeftElev * 0.52} y1={cabH} x2={0} y2={cabH} stroke={COLOR_MAGENTA} strokeWidth={strokeElev * 0.8} />
+              <line x1={-padLeftElev * 0.42 - 5} y1={5} x2={-padLeftElev * 0.42 + 5} y2={-5} stroke={COLOR_MAGENTA} strokeWidth={strokeElev * 1.6} />
+              <line x1={-padLeftElev * 0.42 - 5} y1={cabH + 5} x2={-padLeftElev * 0.42 + 5} y2={cabH - 5} stroke={COLOR_MAGENTA} strokeWidth={strokeElev * 1.6} />
               <text 
-                x={-padLeftF * 0.42 - fSizeF * 0.55 - 4} 
+                x={-padLeftElev * 0.42 - fSizeElev * 0.55 - 4} 
                 y={cabH / 2} 
-                fontSize={fSizeF} 
+                fontSize={fSizeElev} 
                 fill={COLOR_MAGENTA} 
                 stroke="#ffffff"
-                strokeWidth={strokeF * 2}
+                strokeWidth={strokeElev * 2}
                 paintOrder="stroke fill"
                 strokeLinejoin="round"
                 fontWeight="900" 
                 fontFamily="monospace" 
                 textAnchor="middle" 
                 textRendering="geometricPrecision"
-                transform={`rotate(-90 ${-padLeftF * 0.42 - fSizeF * 0.55 - 4} ${cabH / 2})`}
+                transform={`rotate(-90 ${-padLeftElev * 0.42 - fSizeElev * 0.55 - 4} ${cabH / 2})`}
               >
                 {cabH}
               </text>
-            </svg>
-          </div>
+            </g>
 
-          {/* VISTA LATERAL: Cota de Alto a la derecha para balance simétrico */}
-          <div className="flex-1 flex flex-col items-center">
-            <div className="text-xs font-black tracking-widest text-slate-800 mb-1.5 uppercase">
-              VISTA LATERAL
-            </div>
-            <svg 
-              viewBox={`-${padLeftL} -${padTopL} ${cabD + padLeftL + padRightL} ${cabH + padTopL + padBottomL}`}
-              className="w-full h-[300px] max-h-[320px] overflow-visible"
-              preserveAspectRatio="xMidYMid meet"
-            >
-              <rect x={0} y={0} width={cabD} height={bodyH} fill="#ffffff" stroke="#0f172a" strokeWidth={strokeL * 1.5} />
-              <rect x={15} y={0} width={4} height={bodyH} fill="#9333ea" />
-              <text x={17} y={bodyH / 2} fontSize={Math.max(16, fSizeL * 0.5)} fill="#9333ea" fontWeight="bold" transform={`rotate(-90 17 ${bodyH / 2})`} textAnchor="middle">DUROLAC</text>
-
-              {/* Destaje CNC y Perfil Gola L Superior en Lateral */}
-              {isBaseGola && (
+            {/* ======================================================== */}
+            {/* 2. VISTA LATERAL (X = latX hasta latX + cabD)            */}
+            {/* ======================================================== */}
+            {(() => {
+              const latX = cabW + viewGap;
+              return (
                 <g>
-                  {/* Rebaje CNC 58mm alto x 26mm fondo */}
-                  <rect x={cabD - 26} y={0} width={26} height={58} fill="#fef3c7" stroke="#d97706" strokeWidth={strokeL} strokeDasharray="3,2" />
-                  {/* Perfil Gola L Provelcar x175 en sección oficial Tipo J */}
-                  <path 
-                    d={`M ${cabD - 1} 0 L ${cabD - 26} 0 L ${cabD - 26} 38 Q ${cabD - 26} 55 ${cabD - 13} 55 Q ${cabD - 3.5} 55 ${cabD - 3.5} 33 L ${cabD - 5} 33 Q ${cabD - 5} 53.5 ${cabD - 13} 53.5 Q ${cabD - 24.5} 53.5 ${cabD - 24.5} 38 L ${cabD - 24.5} 1.5 L ${cabD - 1} 1.5 Z`} 
-                    fill={golaColorHex} 
-                    stroke="#0f172a" 
-                    strokeWidth={strokeL * 0.8} 
-                  />
-                  
-                  {/* Cota fondo de rebaje 26mm */}
-                  <line x1={cabD - 26} y1={68} x2={cabD} y2={68} stroke="#d97706" strokeWidth={strokeL * 0.8} />
-                  <text x={cabD - 13} y={80} fontSize={Math.max(13, fSizeL * 0.42)} fill="#d97706" fontWeight="bold" textAnchor="middle" fontFamily="monospace">26</text>
-                  
-                  {/* Cota alto de rebaje 58mm */}
-                  <line x1={cabD - 36} y1={0} x2={cabD - 36} y2={58} stroke="#d97706" strokeWidth={strokeL * 0.8} />
-                  <text x={cabD - 40} y={34} fontSize={Math.max(13, fSizeL * 0.42)} fill="#d97706" fontWeight="bold" textAnchor="end" fontFamily="monospace">58</text>
-                  <text x={cabD - 13} y={22} fontSize={Math.max(11, fSizeL * 0.38)} fill={kState.golaSystem === 'black' ? '#ffffff' : '#0f172a'} fontWeight="900" textAnchor="middle">GOLA L</text>
-                </g>
-              )}
+                  <rect x={latX} y={0} width={cabD} height={bodyH} fill="#ffffff" stroke="#0f172a" strokeWidth={strokeElev * 1.5} />
+                  <rect x={latX + 15} y={0} width={4} height={bodyH} fill="#9333ea" />
+                  <text x={latX + 17} y={bodyH / 2} fontSize={Math.max(14, fSizeElev * 0.45)} fill="#9333ea" fontWeight="bold" transform={`rotate(-90 ${latX + 17} ${bodyH / 2})`} textAnchor="middle">DUROLAC</text>
 
-              {/* Destaje CNC y Perfil Gola C Intermedio en Lateral */}
-              {hasGolaC && (
-                <g>
-                  {/* Rebaje CNC 68mm alto x 26mm fondo */}
-                  <rect x={cabD - 26} y={golaCY_lat - 34} width={26} height={68} fill="#fef3c7" stroke="#d97706" strokeWidth={strokeL} strokeDasharray="3,2" />
-                  {/* Perfil Gola C Provelcar x176 en sección oficial Tipo C / U */}
-                  <path 
-                    d={`M ${cabD - 3.5} ${golaCY_lat - 28} Q ${cabD - 9} ${golaCY_lat - 14} ${cabD - 26} ${golaCY_lat - 24} L ${cabD - 26} ${golaCY_lat + 24} Q ${cabD - 9} ${golaCY_lat + 14} ${cabD - 3.5} ${golaCY_lat + 28} L ${cabD - 5} ${golaCY_lat + 28} Q ${cabD - 10} ${golaCY_lat + 15.5} ${cabD - 24.5} ${golaCY_lat + 24} L ${cabD - 24.5} ${golaCY_lat - 24} Q ${cabD - 10} ${golaCY_lat - 15.5} ${cabD - 5} ${golaCY_lat - 28} Z`} 
-                    fill={golaColorHex} 
-                    stroke="#0f172a" 
-                    strokeWidth={strokeL * 0.8} 
-                  />
-                  
-                  {/* Cota alto de rebaje C 68mm */}
-                  <line x1={cabD - 36} y1={golaCY_lat - 34} x2={cabD - 36} y2={golaCY_lat + 34} stroke="#d97706" strokeWidth={strokeL * 0.8} />
-                  <text x={cabD - 40} y={golaCY_lat + 5} fontSize={Math.max(13, fSizeL * 0.42)} fill="#d97706" fontWeight="bold" textAnchor="end" fontFamily="monospace">68</text>
-                  <text x={cabD - 13} y={golaCY_lat + 5} fontSize={Math.max(11, fSizeL * 0.38)} fill={kState.golaSystem === 'black' ? '#ffffff' : '#0f172a'} fontWeight="900" textAnchor="middle">GOLA C</text>
-                </g>
-              )}
-
-              {/* Repisas Interiores y Soportes en Vista Lateral */}
-              {isCabinetWithDoors(cab) && (() => {
-                const shelfElevations = getResolvedCabinetShelfElevations(cab, state.thickness);
-                const thickMm = (state.thickness || 1.8) * 10;
-                return shelfElevations.map((elev, sIdx) => {
-                  const elevMm = Math.round(elev * 10);
-                  const yShelf = bodyH - elevMm - thickMm / 2;
-                  return (
-                    <g key={`lat-shelf-${sIdx}`}>
-                      <rect 
-                        x={25} 
-                        y={yShelf} 
-                        width={cabD - 45} 
-                        height={thickMm} 
-                        fill="#cbd5e1" 
-                        stroke="#0284c7" 
-                        strokeWidth={strokeL * 0.7} 
+                  {/* Destaje CNC y Perfil Gola L Superior en Lateral */}
+                  {isBaseGola && (
+                    <g>
+                      <rect x={latX + cabD - 26} y={0} width={26} height={58} fill="#fef3c7" stroke="#d97706" strokeWidth={strokeElev} strokeDasharray="3,2" />
+                      <path 
+                        d={`M ${latX + cabD - 1} 0 L ${latX + cabD - 26} 0 L ${latX + cabD - 26} 38 Q ${latX + cabD - 26} 55 ${latX + cabD - 13} 55 Q ${latX + cabD - 3.5} 55 ${latX + cabD - 3.5} 33 L ${latX + cabD - 5} 33 Q ${latX + cabD - 5} 53.5 ${latX + cabD - 13} 53.5 Q ${latX + cabD - 24.5} 53.5 ${latX + cabD - 24.5} 38 L ${latX + cabD - 24.5} 1.5 L ${latX + cabD - 1} 1.5 Z`} 
+                        fill={golaColorHex} 
+                        stroke="#0f172a" 
+                        strokeWidth={strokeElev * 0.8} 
                       />
-                      {/* Pitones de soporte Ø5 */}
-                      <circle cx={37} cy={yShelf + thickMm} r={3} fill="#0284c7" />
-                      <circle cx={cabD - 45} cy={yShelf + thickMm} r={3} fill="#0284c7" />
-                      <text 
-                        x={cabD / 2} 
-                        y={yShelf - 4} 
-                        fontSize={Math.max(10, fSizeL * 0.35)} 
-                        fill="#0284c7" 
-                        fontWeight="bold" 
-                        textAnchor="middle" 
-                        fontFamily="monospace"
-                      >
-                        REPISA (H={elevMm})
-                      </text>
+                      <line x1={latX + cabD - 26} y1={68} x2={latX + cabD} y2={68} stroke="#d97706" strokeWidth={strokeElev * 0.8} />
+                      <text x={latX + cabD - 13} y={80} fontSize={Math.max(13, fSizeElev * 0.38)} fill="#d97706" fontWeight="bold" textAnchor="middle" fontFamily="monospace">26</text>
+                      
+                      <line x1={latX + cabD - 36} y1={0} x2={latX + cabD - 36} y2={58} stroke="#d97706" strokeWidth={strokeElev * 0.8} />
+                      <text x={latX + cabD - 40} y={34} fontSize={Math.max(13, fSizeElev * 0.38)} fill="#d97706" fontWeight="bold" textAnchor="end" fontFamily="monospace">58</text>
+                      <text x={latX + cabD - 13} y={22} fontSize={Math.max(11, fSizeElev * 0.34)} fill={kState.golaSystem === 'black' ? '#ffffff' : '#0f172a'} fontWeight="900" textAnchor="middle">GOLA L</text>
                     </g>
-                  );
-                });
-              })()}
+                  )}
 
-              <rect x={cabD - 18} y={isBaseGola ? 35 : 0} width={18} height={isBaseGola ? bodyH - 35 : bodyH} fill="#f97316" stroke="#ea580c" strokeWidth={strokeL * 0.8} />
-              {legsH > 0 && (
-                <g>
-                  <rect x={15} y={bodyH} width={cabD - 30} height={legsH} fill="#e2e8f0" stroke="#475569" strokeWidth={strokeL} />
-                  <text x={cabD / 2} y={bodyH + legsH * 0.65} fontSize={Math.max(20, fSizeL * 0.6)} fill="#475569" fontWeight="bold" textAnchor="middle">ZÓCALO</text>
+                  {/* Destaje CNC y Perfil Gola C Intermedio en Lateral */}
+                  {hasGolaC && (
+                    <g>
+                      <rect x={latX + cabD - 26} y={golaCY_lat - 34} width={26} height={68} fill="#fef3c7" stroke="#d97706" strokeWidth={strokeElev} strokeDasharray="3,2" />
+                      <path 
+                        d={`M ${latX + cabD - 3.5} ${golaCY_lat - 28} Q ${latX + cabD - 9} ${golaCY_lat - 14} ${latX + cabD - 26} ${golaCY_lat - 24} L ${latX + cabD - 26} ${golaCY_lat + 24} Q ${latX + cabD - 9} ${golaCY_lat + 14} ${latX + cabD - 3.5} ${golaCY_lat + 28} L ${latX + cabD - 5} ${golaCY_lat + 28} Q ${latX + cabD - 10} ${golaCY_lat + 15.5} ${latX + cabD - 24.5} ${golaCY_lat + 24} L ${latX + cabD - 24.5} ${golaCY_lat - 24} Q ${latX + cabD - 10} ${golaCY_lat - 15.5} ${latX + cabD - 5} ${golaCY_lat - 28} Z`} 
+                        fill={golaColorHex} 
+                        stroke="#0f172a" 
+                        strokeWidth={strokeElev * 0.8} 
+                      />
+                      <line x1={latX + cabD - 36} y1={golaCY_lat - 34} x2={latX + cabD - 36} y2={golaCY_lat + 34} stroke="#d97706" strokeWidth={strokeElev * 0.8} />
+                      <text x={latX + cabD - 40} y={golaCY_lat + 5} fontSize={Math.max(13, fSizeElev * 0.38)} fill="#d97706" fontWeight="bold" textAnchor="end" fontFamily="monospace">68</text>
+                      <text x={latX + cabD - 13} y={golaCY_lat + 5} fontSize={Math.max(11, fSizeElev * 0.34)} fill={kState.golaSystem === 'black' ? '#ffffff' : '#0f172a'} fontWeight="900" textAnchor="middle">GOLA C</text>
+                    </g>
+                  )}
+
+                  {/* Repisas Interiores y Soportes en Vista Lateral */}
+                  {isCabinetWithDoors(cab) && (() => {
+                    const shelfElevations = getResolvedCabinetShelfElevations(cab, state.thickness);
+                    const thickMm = (state.thickness || 1.8) * 10;
+                    return shelfElevations.map((elev, sIdx) => {
+                      const elevMm = Math.round(elev * 10);
+                      const yShelf = bodyH - elevMm - thickMm / 2;
+                      return (
+                        <g key={`lat-shelf-${sIdx}`}>
+                          <rect 
+                            x={latX + 25} 
+                            y={yShelf} 
+                            width={cabD - 45} 
+                            height={thickMm} 
+                            fill="#cbd5e1" 
+                            stroke="#0284c7" 
+                            strokeWidth={strokeElev * 0.7} 
+                          />
+                          <circle cx={latX + 37} cy={yShelf + thickMm} r={3} fill="#0284c7" />
+                          <circle cx={latX + cabD - 45} cy={yShelf + thickMm} r={3} fill="#0284c7" />
+                          <text 
+                            x={latX + cabD / 2} 
+                            y={yShelf - 4} 
+                            fontSize={Math.max(10, fSizeElev * 0.32)} 
+                            fill="#0284c7" 
+                            fontWeight="bold" 
+                            textAnchor="middle" 
+                            fontFamily="monospace"
+                          >
+                            REPISA (H={elevMm})
+                          </text>
+                        </g>
+                      );
+                    });
+                  })()}
+
+                  {/* Frentes / Puertas en Vista Lateral (Respetando el vano de agarre del Riel Gola) */}
+                  {isBaseGola && hasGolaC ? (
+                    <g>
+                      {/* Frente Superior (deja libre Gola L y Gola C) */}
+                      <rect 
+                        x={latX + cabD - 18} 
+                        y={35} 
+                        width={18} 
+                        height={Math.max(10, (golaCY_lat - 20) - 35)} 
+                        fill="#f97316" 
+                        stroke="#ea580c" 
+                        strokeWidth={strokeElev * 0.8} 
+                      />
+                      {/* Frente Inferior (deja libre Gola C) */}
+                      <rect 
+                        x={latX + cabD - 18} 
+                        y={golaCY_lat + 20} 
+                        width={18} 
+                        height={Math.max(10, bodyH - (golaCY_lat + 20))} 
+                        fill="#f97316" 
+                        stroke="#ea580c" 
+                        strokeWidth={strokeElev * 0.8} 
+                      />
+                    </g>
+                  ) : (
+                    <rect 
+                      x={latX + cabD - 18} 
+                      y={isBaseGola ? 35 : 0} 
+                      width={18} 
+                      height={isBaseGola ? bodyH - 35 : bodyH} 
+                      fill="#f97316" 
+                      stroke="#ea580c" 
+                      strokeWidth={strokeElev * 0.8} 
+                    />
+                  )}
+                  
+                  {/* Zócalo Lateral */}
+                  {legsH > 0 && (
+                    <g>
+                      <rect x={latX + 15} y={bodyH} width={cabD - 30} height={legsH} fill="#e2e8f0" stroke="#475569" strokeWidth={strokeElev} />
+                      <text x={latX + cabD / 2} y={bodyH + legsH * 0.65} fontSize={Math.max(18, fSizeElev * 0.55)} fill="#475569" fontWeight="bold" textAnchor="middle">ZÓCALO</text>
+                    </g>
+                  )}
+
+                  {/* Cota Profundidad Superior Lateral */}
+                  <line x1={latX} y1={-padTopElev * 0.38} x2={latX + cabD} y2={-padTopElev * 0.38} stroke={COLOR_MAGENTA} strokeWidth={strokeElev} />
+                  <line x1={latX} y1={-padTopElev * 0.48} x2={0} y2={0} stroke={COLOR_MAGENTA} strokeWidth={strokeElev * 0.8} />
+                  <line x1={latX + cabD} y1={-padTopElev * 0.48} x2={latX + cabD} y2={0} stroke={COLOR_MAGENTA} strokeWidth={strokeElev * 0.8} />
+                  <line x1={latX - 5} y1={-padTopElev * 0.38 + 5} x2={latX + 5} y2={-padTopElev * 0.38 - 5} stroke={COLOR_MAGENTA} strokeWidth={strokeElev * 1.6} />
+                  <line x1={latX + cabD - 5} y1={-padTopElev * 0.38 + 5} x2={latX + cabD + 5} y2={-padTopElev * 0.38 - 5} stroke={COLOR_MAGENTA} strokeWidth={strokeElev * 1.6} />
+                  <text 
+                    x={latX + cabD / 2} 
+                    y={-padTopElev * 0.38 - 8} 
+                    fontSize={fSizeElev} 
+                    fill={COLOR_MAGENTA} 
+                    stroke="#ffffff"
+                    strokeWidth={strokeElev * 2}
+                    paintOrder="stroke fill"
+                    strokeLinejoin="round"
+                    fontWeight="900" 
+                    fontFamily="monospace" 
+                    textAnchor="middle" 
+                    textRendering="geometricPrecision"
+                  >
+                    {cabD}
+                  </text>
+                  
+                  {/* Cota Alto Derecha Lateral (Balanceada y exacta) */}
+                  <line x1={latX + cabD + padRightElev * 0.42} y1={0} x2={latX + cabD + padRightElev * 0.42} y2={cabH} stroke={COLOR_MAGENTA} strokeWidth={strokeElev} />
+                  <line x1={latX + cabD} y1={0} x2={latX + cabD + padRightElev * 0.52} y2={0} stroke={COLOR_MAGENTA} strokeWidth={strokeElev * 0.8} />
+                  <line x1={latX + cabD} y1={cabH} x2={latX + cabD + padRightElev * 0.52} y2={cabH} stroke={COLOR_MAGENTA} strokeWidth={strokeElev * 0.8} />
+                  <line x1={latX + cabD + padRightElev * 0.42 - 5} y1={5} x2={latX + cabD + padRightElev * 0.42 + 5} y2={-5} stroke={COLOR_MAGENTA} strokeWidth={strokeElev * 1.6} />
+                  <line x1={latX + cabD + padRightElev * 0.42 - 5} y1={cabH + 5} x2={latX + cabD + padRightElev * 0.42 + 5} y2={cabH - 5} stroke={COLOR_MAGENTA} strokeWidth={strokeElev * 1.6} />
+                  <text 
+                    x={latX + cabD + padRightElev * 0.42 + fSizeElev * 0.65 + 4} 
+                    y={cabH / 2} 
+                    fontSize={fSizeElev} 
+                    fill={COLOR_MAGENTA} 
+                    stroke="#ffffff"
+                    strokeWidth={strokeElev * 2}
+                    paintOrder="stroke fill"
+                    strokeLinejoin="round"
+                    fontWeight="900" 
+                    fontFamily="monospace" 
+                    textAnchor="middle" 
+                    textRendering="geometricPrecision"
+                    transform={`rotate(90 ${latX + cabD + padRightElev * 0.42 + fSizeElev * 0.65 + 4} ${cabH / 2})`}
+                  >
+                    {cabH}
+                  </text>
                 </g>
-              )}
-
-              {/* Cota Profundidad Superior */}
-              <line x1={0} y1={-padTopL * 0.42} x2={cabD} y2={-padTopL * 0.42} stroke={COLOR_MAGENTA} strokeWidth={strokeL} />
-              <line x1={0} y1={-padTopL * 0.52} x2={0} y2={0} stroke={COLOR_MAGENTA} strokeWidth={strokeL * 0.8} />
-              <line x1={cabD} y1={-padTopL * 0.52} x2={cabD} y2={0} stroke={COLOR_MAGENTA} strokeWidth={strokeL * 0.8} />
-              <line x1={-5} y1={-padTopL * 0.42 + 5} x2={5} y2={-padTopL * 0.42 - 5} stroke={COLOR_MAGENTA} strokeWidth={strokeL * 1.6} />
-              <line x1={cabD - 5} y1={-padTopL * 0.42 + 5} x2={cabD + 5} y2={-padTopL * 0.42 - 5} stroke={COLOR_MAGENTA} strokeWidth={strokeL * 1.6} />
-              <text 
-                x={cabD / 2} 
-                y={-padTopL * 0.42 - 8} 
-                fontSize={fSizeL} 
-                fill={COLOR_MAGENTA} 
-                stroke="#ffffff"
-                strokeWidth={strokeL * 2}
-                paintOrder="stroke fill"
-                strokeLinejoin="round"
-                fontWeight="900" 
-                fontFamily="monospace" 
-                textAnchor="middle"
-                textRendering="geometricPrecision"
-              >
-                {cabD}
-              </text>
-              
-              {/* Cota Alto Derecha (Nunca se corta y balancea con la vista frontal) */}
-              <line x1={cabD + padRightL * 0.42} y1={0} x2={cabD + padRightL * 0.42} y2={cabH} stroke={COLOR_MAGENTA} strokeWidth={strokeL} />
-              <line x1={cabD} y1={0} x2={cabD + padRightL * 0.52} y2={0} stroke={COLOR_MAGENTA} strokeWidth={strokeL * 0.8} />
-              <line x1={cabD} y1={cabH} x2={cabD + padRightL * 0.52} y2={cabH} stroke={COLOR_MAGENTA} strokeWidth={strokeL * 0.8} />
-              <line x1={cabD + padRightL * 0.42 - 5} y1={5} x2={cabD + padRightL * 0.42 + 5} y2={-5} stroke={COLOR_MAGENTA} strokeWidth={strokeL * 1.6} />
-              <line x1={cabD + padRightL * 0.42 - 5} y1={cabH + 5} x2={cabD + padRightL * 0.42 + 5} y2={cabH - 5} stroke={COLOR_MAGENTA} strokeWidth={strokeL * 1.6} />
-              <text 
-                x={cabD + padRightL * 0.42 + fSizeL * 0.65 + 4} 
-                y={cabH / 2} 
-                fontSize={fSizeL} 
-                fill={COLOR_MAGENTA} 
-                stroke="#ffffff"
-                strokeWidth={strokeL * 2}
-                paintOrder="stroke fill"
-                strokeLinejoin="round"
-                fontWeight="900" 
-                fontFamily="monospace" 
-                textAnchor="middle" 
-                textRendering="geometricPrecision"
-                transform={`rotate(90 ${cabD + padRightL * 0.42 + fSizeL * 0.65 + 4} ${cabH / 2})`}
-              >
-                {cabH}
-              </text>
-            </svg>
-          </div>
+              );
+            })()}
+          </svg>
         </div>
       </div>
     );
   };
 
+  type TitleBlockSheetType = 'architectural' | 'cabinet' | 'nesting' | 'countertop' | 'bom';
+
   /**
-   * Title Block Inferior con Nomenclatura Técnica exactamente según el plano de referencia
+   * Title Block Inferior Modular con Nomenclatura Técnica y Especificaciones adaptadas por lámina (ISO 128 / NCh)
    */
   const BlueprintTitleBlock = ({ 
     pageNum, 
     title, 
     cab, 
     identTag,
-    customContent
+    customContent,
+    sheetType = 'cabinet',
+    isContinuation,
+    pageSubIndex,
+    totalModPages
   }: { 
     pageNum: number; 
     title: string; 
     cab?: CabinetType; 
     identTag?: string;
     customContent?: string;
-  }) => (
-    <div className="absolute bottom-4 left-4 right-4 h-24 border-2 border-black flex text-[9px] bg-white z-30">
-      {/* Columna 1: Datos de Proyecto */}
-      <div className="w-[28%] border-r-2 border-black p-2 flex flex-col justify-between">
-        <div>
-          <div className="font-bold text-sm text-slate-900 tracking-tight truncate">{title}</div>
-          <div className="text-slate-600 mt-0.5"><span className="font-bold text-black">CLIENTE:</span> PROYECTO COCINA ARQUIFY</div>
-          <div className="text-slate-600 truncate"><span className="font-bold text-black">CONTENIDO:</span> {customContent || (cab ? `${getCabinetTypeName(cab)} (${cab.width}x${cab.height}x${cab.depth} cm)` : 'OPTIMIZACIÓN & LISTADO')}</div>
-        </div>
-        <div className="flex justify-between border-t border-slate-300 pt-1 text-[8px] text-slate-500">
-          <span>DIBUJANTE: ARQUIFY BIM CAD</span>
-          <span>FECHA: {new Date().toLocaleDateString()}</span>
-        </div>
-      </div>
+    sheetType?: TitleBlockSheetType;
+    isContinuation?: boolean;
+    pageSubIndex?: number;
+    totalModPages?: number;
+  }) => {
+    const isMultiSheet = totalModPages && totalModPages > 1;
 
-      {/* Columna 2: Observaciones & Tapacantos */}
-      <div className="w-[30%] border-r-2 border-black p-2 flex flex-col justify-between">
-        <div>
-          <div className="font-bold text-black uppercase tracking-wider mb-1">OBSERVACIONES & TAPACANTOS</div>
-          <div className="flex items-center gap-1.5 mb-1 text-slate-700">
-            <div className="w-2.5 h-2.5 rotate-45 bg-orange-500 border border-black shadow-xs"></div>
-            <span><strong className="text-black">TC PVC 22x0.45 MM:</strong> Estructura y frentes interiores</span>
-          </div>
-          <div className="flex items-center gap-1.5 text-slate-700">
-            <div className="w-2.5 h-2.5 rotate-45 bg-rose-600 border border-black shadow-xs"></div>
-            <span><strong className="text-black">TC PVC 22x2.0 MM:</strong> Puertas y frentes vistos</span>
-          </div>
-        </div>
-        <div className="text-[8px] text-slate-500">
-          <span>Correderas: <strong>{state.drawerHardware}</strong> • Ranura durolac 4x7.5mm a 15mm</span>
-        </div>
-      </div>
-
-      {/* Columna 3: NOMENCLATURA DE COTAS */}
-      <div className="w-[24%] border-r-2 border-black p-2 flex flex-col justify-between bg-slate-50/50">
-        <div className="font-bold text-black uppercase tracking-widest text-[8.5px] border-b border-black/20 pb-0.5 mb-1">
-          NOMENCLATURA DE COTAS
-        </div>
-        <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[8px]">
-          <div className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-xs bg-[#d946ef]"></span>
-            <span className="font-bold text-[#d946ef]">GENERAL</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-[#16a34a]"></span>
-            <span className="font-bold text-[#16a34a]">MINIFIX</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-[#dc2626]"></span>
-            <span className="font-bold text-[#dc2626]">TARUGO</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-[#2563eb]"></span>
-            <span className="font-bold text-[#2563eb]">TORNILLO</span>
-          </div>
-          <div className="flex items-center gap-1.5 col-span-2">
-            <span className="w-2 h-2 rounded-xs bg-[#2563eb]"></span>
-            <span className="font-bold text-[#2563eb]">DETALLES / EJES</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Columna 4: Tag de Identificación & Escala */}
-      <div className="w-[18%] p-2 flex flex-col justify-between items-end bg-white">
-        <div className="w-full flex justify-between items-start">
-          <div className="text-left">
-            <div className="text-[7.5px] text-slate-400 font-bold uppercase">IDENT. ETIQ.</div>
-            <div className="font-mono font-black text-xl text-rose-600 border border-rose-500/30 px-2 py-0.5 rounded bg-rose-50/50">
-              {identTag || `P-${pageNum}`}
+    return (
+      <div className="absolute bottom-4 left-4 right-4 h-24 border-2 border-black flex text-[9px] bg-white z-30 shadow-xs">
+        {/* Columna 1: Datos de Proyecto */}
+        <div className="w-[28%] border-r-2 border-black p-2 flex flex-col justify-between">
+          <div>
+            <div className="font-bold text-sm text-slate-900 tracking-tight truncate">{projectName}</div>
+            <div className="text-slate-600 mt-0.5 text-[8.5px] truncate">
+              <span className="font-bold text-black">CLIENTE:</span> {clientName}
+            </div>
+            <div className="text-slate-600 text-[8.5px] truncate">
+              <span className="font-bold text-black">LÁMINA:</span> {title}
+            </div>
+            <div className="text-slate-600 text-[8.5px] truncate">
+              <span className="font-bold text-black">CONTENIDO:</span>{' '}
+              {customContent || (cab ? `${getCabinetTypeName(cab)} (${cab.width}x${cab.height}x${cab.depth} cm)${isMultiSheet ? ` [PARTE ${pageSubIndex}/${totalModPages}]` : ''}` : 'OPTIMIZACIÓN & LISTADO')}
             </div>
           </div>
-          <div className="text-right text-[8px]">
-            <div><strong>LÁMINA:</strong> {String(pageNum).padStart(2, '0')} / {String(totalDocPages).padStart(2, '0')}</div>
-            <div><strong>ESCALA:</strong> S.E (A3)</div>
+          <div className="flex justify-between border-t border-slate-300 pt-1 text-[8px] text-slate-500">
+            <span>DIBUJANTE: ARQUIFY BIM CAD</span>
+            <span>FECHA: {new Date().toLocaleDateString()}</span>
           </div>
         </div>
-        <div className="flex items-center gap-1">
-          <span className="font-bellota font-bold text-xl lowercase text-orange-600 tracking-tight select-none">arquify</span>
+
+        {/* Columna 2: Observaciones & Especificaciones Técnicas Adaptadas por Contexto */}
+        <div className="w-[30%] border-r-2 border-black p-2 flex flex-col justify-between">
+          {sheetType === 'architectural' ? (
+            <div>
+              <div className="font-bold text-black uppercase tracking-wider mb-1 text-[8.5px]">ESPECIFICACIONES ARQUITECTÓNICAS</div>
+              <div className="text-slate-700 leading-tight space-y-0.5 text-[8px]">
+                <div>• <strong className="text-black">ALTURA CIELO-PISO:</strong> 2200 mm | Zócalo H=100-150 mm</div>
+                <div>• <strong className="text-black">NIVEL CUBIERTA:</strong> N.P.T. +0.90 m | Faldón e=20-40 mm</div>
+                <div>• <strong className="text-black">REPLANTEO:</strong> Verificar plomos, escuadras y puntos MEP en obra</div>
+              </div>
+            </div>
+          ) : sheetType === 'nesting' ? (
+            <div>
+              <div className="font-bold text-black uppercase tracking-wider mb-1 text-[8.5px]">PARÁMETROS DE SECCIONADO & CORTE</div>
+              <div className="text-slate-700 leading-tight space-y-0.5 text-[8px]">
+                <div>• <strong className="text-black">ESPESOR SIERRA (KERF):</strong> 3.2 mm (Disco con incisor)</div>
+                <div>• <strong className="text-black">REFILADO PERIMETRAL:</strong> 15 mm mínimo por lado</div>
+                <div>• <strong className="text-black">SENTIDO DE VETA:</strong> Longitudinal en frentes y tapas vistas</div>
+              </div>
+            </div>
+          ) : sheetType === 'countertop' ? (
+            <div>
+              <div className="font-bold text-black uppercase tracking-wider mb-1 text-[8.5px]">ESPECIFICACIONES DE MARMOLERÍA</div>
+              <div className="text-slate-700 leading-tight space-y-0.5 text-[8px]">
+                <div>• <strong className="text-black">ESPESOR CUBIERTA:</strong> {kState.countertopConfig?.thicknessMm || 20} mm | Cuarzo QStone</div>
+                <div>• <strong className="text-black">TERMINACIÓN:</strong> {kState.countertopConfig?.apronType === 'mitred' ? 'Faldón ingleteado 45°' : 'Canto pulido recto biselado'}</div>
+                <div>• <strong className="text-black">TRASFOROS:</strong> Plantilla física p/ encimera y lavaplatos</div>
+              </div>
+            </div>
+          ) : sheetType === 'bom' ? (
+            <div>
+              <div className="font-bold text-black uppercase tracking-wider mb-1 text-[8.5px]">CÓMPUTO MÉTRICO & HERRAJES</div>
+              <div className="text-slate-700 leading-tight space-y-0.5 text-[8px]">
+                <div>• <strong className="text-black">SISTEMA ARMADO:</strong> {state.assemblyType === 'minifix' ? 'Minifix Ø15 + Tarugo Ø8' : 'Tornillo Soberbio Spax 5x50'}</div>
+                <div>• <strong className="text-black">FACTOR MERMA:</strong> +5% en perfiles, tiradores y zócalos</div>
+                <div>• <strong className="text-black">CORREDERAS:</strong> {state.drawerHardware} con cierre amortiguado</div>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <div className="font-bold text-black uppercase tracking-wider mb-1 text-[8.5px]">OBSERVACIONES & TAPACANTOS</div>
+              <div className="flex items-center gap-1.5 mb-0.5 text-slate-700 text-[8px]">
+                <div className="w-2.5 h-2.5 rotate-45 bg-orange-500 border border-black shadow-xs shrink-0"></div>
+                <span><strong className="text-black">TC PVC 22x{(state.edgeBandingThicknessCabinets || 0.45).toFixed(2)} MM:</strong> Estructura y frentes interiores</span>
+              </div>
+              <div className="flex items-center gap-1.5 text-slate-700 text-[8px]">
+                <div className="w-2.5 h-2.5 rotate-45 bg-rose-600 border border-black shadow-xs shrink-0"></div>
+                <span><strong className="text-black">TC PVC 22x{(state.edgeBandingThicknessFronts || 2.0).toFixed(2)} MM:</strong> Puertas y frentes vistos</span>
+              </div>
+            </div>
+          )}
+          <div className="text-[8px] text-slate-500 border-t border-slate-200 pt-0.5">
+            {sheetType === 'architectural' ? (
+              <span>Normativa: <strong>ISO 128 / NCh Arquitectura</strong></span>
+            ) : sheetType === 'nesting' ? (
+              <span>Algoritmo: <strong>Guillotina 2D CAD/CAM</strong></span>
+            ) : sheetType === 'countertop' ? (
+              <span>Logística: <strong>Largo máx. continuo 2.50m</strong></span>
+            ) : sheetType === 'bom' ? (
+              <span>Lista Maestra: <strong>Consolidado de Producción</strong></span>
+            ) : (
+              <span>Correderas: <strong>{state.drawerHardware}</strong> • Ranura durolac 4x7.5mm a 15mm</span>
+            )}
+          </div>
+        </div>
+
+        {/* Columna 3: Simbología Técnica Contextual */}
+        <div className="w-[24%] border-r-2 border-black p-2 flex flex-col justify-between bg-slate-50/50">
+          {sheetType === 'architectural' ? (
+            <>
+              <div className="font-bold text-black uppercase tracking-widest text-[8.5px] border-b border-black/20 pb-0.5 mb-1">
+                SIMBOLOGÍA DE PLANTA
+              </div>
+              <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[8px]">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full border border-green-600 bg-green-50 text-green-700 font-bold text-[6px] flex items-center justify-center">A</span>
+                  <span className="font-bold text-slate-800">MURO / VISTA</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-xs bg-[#c026d3]"></span>
+                  <span className="font-bold text-[#c026d3]">COTA ALTURA</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-xs bg-[#0f172a]"></span>
+                  <span className="font-bold text-slate-900">COTA TOTAL</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-xs bg-[#e11d48]"></span>
+                  <span className="font-bold text-[#e11d48]">NIVEL P.T.</span>
+                </div>
+                <div className="flex items-center gap-1.5 col-span-2">
+                  <span className="w-3 h-0.5 bg-slate-500 border-t border-dashed border-slate-700"></span>
+                  <span className="font-bold text-slate-600">PROYECCIÓN AÉREOS</span>
+                </div>
+              </div>
+            </>
+          ) : sheetType === 'nesting' ? (
+            <>
+              <div className="font-bold text-black uppercase tracking-widest text-[8.5px] border-b border-black/20 pb-0.5 mb-1">
+                CONVENCIONES DE CORTE
+              </div>
+              <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[8px]">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 border border-amber-600 bg-amber-50"></span>
+                  <span className="font-bold text-amber-800">PIEZA ÚTIL</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 bg-slate-200 border border-slate-400"></span>
+                  <span className="font-bold text-slate-600">RETAZO / MERMA</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-0.5 bg-orange-500"></span>
+                  <span className="font-bold text-orange-600">LÍNEA CORTE</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rotate-45 bg-rose-600"></span>
+                  <span className="font-bold text-rose-700">TAPACANTO</span>
+                </div>
+                <div className="flex items-center gap-1.5 col-span-2">
+                  <span className="font-mono text-[7px] text-slate-500">DIRECCIÓN VETA ↔ LONGITUDINAL</span>
+                </div>
+              </div>
+            </>
+          ) : sheetType === 'countertop' ? (
+            <>
+              <div className="font-bold text-black uppercase tracking-widest text-[8.5px] border-b border-black/20 pb-0.5 mb-1">
+                PIEZAS PÉTREAS QSTONE
+              </div>
+              <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[8px]">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 bg-amber-100 border border-amber-500"></span>
+                  <span className="font-bold text-amber-900">CUBIERTA / ISLA</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 bg-rose-100 border border-rose-500"></span>
+                  <span className="font-bold text-rose-900">FALDÓN FRONTAL</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 bg-purple-100 border border-purple-500"></span>
+                  <span className="font-bold text-purple-900">CASCADA LATERAL</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 bg-sky-100 border border-sky-500"></span>
+                  <span className="font-bold text-sky-900">RESPALDO MURO</span>
+                </div>
+                <div className="flex items-center gap-1.5 col-span-2">
+                  <span className="w-2.5 h-2.5 bg-slate-200 border border-slate-400"></span>
+                  <span className="font-bold text-slate-600">RETAJO APROVECHABLE</span>
+                </div>
+              </div>
+            </>
+          ) : sheetType === 'bom' ? (
+            <>
+              <div className="font-bold text-black uppercase tracking-widest text-[8.5px] border-b border-black/20 pb-0.5 mb-1">
+                CONTROL DE FABRICACIÓN
+              </div>
+              <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[8px]">
+                <div><span className="text-slate-500">ESTADO:</span> <strong className="text-emerald-700">APROBADO</strong></div>
+                <div><span className="text-slate-500">REVISIÓN:</span> <strong className="text-slate-900">REV. A</strong></div>
+                <div><span className="text-slate-500">TOLERANCIA:</span> <strong>±0.5 mm</strong></div>
+                <div><span className="text-slate-500">NORMA:</span> <strong>ISO 128</strong></div>
+                <div className="col-span-2 pt-0.5 border-t border-slate-200 text-slate-600 font-mono text-[7px]">LISTA VINCULADA AL BOM</div>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="font-bold text-black uppercase tracking-widest text-[8.5px] border-b border-black/20 pb-0.5 mb-1">
+                NOMENCLATURA DE COTAS
+              </div>
+              <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[8px]">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-xs bg-[#d946ef]"></span>
+                  <span className="font-bold text-[#d946ef]">GENERAL</span>
+                </div>
+                {state.assemblyType === 'minifix' ? (
+                  <>
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-[#16a34a]"></span>
+                      <span className="font-bold text-[#16a34a]">MINIFIX</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-[#dc2626]"></span>
+                      <span className="font-bold text-[#dc2626]">TARUGO</span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-[#2563eb]"></span>
+                    <span className="font-bold text-[#2563eb]">TORNILLO</span>
+                  </div>
+                )}
+                <div className="flex items-center gap-1.5 col-span-2">
+                  <span className="w-2 h-2 rounded-xs bg-[#2563eb]"></span>
+                  <span className="font-bold text-[#2563eb]">DETALLES / EJES</span>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Columna 4: Tag de Identificación & Escala */}
+        <div className="w-[18%] p-2 flex flex-col justify-between items-end bg-white">
+          <div className="w-full flex justify-between items-start">
+            <div className="text-left">
+              <div className="text-[7.5px] text-slate-400 font-bold uppercase">IDENT. ETIQ.</div>
+              <div className="font-mono font-black text-xl text-rose-600 border border-rose-500/30 px-2 py-0.5 rounded bg-rose-50/50">
+                {identTag || `P-${pageNum}`}
+              </div>
+            </div>
+            <div className="text-right text-[8px]">
+              <div><strong>LÁMINA:</strong> {String(pageNum).padStart(2, '0')} / {String(totalDocPages).padStart(2, '0')}</div>
+              <div><strong>ESCALA:</strong> {sheetType === 'architectural' ? '1:50 (A3)' : 'S.E (A3)'}</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="font-bellota font-bold text-xl lowercase text-orange-600 tracking-tight select-none">arquify</span>
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="fixed inset-0 z-[100] bg-neutral-800 text-black flex flex-col overflow-hidden">
@@ -1676,6 +2054,20 @@ export function KitchenBlueprint() {
             <span>Cotización B2B / Retail</span>
           </button>
 
+          {/* Botón: Personalizar Datos de Proyecto y Cliente */}
+          <button 
+            onClick={() => {
+              setTempProjectName(projectName);
+              setTempClientName(clientName);
+              setIsEditingInfo(true);
+            }}
+            className="bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 hover:text-white px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-slate-700 transition-all flex items-center gap-1.5 cursor-pointer"
+            title="Personalizar Nombre de Proyecto y Cliente para el membrete/cajetín de las láminas"
+          >
+            <Edit3 size={13} className="text-orange-400" />
+            <span className="truncate max-w-[140px] hidden md:inline">{projectName}</span>
+          </button>
+
           <button 
             onClick={() => window.print()}
             className="bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-slate-700 transition-all flex items-center gap-1 cursor-pointer"
@@ -1694,6 +2086,62 @@ export function KitchenBlueprint() {
           </button>
         </div>
       </header>
+
+      {/* Modal para Editar Proyecto y Cliente */}
+      {isEditingInfo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-xl p-6 max-w-md w-full shadow-2xl text-white">
+            <h3 className="text-base font-bold mb-4 flex items-center gap-2 text-orange-400">
+              <Edit3 size={18} />
+              <span>Membrete Técnico de Láminas</span>
+            </h3>
+            <div className="space-y-4 text-xs">
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Nombre del Proyecto:</label>
+                <input 
+                  type="text" 
+                  value={tempProjectName} 
+                  onChange={(e) => setTempProjectName(e.target.value)} 
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white font-medium focus:outline-hidden focus:border-orange-500"
+                  placeholder="Ej: COCINA RESIDENCIAL LAS CONDES"
+                />
+              </div>
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Cliente / Propietario:</label>
+                <input 
+                  type="text" 
+                  value={tempClientName} 
+                  onChange={(e) => setTempClientName(e.target.value)} 
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white font-medium focus:outline-hidden focus:border-orange-500"
+                  placeholder="Ej: FAMILIA PÉREZ GONZÁLEZ"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 mt-6">
+              <button 
+                onClick={() => setIsEditingInfo(false)}
+                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={() => {
+                  const p = tempProjectName.trim() || 'PROYECTO COCINA ARQUIFY';
+                  const c = tempClientName.trim() || 'CLIENTE PARTICULAR';
+                  setProjectName(p);
+                  setClientName(c);
+                  localStorage.setItem('arquify_project_name', p);
+                  localStorage.setItem('arquify_client_name', c);
+                  setIsEditingInfo(false);
+                }}
+                className="px-4 py-1.5 rounded-lg bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs cursor-pointer"
+              >
+                Guardar y Aplicar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Contenedor con Scroll para las Láminas A3 */}
       <div className="flex-1 overflow-auto bg-neutral-800 print-only-container">
@@ -1866,11 +2314,13 @@ export function KitchenBlueprint() {
               </div>
             </div>
 
-            {/* SECTOR SUPERIOR: VISTA PLANTA (9 Cols), DETALLE 1 (3 Cols) - ALTO CONTROLADO 290px */}
-            <div className="grid grid-cols-12 gap-3 h-[290px] items-start border-b border-slate-300 pb-2">
-              
-              {/* COLUMNA 1 (Principal - 9 Cols): VISTA DE PLANTA REAL DINÁMICA */}
-              <div className="col-span-9 flex flex-col items-center justify-center h-full relative border-r border-slate-200 pr-2">
+            {/* SECTOR SUPERIOR: VISTA PLANTA GENERAL (ARQUITECTURA) - ALTO CONTROLADO 290px */}
+            <div className="w-full h-[290px] border-b border-slate-300 pb-2 relative flex flex-col items-center justify-center">
+              <div className="absolute top-1 left-1 z-10">
+                <span className="text-[8.5px] font-bold text-slate-800 uppercase tracking-wider bg-white/95 border border-slate-300 px-2.5 py-0.5 rounded shadow-2xs">
+                  VISTA PLANTA GENERAL (ARQUITECTURA)
+                </span>
+              </div>
                 <svg viewBox={`0 0 ${svgW} ${svgH}`} className="w-full h-full max-h-[280px]">
                   {/* Polígono de Suelo de la Habitación */}
                   {vertices.length >= 3 && (
@@ -2000,73 +2450,8 @@ export function KitchenBlueprint() {
                       </g>
                     );
                   })}
-
-                  {/* Etiqueta Central */}
-                  <text x={svgW / 2} y={svgH - 6} fontSize="7.5" fontWeight="bold" fill="#64748b" letterSpacing="2" textAnchor="middle">
-                    VISTA PLANTA
-                  </text>
                 </svg>
               </div>
-
-              {/* COLUMNA 3 (Der - 3 Cols): DETALLE 1 (Corte Constructivo Proporcionado) */}
-              <div className="col-span-3 flex flex-col justify-between items-center h-full pl-1">
-                <div className="w-full flex justify-between items-center border-b border-slate-200 pb-1">
-                  <span className="text-[8.5px] font-bold text-slate-900 uppercase tracking-wider">DETALLE 1</span>
-                  <span className="text-[7px] font-mono text-red-600 bg-red-50 px-1.5 py-0.5 rounded border border-red-200 font-bold">ESC 1:5</span>
-                </div>
-
-                <div className="relative w-full flex-1 flex items-center justify-center my-0.5">
-                  <svg viewBox="0 0 170 155" className="w-full h-full max-h-[160px]">
-                    {/* Muro Trasero */}
-                    <rect x="15" y="10" width="14" height="135" fill="#e2e8f0" stroke="#475569" strokeWidth="1" />
-                    {/* Hachurado decorativo muro */}
-                    <line x1="15" y1="30" x2="29" y2="44" stroke="#94a3b8" strokeWidth="0.5" />
-                    <line x1="15" y1="60" x2="29" y2="74" stroke="#94a3b8" strokeWidth="0.5" />
-                    <line x1="15" y1="90" x2="29" y2="104" stroke="#94a3b8" strokeWidth="0.5" />
-                    <line x1="15" y1="120" x2="29" y2="134" stroke="#94a3b8" strokeWidth="0.5" />
-                    
-                    {/* Respaldo de Piedra */}
-                    <rect x="29" y="15" width="8" height="35" fill="#fecdd3" stroke="#e11d48" strokeWidth="0.8" />
-                    
-                    {/* Cubierta de Piedra Superior con Regrueso Frontal */}
-                    <path d="M 29 50 L 142 50 L 142 70 L 126 70 L 126 58 L 29 58 Z" fill="#ffe4e6" stroke="#e11d48" strokeWidth="1.2" />
-                    
-                    {/* Costado Mueble Base */}
-                    <rect x="35" y="58" width="75" height="87" fill="#f8fafc" stroke="#0f172a" strokeWidth="1" />
-
-                    {/* Barra de Armado Melamina Superior */}
-                    <rect x="75" y="58" width="35" height="10" fill="#fed7aa" stroke="#ea580c" strokeWidth="0.8" />
-                    
-                    {/* Perfil Gola Aluminio en L / J (Provelcar) */}
-                    <path d="M 110 58 L 124 58 L 124 76 L 117 82 L 112 82 L 112 72 L 110 72 Z" fill="#dbeafe" stroke="#2563eb" strokeWidth="1" />
-                    
-                    {/* Puerta / Frente Cajón con rebaje */}
-                    <rect x="122" y="84" width="10" height="61" fill="#f1f5f9" stroke="#0f172a" strokeWidth="1" />
-
-                    {/* Línea de Cota 27mm */}
-                    <line x1="140" y1="58" x2="140" y2="84" stroke="#e11d48" strokeWidth="0.7" />
-                    <line x1="136" y1="58" x2="144" y2="58" stroke="#e11d48" strokeWidth="0.7" />
-                    <line x1="136" y1="84" x2="144" y2="84" stroke="#e11d48" strokeWidth="0.7" />
-                    <text x="148" y="73" fontSize="7" fill="#e11d48" fontWeight="bold">27</text>
-
-                    {/* Llamadas de texto con flechas */}
-                    <path d="M 115 40 L 95 40 L 95 48" fill="none" stroke="#e11d48" strokeWidth="0.6" />
-                    <text x="120" y="42" fontSize="6" fill="#e11d48" fontWeight="bold">CUBIERTA</text>
-
-                    <path d="M 45 80 L 70 80 L 80 65" fill="none" stroke="#ea580c" strokeWidth="0.6" />
-                    <text x="45" y="88" fontSize="5.5" fill="#ea580c" fontWeight="bold">BARRA ARMADO</text>
-
-                    <path d="M 45 105 L 85 105 L 114 78" fill="none" stroke="#2563eb" strokeWidth="0.6" />
-                    <text x="45" y="113" fontSize="5" fill="#2563eb" fontWeight="bold">PERFIL GOLA ALUMINIO</text>
-                    <text x="45" y="119" fontSize="4.5" fill="#64748b">(PROVELCAR)</text>
-                  </svg>
-                </div>
-
-                <div className="w-full text-center bg-slate-50 border border-slate-200 py-0.5 rounded text-[7px] font-bold text-slate-700">
-                  DETALLE 1
-                </div>
-              </div>
-            </div>
 
             {/* SECTOR MEDIO E INFERIOR: VISTAS FRONTALES DE LOS MUROS ACTIVOS - ALTO ADAPTATIVO */}
             <div className="grid grid-cols-12 gap-3 flex-1 pt-1.5 pb-1 items-stretch overflow-hidden">
@@ -2172,14 +2557,6 @@ export function KitchenBlueprint() {
                                     stroke="#e11d48"
                                     strokeWidth="0.8"
                                   />
-                                  {/* Llamada DETALLE 1 solo en el primer módulo base para evitar saturación */}
-                                  {ci === cabs.findIndex(c => c.cab.type === 'base' || c.cab.type === 'island') && (
-                                    <g>
-                                      <path d={`M ${cLeftX + cW * 0.2} ${cTopY - 4} L ${cLeftX + cW * 0.2} ${cTopY - 24}`} fill="none" stroke="#2563eb" strokeWidth="0.8" />
-                                      <circle cx={cLeftX + cW * 0.2} cy={cTopY - 4} r={1.5} fill="#2563eb" />
-                                      <text x={cLeftX + cW * 0.2} y={cTopY - 27} fontSize="6" fill="#2563eb" fontWeight="bold" textAnchor="middle">DETALLE 1</text>
-                                    </g>
-                                  )}
                                 </g>
                               )}
 
@@ -2280,6 +2657,7 @@ export function KitchenBlueprint() {
               title="PROYECTO COCINA MODULAR ARQUIFY" 
               identTag="PL-01" 
               customContent="PLANTA GENERAL Y ELEVACIONES" 
+              sheetType="architectural"
             />
 
           </div>
@@ -2320,7 +2698,7 @@ export function KitchenBlueprint() {
                 <h2 className="text-2xl font-bold uppercase tracking-tight text-slate-900">
                   {getCabinetTypeName(cab)} {page.identTag} ({cab.width} x {cab.height} x {cab.depth} cm)
                 </h2>
-                <div className="flex gap-4 text-[10px] text-slate-600 mt-0.5">
+                <div className="flex gap-4 text-xs text-slate-600 mt-1 font-medium">
                   <span><strong>Estructura:</strong> {getColorName(cab.structureColor || state.structureColor)} {thicknessMm}mm</span>
                   <span><strong>Frentes:</strong> {getColorName(cab.doorColor || state.doorColor)}</span>
                   <span><strong>Trasera:</strong> Durolac 3.5mm</span>
@@ -2328,9 +2706,9 @@ export function KitchenBlueprint() {
               </div>
 
               <div className="flex items-center gap-4">
-                <div className="border-2 border-rose-600 bg-rose-50 px-4 py-1 rounded text-center">
-                  <div className="text-[8px] font-bold text-rose-500 uppercase">IDENT. ETIQ</div>
-                  <div className="font-mono font-black text-xl text-rose-600">{page.identTag}</div>
+                <div className="border-2 border-rose-600 bg-rose-50 px-4 py-1.5 rounded-md text-center shadow-xs">
+                  <div className="text-[9px] font-bold text-rose-500 uppercase tracking-wider">IDENT. ETIQ</div>
+                  <div className="font-mono font-black text-2xl text-rose-600 leading-none mt-0.5">{page.identTag}</div>
                 </div>
               </div>
             </div>
@@ -2352,14 +2730,14 @@ export function KitchenBlueprint() {
                     <div key={pSubIdx} className="flex flex-col items-center bg-slate-50/50 p-2.5 rounded-lg border border-slate-200 shadow-2xs">
                       {/* Cabecera de la Pieza */}
                       <div className="w-full flex flex-col items-center mb-1.5 justify-center">
-                        <div className="text-[11px] font-black text-slate-900 uppercase tracking-tight text-center leading-tight line-clamp-1 max-w-full">
+                        <div className="text-xs font-black text-slate-900 uppercase tracking-tight text-center leading-tight line-clamp-1 max-w-full">
                           {part.name.replace(/\(Cab \d+ [^)]+\)/, '')}
                         </div>
                         <div className="flex items-center gap-2 mt-1">
-                          <span className="text-[10px] bg-slate-900 text-white px-2 py-0.5 rounded font-mono font-black tracking-wide">
+                          <span className="text-[11px] bg-slate-900 text-white px-2.5 py-0.5 rounded font-mono font-black tracking-wide">
                             {part.qty} UN
                           </span>
-                          <span className="text-[10px] text-slate-700 font-mono font-black">
+                          <span className="text-[11px] text-slate-800 font-mono font-black">
                             {part.thickness}mm
                           </span>
                         </div>
@@ -2394,85 +2772,94 @@ export function KitchenBlueprint() {
                 </div>
 
                 {/* DETALLES TÉCNICOS AMPLIADOS (Callouts al pie según plano de referencia) */}
-                <div className="grid grid-cols-3 gap-4 bg-slate-50/95 p-3 rounded-lg border border-slate-200 mt-4">
+                <div className="grid grid-cols-4 gap-3 bg-slate-50/95 p-3 rounded-lg border border-slate-200 mt-4">
                   {/* Detalle 1: Canal Durolac */}
-                  <div className="flex items-center gap-3">
-                    <div className="w-16 h-16 rounded-full border-2 border-purple-500 bg-white flex items-center justify-center shrink-0 relative overflow-hidden shadow-xs">
-                      <svg viewBox="0 0 50 50" className="w-full h-full p-1">
-                        <rect x="5" y="10" width="40" height="30" fill="#f8fafc" stroke="#334155" strokeWidth="1.2"/>
-                        <rect x="28" y="10" width="8" height="15" fill="#e2e8f0" stroke="#9333ea" strokeWidth="1.2" strokeDasharray="1,1"/>
-                        <line x1="28" y1="35" x2="36" y2="35" stroke="#2563eb" strokeWidth="1"/>
-                        <text x="32" y="44" fontSize="8.5" fill="#2563eb" textAnchor="middle" fontWeight="900" fontFamily="monospace">4mm</text>
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-13 h-13 rounded-full border-2 border-purple-500 bg-white flex items-center justify-center shrink-0 shadow-xs p-1">
+                      <svg viewBox="0 0 50 50" className="w-full h-full">
+                        <rect x="5" y="10" width="40" height="30" fill="#f8fafc" stroke="#334155" strokeWidth="1.4"/>
+                        <rect x="26" y="10" width="8" height="18" fill="#f3e8ff" stroke="#9333ea" strokeWidth="1.4" strokeDasharray="1,1"/>
+                        <line x1="26" y1="34" x2="34" y2="34" stroke="#2563eb" strokeWidth="1.2"/>
                       </svg>
                     </div>
-                    <div className="text-[10.5px] text-slate-800 leading-tight">
-                      <div className="font-black text-purple-700 uppercase">DETALLE 1</div>
-                      <div className="font-bold">CANAL TRASERA / DUROLAC</div>
-                      <div className="text-slate-600 font-medium">A 15mm del borde • Prof. 7.5mm</div>
+                    <div className="text-xs text-slate-800 leading-tight">
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <span className="font-black text-purple-700 uppercase">DETALLE 1</span>
+                        <span className="bg-purple-100 text-purple-800 font-mono font-bold text-[9px] px-1 rounded border border-purple-200">4mm</span>
+                      </div>
+                      <div className="font-bold text-xs text-slate-900">CANAL TRASERA</div>
+                      <div className="text-slate-600 font-medium text-[9.5px]">A 15mm • Prof. 7.5mm</div>
                     </div>
                   </div>
 
                   {/* Detalle 2: Ensamble Minifix o Tornillo */}
-                  <div className="flex items-center gap-3">
-                    <div className="w-16 h-16 rounded-full border-2 border-emerald-500 bg-white flex items-center justify-center shrink-0 relative overflow-hidden shadow-xs">
-                      <svg viewBox="0 0 50 50" className="w-full h-full p-1">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-13 h-13 rounded-full border-2 border-emerald-500 bg-white flex items-center justify-center shrink-0 shadow-xs p-1">
+                      <svg viewBox="0 0 50 50" className="w-full h-full">
                         {state.assemblyType === 'minifix' ? (
                           <>
-                            <circle cx="25" cy="23" r="11" fill="#dcfce7" stroke="#16a34a" strokeWidth="1.4"/>
-                            <circle cx="25" cy="23" r="3.5" fill="#16a34a"/>
-                            <line x1="12" y1="23" x2="38" y2="23" stroke="#16a34a" strokeWidth="0.8"/>
-                            <text x="25" y="44" fontSize="8.5" fill="#16a34a" textAnchor="middle" fontWeight="900" fontFamily="monospace">Ø15 Minifix</text>
+                            <circle cx="25" cy="25" r="14" fill="#dcfce7" stroke="#16a34a" strokeWidth="1.4"/>
+                            <circle cx="25" cy="25" r="4.5" fill="#16a34a"/>
+                            <line x1="9" y1="25" x2="41" y2="25" stroke="#16a34a" strokeWidth="1"/>
                           </>
                         ) : (
                           <>
-                            <circle cx="25" cy="23" r="6" fill="#dbeafe" stroke="#2563eb" strokeWidth="1.4"/>
-                            <line x1="20" y1="18" x2="30" y2="28" stroke="#2563eb" strokeWidth="1.2"/>
-                            <line x1="20" y1="28" x2="30" y2="18" stroke="#2563eb" strokeWidth="1.2"/>
-                            <text x="25" y="44" fontSize="8.5" fill="#2563eb" textAnchor="middle" fontWeight="900" fontFamily="monospace">Ø5 Tornillo</text>
+                            <circle cx="25" cy="25" r="8" fill="#dbeafe" stroke="#2563eb" strokeWidth="1.5"/>
+                            <line x1="18" y1="18" x2="32" y2="32" stroke="#2563eb" strokeWidth="1.4"/>
+                            <line x1="18" y1="32" x2="32" y2="18" stroke="#2563eb" strokeWidth="1.4"/>
                           </>
                         )}
                       </svg>
                     </div>
-                    <div className="text-[10.5px] text-slate-800 leading-tight">
-                      <div className="font-black text-emerald-700 uppercase">DETALLE 2</div>
-                      <div className="font-bold">ENSAMBLE ESTRUCTURAL</div>
-                      <div className="text-slate-600 font-medium">
-                        {state.assemblyType === 'minifix' ? 'Minifix a 34mm + Tarugo a 66mm' : 'Soberbio Spax 5x50 a 50mm'}
+                    <div className="text-xs text-slate-800 leading-tight">
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <span className="font-black text-emerald-700 uppercase">DETALLE 2</span>
+                        <span className="bg-emerald-100 text-emerald-800 font-mono font-bold text-[9px] px-1 rounded border border-emerald-200">
+                          {state.assemblyType === 'minifix' ? 'Ø15 Minifix' : 'Ø5 Tornillo'}
+                        </span>
+                      </div>
+                      <div className="font-bold text-xs text-slate-900">ENSAMBLE ESTRUCTURAL</div>
+                      <div className="text-slate-600 font-medium text-[9.5px]">
+                        {state.assemblyType === 'minifix' ? 'Minifix 34mm + Tarugo' : 'Soberbio 5x50 a 50mm'}
                       </div>
                     </div>
                   </div>
 
                   {/* Detalle 3: Cazoleta Bisagra */}
-                  <div className="flex items-center gap-3">
-                    <div className="w-16 h-16 rounded-full border-2 border-orange-500 bg-white flex items-center justify-center shrink-0 relative overflow-hidden shadow-xs">
-                      <svg viewBox="0 0 50 50" className="w-full h-full p-1">
-                        <circle cx="25" cy="23" r="14" fill="#ffedd5" stroke="#ea580c" strokeWidth="1.4" strokeDasharray="2,2"/>
-                        <circle cx="25" cy="23" r="3.5" fill="#ea580c"/>
-                        <line x1="25" y1="5" x2="25" y2="41" stroke="#ea580c" strokeWidth="0.8" strokeDasharray="1,1"/>
-                        <text x="25" y="44" fontSize="8.5" fill="#ea580c" textAnchor="middle" fontWeight="900" fontFamily="monospace">Ø35 Bisagra</text>
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-13 h-13 rounded-full border-2 border-orange-500 bg-white flex items-center justify-center shrink-0 shadow-xs p-1">
+                      <svg viewBox="0 0 50 50" className="w-full h-full">
+                        <circle cx="25" cy="25" r="16" fill="#ffedd5" stroke="#ea580c" strokeWidth="1.4" strokeDasharray="2,2"/>
+                        <circle cx="25" cy="25" r="4.5" fill="#ea580c"/>
+                        <line x1="25" y1="4" x2="25" y2="46" stroke="#ea580c" strokeWidth="0.9" strokeDasharray="1,1"/>
                       </svg>
                     </div>
-                    <div className="text-[10.5px] text-slate-800 leading-tight">
-                      <div className="font-black text-orange-700 uppercase">DETALLE 3</div>
-                      <div className="font-bold">CAZOLETA DE BISAGRA</div>
-                      <div className="text-slate-600 font-medium">Eje a 22.5mm • A 90mm de extremos</div>
+                    <div className="text-xs text-slate-800 leading-tight">
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <span className="font-black text-orange-700 uppercase">DETALLE 3</span>
+                        <span className="bg-orange-100 text-orange-800 font-mono font-bold text-[9px] px-1 rounded border border-orange-200">Ø35mm</span>
+                      </div>
+                      <div className="font-bold text-xs text-slate-900">CAZOLETA BISAGRA</div>
+                      <div className="text-slate-600 font-medium text-[9.5px]">Eje a 22.5mm • A 90mm ext.</div>
                     </div>
                   </div>
 
                   {/* Detalle 4: Soportes de Repisa / Pitón Ø5 */}
-                  <div className="flex items-center gap-3">
-                    <div className="w-16 h-16 rounded-full border-2 border-sky-500 bg-white flex items-center justify-center shrink-0 relative overflow-hidden shadow-xs">
-                      <svg viewBox="0 0 50 50" className="w-full h-full p-1">
-                        <circle cx="25" cy="23" r="5" fill="#0284c7" stroke="#0369a1" strokeWidth="1.2"/>
-                        <line x1="18" y1="23" x2="32" y2="23" stroke="#ffffff" strokeWidth="0.8"/>
-                        <line x1="25" y1="16" x2="25" y2="30" stroke="#ffffff" strokeWidth="0.8"/>
-                        <text x="25" y="44" fontSize="8" fill="#0284c7" textAnchor="middle" fontWeight="900" fontFamily="monospace">Ø5 Pitón</text>
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-13 h-13 rounded-full border-2 border-sky-500 bg-white flex items-center justify-center shrink-0 shadow-xs p-1">
+                      <svg viewBox="0 0 50 50" className="w-full h-full">
+                        <circle cx="25" cy="25" r="7" fill="#0284c7" stroke="#0369a1" strokeWidth="1.4"/>
+                        <line x1="16" y1="25" x2="34" y2="25" stroke="#ffffff" strokeWidth="1"/>
+                        <line x1="25" y1="16" x2="25" y2="34" stroke="#ffffff" strokeWidth="1"/>
                       </svg>
                     </div>
-                    <div className="text-[10.5px] text-slate-800 leading-tight">
-                      <div className="font-black text-sky-700 uppercase">DETALLE 4</div>
-                      <div className="font-bold">SOPORTE REPISA (PITÓN)</div>
-                      <div className="text-slate-600 font-medium">Ø5mm x 10mm • Evasión anti-colisión</div>
+                    <div className="text-xs text-slate-800 leading-tight">
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <span className="font-black text-sky-700 uppercase">DETALLE 4</span>
+                        <span className="bg-sky-100 text-sky-800 font-mono font-bold text-[9px] px-1 rounded border border-sky-200">Ø5mm</span>
+                      </div>
+                      <div className="font-bold text-xs text-slate-900">SOPORTE REPISA</div>
+                      <div className="text-slate-600 font-medium text-[9.5px]">Pernos anti-vuelco</div>
                     </div>
                   </div>
                 </div>
@@ -2487,6 +2874,10 @@ export function KitchenBlueprint() {
               title={`PLANOS DE FABRICACIÓN: ${getCabinetTypeName(cab)}`} 
               cab={cab}
               identTag={page.identTag}
+              sheetType="cabinet"
+              isContinuation={page.isContinuation}
+              pageSubIndex={page.pageSubIndex}
+              totalModPages={page.totalModPages}
             />
 
           </div>
@@ -2594,7 +2985,13 @@ export function KitchenBlueprint() {
               </div>
             </div>
 
-            <BlueprintTitleBlock pageNum={pageNum} title={`OPTIMIZACIÓN CORTE: ${board.label}`} />
+            <BlueprintTitleBlock 
+              pageNum={pageNum} 
+              title={`OPTIMIZACIÓN CORTE: ${board.label}`}
+              identTag={`OPT-${bIndex + 1}`}
+              customContent={`PLANCHA #${bIndex + 1} DE ${boardResults.length} (${board.materialName} ${board.thicknessMm}mm)`}
+              sheetType="nesting"
+            />
           </div>
         );
       })}
@@ -2747,7 +3144,13 @@ export function KitchenBlueprint() {
               </div>
             </div>
 
-            <BlueprintTitleBlock pageNum={pageNum} title={`OPTIMIZACIÓN CUBIERTA QSTONE: PLANCHA #${slab.slabIndex}`} />
+            <BlueprintTitleBlock 
+              pageNum={pageNum} 
+              title={`OPTIMIZACIÓN CUBIERTA QSTONE: PLANCHA #${slab.slabIndex}`}
+              identTag={`QS-${slab.slabIndex}`}
+              customContent={`MARMOLERÍA CUARZO QSTONE (${ctBOM.product.name})`}
+              sheetType="countertop"
+            />
           </div>
         );
       })}
@@ -2804,7 +3207,13 @@ export function KitchenBlueprint() {
           </tbody>
         </table>
         
-        <BlueprintTitleBlock pageNum={totalDocPages} title="LISTADO CONSOLIDADO DE MATERIALES E INSUMOS (BOM)" />
+        <BlueprintTitleBlock 
+          pageNum={totalDocPages} 
+          title="LISTADO CONSOLIDADO DE MATERIALES E INSUMOS (BOM)" 
+          identTag="BOM-01"
+          customContent="CÓMPUTO MÉTRICO, HERRAJES Y FIJACIONES"
+          sheetType="bom"
+        />
       </div>
       </div>
 

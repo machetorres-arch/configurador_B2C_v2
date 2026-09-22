@@ -171,7 +171,7 @@ export function Blueprint() {
       <div className="w-2/4 border-r border-black p-2 flex flex-col justify-center text-[10px] space-y-0.5">
         <div><span className="font-bold">Estructura:</span> {state.thickness}mm Laminado {getColorName(state.structureColor)}</div>
         <div><span className="font-bold">Trasera:</span> 3mm {getColorName(state.backColor)}</div>
-        <div><span className="font-bold">Tapacantos:</span> PVC 2mm en frentes, 0.45mm resto.</div>
+        <div><span className="font-bold">Tapacantos:</span> PVC {(state.edgeBandingThicknessFronts || 2.0).toFixed(2)}mm en frentes, {(state.edgeBandingThicknessCabinets || 0.45).toFixed(2)}mm resto.</div>
         <div><span className="font-bold">Herrajes:</span> {state.assemblyType === 'minifix' ? 'Minifix + Tarugo' : 'Soberbio / Spax'}, Correderas {state.drawerHardware}.</div>
       </div>
       <div className="w-1/4 p-2 flex flex-col items-end justify-between">

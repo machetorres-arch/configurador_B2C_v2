@@ -58,9 +58,11 @@ export function exportKitchenPDF(cabinets: CabinetType[], state: any, filename =
   const tallCount = realCabinets.filter(c => c.type === 'tall').length;
   const islandCount = realCabinets.filter(c => c.type === 'island').length;
 
+  const tcCab = (state.edgeBandingThicknessCabinets || 0.45).toFixed(2);
+  const tcFront = (state.edgeBandingThicknessFronts || 2.0).toFixed(2);
   doc.text(`• Total Módulos: ${realCabinets.length} unid. (Bajos: ${baseCount}, Aéreos: ${wallCount}, Torres: ${tallCount}, Islas: ${islandCount})`, 20, yPos + 13.5);
-  doc.text(`• Espesor Melamina Estructura: ${thicknessMm} mm (Tapacanto PVC 22x0.45 mm)`, 20, yPos + 19.5);
-  doc.text(`• Frentes y Puertas: ${thicknessMm} mm (Tapacanto PVC 22x2.0 mm alto impacto)`, 20, yPos + 25.5);
+  doc.text(`• Espesor Melamina Estructura: ${thicknessMm} mm (Tapacanto PVC 22x${tcCab} mm)`, 20, yPos + 19.5);
+  doc.text(`• Frentes y Puertas: ${thicknessMm} mm (Tapacanto PVC 22x${tcFront} mm alto impacto)`, 20, yPos + 25.5);
   doc.text(`• Traseras y Fondos de Cajón: Durolac / MDF 3.5 mm ranurado a 15 mm`, 20, yPos + 31.5);
   doc.text(`• Sistema de Herrajes: ${hwSpec.slideName} (Holgura SKW: -${hwSpec.slideClearanceTotal} mm, Descuento SKL: -${hwSpec.drawerLengthDeduction} mm)`, 20, yPos + 37.5);
 

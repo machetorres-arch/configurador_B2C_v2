@@ -71,8 +71,14 @@ export function calculateCncMachiningForPart(
   golaSystem: 'none' | 'aluminum' | 'black' = 'none',
   handleConfig?: KitchenHandleConfig
 ): CncMachinedPart {
-  const pw = Math.round(part.width);   // mm (e.g. depth of cabinet for laterals)
-  const pl = Math.round(part.length);  // mm (e.g. height of cabinet for laterals)
+  const isDrawerFront = part.name.toLowerCase().includes('frente cajón') || part.name.toLowerCase().includes('frente');
+  const isDrawerSide = part.name.toLowerCase().includes('lateral cajón');
+
+  // En despiece industrial, los frentes de cajón tienen su longitud en part.length y altura en part.width.
+  // Para CNC y orientación horizontal de mecanizado: pw = ancho frontal (X), pl = alto frontal (Y)
+  const isFrenteHoriz = isDrawerFront && part.length > part.width;
+  const pw = Math.round(isFrenteHoriz ? part.length : part.width);   // mm
+  const pl = Math.round(isFrenteHoriz ? part.width : part.length);   // mm
   const th = Math.round(part.thickness);
 
   const drills: CncDrill[] = [];
@@ -83,8 +89,6 @@ export function calculateCncMachiningForPart(
   const isPiso = part.name.toLowerCase().includes('piso') || part.name.toLowerCase().includes('base');
   const isTecho = part.name.toLowerCase().includes('techo') || part.name.toLowerCase().includes('barra amarre');
   const isDoor = part.name.toLowerCase().includes('puerta');
-  const isDrawerFront = part.name.toLowerCase().includes('frente cajón') || part.name.toLowerCase().includes('frente');
-  const isDrawerSide = part.name.toLowerCase().includes('lateral cajón');
   const isRepisa = part.name.toLowerCase().includes('repisa') || part.name.toLowerCase().includes('estante');
   const isBack = th <= 4 || part.name.toLowerCase().includes('trasera') || part.name.toLowerCase().includes('fondo');
 
