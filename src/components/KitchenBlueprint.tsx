@@ -1135,6 +1135,7 @@ export function KitchenBlueprint() {
     const COLOR_MAGENTA = "#d946ef";
 
     const isBaseGola = (kState.golaSystem === 'aluminum' || kState.golaSystem === 'black') && (cab.type === 'base' || cab.type === 'island');
+    const isTall = cab.type === 'tall';
     const hasGolaC = isBaseGola && (cab.variant === '1_door_1_drawer' || cab.variant === '2_pot_drawers' || cab.variant === '4_drawers' || cab.variant === '2_drawers_1_pot' || cab.variant === 'sink_u_drawer');
     const golaColorHex = kState.golaSystem === 'black' ? '#18181b' : '#94a3b8';
 
