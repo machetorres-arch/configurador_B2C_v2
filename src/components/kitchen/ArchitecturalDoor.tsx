@@ -8,6 +8,8 @@ interface ArchitecturalDoorProps {
   depth: number;
   isSelected?: boolean;
   viewMode?: '2d' | '3d';
+  isOpen?: boolean;
+  hingeSide?: 'left' | 'right';
 }
 
 export function ArchitecturalDoor({
@@ -16,6 +18,8 @@ export function ArchitecturalDoor({
   depth,
   isSelected = false,
   viewMode = '3d',
+  isOpen = false,
+  hingeSide = 'left',
 }: ArchitecturalDoorProps) {
   // Constantes dimensionales y perfiles
   const frameThick = 4.5; // Grosor de cara del marco (jambas y dintel)
@@ -28,6 +32,11 @@ export function ArchitecturalDoor({
   const doorHeight = Math.max(40, height - frameThick - 0.4);
   const doorThick = 4.0; // Espesor estándar hoja de puerta
   const doorY = -frameThick / 2 + 0.2; // Centrado en vano despejando piso
+
+  const isRight = hingeSide === 'right';
+  const hingeLocalX = isRight ? (width / 2 - frameThick) : (-width / 2 + frameThick);
+  const openAngle = isOpen ? (isRight ? -Math.PI * 0.45 : Math.PI * 0.45) : 0;
+  const leafShiftX = isRight ? -doorWidth / 2 : doorWidth / 2;
 
   // Paleta de acabados arquitectónicos realistas
   const frameColor = '#f8fafc'; // Marco lacado blanco puro / satinado
@@ -132,151 +141,153 @@ export function ArchitecturalDoor({
       {/* ========================================================================= */}
       {/* 3. HOJA DE PUERTA PRINCIPAL CON CANTERÍAS / BUÑAS MODERNAS                */}
       {/* ========================================================================= */}
-      <group position={[0, doorY, 0]}>
-        {/* Tablero Principal de la Hoja */}
-        <mesh castShadow receiveShadow>
-          <boxGeometry args={[doorWidth, doorHeight, doorThick]} />
-          <meshStandardMaterial
-            color={doorPanelColor}
-            roughness={0.45}
-            metalness={0.08}
-            side={THREE.DoubleSide}
-          />
-          <Edges scale={1} threshold={15} color="#78350f" />
-        </mesh>
-
-        {/* Canterías / Buñas Horizontales Estilo Arquitectónico Contemporáneo (Frontal) */}
-        {[-0.6, -0.2, 0.2, 0.6].map((relY, idx) => (
-          <mesh
-            key={`groove-front-${idx}`}
-            position={[0, (doorHeight / 2) * relY, doorThick / 2 + 0.1]}
-          >
-            <boxGeometry args={[doorWidth - 4, 0.8, 0.25]} />
-            <meshStandardMaterial color={doorGrooveColor} roughness={0.7} />
-          </mesh>
-        ))}
-
-        {/* Canterías / Buñas Horizontales (Posterior) */}
-        {[-0.6, -0.2, 0.2, 0.6].map((relY, idx) => (
-          <mesh
-            key={`groove-back-${idx}`}
-            position={[0, (doorHeight / 2) * relY, -doorThick / 2 - 0.1]}
-          >
-            <boxGeometry args={[doorWidth - 4, 0.8, 0.25]} />
-            <meshStandardMaterial color={doorGrooveColor} roughness={0.7} />
-          </mesh>
-        ))}
-
-        {/* Placa / Zócalo de Protección Inferior en Acero Inoxidable Satinado */}
-        <mesh position={[0, -doorHeight / 2 + 5, doorThick / 2 + 0.15]} castShadow>
-          <boxGeometry args={[doorWidth - 2, 8, 0.15]} />
-          <meshStandardMaterial color="#94a3b8" metalness={0.85} roughness={0.25} />
-        </mesh>
-        <mesh position={[0, -doorHeight / 2 + 5, -doorThick / 2 - 0.15]} castShadow>
-          <boxGeometry args={[doorWidth - 2, 8, 0.15]} />
-          <meshStandardMaterial color="#94a3b8" metalness={0.85} roughness={0.25} />
-        </mesh>
-
-        {/* ========================================================================= */}
-        {/* 4. HERRAJES: MANILLA DE PALANCA ERGONÓMICA, ROSETA Y BOCALLAVE            */}
-        {/* ========================================================================= */}
-        {/* Manilla Frontal (+Z) */}
-        <group position={[handleX, handleY - doorY, doorThick / 2]}>
-          {/* Roseta circular */}
-          <mesh position={[0, 0, 0.3]} rotation={[Math.PI / 2, 0, 0]}>
-            <cylinderGeometry args={[2.0, 2.0, 0.4, 24]} />
-            <meshStandardMaterial color={hardwareSteel} metalness={0.9} roughness={0.15} />
-          </mesh>
-          {/* Eje / Cuello */}
-          <mesh position={[0, 0, 1.0]} rotation={[Math.PI / 2, 0, 0]}>
-            <cylinderGeometry args={[0.6, 0.6, 1.2, 16]} />
-            <meshStandardMaterial color={hardwareColor} metalness={0.8} roughness={0.25} />
-          </mesh>
-          {/* Manilla L horizontal ergonómica */}
-          <mesh position={[-4.5, 0, 1.5]} rotation={[0, 0, Math.PI / 2]} castShadow>
-            <cylinderGeometry args={[0.55, 0.55, 10.0, 16]} />
-            <meshStandardMaterial color={hardwareColor} metalness={0.85} roughness={0.2} />
-          </mesh>
-          {/* Remate esférico suave */}
-          <mesh position={[-9.5, 0, 1.5]}>
-            <sphereGeometry args={[0.55, 16, 16]} />
-            <meshStandardMaterial color={hardwareColor} metalness={0.85} roughness={0.2} />
+      <group position={[hingeLocalX, doorY, 0]} rotation={[0, openAngle, 0]}>
+        <group position={[leafShiftX, 0, 0]}>
+          {/* Tablero Principal de la Hoja */}
+          <mesh castShadow receiveShadow>
+            <boxGeometry args={[doorWidth, doorHeight, doorThick]} />
+            <meshStandardMaterial
+              color={doorPanelColor}
+              roughness={0.45}
+              metalness={0.08}
+              side={THREE.DoubleSide}
+            />
+            <Edges scale={1} threshold={15} color="#78350f" />
           </mesh>
 
-          {/* Roseta Inferior con Bocallave / Cilindro Europerfil */}
-          <group position={[0, -6.5, 0.25]}>
-            <mesh rotation={[Math.PI / 2, 0, 0]}>
-              <cylinderGeometry args={[1.5, 1.5, 0.35, 24]} />
+          {/* Canterías / Buñas Horizontales Estilo Arquitectónico Contemporáneo (Frontal) */}
+          {[-0.6, -0.2, 0.2, 0.6].map((relY, idx) => (
+            <mesh
+              key={`groove-front-${idx}`}
+              position={[0, (doorHeight / 2) * relY, doorThick / 2 + 0.1]}
+            >
+              <boxGeometry args={[doorWidth - 4, 0.8, 0.25]} />
+              <meshStandardMaterial color={doorGrooveColor} roughness={0.7} />
+            </mesh>
+          ))}
+
+          {/* Canterías / Buñas Horizontales (Posterior) */}
+          {[-0.6, -0.2, 0.2, 0.6].map((relY, idx) => (
+            <mesh
+              key={`groove-back-${idx}`}
+              position={[0, (doorHeight / 2) * relY, -doorThick / 2 - 0.1]}
+            >
+              <boxGeometry args={[doorWidth - 4, 0.8, 0.25]} />
+              <meshStandardMaterial color={doorGrooveColor} roughness={0.7} />
+            </mesh>
+          ))}
+
+          {/* Placa / Zócalo de Protección Inferior en Acero Inoxidable Satinado */}
+          <mesh position={[0, -doorHeight / 2 + 5, doorThick / 2 + 0.15]} castShadow>
+            <boxGeometry args={[doorWidth - 2, 8, 0.15]} />
+            <meshStandardMaterial color="#94a3b8" metalness={0.85} roughness={0.25} />
+          </mesh>
+          <mesh position={[0, -doorHeight / 2 + 5, -doorThick / 2 - 0.15]} castShadow>
+            <boxGeometry args={[doorWidth - 2, 8, 0.15]} />
+            <meshStandardMaterial color="#94a3b8" metalness={0.85} roughness={0.25} />
+          </mesh>
+
+          {/* ========================================================================= */}
+          {/* 4. HERRAJES: MANILLA DE PALANCA ERGONÓMICA, ROSETA Y BOCALLAVE            */}
+          {/* ========================================================================= */}
+          {/* Manilla Frontal (+Z) */}
+          <group position={[handleX, handleY - doorY, doorThick / 2]}>
+            {/* Roseta circular */}
+            <mesh position={[0, 0, 0.3]} rotation={[Math.PI / 2, 0, 0]}>
+              <cylinderGeometry args={[2.0, 2.0, 0.4, 24]} />
               <meshStandardMaterial color={hardwareSteel} metalness={0.9} roughness={0.15} />
             </mesh>
-            <mesh position={[0, 0, 0.22]}>
-              <boxGeometry args={[0.4, 1.0, 0.1]} />
-              <meshStandardMaterial color="#0f172a" roughness={0.9} />
+            {/* Eje / Cuello */}
+            <mesh position={[0, 0, 1.0]} rotation={[Math.PI / 2, 0, 0]}>
+              <cylinderGeometry args={[0.6, 0.6, 1.2, 16]} />
+              <meshStandardMaterial color={hardwareColor} metalness={0.8} roughness={0.25} />
             </mesh>
+            {/* Manilla L horizontal ergonómica */}
+            <mesh position={[-4.5, 0, 1.5]} rotation={[0, 0, Math.PI / 2]} castShadow>
+              <cylinderGeometry args={[0.55, 0.55, 10.0, 16]} />
+              <meshStandardMaterial color={hardwareColor} metalness={0.85} roughness={0.2} />
+            </mesh>
+            {/* Remate esférico suave */}
+            <mesh position={[-9.5, 0, 1.5]}>
+              <sphereGeometry args={[0.55, 16, 16]} />
+              <meshStandardMaterial color={hardwareColor} metalness={0.85} roughness={0.2} />
+            </mesh>
+
+            {/* Roseta Inferior con Bocallave / Cilindro Europerfil */}
+            <group position={[0, -6.5, 0.25]}>
+              <mesh rotation={[Math.PI / 2, 0, 0]}>
+                <cylinderGeometry args={[1.5, 1.5, 0.35, 24]} />
+                <meshStandardMaterial color={hardwareSteel} metalness={0.9} roughness={0.15} />
+              </mesh>
+              <mesh position={[0, 0, 0.22]}>
+                <boxGeometry args={[0.4, 1.0, 0.1]} />
+                <meshStandardMaterial color="#0f172a" roughness={0.9} />
+              </mesh>
+            </group>
           </group>
-        </group>
 
-        {/* Manilla Posterior (-Z) */}
-        <group position={[handleX, handleY - doorY, -doorThick / 2]}>
-          {/* Roseta circular */}
-          <mesh position={[0, 0, -0.3]} rotation={[Math.PI / 2, 0, 0]}>
-            <cylinderGeometry args={[2.0, 2.0, 0.4, 24]} />
-            <meshStandardMaterial color={hardwareSteel} metalness={0.9} roughness={0.15} />
-          </mesh>
-          {/* Eje / Cuello */}
-          <mesh position={[0, 0, -1.0]} rotation={[Math.PI / 2, 0, 0]}>
-            <cylinderGeometry args={[0.6, 0.6, 1.2, 16]} />
-            <meshStandardMaterial color={hardwareColor} metalness={0.8} roughness={0.25} />
-          </mesh>
-          {/* Manilla L horizontal ergonómica */}
-          <mesh position={[-4.5, 0, -1.5]} rotation={[0, 0, Math.PI / 2]} castShadow>
-            <cylinderGeometry args={[0.55, 0.55, 10.0, 16]} />
-            <meshStandardMaterial color={hardwareColor} metalness={0.85} roughness={0.2} />
-          </mesh>
-          <mesh position={[-9.5, 0, -1.5]}>
-            <sphereGeometry args={[0.55, 16, 16]} />
-            <meshStandardMaterial color={hardwareColor} metalness={0.85} roughness={0.2} />
-          </mesh>
-
-          {/* Roseta Inferior Bocallave */}
-          <group position={[0, -6.5, -0.25]}>
-            <mesh rotation={[Math.PI / 2, 0, 0]}>
-              <cylinderGeometry args={[1.5, 1.5, 0.35, 24]} />
+          {/* Manilla Posterior (-Z) */}
+          <group position={[handleX, handleY - doorY, -doorThick / 2]}>
+            {/* Roseta circular */}
+            <mesh position={[0, 0, -0.3]} rotation={[Math.PI / 2, 0, 0]}>
+              <cylinderGeometry args={[2.0, 2.0, 0.4, 24]} />
               <meshStandardMaterial color={hardwareSteel} metalness={0.9} roughness={0.15} />
             </mesh>
-            <mesh position={[0, 0, -0.22]}>
-              <boxGeometry args={[0.4, 1.0, 0.1]} />
-              <meshStandardMaterial color="#0f172a" roughness={0.9} />
+            {/* Eje / Cuello */}
+            <mesh position={[0, 0, -1.0]} rotation={[Math.PI / 2, 0, 0]}>
+              <cylinderGeometry args={[0.6, 0.6, 1.2, 16]} />
+              <meshStandardMaterial color={hardwareColor} metalness={0.8} roughness={0.25} />
             </mesh>
+            {/* Manilla L horizontal ergonómica */}
+            <mesh position={[-4.5, 0, -1.5]} rotation={[0, 0, Math.PI / 2]} castShadow>
+              <cylinderGeometry args={[0.55, 0.55, 10.0, 16]} />
+              <meshStandardMaterial color={hardwareColor} metalness={0.85} roughness={0.2} />
+            </mesh>
+            <mesh position={[-9.5, 0, -1.5]}>
+              <sphereGeometry args={[0.55, 16, 16]} />
+              <meshStandardMaterial color={hardwareColor} metalness={0.85} roughness={0.2} />
+            </mesh>
+
+            {/* Roseta Inferior Bocallave */}
+            <group position={[0, -6.5, -0.25]}>
+              <mesh rotation={[Math.PI / 2, 0, 0]}>
+                <cylinderGeometry args={[1.5, 1.5, 0.35, 24]} />
+                <meshStandardMaterial color={hardwareSteel} metalness={0.9} roughness={0.15} />
+              </mesh>
+              <mesh position={[0, 0, -0.22]}>
+                <boxGeometry args={[0.4, 1.0, 0.1]} />
+                <meshStandardMaterial color="#0f172a" roughness={0.9} />
+              </mesh>
+            </group>
           </group>
+
+          {/* ========================================================================= */}
+          {/* 5. HERRAJES: BISAGRAS TUBULARES DE ACERO EN EL CANTO LATERAL               */}
+          {/* ========================================================================= */}
+          {[0.35, 0, -0.35].map((relY, bIdx) => (
+            <group
+              key={`hinge-${bIdx}`}
+              position={[hingeX - 0.4, (doorHeight / 2) * relY, 0]}
+            >
+              {/* Nudo / Barril de bisagra */}
+              <mesh position={[0, 0, doorThick / 2 + 0.15]} rotation={[0, 0, 0]}>
+                <cylinderGeometry args={[0.55, 0.55, 5.0, 16]} />
+                <meshStandardMaterial color="#334155" metalness={0.9} roughness={0.2} />
+              </mesh>
+              {/* Pletina fijada al marco */}
+              <mesh position={[-0.4, 0, doorThick / 2 + 0.1]}>
+                <boxGeometry args={[0.8, 4.5, 0.15]} />
+                <meshStandardMaterial color="#334155" metalness={0.9} roughness={0.2} />
+              </mesh>
+            </group>
+          ))}
+
+          {/* Placa Frontal de Pestillo / Cerradura en el Canto */}
+          <mesh position={[doorWidth / 2 + 0.05, handleY - doorY, 0]}>
+            <boxGeometry args={[0.15, 14.0, 2.2]} />
+            <meshStandardMaterial color="#94a3b8" metalness={0.95} roughness={0.15} />
+          </mesh>
         </group>
-
-        {/* ========================================================================= */}
-        {/* 5. HERRAJES: BISAGRAS TUBULARES DE ACERO EN EL CANTO LATERAL               */}
-        {/* ========================================================================= */}
-        {[0.35, 0, -0.35].map((relY, bIdx) => (
-          <group
-            key={`hinge-${bIdx}`}
-            position={[hingeX - 0.4, (doorHeight / 2) * relY, 0]}
-          >
-            {/* Nudo / Barril de bisagra */}
-            <mesh position={[0, 0, doorThick / 2 + 0.15]} rotation={[0, 0, 0]}>
-              <cylinderGeometry args={[0.55, 0.55, 5.0, 16]} />
-              <meshStandardMaterial color="#334155" metalness={0.9} roughness={0.2} />
-            </mesh>
-            {/* Pletina fijada al marco */}
-            <mesh position={[-0.4, 0, doorThick / 2 + 0.1]}>
-              <boxGeometry args={[0.8, 4.5, 0.15]} />
-              <meshStandardMaterial color="#334155" metalness={0.9} roughness={0.2} />
-            </mesh>
-          </group>
-        ))}
-
-        {/* Placa Frontal de Pestillo / Cerradura en el Canto */}
-        <mesh position={[doorWidth / 2 + 0.05, handleY - doorY, 0]}>
-          <boxGeometry args={[0.15, 14.0, 2.2]} />
-          <meshStandardMaterial color="#94a3b8" metalness={0.95} roughness={0.15} />
-        </mesh>
       </group>
 
       {/* ========================================================================= */}
@@ -285,18 +296,19 @@ export function ArchitecturalDoor({
       {viewMode === '2d' && (() => {
         const radius = doorWidth;
         const arcPts: [number, number, number][] = [];
-        const pivotX = -width / 2 + frameThick + 0.4;
+        const pivotX = isRight ? (width / 2 - frameThick - 0.4) : (-width / 2 + frameThick + 0.4);
+        const dir = isRight ? -1 : 1;
         for (let step = 0; step <= 16; step++) {
           const angle = (step / 16) * (Math.PI / 2);
           arcPts.push([
-            pivotX + radius * Math.cos(angle),
+            pivotX + dir * radius * Math.sin(angle),
             height / 2 + 2,
-            radius * Math.sin(angle),
+            dir * radius * Math.cos(angle),
           ]);
         }
         const leafPts: [number, number, number][] = [
           [pivotX, height / 2 + 2, 0],
-          [pivotX, height / 2 + 2, radius],
+          [pivotX + dir * radius, height / 2 + 2, 0],
         ];
         return (
           <group renderOrder={1005}>

@@ -18,67 +18,56 @@ export function ArchitecturalWindow({
   viewMode = '3d',
 }: ArchitecturalWindowProps) {
   const frameThick = 4.5;
-  const glassW = Math.max(10, width / 2 - 6);
-  const glassH = Math.max(10, height - 11);
+  const glassW = Math.max(10, width / 2 - 3);
+  const glassH = Math.max(10, height - 2 * frameThick);
+
+  // Estética clásica de ventana de PVC/Aluminio fija y limpia con dos paños fijos
+  const frameColor = '#ffffff'; 
+  const glassColor = '#bae6fd';
 
   return (
     <group name="archRealWindow">
-      {/* Marco Perimetral de PVC Blanco (4 Perfiles Huecos) */}
-      {/* Perfil Superior */}
+      {/* Marco Perimetral */}
       <mesh position={[0, (height - frameThick) / 2, 0]} castShadow receiveShadow>
         <boxGeometry args={[width, frameThick, depth]} />
-        <meshStandardMaterial color="#ffffff" roughness={0.15} metalness={0.05} side={THREE.DoubleSide} />
+        <meshStandardMaterial color={frameColor} roughness={0.2} metalness={0.05} />
         <Edges scale={1} threshold={15} color={isSelected ? '#0284c7' : '#cbd5e1'} />
       </mesh>
-
-      {/* Perfil Inferior */}
       <mesh position={[0, -(height - frameThick) / 2, 0]} castShadow receiveShadow>
         <boxGeometry args={[width, frameThick, depth]} />
-        <meshStandardMaterial color="#ffffff" roughness={0.15} metalness={0.05} side={THREE.DoubleSide} />
+        <meshStandardMaterial color={frameColor} roughness={0.2} metalness={0.05} />
         <Edges scale={1} threshold={15} color={isSelected ? '#0284c7' : '#cbd5e1'} />
       </mesh>
-
-      {/* Perfil Izquierdo */}
       <mesh position={[-(width - frameThick) / 2, 0, 0]} castShadow receiveShadow>
         <boxGeometry args={[frameThick, height - 2 * frameThick, depth]} />
-        <meshStandardMaterial color="#ffffff" roughness={0.15} metalness={0.05} side={THREE.DoubleSide} />
+        <meshStandardMaterial color={frameColor} roughness={0.2} metalness={0.05} />
         <Edges scale={1} threshold={15} color={isSelected ? '#0284c7' : '#cbd5e1'} />
       </mesh>
-
-      {/* Perfil Derecho */}
       <mesh position={[(width - frameThick) / 2, 0, 0]} castShadow receiveShadow>
         <boxGeometry args={[frameThick, height - 2 * frameThick, depth]} />
-        <meshStandardMaterial color="#ffffff" roughness={0.15} metalness={0.05} side={THREE.DoubleSide} />
+        <meshStandardMaterial color={frameColor} roughness={0.2} metalness={0.05} />
         <Edges scale={1} threshold={15} color={isSelected ? '#0284c7' : '#cbd5e1'} />
       </mesh>
 
-      {/* Travesaño / Perfil central de corrediza */}
+      {/* Travesaño Central Fijo */}
       <mesh position={[0, 0, 0]} castShadow receiveShadow>
         <boxGeometry args={[3.5, height - 2 * frameThick, depth - 2]} />
-        <meshStandardMaterial color="#f1f5f9" roughness={0.2} metalness={0.1} side={THREE.DoubleSide} />
+        <meshStandardMaterial color={frameColor} roughness={0.2} metalness={0.05} />
       </mesh>
 
-      {/* Hoja Izquierda con Vidrio Transparente Cristalino */}
-      <group position={[-width / 4 + 2, 0, 1]}>
+      {/* Paño Izquierdo Fijo */}
+      <group position={[-width / 4 + 1, 0, 0]}>
         <mesh castShadow receiveShadow>
-          <boxGeometry args={[glassW, glassH, 1.2]} />
-          <meshStandardMaterial color="#bae6fd" transparent={true} opacity={0.22} roughness={0.02} metalness={0.95} side={THREE.DoubleSide} />
+          <boxGeometry args={[glassW, glassH, 1.0]} />
+          <meshStandardMaterial color={glassColor} transparent={true} opacity={0.28} roughness={0.02} metalness={0.95} side={THREE.DoubleSide} />
         </mesh>
       </group>
 
-      {/* Hoja Derecha con Vidrio Transparente Cristalino */}
-      <group position={[width / 4 - 2, 0, -1]}>
+      {/* Paño Derecho Fijo */}
+      <group position={[width / 4 - 1, 0, 0]}>
         <mesh castShadow receiveShadow>
-          <boxGeometry args={[glassW, glassH, 1.2]} />
-          <meshStandardMaterial color="#bae6fd" transparent={true} opacity={0.22} roughness={0.02} metalness={0.95} side={THREE.DoubleSide} />
-        </mesh>
-      </group>
-
-      {/* Manilla metálica de ventana corrediza */}
-      <group position={[-8, 0, depth / 2 - 0.5]}>
-        <mesh castShadow rotation={[0, 0, Math.PI / 2]}>
-          <cylinderGeometry args={[0.4, 0.4, 4.5, 16]} />
-          <meshStandardMaterial color="#94a3b8" metalness={0.95} roughness={0.1} />
+          <boxGeometry args={[glassW, glassH, 1.0]} />
+          <meshStandardMaterial color={glassColor} transparent={true} opacity={0.28} roughness={0.02} metalness={0.95} side={THREE.DoubleSide} />
         </mesh>
       </group>
 
@@ -104,3 +93,6 @@ export function ArchitecturalWindow({
     </group>
   );
 }
+
+
+

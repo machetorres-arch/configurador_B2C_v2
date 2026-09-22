@@ -3,10 +3,87 @@ import { useKitchenStore, CabinetType } from '../../store/kitchenStore';
 import { useStore, PartType } from '../../store';
 import { useAdminStore } from '../../store/adminStore';
 import { isCabinetWithDoors, getDefaultShelvesCount, isCabinetWithSplitDoors, getSplitCabinetShelvesCounts } from '../../utils/kitchenManufacturing';
-import { SlidersHorizontal, X, RefreshCw, ArrowUpDown, ArrowLeftRight, RotateCw, Move3D, DoorOpen, DoorClosed, Layers, Trash2, Palette, Sparkles, Box, Info, Check, ShieldAlert, Sliders } from 'lucide-react';
+import { SlidersHorizontal, X, RefreshCw, ArrowUpDown, ArrowLeftRight, RotateCw, Move3D, DoorOpen, DoorClosed, Layers, Trash2, Palette, Sparkles, Box, Info, Check, ShieldAlert, Sliders, ChevronDown, ChevronRight } from 'lucide-react';
 import { HANDLE_CATALOG, FINISH_LABELS, FINISH_HEX, HandleModelId, HandleFinish, KitchenHandleConfig } from '../../types/handle';
 import { IslandBackPanelConfigSection } from './IslandBackPanelConfigSection';
 import { DottedDepthSlider } from './DottedDepthSlider';
+
+interface AccordionSectionProps {
+  id: string;
+  title: string;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  badge?: React.ReactNode;
+  isOpen: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+  isLight: boolean;
+}
+
+function AccordionSection({
+  id,
+  title,
+  icon: Icon,
+  badge,
+  isOpen,
+  onToggle,
+  children,
+  isLight
+}: AccordionSectionProps) {
+  return (
+    <div 
+      id={`accordion-${id}`}
+      className={`rounded-xl border transition-all overflow-hidden ${
+        isLight ? 'bg-white border-slate-200 shadow-xs' : 'bg-white/[0.03] border-white/10'
+      }`}
+    >
+      <button
+        type="button"
+        onClick={onToggle}
+        className={`w-full flex items-center justify-between p-2.5 text-left transition-colors cursor-pointer select-none ${
+          isOpen
+            ? (isLight ? 'bg-orange-50/60 border-b border-orange-100' : 'bg-white/[0.04] border-b border-white/5')
+            : (isLight ? 'hover:bg-slate-50' : 'hover:bg-white/[0.02]')
+        }`}
+      >
+        <div className="flex items-center gap-2 min-w-0 pr-2">
+          <div className={`p-1 rounded-md shrink-0 ${
+            isOpen
+              ? 'bg-orange-500 text-black shadow-xs'
+              : (isLight ? 'bg-slate-100 text-slate-600' : 'bg-white/10 text-slate-300')
+          }`}>
+            <Icon size={13} />
+          </div>
+          <span className={`text-[11px] font-bold uppercase tracking-wider truncate ${
+            isOpen
+              ? (isLight ? 'text-orange-700' : 'text-orange-400')
+              : (isLight ? 'text-slate-800' : 'text-slate-200')
+          }`}>
+            {title}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-1.5 shrink-0 ml-1">
+          {badge && (
+            <div className="text-[10px]">
+              {badge}
+            </div>
+          )}
+          {isOpen ? (
+            <ChevronDown size={14} className={isLight ? "text-orange-600" : "text-orange-400"} />
+          ) : (
+            <ChevronRight size={14} className={isLight ? "text-slate-400" : "text-slate-500"} />
+          )}
+        </div>
+      </button>
+
+      {isOpen && (
+        <div className="p-3 flex flex-col gap-3">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const DEFAULT_TEXTURES = [
   { id: 'def_mas_blanco', name: 'Masisa Blanco', url: '#FFFFFF' },
@@ -41,9 +118,22 @@ export function KitchenModuleContextMenu({
   } = useKitchenStore();
   const globalStore = useStore();
   const adminTextures = useAdminStore((s) => s.textures);
-  const [showCatalog, setShowCatalog] = useState(false);
   const [targetZone, setTargetZone] = useState<PartType>('doors');
   const [selectedDoorSection, setSelectedDoorSection] = useState<'lower' | 'upper'>('lower');
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({
+    dimensions: true,
+    mechanisms: false,
+    grain: false,
+    shelves: false,
+    handles: false,
+    coverPanels: false,
+    finishes: false,
+    islandBack: false,
+  });
+
+  const toggleSection = (key: string) => {
+    setOpenSections(prev => ({ ...prev, [key]: !prev[key] }));
+  };
 
   const isLight = propIsLight !== undefined ? propIsLight : (() => {
     try {
@@ -284,6 +374,10 @@ export function KitchenModuleContextMenu({
     const isHPL = nameLower.includes('abet') || nameLower.includes('hpl') || nameLower.includes('laminati');
     const mat: 'melamina' | 'hpl' = isHPL ? 'hpl' : 'melamina';
 
+    if (isHPL && activeCabinet.hplBalancer === undefined) {
+      updateCabinet(activeCabinetId, { hplBalancer: true });
+    }
+
     switch (targetZone) {
       case 'structure':
         updateCabinet(activeCabinetId, { structureColor: url, structureMaterial: mat });
@@ -491,309 +585,326 @@ export function KitchenModuleContextMenu({
           ? 'absolute top-6 right-6 w-80 max-h-[calc(100vh-100px)] backdrop-blur-xl bg-white/95 border-slate-200 shadow-2xl shadow-slate-300 text-slate-800 z-50'
           : 'absolute top-6 right-6 w-80 max-h-[calc(100vh-100px)] backdrop-blur-xl bg-[#141416]/95 border-white/10 shadow-2xl shadow-black/80 text-white z-50'
     }`}>
-      {/* Header */}
-      <div className={`px-4 py-3 border-b flex items-center justify-between shrink-0 ${
-        isLight ? 'border-slate-200 bg-slate-100/70' : 'border-white/10 bg-black/40'
+      {/* Header integrado de Mueble Activo Individual */}
+      <div className={`px-3.5 py-2.5 border-b flex flex-col gap-1.5 shrink-0 ${
+        isLight ? 'border-slate-200 bg-slate-50' : 'border-white/10 bg-[#161618]'
       }`}>
-        <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-wider min-w-0 pr-2">
-          <SlidersHorizontal size={15} className={isLight ? "text-orange-600" : "text-orange-500"} />
-          <span className={`truncate ${isLight ? 'text-orange-600' : 'text-orange-500'} tracking-wider`}>
-            {getModuleTitle()} {cabinetIndex >= 0 ? `(MOD ${cabinetIndex + 1})` : ''}
-          </span>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="px-1.5 py-0.5 rounded font-mono font-black text-[10px] bg-orange-500 text-black shrink-0">
+              MOD {cabinetIndex >= 0 ? cabinetIndex + 1 : '1'}
+            </span>
+            <span className={`truncate font-bold text-xs uppercase tracking-wide ${
+              isLight ? 'text-slate-900' : 'text-white'
+            }`}>
+              {getModuleTitle()}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1 shrink-0">
+            <button 
+              type="button"
+              onClick={() => {
+                const currentRot = activeCabinet.rotation || 0;
+                const nextRot = (currentRot + Math.PI / 2) % (Math.PI * 2);
+                updateCabinet(activeCabinet.id, { rotation: nextRot });
+              }}
+              title="Girar 90°"
+              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                isLight ? 'text-slate-600 hover:text-cyan-600 hover:bg-slate-200/80' : 'text-zinc-400 hover:text-cyan-400 hover:bg-white/10'
+              }`}
+            >
+              <RotateCw size={14} />
+            </button>
+            <button 
+              type="button"
+              onClick={() => {
+                setToolMode('move_active');
+                setViewMode('3d');
+              }}
+              title="Mover posición"
+              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                isLight ? 'text-slate-600 hover:text-orange-600 hover:bg-slate-200/80' : 'text-zinc-400 hover:text-orange-400 hover:bg-white/10'
+              }`}
+            >
+              <Move3D size={14} />
+            </button>
+            <button 
+              type="button"
+              onClick={() => removeCabinet(activeCabinet.id)} 
+              title="Eliminar Módulo"
+              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                isLight ? 'text-slate-600 hover:text-rose-600 hover:bg-rose-100' : 'text-zinc-400 hover:text-rose-400 hover:bg-white/10'
+              }`}
+            >
+              <Trash2 size={14} />
+            </button>
+            <button 
+              type="button"
+              onClick={() => setActiveCabinet(null)} 
+              className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer border ${
+                isLight 
+                  ? 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300 shadow-xs' 
+                  : 'bg-white/5 hover:bg-white/10 text-zinc-300 hover:text-white border-white/10'
+              }`}
+              title="Deseleccionar Módulo y volver a vista general"
+            >
+              <X size={12} />
+              <span>Cerrar</span>
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-1 shrink-0">
-          <button 
-            onClick={() => {
-              const currentRot = activeCabinet.rotation || 0;
-              const nextRot = (currentRot + Math.PI / 2) % (Math.PI * 2);
-              updateCabinet(activeCabinet.id, { rotation: nextRot });
-            }}
-            title="Girar 90°"
-            className={`transition-colors p-1.5 rounded cursor-pointer ${
-              isLight ? 'text-slate-600 hover:text-cyan-600 hover:bg-slate-200' : 'text-zinc-400 hover:text-cyan-400 hover:bg-white/5'
-            }`}
-          >
-            <RotateCw size={14} />
-          </button>
-          <button 
-            onClick={() => {
-              setToolMode('move_active');
-              setViewMode('3d');
-            }}
-            title="Mover posición"
-            className={`transition-colors p-1.5 rounded cursor-pointer ${
-              isLight ? 'text-slate-600 hover:text-orange-600 hover:bg-slate-200' : 'text-zinc-400 hover:text-orange-400 hover:bg-white/5'
-            }`}
-          >
-            <Move3D size={14} />
-          </button>
-          <button 
-            onClick={() => removeCabinet(activeCabinet.id)} 
-            title="Eliminar Módulo"
-            className={`transition-colors p-1.5 rounded cursor-pointer ${
-              isLight ? 'text-slate-600 hover:text-rose-600 hover:bg-rose-100' : 'text-zinc-400 hover:text-rose-400 hover:bg-white/5'
-            }`}
-          >
-            <Trash2 size={14} />
-          </button>
-          <button 
-            onClick={() => setActiveCabinet(null)} 
-            className={`transition-colors p-1.5 rounded cursor-pointer ${
-              isLight ? 'text-slate-500 hover:text-slate-800 hover:bg-slate-200' : 'text-zinc-400 hover:text-white hover:bg-white/5'
-            }`}
-            title="Deseleccionar Módulo"
-          >
-            <X size={15} />
-          </button>
+
+        {/* Indicador de edición local en cabecera */}
+        <div className="flex items-center gap-1.5 text-[10px]">
+          <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse shrink-0" />
+          <span className={`font-bold uppercase tracking-wider ${isLight ? 'text-orange-700' : 'text-orange-400'}`}>
+            Modo Individual
+          </span>
+          <span className={`text-[10px] ${isLight ? 'text-slate-500' : 'text-zinc-400'}`}>
+            — Los cambios aplican solo a este mueble
+          </span>
         </div>
       </div>
 
-      <div className="p-4 flex flex-col gap-4 overflow-y-auto flex-1 min-h-0 custom-scrollbar">
-        
-        {/* SELECTOR DE VARIANTES SEGÚN EL TIPO DE MUEBLE */}
-        {activeCabinet.type === 'tall' && (
-          <div className={`flex flex-col gap-2 p-2.5 rounded-xl border ${isLight ? 'bg-white border-slate-200' : 'bg-black/30 border-white/5'}`}>
-            <label className={`text-[10px] uppercase tracking-wider font-bold ${isLight ? "text-slate-700" : "text-slate-300"}`}>
-              Variante de Torre / Despensa
-            </label>
-            <div className="grid grid-cols-2 gap-1.5">
-              {[
-                { id: 'tall_1_door', label: '1 Pta Larga' },
-                { id: 'tall_split_2_doors', label: '2 Ptas Línea Base' },
-                { id: 'tall_oven_micro', label: 'Horno + Micro' },
-                { id: 'tall_microwave_niche', label: 'Nicho Micro' },
-                { id: 'tall_open', label: 'Repisas Vistas' },
-                { id: 'tall_2_doors', label: '2 Puertas' },
-              ].map(t => (
+      <div className="p-3 flex flex-col gap-2.5 overflow-y-auto flex-1 min-h-0 custom-scrollbar">
+
+        {/* ACORDEÓN 1: DIMENSIONES Y POSICIÓN */}
+        <AccordionSection
+          id="dimensions"
+          title="Dimensiones y Posición"
+          icon={SlidersHorizontal}
+          badge={
+            <span className="font-mono text-orange-500 font-extrabold">
+              {activeCabinet.width} × {activeCabinet.height} × {activeCabinet.depth} cm
+            </span>
+          }
+          isOpen={openSections.dimensions}
+          onToggle={() => toggleSection('dimensions')}
+          isLight={isLight}
+        >
+          {activeCabinet.type === 'wall' && (
+            <div className={`flex flex-col gap-2 p-2.5 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-black/30 border-white/5'}`}>
+              <label className={`text-[10px] uppercase tracking-wider font-bold ${isLight ? "text-slate-700" : "text-slate-300"}`}>
+                Variante de Mueble Aéreo
+              </label>
+              <div className="grid grid-cols-2 gap-1.5">
+                {[
+                  { id: 'wall_1_door', label: '1 Puerta' },
+                  { id: 'wall_2_doors', label: '2 Puertas' },
+                  { id: 'wall_lift_up', label: 'Pta Elevable' },
+                  { id: 'wall_lift_up_double', label: 'Doble Elevable' },
+                  { id: 'wall_microwave_niche', label: 'Nicho Micro' },
+                  { id: 'wall_open', label: 'Repisas Vistas' },
+                ].map(t => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => updateCabinet(activeCabinet.id, { variant: t.id })}
+                    className={`py-1.5 px-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                      (activeCabinet.variant === t.id || (!activeCabinet.variant && t.id === 'wall_1_door'))
+                        ? 'bg-orange-500 text-black shadow-xs font-extrabold'
+                        : isLight
+                          ? 'bg-white text-slate-700 border border-slate-200 hover:border-orange-500'
+                          : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50'
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {(activeCabinet.variant?.startsWith('corner_blind') || activeCabinet.variant === 'corner_blind' || activeCabinet.variant?.startsWith('wall_corner_blind')) && (
+            <div className={`flex flex-col gap-2 p-2.5 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-black/30 border-white/5'}`}>
+              <label className={`text-[10px] uppercase tracking-wider font-bold ${isLight ? "text-slate-700" : "text-slate-300"}`}>
+                Mano / Orientación Esquinero
+              </label>
+              <div className="grid grid-cols-2 gap-2">
                 <button
-                  key={t.id}
-                  onClick={() => updateCabinet(activeCabinet.id, { variant: t.id })}
+                  type="button"
+                  onClick={() => updateCabinet(activeCabinet.id, { 
+                    variant: activeCabinet.type === 'wall' ? 'wall_corner_blind_right' : 'corner_blind_right' 
+                  })}
                   className={`py-1.5 px-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
-                    (activeCabinet.variant === t.id || (!activeCabinet.variant && t.id === 'tall_1_door'))
-                      ? 'bg-orange-500 text-black shadow-sm font-extrabold'
+                    (!activeCabinet.variant.endsWith('_left'))
+                      ? 'bg-orange-500 text-black shadow-xs font-extrabold'
                       : isLight
-                        ? 'bg-slate-50 text-slate-700 border border-slate-200 hover:border-orange-500'
+                        ? 'bg-white text-slate-700 border border-slate-200 hover:border-orange-500'
                         : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50'
                   }`}
                 >
-                  {t.label}
+                  Derecho (Ciego Der)
                 </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {activeCabinet.type === 'wall' && (
-          <div className={`flex flex-col gap-2 p-2.5 rounded-xl border ${isLight ? 'bg-white border-slate-200' : 'bg-black/30 border-white/5'}`}>
-            <label className={`text-[10px] uppercase tracking-wider font-bold ${isLight ? "text-slate-700" : "text-slate-300"}`}>
-              Variante de Mueble Aéreo
-            </label>
-            <div className="grid grid-cols-2 gap-1.5">
-              {[
-                { id: 'wall_1_door', label: '1 Puerta' },
-                { id: 'wall_2_doors', label: '2 Puertas' },
-                { id: 'wall_lift_up', label: 'Pta Elevable' },
-                { id: 'wall_lift_up_double', label: 'Doble Elevable' },
-                { id: 'wall_microwave_niche', label: 'Nicho Micro' },
-                { id: 'wall_open', label: 'Repisas Vistas' },
-              ].map(t => (
                 <button
-                  key={t.id}
-                  onClick={() => updateCabinet(activeCabinet.id, { variant: t.id })}
+                  type="button"
+                  onClick={() => updateCabinet(activeCabinet.id, { 
+                    variant: activeCabinet.type === 'wall' ? 'wall_corner_blind_left' : 'corner_blind_left' 
+                  })}
                   className={`py-1.5 px-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
-                    (activeCabinet.variant === t.id || (!activeCabinet.variant && t.id === 'wall_1_door'))
-                      ? 'bg-orange-500 text-black shadow-sm font-extrabold'
+                    (activeCabinet.variant.endsWith('_left'))
+                      ? 'bg-orange-500 text-black shadow-xs font-extrabold'
                       : isLight
-                        ? 'bg-slate-50 text-slate-700 border border-slate-200 hover:border-orange-500'
+                        ? 'bg-white text-slate-700 border border-slate-200 hover:border-orange-500'
                         : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50'
                   }`}
                 >
-                  {t.label}
+                  Izquierdo (Ciego Izq)
                 </button>
-              ))}
+              </div>
+            </div>
+          )}
+
+          {/* ELEVACIÓN EN MURO (MUEBLES AÉREOS) */}
+          {activeCabinet.type === 'wall' && (
+            <div className={`flex flex-col gap-1.5 p-2.5 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-black/30 border-white/5'}`}>
+              <div className={`flex justify-between items-center text-xs tracking-wider ${isLight ? 'text-slate-900' : 'text-slate-300'}`}>
+                <span className={isLight ? "font-bold text-slate-800" : "font-semibold"}>Elevación en Muro (Cota Inf.)</span>
+                <span className={`font-mono font-bold text-xs ${isLight ? 'text-orange-600' : 'text-orange-500'}`}>
+                  {Math.round(activeCabinet.position[1] - activeCabinet.height / 2)} cm
+                </span>
+              </div>
+              <input 
+                type="range" 
+                min={110} 
+                max={180} 
+                step={2}
+                value={Math.round(activeCabinet.position[1] - activeCabinet.height / 2)} 
+                onChange={(e) => {
+                  const newBottom = Number(e.target.value);
+                  updateCabinet(activeCabinet.id, {
+                    position: [activeCabinet.position[0], newBottom + activeCabinet.height / 2, activeCabinet.position[2]]
+                  });
+                }}
+                className="w-full cursor-pointer accent-orange-500" 
+              />
+            </div>
+          )}
+
+          {/* DIMENSIONES DEL MÓDULO (SLIDERS) */}
+          <div className="flex flex-col gap-2.5">
+            {/* Ancho Slider */}
+            <div className="flex flex-col gap-1">
+              <div className="flex justify-between items-center text-xs">
+                <span className={`font-semibold ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>Ancho</span>
+                <span className="font-mono font-bold text-orange-500">{activeCabinet.width} cm</span>
+              </div>
+              <input 
+                type="range"
+                min={
+                  activeCabinet.variant === "spice_rack" ? 15 : 
+                  activeCabinet.variant?.includes('wine_rack') ? 15 :
+                  activeCabinet.variant?.startsWith('wall_corner_blind') ? 60 :
+                  (activeCabinet.variant?.startsWith('corner_blind') ? 80 : 30)
+                }
+                max={
+                  activeCabinet.variant === "spice_rack" ? 30 :
+                  activeCabinet.variant?.includes('wine_rack') ? 65 :
+                  activeCabinet.variant?.startsWith('wall_corner_blind') ? 100 :
+                  (activeCabinet.variant?.startsWith('corner_blind') ? 130 : 120)
+                }
+                step={5}
+                value={activeCabinet.width}
+                onChange={(e) => updateCabinet(activeCabinet.id, { width: Number(e.target.value) })}
+                className="w-full cursor-pointer accent-orange-500"
+              />
+            </div>
+
+            {/* Alto Slider */}
+            <div className="flex flex-col gap-1">
+              <div className="flex justify-between items-center text-xs">
+                <span className={`font-semibold ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>Alto Total</span>
+                <span className="font-mono font-bold text-orange-500">{activeCabinet.height} cm</span>
+              </div>
+              <input 
+                type="range"
+                min={activeCabinet.type === 'tall' ? 140 : (activeCabinet.type === 'base' ? 70 : 30)}
+                max={activeCabinet.type === 'tall' ? 240 : (activeCabinet.type === 'wall' ? 120 : 100)}
+                step={5}
+                value={activeCabinet.height}
+                onChange={(e) => updateCabinet(activeCabinet.id, { height: Number(e.target.value) })}
+                className="w-full cursor-pointer accent-orange-500"
+              />
+            </div>
+
+            {/* Profundidad Slider */}
+            <div className="flex flex-col gap-1">
+              <div className="flex justify-between items-center text-xs">
+                <span className={`font-semibold ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>Profundidad</span>
+                <span className="font-mono font-bold text-orange-500">{activeCabinet.depth} cm</span>
+              </div>
+              <input 
+                type="range"
+                min={activeCabinet.type === 'island' ? 30 : 25}
+                max={activeCabinet.type === 'island' ? 120 : 80}
+                step={5}
+                value={activeCabinet.depth}
+                onChange={(e) => updateCabinet(activeCabinet.id, { depth: Number(e.target.value) })}
+                className="w-full cursor-pointer accent-orange-500"
+              />
             </div>
           </div>
-        )}
 
-        {(activeCabinet.variant?.startsWith('corner_blind') || activeCabinet.variant === 'corner_blind' || activeCabinet.variant?.startsWith('wall_corner_blind')) && (
-          <div className={`flex flex-col gap-2 p-2.5 rounded-xl border ${isLight ? 'bg-white border-slate-200' : 'bg-black/30 border-white/5'}`}>
-            <label className={`text-[10px] uppercase tracking-wider font-bold ${isLight ? "text-slate-700" : "text-slate-300"}`}>
-              Mano / Orientación Esquinero
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={() => updateCabinet(activeCabinet.id, { 
-                  variant: activeCabinet.type === 'wall' ? 'wall_corner_blind_right' : 'corner_blind_right' 
-                })}
-                className={`py-1.5 px-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
-                  (!activeCabinet.variant.endsWith('_left'))
-                    ? 'bg-orange-500 text-black shadow-sm font-extrabold'
-                    : isLight
-                      ? 'bg-slate-50 text-slate-700 border border-slate-200 hover:border-orange-500'
-                      : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50'
-                }`}
-              >
-                Derecho (Ciego Der)
-              </button>
-              <button
-                onClick={() => updateCabinet(activeCabinet.id, { 
-                  variant: activeCabinet.type === 'wall' ? 'wall_corner_blind_left' : 'corner_blind_left' 
-                })}
-                className={`py-1.5 px-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
-                  (activeCabinet.variant.endsWith('_left'))
-                    ? 'bg-orange-500 text-black shadow-sm font-extrabold'
-                    : isLight
-                      ? 'bg-slate-50 text-slate-700 border border-slate-200 hover:border-orange-500'
-                      : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50'
-                }`}
-              >
-                Izquierdo (Ciego Izq)
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* ELEVACIÓN EN MURO (MUEBLES AÉREOS) */}
-        {activeCabinet.type === 'wall' && (
-          <div className={`flex flex-col gap-1.5 p-2.5 rounded-xl border ${isLight ? 'bg-white border-slate-200' : 'bg-black/30 border-white/5'}`}>
-            <div className={`flex justify-between items-center text-xs tracking-wider ${isLight ? 'text-slate-900' : 'text-slate-300'}`}>
-              <span className={isLight ? "font-bold text-slate-800" : "font-semibold"}>Elevación en Muro (Cota Inf.)</span>
-              <span className={`font-mono font-bold text-xs ${isLight ? 'text-orange-600' : 'text-orange-500'}`}>
-                {Math.round(activeCabinet.position[1] - activeCabinet.height / 2)} cm
-              </span>
-            </div>
-            <input 
-              type="range" 
-              min={110} 
-              max={180} 
-              step={2}
-              value={Math.round(activeCabinet.position[1] - activeCabinet.height / 2)} 
-              onChange={(e) => {
-                const newBottom = Number(e.target.value);
-                updateCabinet(activeCabinet.id, {
-                  position: [activeCabinet.position[0], newBottom + activeCabinet.height / 2, activeCabinet.position[2]]
-                });
-              }}
-              className="w-full cursor-pointer accent-orange-500" 
-            />
-          </div>
-        )}
-
-        {/* DIMENSIONES DEL MÓDULO (SLIDERS) */}
-        <div className={`flex flex-col gap-2.5 p-3 rounded-xl border ${isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-black/30 border-white/5'}`}>
-          <div className={`text-[10px] uppercase font-bold tracking-widest flex items-center justify-between ${isLight ? 'text-slate-700' : 'text-zinc-300'}`}>
-            <span>Dimensiones del Módulo</span>
-            <span className="font-mono text-orange-500 font-extrabold">{activeCabinet.width} × {activeCabinet.height} × {activeCabinet.depth} cm</span>
-          </div>
-
-          {/* Ancho Slider */}
-          <div className="flex flex-col gap-1">
-            <div className="flex justify-between items-center text-xs">
-              <span className={`font-semibold ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>Ancho</span>
-              <span className="font-mono font-bold text-orange-500">{activeCabinet.width} cm</span>
-            </div>
-            <input 
-              type="range"
-              min={
-                activeCabinet.variant === "spice_rack" ? 15 : 
-                activeCabinet.variant?.includes('wine_rack') ? 15 :
-                activeCabinet.variant?.startsWith('wall_corner_blind') ? 60 :
-                (activeCabinet.variant?.startsWith('corner_blind') ? 80 : 30)
-              }
-              max={
-                activeCabinet.variant === "spice_rack" ? 30 :
-                activeCabinet.variant?.includes('wine_rack') ? 65 :
-                activeCabinet.variant?.startsWith('wall_corner_blind') ? 100 :
-                (activeCabinet.variant?.startsWith('corner_blind') ? 130 : 120)
-              }
-              step={5}
-              value={activeCabinet.width}
-              onChange={(e) => updateCabinet(activeCabinet.id, { width: Number(e.target.value) })}
-              className="w-full cursor-pointer accent-orange-500"
-            />
-          </div>
-
-          {/* Alto Slider */}
-          <div className="flex flex-col gap-1">
-            <div className="flex justify-between items-center text-xs">
-              <span className={`font-semibold ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>Alto Total</span>
-              <span className="font-mono font-bold text-orange-500">{activeCabinet.height} cm</span>
-            </div>
-            <input 
-              type="range"
-              min={activeCabinet.type === 'tall' ? 140 : (activeCabinet.type === 'base' ? 70 : 30)}
-              max={activeCabinet.type === 'tall' ? 240 : (activeCabinet.type === 'wall' ? 120 : 100)}
-              step={5}
-              value={activeCabinet.height}
-              onChange={(e) => updateCabinet(activeCabinet.id, { height: Number(e.target.value) })}
-              className="w-full cursor-pointer accent-orange-500"
-            />
-          </div>
-
-          {/* Profundidad Slider */}
-          <div className="flex flex-col gap-1">
-            <div className="flex justify-between items-center text-xs">
-              <span className={`font-semibold ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>Profundidad</span>
-              <span className="font-mono font-bold text-orange-500">{activeCabinet.depth} cm</span>
-            </div>
-            <input 
-              type="range"
-              min={activeCabinet.type === 'island' ? 30 : 25}
-              max={activeCabinet.type === 'island' ? 120 : 80}
-              step={5}
-              value={activeCabinet.depth}
-              onChange={(e) => updateCabinet(activeCabinet.id, { depth: Number(e.target.value) })}
-              className="w-full cursor-pointer accent-orange-500"
-            />
-          </div>
-        </div>
-
-        {/* INFO ESPECÍFICA ESPECIERO */}
-        {activeCabinet.variant === 'spice_rack' && (
-          <div className={`p-2.5 rounded-xl border text-xs ${isLight ? 'bg-orange-50 border-orange-200 text-orange-950' : 'bg-orange-950/20 border-orange-500/30 text-orange-200'}`}>
-            <div className="font-bold mb-1 flex items-center justify-between">
-              <span>Especiero Extraíble:</span>
-              <span className="text-orange-500 font-extrabold">{activeCabinet.width} cm</span>
-            </div>
-            <div className="text-[11px] opacity-90 leading-relaxed">
-              • Rango normativo: <span className="font-mono font-bold">15 - 30 cm</span><br/>
-              • Guías telescópicas laterales + carro melamina 2 niveles
-            </div>
-          </div>
-        )}
-
-        {/* INFO ESPECÍFICA BOTILLERO O ESQUINERO */}
-        {activeCabinet.variant?.includes('wine_rack') && (() => {
-          const innerW = activeCabinet.width - 3.6;
-          const cols = Math.min(5, Math.max(1, Math.floor((innerW + 1.8) / (10.5 + 1.8))));
-          const colW = (innerW - (cols - 1) * 1.8) / cols;
-          return (
+          {/* INFO ESPECÍFICA ESPECIERO */}
+          {activeCabinet.variant === 'spice_rack' && (
             <div className={`p-2.5 rounded-xl border text-xs ${isLight ? 'bg-orange-50 border-orange-200 text-orange-950' : 'bg-orange-950/20 border-orange-500/30 text-orange-200'}`}>
               <div className="font-bold mb-1 flex items-center justify-between">
-                <span>Distribución Botellero:</span>
-                <span className="text-orange-500 font-extrabold">{cols} {cols === 1 ? 'Corrida' : 'Corridas'}</span>
+                <span>Especiero Extraíble:</span>
+                <span className="text-orange-500 font-extrabold">{activeCabinet.width} cm</span>
               </div>
               <div className="text-[11px] opacity-90 leading-relaxed">
-                • Ancho libre por celda: <span className="font-mono font-bold">{colW.toFixed(1)} cm</span><br/>
-                • Fondo útil: <span className="font-mono font-bold">32.0 cm</span>
+                • Rango normativo: <span className="font-mono font-bold">15 - 30 cm</span><br/>
+                • Guías telescópicas laterales + carro melamina 2 niveles
               </div>
             </div>
-          );
-        })()}
-        
-        {/* SECCIÓN: APERTURA INDIVIDUAL DE PUERTAS Y CAJONES */}
-        {hasInteractiveElements && (
-          <div className={`flex flex-col gap-2 p-2.5 rounded-xl border ${
-            isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-[#1c1c1f] border-white/5'
-          }`}>
-            <div className="flex items-center justify-between px-1">
-              <div className={`text-[10px] uppercase font-bold tracking-widest flex items-center gap-1.5 ${
-                isLight ? 'text-slate-600' : 'text-zinc-400'
-              }`}>
-                <DoorOpen size={13} className={isLight ? "text-orange-600" : "text-orange-400"} />
-                <span>Apertura de Puertas / Cajones</span>
+          )}
+
+          {/* INFO ESPECÍFICA BOTILLERO O ESQUINERO */}
+          {activeCabinet.variant?.includes('wine_rack') && (() => {
+            const innerW = activeCabinet.width - 3.6;
+            const cols = Math.min(5, Math.max(1, Math.floor((innerW + 1.8) / (10.5 + 1.8))));
+            const colW = (innerW - (cols - 1) * 1.8) / cols;
+            return (
+              <div className={`p-2.5 rounded-xl border text-xs ${isLight ? 'bg-orange-50 border-orange-200 text-orange-950' : 'bg-orange-950/20 border-orange-500/30 text-orange-200'}`}>
+                <div className="font-bold mb-1 flex items-center justify-between">
+                  <span>Distribución Botellero:</span>
+                  <span className="text-orange-500 font-extrabold">{cols} {cols === 1 ? 'Corrida' : 'Corridas'}</span>
+                </div>
+                <div className="text-[11px] opacity-90 leading-relaxed">
+                  • Ancho libre por celda: <span className="font-mono font-bold">{colW.toFixed(1)} cm</span><br/>
+                  • Fondo útil: <span className="font-mono font-bold">32.0 cm</span>
+                </div>
               </div>
+            );
+          })()}
+        </AccordionSection>
+        
+        {/* ACORDEÓN 2: APERTURA INDIVIDUAL DE PUERTAS Y CAJONES */}
+        {hasInteractiveElements && (
+          <AccordionSection
+            id="mechanisms"
+            title="Apertura de Puertas / Cajones"
+            icon={DoorOpen}
+            badge={
+              <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${
+                anyElementOpen
+                  ? (isLight ? 'bg-emerald-100 text-emerald-700' : 'bg-emerald-500/20 text-emerald-400')
+                  : (isLight ? 'bg-slate-100 text-slate-600' : 'bg-zinc-800 text-zinc-400')
+              }`}>
+                {anyElementOpen ? 'Abierto' : 'Cerrado'}
+              </span>
+            }
+            isOpen={openSections.mechanisms}
+            onToggle={() => toggleSection('mechanisms')}
+            isLight={isLight}
+          >
+            <div className="flex items-center justify-between">
+              <span className={`text-[10px] uppercase font-bold tracking-wider ${isLight ? 'text-slate-600' : 'text-zinc-400'}`}>
+                Control Global
+              </span>
               <button
+                type="button"
                 onClick={toggleAllOpen}
                 className={`text-[10px] uppercase font-bold tracking-wider px-2 py-1 rounded transition-colors flex items-center gap-1 cursor-pointer ${
                   isLight
@@ -844,22 +955,25 @@ export function KitchenModuleContextMenu({
                 );
               })}
             </div>
-          </div>
+          </AccordionSection>
         )}
 
-        {/* SECCIÓN: VETA (GRANO) POR PIEZA */}
+        {/* ACORDEÓN 3: VETA (GRANO) POR PIEZA */}
         {hasInteractiveElements && (
-          <div className={`flex flex-col gap-2 p-2.5 rounded-xl border ${
-            isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-[#1c1c1f] border-white/5'
-          }`}>
-            <div className={`text-[10px] uppercase font-bold tracking-widest px-1 flex items-center gap-1.5 ${
-              isLight ? 'text-slate-600' : 'text-zinc-400'
-            }`}>
-              <Layers size={13} className={isLight ? "text-orange-600" : "text-orange-400"} />
-              <span>Orientación de Veta (Grano)</span>
-            </div>
-
-            <div className="flex flex-col gap-1 mt-1">
+          <AccordionSection
+            id="grain"
+            title="Orientación de Veta (Grano)"
+            icon={ArrowUpDown}
+            badge={
+              <span className="font-mono text-orange-500 font-bold text-[10px]">
+                {interactiveElements.length} {interactiveElements.length === 1 ? 'Pieza' : 'Piezas'}
+              </span>
+            }
+            isOpen={openSections.grain}
+            onToggle={() => toggleSection('grain')}
+            isLight={isLight}
+          >
+            <div className="flex flex-col gap-1">
               {interactiveElements.map((el) => {
                 const grain = getGrain(el.id);
                 return (
@@ -886,11 +1000,27 @@ export function KitchenModuleContextMenu({
                 );
               })}
             </div>
-          </div>
+          </AccordionSection>
         )}
 
-        {/* SECCIÓN: REPISAS INTERIORES (MÓDULOS CON PUERTA) */}
-        {isCabinetWithDoors(activeCabinet) && (() => {
+        {/* ACORDEÓN 4: REPISAS INTERIORES (MÓDULOS CON PUERTA) */}
+        {isCabinetWithDoors(activeCabinet) && (
+          <AccordionSection
+            id="shelves"
+            title="Repisas Interiores"
+            icon={Layers}
+            badge={
+              <span className="font-mono text-orange-500 font-bold text-[10px]">
+                {activeCabinet.shelvesCount !== undefined
+                  ? `${activeCabinet.shelvesCount} repisas`
+                  : `${getDefaultShelvesCount(activeCabinet)} std`}
+              </span>
+            }
+            isOpen={openSections.shelves}
+            onToggle={() => toggleSection('shelves')}
+            isLight={isLight}
+          >
+            {(() => {
           const isSplit = isCabinetWithSplitDoors(activeCabinet);
 
           if (isSplit) {
@@ -1176,19 +1306,34 @@ export function KitchenModuleContextMenu({
             </div>
           );
         })()}
+          </AccordionSection>
+        )}
 
-        {/* SECCIÓN: TIRADORES / MANILLAS INDEPENDIENTES DEL MÓDULO */}
+        {/* ACORDEÓN 5: TIRADORES / MANILLAS INDEPENDIENTES DEL MÓDULO */}
         {!isDecoration && (
-          <div className={`flex flex-col gap-2 p-3 rounded-xl border ${
-            isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-black/30 border-white/5'
-          }`}>
-            <div className="flex items-center justify-between">
-              <div className={`text-[10px] uppercase font-bold tracking-widest flex items-center gap-1.5 ${
-                isLight ? 'text-slate-700' : 'text-zinc-300'
+          <AccordionSection
+            id="handles"
+            title="Tirador del Módulo"
+            icon={SlidersHorizontal}
+            badge={
+              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider ${
+                activeCabinet.handleConfig
+                  ? isLight ? 'bg-orange-100 text-orange-700' : 'bg-orange-500/20 text-orange-400'
+                  : isLight ? 'bg-slate-100 text-slate-500' : 'bg-white/5 text-zinc-400'
               }`}>
-                <SlidersHorizontal size={13} className={isLight ? 'text-orange-600' : 'text-orange-400'} />
-                <span>Tirador del Módulo</span>
-              </div>
+                {activeCabinet.handleConfig ? 'Personalizado' : 'Global'}
+              </span>
+            }
+            isOpen={openSections.handles}
+            onToggle={() => toggleSection('handles')}
+            isLight={isLight}
+          >
+            <div className="flex items-center justify-between">
+              <span className={`text-[10px] uppercase font-bold tracking-wider ${
+                isLight ? 'text-slate-600' : 'text-zinc-400'
+              }`}>
+                Modo de Asignación
+              </span>
               <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
                 activeCabinet.handleConfig
                   ? isLight ? 'bg-orange-100 text-orange-700 border border-orange-300' : 'bg-orange-500/20 text-orange-400 border border-orange-500/40'
@@ -1425,37 +1570,36 @@ export function KitchenModuleContextMenu({
                 </div>
               );
             })()}
-          </div>
+          </AccordionSection>
         )}
 
-        {/* SECCIÓN: TAPAS LATERALES VISTAS (COSTADOS DECORATIVOS) */}
+        {/* ACORDEÓN 6: TAPAS LATERALES VISTAS (COSTADOS DECORATIVOS) */}
         {!isDecoration && (
-          <div className={`flex flex-col gap-2.5 p-3 rounded-xl border ${
-            isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-black/30 border-white/5'
-          }`}>
-            <div className="flex items-center justify-between">
-              <div className={`text-[10px] uppercase font-bold tracking-widest flex items-center gap-1.5 ${
-                isLight ? 'text-slate-700' : 'text-zinc-300'
-              }`}>
-                <Box size={13} className={isLight ? 'text-orange-600' : 'text-orange-400'} />
-                <span>Tapas Laterales Vistas</span>
-              </div>
-              <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
+          <AccordionSection
+            id="coverPanels"
+            title="Tapas Laterales Vistas"
+            icon={Box}
+            badge={
+              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider ${
                 (activeCabinet.leftCoverPanel?.enabled && activeCabinet.rightCoverPanel?.enabled)
-                  ? isLight ? 'bg-orange-100 text-orange-700 border border-orange-300' : 'bg-orange-500/20 text-orange-400 border border-orange-500/40'
+                  ? isLight ? 'bg-orange-100 text-orange-700' : 'bg-orange-500/20 text-orange-400'
                   : (activeCabinet.leftCoverPanel?.enabled || activeCabinet.rightCoverPanel?.enabled)
-                    ? isLight ? 'bg-amber-100 text-amber-800 border border-amber-300' : 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
-                    : isLight ? 'bg-slate-100 text-slate-500 border border-slate-200' : 'bg-white/5 text-zinc-400 border border-white/10'
+                    ? isLight ? 'bg-amber-100 text-amber-800' : 'bg-amber-500/20 text-amber-400'
+                    : isLight ? 'bg-slate-100 text-slate-500' : 'bg-white/5 text-zinc-400'
               }`}>
                 {activeCabinet.leftCoverPanel?.enabled && activeCabinet.rightCoverPanel?.enabled
                   ? 'Ambas Tapas'
                   : activeCabinet.leftCoverPanel?.enabled
-                    ? 'Solo Izquierda'
+                    ? 'Solo Izq'
                     : activeCabinet.rightCoverPanel?.enabled
-                      ? 'Solo Derecha'
+                      ? 'Solo Der'
                       : 'Sin Tapas'}
               </span>
-            </div>
+            }
+            isOpen={openSections.coverPanels}
+            onToggle={() => toggleSection('coverPanels')}
+            isLight={isLight}
+          >
 
             {/* Presets Rápidos */}
             <div className="grid grid-cols-4 gap-1">
@@ -1566,7 +1710,7 @@ export function KitchenModuleContextMenu({
                       type="button"
                       onClick={() => {
                         setTargetZone('leftCoverPanel');
-                        setShowCatalog(true);
+                        setOpenSections(prev => ({ ...prev, finishes: true }));
                       }}
                       className={`py-1 px-2 rounded-md text-[9px] font-bold transition-all cursor-pointer ${
                         activeCabinet.leftCoverPanel.color
@@ -1668,7 +1812,7 @@ export function KitchenModuleContextMenu({
                       type="button"
                       onClick={() => {
                         setTargetZone('rightCoverPanel');
-                        setShowCatalog(true);
+                        setOpenSections(prev => ({ ...prev, finishes: true }));
                       }}
                       className={`py-1 px-2 rounded-md text-[9px] font-bold transition-all cursor-pointer ${
                         activeCabinet.rightCoverPanel.color
@@ -1743,66 +1887,53 @@ export function KitchenModuleContextMenu({
                 />
               );
             })()}
-          </div>
+          </AccordionSection>
         )}
 
-        {/* Trascara HPL */}
-        <div className="flex flex-col gap-1.5">
-          <div className={`text-[10px] uppercase font-bold tracking-widest ${isLight ? 'text-slate-600' : 'text-zinc-400'}`}>Trascara HPL</div>
-          <button 
-            onClick={() => {
-              const current = activeCabinet.hplBalancer ?? globalStore.hplBalancer;
-              handleOverride('hplBalancer', !current);
-            }}
-            className={`w-full py-2.5 px-3 rounded-xl border text-xs uppercase font-bold tracking-wider transition-all text-center cursor-pointer ${
-              (activeCabinet.hplBalancer ?? globalStore.hplBalancer) 
-                ? isLight
-                  ? 'border-orange-500 bg-orange-50 text-orange-700 font-bold shadow-sm hover:bg-orange-100'
-                  : 'border-orange-500 bg-orange-500/10 text-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.15)] hover:bg-orange-500/20' 
-                : isLight
-                  ? 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50 shadow-sm'
-                  : 'border-white/10 bg-white/5 text-zinc-400 hover:bg-white/10 hover:text-white'
-            }`}
-          >
-            {(activeCabinet.hplBalancer ?? globalStore.hplBalancer) ? 'Balancer Blanco Activado' : 'Sin Balancer (Mismo Diseño)'}
-          </button>
-        </div>
-
-        {/* Configuración de Revestimiento Exterior & Costados para Muebles Tipo Isla */}
+        {/* ACORDEÓN 7: REVESTIMIENTO Y COSTADOS DE ISLA */}
         {activeCabinet.type === 'island' && (
-          <div className="flex flex-col gap-2 pt-2 border-t border-slate-200 dark:border-white/10">
+          <AccordionSection
+            id="islandBack"
+            title="Revestimiento y Costados Isla"
+            icon={Layers}
+            badge={
+              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider ${
+                islandBackConfig.enabled
+                  ? (isLight ? 'bg-orange-100 text-orange-700' : 'bg-orange-500/20 text-orange-400')
+                  : (isLight ? 'bg-slate-100 text-slate-500' : 'bg-white/5 text-zinc-400')
+              }`}>
+                {islandBackConfig.enabled ? 'Activo' : 'Desactivado'}
+              </span>
+            }
+            isOpen={openSections.islandBack}
+            onToggle={() => toggleSection('islandBack')}
+            isLight={isLight}
+          >
             <IslandBackPanelConfigSection isLight={isLight} />
-          </div>
+          </AccordionSection>
         )}
 
-        {/* Diseño Local (Por Pieza) */}
-        <div className="flex flex-col gap-1.5">
-          <div className={`text-[10px] uppercase font-bold tracking-widest ${isLight ? 'text-slate-600' : 'text-zinc-400'}`}>Acabado Exclusivo del Módulo</div>
-          <button 
-            onClick={() => setShowCatalog(!showCatalog)}
-            className={`w-full py-2.5 px-4 rounded-xl text-center cursor-pointer transition-all text-xs uppercase font-bold tracking-wider ${
-              isLight
-                ? 'bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 shadow-sm'
-                : 'bg-[#242428] border border-white/20 hover:border-white/40 hover:bg-[#2c2c31] text-white'
-            }`}
-          >
-            {showCatalog ? 'Ocultar Catálogo de Materiales' : 'Personalizar Acabado por Pieza'}
-          </button>
-        </div>
-
-        {/* Catálogo de Materiales */}
-        {showCatalog && (
-          <div className={`border rounded-2xl p-3.5 flex flex-col gap-3.5 shadow-inner ${
-            isLight
-              ? 'border-orange-300 bg-orange-50/40 shadow-sm'
-              : 'border-orange-500/40 bg-[#19191c]'
-          }`}>
-            <div className={`font-bold text-xs uppercase tracking-wider ${
-              isLight ? 'text-orange-700' : 'text-orange-500'
+        {/* ACORDEÓN 8: ACABADOS Y MATERIALES EXCLUSIVOS DEL MÓDULO */}
+        <AccordionSection
+          id="finishes"
+          title="Acabados y Materiales Exclusivos"
+          icon={Palette}
+          badge={
+            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider ${
+              activeCabinet.customColors && Object.keys(activeCabinet.customColors).length > 0
+                ? isLight ? 'bg-orange-100 text-orange-700' : 'bg-orange-500/20 text-orange-400'
+                : isLight ? 'bg-slate-100 text-slate-500' : 'bg-white/5 text-zinc-400'
             }`}>
-              Catálogo de Materiales Exclusivo
-            </div>
-
+              {activeCabinet.customColors && Object.keys(activeCabinet.customColors).length > 0
+                ? `${Object.keys(activeCabinet.customColors).length} zonas pers.`
+                : 'Estándar'}
+            </span>
+          }
+          isOpen={openSections.finishes}
+          onToggle={() => toggleSection('finishes')}
+          isLight={isLight}
+        >
+          <div className="flex flex-col gap-3.5">
             <div className="flex flex-col gap-2">
               <div className={`text-[10px] uppercase tracking-wider font-semibold ${
                 isLight ? 'text-slate-600' : 'text-zinc-400'
@@ -1824,14 +1955,15 @@ export function KitchenModuleContextMenu({
                   return (
                     <button 
                       key={part.id}
+                      type="button"
                       onClick={() => setTargetZone(part.id as PartType)}
                       className={`py-2 px-3 rounded-lg text-xs uppercase tracking-wider font-bold transition-all cursor-pointer ${
                         isSelected 
                           ? isLight
-                            ? 'bg-orange-500 text-black shadow-sm font-bold'
+                            ? 'bg-orange-500 text-black shadow-xs font-bold'
                             : 'bg-orange-500 text-black shadow-[0_0_12px_rgba(249,115,22,0.35)]' 
                           : isLight
-                            ? 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-300 shadow-sm'
+                            ? 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-300 shadow-xs'
                             : 'bg-[#2a2a2e] text-zinc-300 hover:bg-[#34343a] border border-white/5'
                       }`}
                     >
@@ -1864,6 +1996,41 @@ export function KitchenModuleContextMenu({
                 }`}>
                   3. Abet Laminati (HPL)
                 </div>
+
+                {/* Sub-opción contextual en Abet Laminati: Trascara Balancer Blanco 0,9 mm */}
+                <div className={`p-2.5 rounded-xl border flex flex-col gap-1.5 ${
+                  isLight ? 'bg-orange-50/70 border-orange-200' : 'bg-orange-500/10 border-orange-500/20'
+                }`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex flex-col min-w-0">
+                      <span className={`text-[11px] font-bold ${isLight ? 'text-slate-800' : 'text-zinc-200'}`}>
+                        Trascara Balancer Blanco (0,9 mm)
+                      </span>
+                      <span className={`text-[9px] ${isLight ? 'text-slate-500' : 'text-zinc-400'}`}>
+                        Equilibrio mecánico anti-alabeo para enchapes HPL
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const current = activeCabinet.hplBalancer ?? globalStore.hplBalancer;
+                        handleOverride('hplBalancer', !current);
+                      }}
+                      className={`text-[9px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md transition-all cursor-pointer shrink-0 ${
+                        (activeCabinet.hplBalancer ?? globalStore.hplBalancer)
+                          ? isLight
+                            ? 'bg-orange-500 text-black font-extrabold shadow-xs'
+                            : 'bg-orange-500 text-black font-extrabold shadow-[0_0_8px_rgba(249,115,22,0.4)]'
+                          : isLight
+                            ? 'bg-slate-200 text-slate-600 hover:bg-slate-300'
+                            : 'bg-white/10 text-zinc-400 hover:bg-white/20 hover:text-white'
+                      }`}
+                    >
+                      {(activeCabinet.hplBalancer ?? globalStore.hplBalancer) ? 'Activado (0,9 mm)' : 'Mismo Diseño'}
+                    </button>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-3 gap-2">
                   {abetTextures.map(t => renderTextureButton(t))}
                 </div>
@@ -1884,7 +2051,7 @@ export function KitchenModuleContextMenu({
               </div>
             )}
           </div>
-        )}
+        </AccordionSection>
 
         {/* Clear overrides */}
         <div className="grid grid-cols-2 gap-2 mt-1">

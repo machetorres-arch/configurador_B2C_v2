@@ -93,6 +93,8 @@ export interface ArchitecturalElement {
   elevation: number; // height from floor (0 for doors/pillars, e.g. 90 for windows)
   position: [number, number, number]; // [x, y, z]
   rotation: number;
+  isOpen?: boolean;
+  hingeSide?: 'left' | 'right';
 }
 
 export interface CoverPanelConfig {
@@ -718,18 +720,29 @@ export const useKitchenStore = create<KitchenState>((set, get) => {
       }
       return { history, architecturalElements, activeArchElementId: el.id, activeCabinetId: null };
     }),
-  updateArchitecturalElement: (id, updates) =>
+   updateArchitecturalElement: (id, updates) =>
     set((state) => {
       const history = saveSnapshot(state);
+      const effectiveWalls = state.walls && state.walls.length > 0 ? state.walls : (state.roomConfig?.vertices && state.roomConfig.vertices.length >= 3 ? state.roomConfig.vertices.map((v, i, arr) => {
+         const next = arr[(i + 1) % arr.length];
+         return { id: `wall_v_${i}`, start: [v.x, v.y], end: [next.x, next.y], thickness: 20, height: 240 };
+      }) : []);
+
       const architecturalElements = state.architecturalElements.map((el) => {
         if (el.id !== id) return el;
         const merged = { ...el, ...updates };
+        const wall = effectiveWalls.find((w) => w.id === merged.wallId) || effectiveWalls[0];
+        const wallMaxH = wall?.height || 240;
+
+        // Validar y limitar altura y elevación para que nunca sobresalga del muro
+        if (merged.height > wallMaxH) {
+          merged.height = wallMaxH;
+        }
+        if (merged.elevation + merged.height > wallMaxH) {
+          merged.elevation = Math.max(0, wallMaxH - merged.height);
+        }
+
         if (updates.offset !== undefined && updates.position === undefined) {
-          const effectiveWalls = state.walls && state.walls.length > 0 ? state.walls : (state.roomConfig?.vertices && state.roomConfig.vertices.length >= 3 ? state.roomConfig.vertices.map((v, i, arr) => {
-             const next = arr[(i + 1) % arr.length];
-             return { id: `wall_v_${i}`, start: [v.x, v.y], end: [next.x, next.y], thickness: 20, height: 240 };
-          }) : []);
-          const wall = effectiveWalls.find((w) => w.id === merged.wallId) || effectiveWalls[0];
           if (wall) {
              const [x1, z1] = wall.start;
              const [x2, z2] = wall.end;
@@ -745,6 +758,9 @@ export const useKitchenStore = create<KitchenState>((set, get) => {
                merged.rotation = Math.atan2(x1 - x2, z1 - z2);
              }
           }
+        } else {
+          // Actualizar Y en position acorde a elevación y altura
+          merged.position = [merged.position[0], merged.elevation + merged.height / 2, merged.position[2]];
         }
         return merged;
       });

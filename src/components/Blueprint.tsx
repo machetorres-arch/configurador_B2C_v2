@@ -130,7 +130,7 @@ export function Blueprint() {
         id: "part-mdf-" + index, name: p.name + " (Sustrato)", width: finalW, length: finalL, qty: p.qty, color: "#e5e5e5", edgeL1: p.edgeL1, edgeL2: p.edgeL2, edgeW1: p.edgeW1, edgeW2: p.edgeW2, allowRotation: true // MDF substrate can be rotated freely
       });
       if (state.hplBalancer) {
-        addPartToBoard(`HPL_BALANCER`, `PLANCHA HPL BLANCO (TRASCARA BALANCEADOR)`, "#ffffff", 3050, 1300, {
+        addPartToBoard(`HPL_BALANCER`, `PLANCHA HPL BLANCO 0.9MM (TRASCARA BALANCEADOR)`, "#ffffff", 3050, 1300, {
           id: "part-hpl-bal-" + index, name: p.name + " (Trascara)", width: finalW + hplOversize, length: finalL + hplOversize, qty: p.qty, color: "#ffffff", edgeL1: p.edgeL1, edgeL2: p.edgeL2, edgeW1: p.edgeW1, edgeW2: p.edgeW2, allowRotation
         });
       }

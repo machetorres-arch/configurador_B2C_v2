@@ -20,7 +20,7 @@ import { calculatePolygonArea } from '../utils/roomGeometry';
 import { KitchenMepPanel } from '../components/kitchen/KitchenMepPanel';
 import { detectMepClashes } from '../utils/mepClashDetection';
 import { resolvePlacement, getCabinetSpecsFromTool, findSmartWallPlacement } from '../utils/kitchenCollision';
-import { ArrowLeft, Box, Square, Move3D, PenTool, LayoutGrid, Trash2, RotateCw, Undo2, Redo2, Flame, Refrigerator, Flower2, Utensils, Info, Sparkles, Maximize2, Layers, Palette, ListOrdered, Save, Columns, Sliders, Sun, Moon, Wine, Wrench, DollarSign, ChevronDown, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Box, Square, Move3D, PenTool, LayoutGrid, Trash2, RotateCw, Undo2, Redo2, Flame, Refrigerator, Flower2, Utensils, Info, Sparkles, Maximize2, Layers, Palette, ListOrdered, Save, Columns, Sliders, Sun, Moon, Wine, Wrench, DollarSign, ChevronDown, ChevronRight, Globe } from 'lucide-react';
 import { HandlesSection } from '../components/kitchen/HandlesSection';
 import { HANDLE_CATALOG } from '../types/handle';
 
@@ -874,7 +874,7 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
       }`}>
         <button
           onClick={() => setRightTab('module')}
-          className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
+          className={`relative flex items-center justify-center gap-1.5 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
             rightTab === 'module'
               ? 'bg-orange-500 text-black shadow-[0_0_12px_rgba(249,115,22,0.25)]'
               : isLight
@@ -884,6 +884,9 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
         >
           <Box size={14} />
           <span>Módulo</span>
+          {activeCabinetId && (
+            <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-orange-500 ring-2 ring-white dark:ring-black animate-pulse" />
+          )}
         </button>
         <button
           onClick={() => setRightTab('materials')}
@@ -1059,24 +1062,40 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                             </div>
                           )}
 
-                          <SliderControl
-                            isLight={isLight}
-                            label="Ancho (cm)"
-                            value={activeArchElement.width}
-                            min={30}
-                            max={300}
-                            step={5}
-                            onChange={(val) => updateArchitecturalElement(activeArchElement.id, { width: val })}
-                          />
-                          <SliderControl
-                            isLight={isLight}
-                            label="Alto (cm)"
-                            value={activeArchElement.height}
-                            min={30}
-                            max={300}
-                            step={5}
-                            onChange={(val) => updateArchitecturalElement(activeArchElement.id, { height: val })}
-                          />
+                          {(() => {
+                            const isDoor = activeArchElement.type === 'door';
+                            const isWindow = activeArchElement.type === 'window';
+                            const wallMaxHeight = currentArchWall?.height || 240;
+
+                            const widthMin = isDoor ? 50 : isWindow ? 20 : 10;
+                            const widthMax = isDoor ? 120 : isWindow ? 300 : 150;
+
+                            const heightMin = isDoor ? 210 : isWindow ? 20 : 50;
+                            const heightMax = wallMaxHeight;
+
+                            return (
+                              <>
+                                <SliderControl
+                                  isLight={isLight}
+                                  label="Ancho (cm)"
+                                  value={activeArchElement.width}
+                                  min={widthMin}
+                                  max={widthMax}
+                                  step={5}
+                                  onChange={(val) => updateArchitecturalElement(activeArchElement.id, { width: val })}
+                                />
+                                <SliderControl
+                                  isLight={isLight}
+                                  label="Alto (cm)"
+                                  value={activeArchElement.height}
+                                  min={heightMin}
+                                  max={heightMax}
+                                  step={5}
+                                  onChange={(val) => updateArchitecturalElement(activeArchElement.id, { height: val })}
+                                />
+                              </>
+                            );
+                          })()}
 
                           {/* Ajuste milimétrico de posición en el muro */}
                           <SliderControl
@@ -1171,12 +1190,14 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                     <div className="flex flex-col gap-1">
                       <ToggleBtn isLight={isLight} active={globalState.showDimensions} onClick={globalState.toggleDimensions} label="Mostrar Cotas" />
                       {globalState.showDimensions && (
-                        <div className="mt-2 flex flex-col gap-1.5 p-2 rounded-lg bg-black/20 border border-white/5">
-                          <div className="flex items-center justify-between text-[11px] font-bold">
-                            <span className={isLight ? "text-slate-700" : "text-slate-200"}>
+                        <div className={`mt-2 flex flex-col gap-2 p-3 rounded-xl border transition-all ${
+                          isLight ? 'bg-slate-50 border-slate-200 shadow-sm' : 'bg-zinc-900/80 border-zinc-800'
+                        }`}>
+                          <div className="flex items-center justify-between text-xs font-bold">
+                            <span className={isLight ? "text-slate-900 uppercase tracking-wider text-[11px]" : "text-white uppercase tracking-wider text-[11px]"}>
                               {DIMENSION_LEVEL_DATA[globalState.dimensionLevel]?.title || `Nivel ${globalState.dimensionLevel}`}
                             </span>
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-400 font-mono font-bold border border-orange-500/30">
+                            <span className="text-[10px] px-2 py-0.5 rounded-md bg-orange-500/20 text-orange-500 dark:text-orange-400 font-mono font-bold border border-orange-500/30">
                               {globalState.dimensionLevel}/6
                             </span>
                           </div>
@@ -1188,11 +1209,11 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                             value={globalState.dimensionLevel} 
                             onChange={(e) => globalState.setDimensionLevel(Number(e.target.value))}
                             className={`w-full h-2 rounded-lg appearance-none cursor-pointer accent-orange-500 hover:accent-orange-400 transition-all ${
-                              isLight ? 'bg-slate-300' : 'bg-white/10'
+                              isLight ? 'bg-slate-200' : 'bg-zinc-800'
                             }`}
                             title="Nivel de Detalle de Cotas"
                           />
-                          <p className={`text-[10px] leading-snug ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                          <p className={`text-[11px] leading-relaxed ${isLight ? 'text-slate-600 font-medium' : 'text-slate-300'}`}>
                             {DIMENSION_LEVEL_DATA[globalState.dimensionLevel]?.desc}
                           </p>
                         </div>
@@ -1320,6 +1341,34 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
 
         {rightTab === 'materials' && (
           <div className="flex flex-col gap-4">
+            {/* Banner de Alcance: Proyecto Global */}
+            <div className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 ${
+              isLight
+                ? 'bg-slate-100/90 border-slate-300 text-slate-700 shadow-xs'
+                : 'bg-white/[0.04] border-white/10 text-slate-300'
+            }`}>
+              <div className="flex items-center gap-2 min-w-0">
+                <Globe size={15} className="text-orange-500 shrink-0" />
+                <div className="flex flex-col min-w-0">
+                  <span className="font-extrabold text-[10px] uppercase tracking-wider text-orange-600 dark:text-orange-400">
+                    Alcance: Proyecto Global
+                  </span>
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
+                    Aplica a toda la cocina y a módulos con herencia global
+                  </span>
+                </div>
+              </div>
+              {activeCabinetId && (
+                <button
+                  onClick={() => setRightTab('module')}
+                  className="text-[10px] font-bold px-2 py-1 rounded bg-orange-500/10 hover:bg-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/30 cursor-pointer shrink-0"
+                  title="Volver a configurar el módulo individual seleccionado"
+                >
+                  Ir al Módulo
+                </button>
+              )}
+            </div>
+
             <IslandBackPanelConfigSection isLight={isLight} />
             <RoomFinishesSection isLight={isLight} />
             <div className={`mt-2 pt-4 border-t ${isLight ? 'border-slate-200' : 'border-white/10'}`}>
@@ -1335,6 +1384,34 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
 
         {rightTab === 'engineering' && (
           <div className="flex flex-col gap-3">
+            {/* Banner de Alcance: Herrajes Globales */}
+            <div className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 ${
+              isLight
+                ? 'bg-slate-100/90 border-slate-300 text-slate-700 shadow-xs'
+                : 'bg-white/[0.04] border-white/10 text-slate-300'
+            }`}>
+              <div className="flex items-center gap-2 min-w-0">
+                <Globe size={15} className="text-orange-500 shrink-0" />
+                <div className="flex flex-col min-w-0">
+                  <span className="font-extrabold text-[10px] uppercase tracking-wider text-orange-600 dark:text-orange-400">
+                    Alcance: Herrajes Globales
+                  </span>
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
+                    Define tiradores y sistema de apertura para toda la cocina
+                  </span>
+                </div>
+              </div>
+              {activeCabinetId && (
+                <button
+                  onClick={() => setRightTab('module')}
+                  className="text-[10px] font-bold px-2 py-1 rounded bg-orange-500/10 hover:bg-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/30 cursor-pointer shrink-0"
+                  title="Volver a configurar el módulo individual seleccionado"
+                >
+                  Ir al Módulo
+                </button>
+              )}
+            </div>
+
             {/* 1. Sistema de Apertura (Perfil Gola) */}
             <div className={`rounded-xl border overflow-hidden transition-all ${
               isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-white/[0.03] border-white/10'

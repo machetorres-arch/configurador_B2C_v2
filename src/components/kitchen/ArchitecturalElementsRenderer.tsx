@@ -65,6 +65,8 @@ export function ArchitecturalElementsRenderer() {
                 depth={depth}
                 isSelected={isSelected}
                 viewMode={viewMode}
+                isOpen={el.isOpen}
+                hingeSide={el.hingeSide}
               />
             )}
 
@@ -75,6 +77,7 @@ export function ArchitecturalElementsRenderer() {
                 depth={depth}
                 isSelected={isSelected}
                 viewMode={viewMode}
+                isOpen={el.isOpen}
               />
             )}
 

@@ -280,11 +280,63 @@ export const TexturesSection = ({
 
       {abetTextures.length > 0 && (
         <div className="mb-4">
-          <label className={`text-[10px] uppercase tracking-widest font-bold block mb-2 ${
-            isLight ? 'text-slate-700' : 'text-slate-400'
-          }`}>4. Abet Laminati (HPL)</label>
+          <div className="flex items-center justify-between mb-2">
+            <label className={`text-[10px] uppercase tracking-widest font-bold ${
+              isLight ? 'text-slate-700' : 'text-slate-400'
+            }`}>4. Abet Laminati (HPL)</label>
+            <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/30">
+              Laminado de Alta Presión
+            </span>
+          </div>
           <div className="grid grid-cols-3 gap-2">
             {abetTextures.map(t => renderTextureButton(t))}
+          </div>
+
+          {/* Trascara HPL Balancer Global 0.9 mm */}
+          <div className={`mt-2.5 p-2.5 rounded-xl border flex flex-col gap-1.5 ${
+            isLight ? 'bg-orange-50/80 border-orange-200' : 'bg-black/30 border-orange-500/25'
+          }`}>
+            <div className="flex items-center justify-between">
+              <span className={`text-[10px] uppercase font-bold tracking-wider ${
+                isLight ? 'text-orange-950' : 'text-orange-400'
+              }`}>
+                Trascara HPL de Compensación (Global)
+              </span>
+              <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/30">
+                0.9 mm
+              </span>
+            </div>
+            <p className={`text-[10px] leading-tight ${isLight ? 'text-slate-600' : 'text-zinc-400'}`}>
+              Balanceador blanco normalizado para evitar el alabeo de puertas y frentes laminados a una cara.
+            </p>
+            <div className="grid grid-cols-2 gap-1.5 mt-0.5">
+              <button
+                type="button"
+                onClick={() => state.setHplBalancer(true)}
+                className={`py-1.5 px-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                  state.hplBalancer
+                    ? 'bg-orange-500 text-black shadow-xs font-extrabold'
+                    : isLight
+                      ? 'bg-white text-slate-700 border border-slate-300 hover:border-orange-400'
+                      : 'bg-white/5 text-zinc-300 border border-white/10 hover:border-orange-500/50'
+                }`}
+              >
+                <span>Balancer Blanco 0.9mm</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => state.setHplBalancer(false)}
+                className={`py-1.5 px-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                  !state.hplBalancer
+                    ? 'bg-orange-500 text-black shadow-xs font-extrabold'
+                    : isLight
+                      ? 'bg-white text-slate-700 border border-slate-300 hover:border-orange-400'
+                      : 'bg-white/5 text-zinc-300 border border-white/10 hover:border-orange-500/50'
+                }`}
+              >
+                <span>Mismo HPL 2 Caras</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

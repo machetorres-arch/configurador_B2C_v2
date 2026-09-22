@@ -136,6 +136,7 @@ export function AnimatedDoor({
   globalPosition,
   isUpper,
   handleConfig: propHandleConfig,
+  maxAngle = Math.PI * 0.44,
 }: {
   doorW: number;
   doorH: number;
@@ -148,12 +149,13 @@ export function AnimatedDoor({
   globalPosition?: [number, number, number];
   isUpper?: boolean;
   handleConfig?: import('../../types/handle').KitchenHandleConfig;
+  maxAngle?: number;
 }) {
   const groupRef = useRef<THREE.Group>(null);
 
   useFrame((state, delta) => {
     if (groupRef.current) {
-      const targetRotation = forceOpen ? (isRightHinge ? Math.PI * 0.55 : -Math.PI * 0.55) : 0;
+      const targetRotation = forceOpen ? (isRightHinge ? maxAngle : -maxAngle) : 0;
       groupRef.current.rotation.y = THREE.MathUtils.lerp(groupRef.current.rotation.y, targetRotation, delta * 4);
     }
   });
@@ -1967,7 +1969,7 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                      {renderGolaC(yGolaC)}
                      {[0,1,2,3].map(i => {
                        const yBoxCenter = legsHeight + gap + drawerH/2 + i*(drawerH + gap) + (i >= 2 ? 4.0 : 0);
-                       return renderUndermountDrawer('d' + i, yBoxCenter, drawerH, parseColor(cDrawers, drawerFrontMaterial, `drawer-${i}`), `drawer-${i}`);
+                       return renderUndermountDrawer('d' + i, yBoxCenter, drawerH, parseColor(cDrawers, drawerFrontMaterial, `drawer-${3 - i}`), `drawer-${3 - i}`);
                      })}
                   </>
                );
@@ -1982,7 +1984,7 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                     const yBoxCenter = i === 3
                       ? legsHeight + gap + 3*(baseDrawerH + gap) + topDrawerH/2
                       : legsHeight + gap + baseDrawerH/2 + i*(baseDrawerH + gap);
-                    return renderUndermountDrawer('d' + i, yBoxCenter, currentH, parseColor(cDrawers, drawerFrontMaterial, `drawer-${i}`), `drawer-${i}`);
+                    return renderUndermountDrawer('d' + i, yBoxCenter, currentH, parseColor(cDrawers, drawerFrontMaterial, `drawer-${3 - i}`), `drawer-${3 - i}`);
                   })}
                </>
             );
@@ -2565,16 +2567,18 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                      forceOpen={isElementOpen('door-0')}
                      globalPosition={[position[0], position[1] + doorY, position[2] + frontZ]}
                      handleConfig={handleConfig}
+                     maxAngle={Math.PI * 0.5}
                   />
 
                   {/* 4 Gavetas Interiores Extraíbles con uñero ergonómico calado */}
                   {Array.from({ length: innerDrawersCount }).map((_, idx) => {
-                     const yCenter = legsHeight + 14 + idx * 24;
-                     const drawerKey = `inner-drawer-${idx}`;
-                     const isOpenThis = isElementOpen(drawerKey);
+                     const yCenter = legsHeight + 86 - idx * 24;
+                     const drawerKey = `drawer-${idx}`;
+                     const isDoorOpen = isElementOpen('door-0');
+                     const isOpenThis = isDoorOpen && isElementOpen(drawerKey);
                      
                      return (
-                        <group key={`inner-drw-${idx}`}>
+                         <group key={`inner-drw-${idx}`} visible={isDoorOpen}>
                            {/* Correderas fijas ancladas a los costados */}
                            <mesh position={[-innerW / 2 + 1.225, yCenter - drawerInnerH / 2 + 0.6, drawerBoxZCenter]}>
                               <boxGeometry args={[2.45, 1.2, nominalLength]} />
@@ -2585,7 +2589,10 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                               <meshStandardMaterial color="#999999" metalness={0.8} roughness={0.2} />
                            </mesh>
 
-                           <AnimatedDrawer openZOffset={drawerBoxLength - 2} forceOpen={isOpenThis}>
+                           <AnimatedDrawer 
+                              openZOffset={drawerBoxLength - 2} 
+                              forceOpen={isOpenThis}
+                           >
                               {/* Frente Interior de Melamina con uñero ergonómico */}
                               <group position={[0, yCenter, frontZ - 3.5]}>
                                  <Board

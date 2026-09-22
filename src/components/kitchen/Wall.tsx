@@ -199,6 +199,8 @@ export function Wall({ id, start, end, thickness, height }: WallType & { id?: st
                   depth={elDepth}
                   isSelected={isSelected}
                   viewMode={viewMode}
+                  isOpen={el.isOpen}
+                  hingeSide={el.hingeSide}
                 />
               )}
              {el.type === 'window' && (
@@ -208,6 +210,7 @@ export function Wall({ id, start, end, thickness, height }: WallType & { id?: st
                  depth={elDepth}
                  isSelected={isSelected}
                  viewMode={viewMode}
+                 isOpen={el.isOpen}
                />
              )}
 

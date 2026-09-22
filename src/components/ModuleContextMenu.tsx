@@ -323,7 +323,7 @@ export function ModuleContextMenu() {
             }}
             className={`w-full py-2.5 px-3 rounded-xl border text-xs uppercase font-bold tracking-wider transition-all text-center ${(overrides.hplBalancer ?? state.hplBalancer) ? 'border-orange-500 bg-orange-500/10 text-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.15)] hover:bg-orange-500/20' : 'border-white/10 bg-white/5 text-zinc-400 hover:bg-white/10 hover:text-white'}`}
           >
-            {(overrides.hplBalancer ?? state.hplBalancer) ? 'Balancer Blanco Activado' : 'Sin Balancer (Mismo Diseño)'}
+            {(overrides.hplBalancer ?? state.hplBalancer) ? 'Balancer Blanco (0,9 mm) Activado' : 'Sin Balancer (Mismo Diseño)'}
           </button>
         </div>
 
