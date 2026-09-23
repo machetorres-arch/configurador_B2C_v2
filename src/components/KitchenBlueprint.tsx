@@ -303,7 +303,11 @@ export function KitchenBlueprint() {
   const hasMepPage = kState.mepPoints && kState.mepPoints.length > 0;
   const mepPagesCount = hasMepPage ? 1 : 0;
 
-  const totalDocPages = 1 + mepPagesCount + printPages.length + boardResults.length + stonePagesCount + 1;
+  // Paginación limpia de la lista de materiales e insumos (BOM) para evitar desborde en láminas A3
+  const BOM_ITEMS_PER_PAGE = 15;
+  const bomPagesCount = Math.max(1, Math.ceil(hardwareList.length / BOM_ITEMS_PER_PAGE));
+
+  const totalDocPages = 1 + mepPagesCount + printPages.length + boardResults.length + stonePagesCount + bomPagesCount;
 
   const getCabinetTypeName = (cab: CabinetType) => {
     if (cab.type === 'wall') return 'MUEBLE AÉREO / MURAL';
@@ -1110,7 +1114,7 @@ export function KitchenBlueprint() {
     const cabD = Math.round(cab.depth * 10);
     const cabH = Math.round(cab.height * 10);
 
-    const legsH = cab.type === 'base' ? 150 : 0;
+    const legsH = (cab.type === 'base' || cab.type === 'tall' || cab.type === 'island') ? 150 : 0;
     const bodyH = cabH - legsH;
 
     // VISTA DE PLANTA: cotas en TOP (Ancho) y RIGHT (Profundidad)
@@ -1123,19 +1127,23 @@ export function KitchenBlueprint() {
     const strokeP = Math.max(1.5, baseDimP * 0.0035);
 
     // VISTAS ELEVACIÓN UNIFICADAS (FRONTAL Y LATERAL): Escala diédrica 1:1 idéntica (ISO 128 / DIN)
-    const viewGap = Math.max(120, Math.round(cabW * 0.18));
+    const isTall = cab.type === 'tall';
+    const viewGap = Math.max(160, Math.round(cabW * 0.25));
     const totalElevW = cabW + viewGap + cabD;
-    const padLeftElev = Math.max(140, Math.round(cabH * 0.20));
-    const padRightElev = Math.max(140, Math.round(cabH * 0.20));
-    const padTopElev = Math.max(130, Math.round(Math.max(cabW, cabD) * 0.26));
-    const padBottomElev = Math.max(35, Math.round(cabH * 0.06));
-    const fSizeElev = Math.max(32, Math.round(Math.max(cabW, cabH, cabD) * 0.075));
-    const strokeElev = Math.max(1.6, Math.max(totalElevW, cabH) * 0.0028);
+    const padLeftElev = Math.max(150, Math.round(cabH * (isTall ? 0.08 : 0.20)));
+    const padRightElev = Math.max(150, Math.round(cabH * (isTall ? 0.08 : 0.20)));
+    const padTopElev = isTall ? Math.max(220, Math.round(Math.max(cabW, cabD) * 0.40)) : Math.max(140, Math.round(Math.max(cabW, cabD) * 0.28));
+    const padBottomElev = Math.max(45, Math.round(cabH * (isTall ? 0.03 : 0.06)));
+    
+    // Tamaño de fuente escalado para legibilidad perfecta en plano A3
+    // En torres de H=2150, el texto debe ser de 75-90px para ser nítido e inequívoco
+    const fSizeElev = isTall ? 80 : Math.max(34, Math.round(Math.max(cabW, cabH, cabD) * 0.08));
+    const fSizeTitles = isTall ? 50 : Math.max(20, Math.round(Math.max(cabW, cabH, cabD) * 0.055));
+    const strokeElev = Math.max(2.0, Math.max(totalElevW, isTall ? cabH * 0.5 : cabH) * 0.0032);
 
     const COLOR_MAGENTA = "#d946ef";
 
     const isBaseGola = (kState.golaSystem === 'aluminum' || kState.golaSystem === 'black') && (cab.type === 'base' || cab.type === 'island');
-    const isTall = cab.type === 'tall';
     const hasGolaC = isBaseGola && (cab.variant === '1_door_1_drawer' || cab.variant === '2_pot_drawers' || cab.variant === '4_drawers' || cab.variant === '2_drawers_1_pot' || cab.variant === 'sink_u_drawer');
     const golaColorHex = kState.golaSystem === 'black' ? '#18181b' : '#94a3b8';
 
@@ -1158,15 +1166,15 @@ export function KitchenBlueprint() {
     }
 
     return (
-      <div className="flex flex-col justify-between items-center w-full h-full py-2 gap-4">
+      <div className="flex flex-col justify-between items-center w-full h-full py-1 gap-2">
         {/* VISTA DE PLANTA */}
-        <div className="flex flex-col items-center w-full">
-          <div className="text-xs font-black tracking-widest text-slate-800 mb-1.5 uppercase">
+        <div className="flex flex-col items-center w-full shrink-0">
+          <div className="text-[11px] font-black tracking-widest text-slate-800 mb-1 uppercase">
             VISTA DE PLANTA
           </div>
           <svg 
             viewBox={`-${padLeftP} -${padTopP} ${cabW + padLeftP + padRightP} ${cabD + padTopP + padBottomP}`}
-            className="w-full h-[240px] max-h-[260px] overflow-visible"
+            className="w-full h-[150px] max-h-[160px] overflow-visible"
             preserveAspectRatio="xMidYMid meet"
           >
             <rect x={0} y={0} width={cabW} height={cabD} fill="#f8fafc" stroke="#0f172a" strokeWidth={strokeP * 1.5} />
@@ -1231,15 +1239,15 @@ export function KitchenBlueprint() {
         </div>
 
         {/* VISTAS ELEVACIÓN UNIFICADAS: FRONTAL Y LATERAL A ESCALA IDÉNTICA 1:1 */}
-        <div className="w-full flex flex-col items-center">
+        <div className="w-full flex-1 flex flex-col items-center justify-center min-h-0">
           <svg 
             viewBox={`-${padLeftElev} -${padTopElev} ${totalElevW + padLeftElev + padRightElev} ${cabH + padTopElev + padBottomElev}`}
-            className="w-full h-[300px] max-h-[320px] overflow-visible"
+            className="w-full h-[470px] max-h-[510px] overflow-visible"
             preserveAspectRatio="xMidYMid meet"
           >
             {/* Títulos de Vistas Superiores Desacoplados de las Cotas (Norma ISO/DIN) */}
-            <text x={cabW / 2} y={-padTopElev + Math.max(16, fSizeElev * 0.6)} fontSize={Math.max(16, fSizeElev * 0.6)} fill="#0f172a" fontWeight="900" textAnchor="middle" letterSpacing="0.08em">VISTA FRONTAL</text>
-            <text x={cabW + viewGap + cabD / 2} y={-padTopElev + Math.max(16, fSizeElev * 0.6)} fontSize={Math.max(16, fSizeElev * 0.6)} fill="#0f172a" fontWeight="900" textAnchor="middle" letterSpacing="0.08em">VISTA LATERAL</text>
+            <text x={cabW / 2} y={-padTopElev * 0.72} fontSize={fSizeTitles} fill="#0f172a" fontWeight="900" textAnchor="middle" letterSpacing="0.08em">VISTA FRONTAL</text>
+            <text x={cabW + viewGap + cabD / 2} y={-padTopElev * 0.72} fontSize={fSizeTitles} fill="#0f172a" fontWeight="900" textAnchor="middle" letterSpacing="0.08em">VISTA LATERAL</text>
 
             {/* Líneas de Correspondencia Proyectiva Diédrica (ISO 128) */}
             <line x1={cabW} y1={0} x2={cabW + viewGap} y2={0} stroke="#cbd5e1" strokeWidth={strokeElev * 0.7} strokeDasharray="4,4" />
@@ -1615,7 +1623,7 @@ export function KitchenBlueprint() {
 
                   {/* Cota Profundidad Superior Lateral */}
                   <line x1={latX} y1={-padTopElev * 0.38} x2={latX + cabD} y2={-padTopElev * 0.38} stroke={COLOR_MAGENTA} strokeWidth={strokeElev} />
-                  <line x1={latX} y1={-padTopElev * 0.48} x2={0} y2={0} stroke={COLOR_MAGENTA} strokeWidth={strokeElev * 0.8} />
+                  <line x1={latX} y1={-padTopElev * 0.48} x2={latX} y2={0} stroke={COLOR_MAGENTA} strokeWidth={strokeElev * 0.8} />
                   <line x1={latX + cabD} y1={-padTopElev * 0.48} x2={latX + cabD} y2={0} stroke={COLOR_MAGENTA} strokeWidth={strokeElev * 0.8} />
                   <line x1={latX - 5} y1={-padTopElev * 0.38 + 5} x2={latX + 5} y2={-padTopElev * 0.38 - 5} stroke={COLOR_MAGENTA} strokeWidth={strokeElev * 1.6} />
                   <line x1={latX + cabD - 5} y1={-padTopElev * 0.38 + 5} x2={latX + cabD + 5} y2={-padTopElev * 0.38 - 5} stroke={COLOR_MAGENTA} strokeWidth={strokeElev * 1.6} />
@@ -2684,7 +2692,7 @@ export function KitchenBlueprint() {
         const totalH = cab.depth + cab.height;
         const viewScale = Math.min(260 / totalW, 440 / totalH, 2.2);
 
-        const legsH = (cab.type === 'base' || cab.type === 'island') ? 15 : 0;
+        const legsH = (cab.type === 'base' || cab.type === 'tall' || cab.type === 'island') ? 15 : 0;
         const bodyH = cab.height - legsH;
 
         return (
@@ -3156,66 +3164,100 @@ export function KitchenBlueprint() {
         );
       })}
       
-      {/* 4. LISTADO DE HERRAJES E INSUMOS (BoM) */}
-      <div className="blueprint-page border border-black/10 flex flex-col justify-between p-8 bg-white relative">
-        <div className="flex justify-between items-end border-b-2 border-slate-900 pb-3 mb-4">
-          <div>
-            <h2 className="text-2xl font-bold uppercase tracking-tight text-slate-900">
-              Listado Consolidado de Materiales e Insumos <span className="text-orange-500">(BOM)</span>
-            </h2>
-            <p className="text-xs text-slate-500 mt-0.5 uppercase tracking-wider">
-              Sistema: {state.assemblyType === 'minifix' ? 'Minifix + Tarugo 8x30' : 'Soberbio / Spax 5x50'} • Correderas: {state.drawerHardware} • Tableros Formato Estándar
-            </p>
-          </div>
-        </div>
+      {/* 4. LISTADO CONSOLIDADO DE MATERIALES E INSUMOS (BOM) PAGINADO */}
+      {(() => {
+        const bomChunks: typeof hardwareList[] = [];
+        for (let i = 0; i < hardwareList.length; i += BOM_ITEMS_PER_PAGE) {
+          bomChunks.push(hardwareList.slice(i, i + BOM_ITEMS_PER_PAGE));
+        }
+        if (bomChunks.length === 0) {
+          bomChunks.push([]);
+        }
 
-        <table className="w-full text-left text-xs border-collapse flex-1 mb-24">
-          <thead>
-            <tr className="bg-slate-100 text-slate-700 uppercase tracking-wider text-[10px]">
-              <th className="p-2 border-b-2 border-slate-300">Categoría</th>
-              <th className="p-2 border-b-2 border-slate-300">Ítem / Componente</th>
-              <th className="p-2 border-b-2 border-slate-300 text-center">Cantidad</th>
-              <th className="p-2 border-b-2 border-slate-300 text-center">Unidad</th>
-              <th className="p-2 border-b-2 border-slate-300">Detalles de Aplicación</th>
-            </tr>
-          </thead>
-          <tbody>
-            {hardwareList.map((hw, idx) => {
-              const catColors: Record<string, string> = {
-                Tableros: 'bg-amber-100 text-amber-900',
-                Insumos: 'bg-sky-100 text-sky-900',
-                Quincallería: 'bg-blue-100 text-blue-900',
-                Zócalos: 'bg-emerald-100 text-emerald-900',
-                Equipamiento: 'bg-purple-100 text-purple-900',
-                Decoración: 'bg-pink-100 text-pink-900'
-              };
-              const badgeClass = catColors[hw.Categoria] || 'bg-slate-100 text-slate-800';
+        const baseBomPageNum = 1 + mepPagesCount + printPages.length + boardResults.length + stonePagesCount;
 
-              return (
-                <tr key={idx} className="border-b border-slate-200 even:bg-slate-50/50">
-                  <td className="p-2">
-                    <span className={`px-2 py-0.5 text-[9px] uppercase font-bold rounded ${badgeClass}`}>
-                      {hw.Categoria || 'General'}
+        return bomChunks.map((chunk, bomIdx) => {
+          const currentPageNum = baseBomPageNum + bomIdx + 1;
+          const isMultiPage = bomChunks.length > 1;
+          const bomTag = isMultiPage ? `BOM-${String(bomIdx + 1).padStart(2, '0')}` : 'BOM-01';
+
+          return (
+            <div key={`bom-page-${bomIdx}`} className="blueprint-page border border-black/10 flex flex-col justify-between p-8 bg-white relative">
+              <div className="flex justify-between items-end border-b-2 border-slate-900 pb-3 mb-3 shrink-0">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-[10px] uppercase font-bold tracking-widest px-2 py-0.5 rounded bg-orange-100 text-orange-800">
+                      CÓMPUTO MÉTRICO & HERRAJES {isMultiPage ? `(PARTE ${bomIdx + 1} DE ${bomChunks.length})` : ''}
                     </span>
-                  </td>
-                  <td className="p-2 font-medium text-slate-800">{hw.Item}</td>
-                  <td className="p-2 text-center font-mono font-bold">{hw.Cantidad}</td>
-                  <td className="p-2 text-center text-slate-500">{hw.Unidad}</td>
-                  <td className="p-2 text-slate-600 text-[11px]">{hw.Detalles || ''}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-        
-        <BlueprintTitleBlock 
-          pageNum={totalDocPages} 
-          title="LISTADO CONSOLIDADO DE MATERIALES E INSUMOS (BOM)" 
-          identTag="BOM-01"
-          customContent="CÓMPUTO MÉTRICO, HERRAJES Y FIJACIONES"
-          sheetType="bom"
-        />
-      </div>
+                  </div>
+                  <h2 className="text-2xl font-bold uppercase tracking-tight text-slate-900">
+                    Listado Consolidado de Materiales e Insumos <span className="text-orange-500">(BOM)</span>
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-0.5 uppercase tracking-wider">
+                    Sistema: {state.assemblyType === 'minifix' ? 'Minifix + Tarugo 8x30' : 'Soberbio / Spax 5x50'} • Correderas: {state.drawerHardware} • Tableros Formato Estándar
+                  </p>
+                </div>
+                {isMultiPage && (
+                  <div className="text-right">
+                    <span className="text-xs font-mono font-bold text-slate-600 bg-slate-100 px-3 py-1 rounded border border-slate-200">
+                      Ítems {bomIdx * BOM_ITEMS_PER_PAGE + 1} - {Math.min((bomIdx + 1) * BOM_ITEMS_PER_PAGE, hardwareList.length)} de {hardwareList.length}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex-1 overflow-hidden mb-28">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-slate-100 text-slate-700 uppercase tracking-wider text-[10px]">
+                      <th className="p-2 border-b-2 border-slate-300 w-[12%]">Categoría</th>
+                      <th className="p-2 border-b-2 border-slate-300 w-[30%]">Ítem / Componente</th>
+                      <th className="p-2 border-b-2 border-slate-300 text-center w-[10%]">Cantidad</th>
+                      <th className="p-2 border-b-2 border-slate-300 text-center w-[10%]">Unidad</th>
+                      <th className="p-2 border-b-2 border-slate-300 w-[38%]">Detalles de Aplicación</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {chunk.map((hw, idx) => {
+                      const catColors: Record<string, string> = {
+                        Tableros: 'bg-amber-100 text-amber-900',
+                        Insumos: 'bg-sky-100 text-sky-900',
+                        Quincallería: 'bg-blue-100 text-blue-900',
+                        Zócalos: 'bg-emerald-100 text-emerald-900',
+                        Equipamiento: 'bg-purple-100 text-purple-900',
+                        Decoración: 'bg-pink-100 text-pink-900'
+                      };
+                      const badgeClass = catColors[hw.Categoria] || 'bg-slate-100 text-slate-800';
+
+                      return (
+                        <tr key={idx} className="border-b border-slate-200 even:bg-slate-50/50">
+                          <td className="p-2">
+                            <span className={`px-2 py-0.5 text-[9px] uppercase font-bold rounded ${badgeClass}`}>
+                              {hw.Categoria || 'General'}
+                            </span>
+                          </td>
+                          <td className="p-2 font-medium text-slate-800">{hw.Item}</td>
+                          <td className="p-2 text-center font-mono font-bold text-slate-900">{hw.Cantidad}</td>
+                          <td className="p-2 text-center text-slate-500">{hw.Unidad}</td>
+                          <td className="p-2 text-slate-600 text-[11px] leading-snug">{hw.Detalles || ''}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              
+              <BlueprintTitleBlock 
+                pageNum={currentPageNum} 
+                title={`LISTADO CONSOLIDADO DE MATERIALES E INSUMOS (BOM)${isMultiPage ? ` [${bomIdx + 1}/${bomChunks.length}]` : ''}`} 
+                identTag={bomTag}
+                customContent={`CÓMPUTO MÉTRICO, HERRAJES Y FIJACIONES${isMultiPage ? ` (HOJA ${bomIdx + 1} DE ${bomChunks.length})` : ''}`}
+                sheetType="bom"
+              />
+            </div>
+          );
+        });
+      })()}
       </div>
 
       {/* Modal de PDF Listo para Descargar */}
