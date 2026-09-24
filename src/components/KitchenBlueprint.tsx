@@ -131,8 +131,9 @@ export function KitchenBlueprint() {
   
   const hwSpec = HARDWARE_SPECS[state.drawerHardware || 'Provelcar'] || HARDWARE_SPECS.Provelcar;
   const hardwareList = generateKitchenHardwareList(kState.cabinets);
-  const thicknessMm = (state.thickness || 1.5) * 10;
-  const halfThickness = thicknessMm / 2;
+  const rawThick = state.thickness || 1.8;
+  const thicknessMm = Math.round((rawThick >= 1.2 ? rawThick : 1.8) * 10);
+  const halfThickness = Number((thicknessMm / 2).toFixed(1));
 
   // Filtrar muebles reales (no decorativos)
   const realCabinets = kState.cabinets.filter(c => c.type !== 'decoration' && !c.variant?.startsWith('deco_'));
@@ -2775,7 +2776,7 @@ export function KitchenBlueprint() {
                 </h2>
                 <div className="flex gap-4 text-xs text-slate-600 mt-1 font-medium">
                   <span><strong>Estructura:</strong> {getColorName(cab.structureColor || state.structureColor)} {thicknessMm}mm</span>
-                  <span><strong>Frentes:</strong> {getColorName(cab.doorColor || state.doorColor)}</span>
+                  <span><strong>Frentes:</strong> {state.doorMaterial === 'hpl' ? `${getColorName(cab.doorColor || state.doorColor)} (HPL 0.9mm s/ Sustrato ${thicknessMm}mm)` : `${getColorName(cab.doorColor || state.doorColor)} ${thicknessMm}mm`}</span>
                   <span><strong>Trasera:</strong> Durolac 3.5mm</span>
                 </div>
               </div>
@@ -2813,7 +2814,9 @@ export function KitchenBlueprint() {
                             {part.qty} UN
                           </span>
                           <span className="text-[11px] text-slate-800 font-mono font-black">
-                            {part.thickness}mm
+                            {part.name.includes('Puerta') && state.doorMaterial === 'hpl'
+                              ? `${Math.round(part.thickness)}mm (HPL)`
+                              : `${Number(part.thickness.toFixed(1))}mm`}
                           </span>
                         </div>
                       </div>

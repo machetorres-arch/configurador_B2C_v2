@@ -17,7 +17,8 @@ export function exportKitchenPDF(cabinets: CabinetType[], state: any, filename =
   const hardwareList = generateKitchenHardwareList(cabinets);
   const hwKey = (state.drawerHardware === 'Hafele' ? 'Hafele' : 'Provelcar') as keyof typeof HARDWARE_SPECS;
   const hwSpec = HARDWARE_SPECS[hwKey] || HARDWARE_SPECS.Provelcar;
-  const thicknessMm = (state.thickness || 1.5) * 10;
+  const rawThick = state.thickness || 1.8;
+  const thicknessMm = Math.round((rawThick >= 1.2 ? rawThick : 1.8) * 10);
   const customTextures = state.customTextures || [];
 
   // ==========================================
@@ -62,7 +63,10 @@ export function exportKitchenPDF(cabinets: CabinetType[], state: any, filename =
   const tcFront = (state.edgeBandingThicknessFronts || 2.0).toFixed(2);
   doc.text(`• Total Módulos: ${realCabinets.length} unid. (Bajos: ${baseCount}, Aéreos: ${wallCount}, Torres: ${tallCount}, Islas: ${islandCount})`, 20, yPos + 13.5);
   doc.text(`• Espesor Melamina Estructura: ${thicknessMm} mm (Tapacanto PVC 22x${tcCab} mm)`, 20, yPos + 19.5);
-  doc.text(`• Frentes y Puertas: ${thicknessMm} mm (Tapacanto PVC 22x${tcFront} mm alto impacto)`, 20, yPos + 25.5);
+  const frontSpecDesc = state.doorMaterial === 'hpl'
+    ? `${thicknessMm} mm (Sustrato MDF ${thicknessMm}mm + HPL Abet 0.9mm)`
+    : `${thicknessMm} mm (Tapacanto PVC 22x${tcFront} mm alto impacto)`;
+  doc.text(`• Frentes y Puertas: ${frontSpecDesc}`, 20, yPos + 25.5);
   doc.text(`• Traseras y Fondos de Cajón: Durolac / MDF 3.5 mm ranurado a 15 mm`, 20, yPos + 31.5);
   doc.text(`• Sistema de Herrajes: ${hwSpec.slideName} (Holgura SKW: -${hwSpec.slideClearanceTotal} mm, Descuento SKL: -${hwSpec.drawerLengthDeduction} mm)`, 20, yPos + 37.5);
 
@@ -126,7 +130,7 @@ export function exportKitchenPDF(cabinets: CabinetType[], state: any, filename =
     `${p.qty}`,
     p.length.toFixed(1),
     p.width.toFixed(1),
-    `${p.thickness} mm`,
+    `${Math.round(p.thickness)} mm`,
     p.edgeL1 || p.edgeL2 ? 'Largo' : '-',
     p.edgeW1 || p.edgeW2 ? 'Ancho' : '-',
     p.notes || 'Estándar'

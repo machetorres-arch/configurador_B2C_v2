@@ -133,6 +133,49 @@ const DEMO_USERS: UserAccountItem[] = [
   }
 ];
 
+function getInitialTenants(): ProviderTenantItem[] {
+  try {
+    const adminProviders = useAdminStore.getState().providers || [];
+    const saved = localStorage.getItem('arquify_admin_tenants');
+    const baseList: ProviderTenantItem[] = saved ? JSON.parse(saved) : DEMO_TENANTS;
+
+    const map = new Map<string, ProviderTenantItem>();
+
+    // Primero proveedores de adminStore
+    adminProviders.forEach((p) => {
+      map.set(p.id, {
+        id: p.id,
+        name: p.name,
+        slug: p.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''),
+        contact_email: p.email || 'contacto@proveedor.cl',
+        phone: p.phone || '+56 2 2700 8000',
+        address: p.address || 'Santiago, Chile',
+        currency: 'CLP',
+        default_margin_pct: 35,
+        commission_pct: p.commissionPercentage || 15,
+        is_active: p.active !== false,
+        users_count: 1,
+        projects_count: 4,
+        created_at: p.createdAt || '2026-01-01',
+      });
+    });
+
+    // Luego fusionar con baseList para no perder ediciones
+    baseList.forEach((t) => {
+      const existing = map.get(t.id) || Array.from(map.values()).find((item) => item.name.toLowerCase() === t.name.toLowerCase());
+      if (existing) {
+        map.set(existing.id, { ...existing, ...t, id: existing.id });
+      } else {
+        map.set(t.id, t);
+      }
+    });
+
+    return Array.from(map.values());
+  } catch (e) {
+    return DEMO_TENANTS;
+  }
+}
+
 export function UsersAndProvidersTab() {
   const isCloud = isSupabaseConfigured();
   const currentSupabaseUser = useSupabaseAuthStore((state) => state.user);
@@ -144,10 +187,7 @@ export function UsersAndProvidersTab() {
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // States for list
-  const [tenants, setTenants] = useState<ProviderTenantItem[]>(() => {
-    const saved = localStorage.getItem('arquify_admin_tenants');
-    return saved ? JSON.parse(saved) : DEMO_TENANTS;
-  });
+  const [tenants, setTenants] = useState<ProviderTenantItem[]>(getInitialTenants);
 
   const [users, setUsers] = useState<UserAccountItem[]>(() => {
     const saved = localStorage.getItem('arquify_admin_users');
@@ -522,6 +562,7 @@ export function UsersAndProvidersTab() {
       }
     } else {
       setTenants(tenants.filter((t) => t.id !== id));
+      useAdminStore.getState().deleteProvider(id);
       showFeedback('success', `Proveedor "${name}" eliminado.`);
     }
   };

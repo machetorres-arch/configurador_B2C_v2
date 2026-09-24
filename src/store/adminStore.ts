@@ -70,6 +70,10 @@ export interface CustomTextureItem {
   commissionPercentage?: number;
   providerNetPriceClp?: number;
   rejectionReason?: string;
+  // Espesor técnico y medidas métricas de plancha
+  thicknessMm?: number;
+  sheetWidthM?: number;
+  sheetHeightM?: number;
 }
 
 export interface ProviderItem {
@@ -799,6 +803,7 @@ export const DEFAULT_CUSTOM_TEXTURES: CustomTextureItem[] = [
     category: 'maderas',
     finish: 'Poro Sincronizado',
     sheetFormat: '1.83 x 2.50 m',
+    thicknessMm: 18,
     priceM2Clp: 10250,
     priceSheetClp: 46900,
     url: '/textures/light-wood-grain.svg',
@@ -811,13 +816,34 @@ export const DEFAULT_CUSTOM_TEXTURES: CustomTextureItem[] = [
     providerNetPriceClp: 41272
   },
   {
+    id: 'tex-blanco-soft-15',
+    name: 'Blanco Estándar 15mm',
+    code: 'TAB-MEL-15-BLA',
+    brand: 'Arauco',
+    category: 'solidos',
+    finish: 'Soft Mate',
+    sheetFormat: '1.83 x 2.50 m',
+    thicknessMm: 15,
+    priceM2Clp: 6310,
+    priceSheetClp: 28900,
+    url: '#FFFFFF',
+    previewUrl: '#FFFFFF',
+    active: true,
+    createdAt: '2026-02-05',
+    approvalStatus: 'approved',
+    providerName: 'Arauco Soluciones',
+    commissionPercentage: 10,
+    providerNetPriceClp: 26010
+  },
+  {
     id: 'tex-blanco-soft',
-    name: 'Blanco Polo Soft',
+    name: 'Blanco Polo Soft 18mm',
     code: 'ARAU-BLA-18',
     brand: 'Arauco',
     category: 'solidos',
     finish: 'Soft Mate',
     sheetFormat: '1.83 x 2.50 m',
+    thicknessMm: 18,
     priceM2Clp: 7540,
     priceSheetClp: 34500,
     url: '#F8F9FA',
@@ -837,6 +863,7 @@ export const DEFAULT_CUSTOM_TEXTURES: CustomTextureItem[] = [
     category: 'solidos',
     finish: 'Seda Antihuella',
     sheetFormat: '1.83 x 2.50 m',
+    thicknessMm: 18,
     priceM2Clp: 9400,
     priceSheetClp: 43000,
     url: '#373E44',
@@ -1418,6 +1445,69 @@ export const DEFAULT_PROJECTS: ProjectItem[] = [];
 
 const LOCAL_STORAGE_KEY = 'mueblestudio_admin_store_v1';
 
+export function textureToSupplyItem(tex: CustomTextureItem): SupplyItem {
+  const isStone =
+    tex.category === 'piedras_marmoles' ||
+    tex.brand?.toLowerCase().includes('qstone') ||
+    tex.brand?.toLowerCase().includes('sysprotec');
+  const isHpl = tex.category === 'hpl_autor' || tex.brand?.toLowerCase().includes('abet');
+  const category: SupplyCategory = isStone ? 'cubiertas_qstone' : 'melamina';
+
+  const thicknessStr = tex.thicknessMm ? `${tex.thicknessMm}mm ` : '';
+  const unit = isStone
+    ? 'm²'
+    : isHpl
+    ? 'Plancha (3.96 m²)'
+    : tex.sheetFormat
+    ? `Plancha (${tex.sheetFormat})`
+    : 'Plancha (4.57 m²)';
+
+  const priceClp = isStone
+    ? tex.priceM2Clp || Math.round((tex.priceSheetClp || 280000) / 3.965)
+    : tex.priceSheetClp || 45000;
+
+  const displayName = `${tex.name} ${thicknessStr}${tex.sheetFormat ? `(${tex.sheetFormat})` : ''}`.replace(/\s+/g, ' ').trim();
+
+  return {
+    id: `sup-${tex.id}`,
+    category,
+    name: displayName,
+    code: tex.code || `TAB-${tex.id.slice(-6).toUpperCase()}`,
+    spec: `${tex.brand || 'Proveedor'} - ${tex.finish || 'Estándar'} (${thicknessStr.trim() || 'Tablero'})`,
+    unit,
+    priceClp,
+    supplier: tex.providerName || tex.brand || 'Proveedor Registrado',
+    stockRef: 50,
+    notes: `Decorativo 3D sincronizado automáticamente`,
+  };
+}
+
+export function mergeTexturesIntoSupplies(baseSupplies: SupplyItem[], textures: CustomTextureItem[]): SupplyItem[] {
+  const map = new Map<string, SupplyItem>();
+  baseSupplies.forEach((s) => map.set(s.id, s));
+
+  textures.forEach((tex) => {
+    const supId = `sup-${tex.id}`;
+    const generated = textureToSupplyItem(tex);
+    const existing = map.get(supId) || Array.from(map.values()).find((s) => s.code === tex.code);
+    if (existing) {
+      map.set(existing.id, {
+        ...existing,
+        name: generated.name,
+        priceClp: generated.priceClp,
+        supplier: generated.supplier,
+        spec: generated.spec,
+        unit: generated.unit,
+        category: generated.category,
+      });
+    } else {
+      map.set(supId, generated);
+    }
+  });
+
+  return Array.from(map.values());
+}
+
 // IDs de proyectos de muestra para depuración automática
 const DEMO_PROJECT_IDS = new Set([
   'proj-kitchen-loft-01',
@@ -1433,6 +1523,33 @@ const getInitialState = () => {
     const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
+      const parsedTextures: CustomTextureItem[] = (() => {
+        if (!Array.isArray(parsed.textures) || parsed.textures.length === 0) return DEFAULT_CUSTOM_TEXTURES;
+        const map = new Map<string, CustomTextureItem>();
+        DEFAULT_CUSTOM_TEXTURES.forEach((t) => map.set(t.id, t));
+        parsed.textures.forEach((t: CustomTextureItem) => {
+          const def = map.get(t.id);
+          map.set(t.id, def ? { ...def, ...t } : t);
+        });
+        return Array.from(map.values()).map((t) => ({
+          ...t,
+          approvalStatus: t.approvalStatus || 'approved'
+        }));
+      })();
+
+      const parsedSupplies: SupplyItem[] = (() => {
+        if (!Array.isArray(parsed.supplies) || parsed.supplies.length === 0) {
+          return mergeTexturesIntoSupplies(DEFAULT_SUPPLIES, parsedTextures);
+        }
+        const map = new Map<string, SupplyItem>();
+        DEFAULT_SUPPLIES.forEach((s) => map.set(s.id, s));
+        parsed.supplies.forEach((s: SupplyItem) => {
+          const def = map.get(s.id);
+          map.set(s.id, def ? { ...def, ...s } : s);
+        });
+        return mergeTexturesIntoSupplies(Array.from(map.values()), parsedTextures);
+      })();
+
       return {
         isAuthenticated: !!parsed.isAuthenticated,
         adminEmail: parsed.adminEmail || null,
@@ -1452,29 +1569,8 @@ const getInitialState = () => {
               (p) => p && p.id && !DEMO_PROJECT_IDS.has(p.id) && !p.id.startsWith('proj-kitchen-loft') && !p.id.startsWith('proj-closet-master') && !p.id.startsWith('proj-special-vitrina')
             )
           : [],
-        supplies: (() => {
-          if (!Array.isArray(parsed.supplies) || parsed.supplies.length === 0) return DEFAULT_SUPPLIES;
-          const map = new Map<string, SupplyItem>();
-          DEFAULT_SUPPLIES.forEach((s) => map.set(s.id, s));
-          parsed.supplies.forEach((s: SupplyItem) => {
-            const def = map.get(s.id);
-            map.set(s.id, def ? { ...def, ...s } : s);
-          });
-          return Array.from(map.values());
-        })(),
-        textures: (() => {
-          if (!Array.isArray(parsed.textures) || parsed.textures.length === 0) return DEFAULT_CUSTOM_TEXTURES;
-          const map = new Map<string, CustomTextureItem>();
-          DEFAULT_CUSTOM_TEXTURES.forEach((t) => map.set(t.id, t));
-          parsed.textures.forEach((t: CustomTextureItem) => {
-            const def = map.get(t.id);
-            map.set(t.id, def ? { ...def, ...t } : t);
-          });
-          return Array.from(map.values()).map((t) => ({
-            ...t,
-            approvalStatus: t.approvalStatus || 'approved'
-          }));
-        })(),
+        supplies: parsedSupplies,
+        textures: parsedTextures,
         manufacturingRates: parsed.manufacturingRates
           ? { ...DEFAULT_MANUFACTURING_RATES, ...parsed.manufacturingRates }
           : DEFAULT_MANUFACTURING_RATES,
@@ -1489,7 +1585,7 @@ const getInitialState = () => {
     themeMode: 'dark' as 'dark' | 'light',
     providers: DEFAULT_PROVIDERS,
     projects: [],
-    supplies: DEFAULT_SUPPLIES,
+    supplies: mergeTexturesIntoSupplies(DEFAULT_SUPPLIES, DEFAULT_CUSTOM_TEXTURES),
     textures: DEFAULT_CUSTOM_TEXTURES,
     manufacturingRates: DEFAULT_MANUFACTURING_RATES,
   };
@@ -1507,8 +1603,27 @@ const saveToLocalStorage = (state: {
 }) => {
   try {
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(state));
-  } catch (e) {
-    console.error('Error saving admin state to localStorage', e);
+  } catch (e: any) {
+    console.warn('Quota exceeded on full state save, attempting resilient textures save:', e);
+    try {
+      // Si la cuota de localStorage se llena por imágenes grandes, guardar URLs seguras
+      const resilientTextures = state.textures.map((t) => {
+        if (t.url && t.url.length > 250000) {
+          return {
+            ...t,
+            url: t.previewUrl && t.previewUrl.length <= 250000 ? t.previewUrl : '#CCCCCC',
+            previewUrl: t.previewUrl && t.previewUrl.length <= 250000 ? t.previewUrl : '#CCCCCC',
+          };
+        }
+        return t;
+      });
+      localStorage.setItem(
+        LOCAL_STORAGE_KEY,
+        JSON.stringify({ ...state, textures: resilientTextures })
+      );
+    } catch (err2) {
+      console.error('Critical: unable to persist to localStorage', err2);
+    }
   }
 };
 
@@ -1886,7 +2001,17 @@ export const useAdminStore = create<AdminState>((set, get) => {
     updateSupplyPrice: (id, newPrice) => {
       const validPrice = Math.max(0, newPrice);
       const currentSupplies = get().supplies.map((s) => (s.id === id ? { ...s, priceClp: validPrice } : s));
-      persist({ supplies: currentSupplies });
+      
+      // Si el insumo corresponde a una textura personalizada, actualizar el precio de la textura
+      let currentTextures = get().textures;
+      if (id.startsWith('sup-')) {
+        const texId = id.replace('sup-', '');
+        currentTextures = currentTextures.map((t) =>
+          t.id === texId ? { ...t, priceSheetClp: validPrice, priceM2Clp: Math.round(validPrice / 4.57) } : t
+        );
+      }
+
+      persist({ supplies: currentSupplies, textures: currentTextures });
       try {
         useKitchenStore.getState().updateQstoneCatalogItemPrice(id, validPrice);
       } catch (e) {
@@ -1896,7 +2021,26 @@ export const useAdminStore = create<AdminState>((set, get) => {
 
     updateSupply: (id, updates) => {
       const currentSupplies = get().supplies.map((s) => (s.id === id ? { ...s, ...updates } : s));
-      persist({ supplies: currentSupplies });
+      
+      // Sincronizar hacia textures si corresponde
+      let currentTextures = get().textures;
+      if (id.startsWith('sup-')) {
+        const texId = id.replace('sup-', '');
+        currentTextures = currentTextures.map((t) => {
+          if (t.id === texId) {
+            return {
+              ...t,
+              ...(updates.priceClp !== undefined
+                ? { priceSheetClp: updates.priceClp, priceM2Clp: Math.round(updates.priceClp / 4.57) }
+                : {}),
+              ...(updates.supplier ? { providerName: updates.supplier, brand: updates.supplier } : {}),
+            };
+          }
+          return t;
+        });
+      }
+
+      persist({ supplies: currentSupplies, textures: currentTextures });
       try {
         if (updates.priceClp !== undefined) {
           useKitchenStore.getState().updateQstoneCatalogItemPrice(id, updates.priceClp);
@@ -1972,17 +2116,24 @@ export const useAdminStore = create<AdminState>((set, get) => {
         createdAt: new Date().toISOString().split('T')[0],
         approvalStatus: textureData.approvalStatus || 'approved'
       };
-      const currentTextures = get().textures;
-      persist({ textures: [newTex, ...currentTextures] });
+      const currentTextures = [newTex, ...get().textures];
+      const supItem = textureToSupplyItem(newTex);
+      const currentSupplies = [supItem, ...get().supplies.filter((s) => s.id !== supItem.id && s.code !== supItem.code)];
+      persist({ textures: currentTextures, supplies: currentSupplies });
       syncTextureToKitchenStore(newTex);
       return newId;
     },
 
     updateTexture: (id, updates) => {
       const currentTextures = get().textures.map((t) => (t.id === id ? { ...t, ...updates } : t));
-      persist({ textures: currentTextures });
-      const updated = currentTextures.find((t) => t.id === id);
-      if (updated) syncTextureToKitchenStore(updated);
+      const target = currentTextures.find((t) => t.id === id);
+      let currentSupplies = get().supplies;
+      if (target) {
+        const supItem = textureToSupplyItem(target);
+        currentSupplies = currentSupplies.map((s) => (s.id === `sup-${id}` || s.code === target.code ? { ...s, ...supItem } : s));
+      }
+      persist({ textures: currentTextures, supplies: currentSupplies });
+      if (target) syncTextureToKitchenStore(target);
     },
 
     toggleTextureActive: (id) => {
@@ -2013,14 +2164,16 @@ export const useAdminStore = create<AdminState>((set, get) => {
 
     deleteTexture: (id) => {
       const currentTextures = get().textures.filter((t) => t.id !== id);
-      persist({ textures: currentTextures });
+      const currentSupplies = get().supplies.filter((s) => s.id !== `sup-${id}`);
+      persist({ textures: currentTextures, supplies: currentSupplies });
       try {
         useKitchenStore.getState().removeQstoneCatalogItem(id);
       } catch (e) {}
     },
 
     resetTexturesToDefault: () => {
-      persist({ textures: DEFAULT_CUSTOM_TEXTURES });
+      const defaultSuppliesMerged = mergeTexturesIntoSupplies(DEFAULT_SUPPLIES, DEFAULT_CUSTOM_TEXTURES);
+      persist({ textures: DEFAULT_CUSTOM_TEXTURES, supplies: defaultSuppliesMerged });
       try {
         DEFAULT_CUSTOM_TEXTURES.forEach(syncTextureToKitchenStore);
       } catch (e) {}

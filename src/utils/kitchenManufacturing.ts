@@ -295,7 +295,8 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
   const parts: Part[] = [];
   const state = useStore.getState();
   const kState = useKitchenStore.getState();
-  const thickness = state.thickness; // thickness in cm
+  const rawThick = state.thickness || 1.8;
+  const thickness = rawThick >= 1.2 ? Number(rawThick.toFixed(2)) : 1.8; // thickness en cm (mínimo 12mm, estándar 15/18mm)
   const hwSpec = HARDWARE_SPECS[state.drawerHardware || 'Provelcar'] || HARDWARE_SPECS.Provelcar;
   
   cabinets.forEach((cab, index) => {
@@ -1748,7 +1749,8 @@ export function generateKitchenHardwareList(cabinets: CabinetType[]) {
     const state = useStore.getState();
     const kState = useKitchenStore.getState();
     const hwSpec = HARDWARE_SPECS[state.drawerHardware || 'Provelcar'] || HARDWARE_SPECS.Provelcar;
-    const thicknessMm = (state.thickness || 1.5) * 10;
+    const rawThick = state.thickness || 1.8;
+    const thicknessMm = Math.round((rawThick >= 1.2 ? rawThick : 1.8) * 10);
 
     const DEFAULT_NAMES: Record<string, string> = {
       '#FFFFFF': 'Blanco Frost',

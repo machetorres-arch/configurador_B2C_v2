@@ -28,6 +28,48 @@ interface TexturesManagerTabProps {
   isSuperAdmin?: boolean;
 }
 
+function compressImageFile(file: File, maxDim = 800, quality = 0.82): Promise<string> {
+  return new Promise((resolve) => {
+    if (file.type === 'image/svg+xml' || file.name.toLowerCase().endsWith('.svg')) {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve((e.target?.result as string) || '');
+      reader.readAsDataURL(file);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', quality));
+        } else {
+          resolve((e.target?.result as string) || '');
+        }
+      };
+      img.onerror = () => resolve((e.target?.result as string) || '');
+      img.src = (e.target?.result as string) || '';
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 export function TexturesManagerTab({ currentProviderId, isSuperAdmin = true }: TexturesManagerTabProps) {
   const {
     textures,
@@ -57,6 +99,9 @@ export function TexturesManagerTab({ currentProviderId, isSuperAdmin = true }: T
   );
   const [category, setCategory] = useState<'maderas' | 'solidos' | 'hpl_autor' | 'piedras_marmoles'>('maderas');
   const [finish, setFinish] = useState('Poro Sincronizado');
+  const [thicknessMm, setThicknessMm] = useState<number>(18);
+  const [sheetWidthM, setSheetWidthM] = useState<number>(1.83);
+  const [sheetHeightM, setSheetHeightM] = useState<number>(2.50);
   const [sheetFormat, setSheetFormat] = useState('1.83 x 2.50 m');
   const [priceSheetClp, setPriceSheetClp] = useState(48000); // Valor de venta final
   const [previewUrl, setPreviewUrl] = useState<string>('');
@@ -75,13 +120,12 @@ export function TexturesManagerTab({ currentProviderId, isSuperAdmin = true }: T
   const arquifyRetainedClp = Math.round((priceSheetClp * commissionPct) / 100);
   const providerNetPayoutClp = priceSheetClp - arquifyRetainedClp;
 
-  // Formato m² según plancha
+  // Formato m² según ancho y largo métricos
   const calculatedM2 = useMemo(() => {
-    if (sheetFormat.includes('1.83')) return 4.575;
-    if (sheetFormat.includes('1.30')) return 3.965;
-    if (sheetFormat.includes('1.22')) return 2.976;
-    return 4.0;
-  }, [sheetFormat]);
+    const w = Number(sheetWidthM) || 1.83;
+    const h = Number(sheetHeightM) || 2.50;
+    return Math.max(0.1, Math.round(w * h * 1000) / 1000);
+  }, [sheetWidthM, sheetHeightM]);
 
   const priceM2Clp = Math.round(priceSheetClp / calculatedM2);
 
@@ -137,19 +181,19 @@ export function TexturesManagerTab({ currentProviderId, isSuperAdmin = true }: T
     setTimeout(() => setToastMsg(null), 4000);
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (!file.type.startsWith('image/')) {
+      if (!file.type.startsWith('image/') && !file.name.toLowerCase().endsWith('.svg')) {
         alert('Por favor seleccione un archivo de imagen (.jpg, .png, .svg, .webp)');
         return;
       }
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const result = event.target?.result as string;
-        setPreviewUrl(result);
-      };
-      reader.readAsDataURL(file);
+      try {
+        const compressed = await compressImageFile(file, 800, 0.82);
+        setPreviewUrl(compressed);
+      } catch (err) {
+        console.error('Error al procesar la imagen:', err);
+      }
     }
   };
 
@@ -163,13 +207,18 @@ export function TexturesManagerTab({ currentProviderId, isSuperAdmin = true }: T
     // Si quien crea es un proveedor o superadmin especificando flujo de aprobación:
     const initialApprovalStatus = isSuperAdmin ? approvalMode : 'pending';
 
+    const formattedFormat = `${sheetWidthM} x ${sheetHeightM} m`;
+
     const newId = addTexture({
       name: name.trim(),
       code: code.trim() || `PRV-${Math.floor(Math.random() * 9000 + 1000)}`,
       brand: currentSelectedProvider.name,
       category,
       finish,
-      sheetFormat,
+      sheetFormat: formattedFormat,
+      thicknessMm: Number(thicknessMm) || 18,
+      sheetWidthM: Number(sheetWidthM),
+      sheetHeightM: Number(sheetHeightM),
       priceSheetClp: Number(priceSheetClp),
       priceM2Clp,
       url: previewUrl,
@@ -533,7 +582,23 @@ export function TexturesManagerTab({ currentProviderId, isSuperAdmin = true }: T
                 <label className="block text-[11px] uppercase font-bold text-zinc-400 mb-1">Categoría</label>
                 <select
                   value={category}
-                  onChange={(e) => setCategory(e.target.value as any)}
+                  onChange={(e) => {
+                    const newCat = e.target.value as any;
+                    setCategory(newCat);
+                    if (newCat === 'hpl_autor') {
+                      setThicknessMm(0.9);
+                      setSheetWidthM(1.30);
+                      setSheetHeightM(3.05);
+                    } else if (newCat === 'piedras_marmoles') {
+                      setThicknessMm(20);
+                      setSheetWidthM(1.60);
+                      setSheetHeightM(3.20);
+                    } else {
+                      setThicknessMm(18);
+                      setSheetWidthM(1.83);
+                      setSheetHeightM(2.50);
+                    }
+                  }}
                   className="w-full p-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-xs text-white focus:border-orange-500 focus:outline-none"
                 >
                   <option value="maderas">Melaminas & Maderas</option>
@@ -543,17 +608,144 @@ export function TexturesManagerTab({ currentProviderId, isSuperAdmin = true }: T
                 </select>
               </div>
 
+              {/* Espesor de Plancha (15mm, 18mm, etc.) */}
               <div>
-                <label className="block text-[11px] uppercase font-bold text-zinc-400 mb-1">Formato de Plancha</label>
-                <select
-                  value={sheetFormat}
-                  onChange={(e) => setSheetFormat(e.target.value)}
-                  className="w-full p-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-xs text-white focus:border-orange-500 focus:outline-none"
-                >
-                  <option value="1.83 x 2.50 m">1.83 x 2.50 m (4.58 m² - Melamina Estándar)</option>
-                  <option value="1.30 x 3.05 m">1.30 x 3.05 m (3.96 m² - HPL Abet Laminati)</option>
-                  <option value="1.22 x 2.44 m">1.22 x 2.44 m (2.98 m² - Tablero 4x8)</option>
-                </select>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-[11px] uppercase font-bold text-zinc-400">
+                    Espesor Técnico
+                  </label>
+                  <span className="text-[10px] font-mono font-bold text-orange-400">
+                    {thicknessMm} mm
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setThicknessMm(15)}
+                    className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold font-mono transition-all cursor-pointer border ${
+                      thicknessMm === 15
+                        ? 'bg-orange-500 text-black border-orange-500 font-extrabold shadow-sm'
+                        : 'bg-zinc-950 text-zinc-300 border-zinc-700 hover:border-zinc-500'
+                    }`}
+                  >
+                    15 mm
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setThicknessMm(18)}
+                    className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold font-mono transition-all cursor-pointer border ${
+                      thicknessMm === 18
+                        ? 'bg-orange-500 text-black border-orange-500 font-extrabold shadow-sm'
+                        : 'bg-zinc-950 text-zinc-300 border-zinc-700 hover:border-zinc-500'
+                    }`}
+                  >
+                    18 mm
+                  </button>
+                  <div className="relative w-24">
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0.5"
+                      max="50"
+                      value={thicknessMm}
+                      onChange={(e) => setThicknessMm(Number(e.target.value) || 18)}
+                      className="w-full pl-2 pr-7 py-1.5 bg-zinc-950 border border-zinc-700 rounded-lg text-xs text-white font-mono focus:border-orange-500 focus:outline-none text-right"
+                    />
+                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-zinc-500 font-mono pointer-events-none">
+                      mm
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Formato de Plancha Flexible (Ancho x Largo) */}
+              <div className="sm:col-span-2 p-3 bg-zinc-950/60 border border-zinc-800 rounded-xl space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="block text-[11px] uppercase font-bold text-zinc-400">
+                    Formato de Plancha (Dimensiones Métricas)
+                  </label>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] text-zinc-400 font-mono">
+                      Superficie neta:
+                    </span>
+                    <span className="px-2 py-0.5 rounded bg-orange-500/20 text-orange-400 border border-orange-500/30 text-[10px] font-bold font-mono">
+                      {calculatedM2.toFixed(3)} m² / plancha
+                    </span>
+                  </div>
+                </div>
+
+                {/* Presets rápidos */}
+                <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
+                  <span className="text-zinc-500 font-semibold uppercase text-[9px] mr-1">Presets:</span>
+                  {[
+                    { label: '1.83 x 2.50 m (Masisa/Arauco)', w: 1.83, h: 2.50 },
+                    { label: '1.83 x 2.75 m (Faplac/Egger)', w: 1.83, h: 2.75 },
+                    { label: '1.22 x 2.44 m (Tablero 4x8)', w: 1.22, h: 2.44 },
+                    { label: '1.30 x 3.05 m (HPL Abet)', w: 1.30, h: 3.05 },
+                    { label: '1.60 x 3.20 m (Qstone Jumbo)', w: 1.60, h: 3.20 },
+                  ].map((p) => {
+                    const isSelected = sheetWidthM === p.w && sheetHeightM === p.h;
+                    return (
+                      <button
+                        key={p.label}
+                        type="button"
+                        onClick={() => {
+                          setSheetWidthM(p.w);
+                          setSheetHeightM(p.h);
+                        }}
+                        className={`px-2 py-1 rounded-md transition-all cursor-pointer font-mono ${
+                          isSelected
+                            ? 'bg-orange-500 text-black font-extrabold shadow-xs'
+                            : 'bg-zinc-900 text-zinc-300 border border-zinc-700/80 hover:border-orange-500/50'
+                        }`}
+                      >
+                        {p.w}x{p.h}m
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Campos numéricos directos de Ancho x Largo */}
+                <div className="grid grid-cols-2 gap-3 pt-1">
+                  <div>
+                    <label className="block text-[10px] text-zinc-400 mb-1 font-semibold">
+                      Ancho Plancha (metros)
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0.5"
+                        max="6.0"
+                        value={sheetWidthM}
+                        onChange={(e) => setSheetWidthM(Number(e.target.value) || 1.83)}
+                        className="w-full pl-3 pr-7 py-1.5 bg-zinc-900 border border-zinc-700 rounded-lg text-xs text-white font-mono font-bold focus:border-orange-500 focus:outline-none"
+                      />
+                      <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-zinc-500 font-mono pointer-events-none">
+                        m
+                      </span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-zinc-400 mb-1 font-semibold">
+                      Largo Plancha (metros)
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0.5"
+                        max="6.0"
+                        value={sheetHeightM}
+                        onChange={(e) => setSheetHeightM(Number(e.target.value) || 2.50)}
+                        className="w-full pl-3 pr-7 py-1.5 bg-zinc-900 border border-zinc-700 rounded-lg text-xs text-white font-mono font-bold focus:border-orange-500 focus:outline-none"
+                      />
+                      <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-zinc-500 font-mono pointer-events-none">
+                        m
+                      </span>
+                    </div>
+                  </div>
+                </div>
               </div>
 
               <div>
@@ -770,8 +962,15 @@ export function TexturesManagerTab({ currentProviderId, isSuperAdmin = true }: T
               <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
                 <div>
                   <div className="flex items-center justify-between gap-2 text-[10px]">
-                    <span className="font-mono text-orange-400 font-bold">{tex.code}</span>
-                    <span className="text-zinc-400">{tex.sheetFormat}</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-mono text-orange-400 font-bold">{tex.code}</span>
+                      {tex.thicknessMm && (
+                        <span className="px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-400 border border-orange-500/30 font-mono font-bold text-[9px]">
+                          {tex.thicknessMm} mm
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-zinc-400 font-mono text-[10px]">{tex.sheetFormat}</span>
                   </div>
                   <h4 className="text-sm font-bold text-white tracking-tight mt-0.5">{tex.name}</h4>
                   <p className="text-xs text-zinc-400 mt-0.5">{tex.finish}</p>

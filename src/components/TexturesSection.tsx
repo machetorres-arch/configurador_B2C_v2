@@ -1,10 +1,12 @@
+import React, { useState } from 'react';
 import { useStore, PartType } from '../store';
 import { useAdminStore } from '../store/adminStore';
 import { useKitchenStore } from '../store/kitchenStore';
 
 const DEFAULT_TEXTURES = [
-  { id: 'def_mas_blanco', name: 'Masisa Blanco', url: '#FFFFFF' },
-  { id: 'def_mas_negro', name: 'Masisa Negro', url: '#171717' }
+  { id: 'def_mas_blanco_15', name: 'Masisa Blanco', url: '#FFFFFF', thicknessMm: 15, brand: 'Masisa' },
+  { id: 'def_mas_blanco_18', name: 'Masisa Blanco', url: '#FFFFFF', thicknessMm: 18, brand: 'Masisa' },
+  { id: 'def_mas_negro_18', name: 'Masisa Negro', url: '#171717', thicknessMm: 18, brand: 'Masisa' }
 ];
 
 export const TexturesSection = ({ 
@@ -20,35 +22,8 @@ export const TexturesSection = ({
 }) => {
   const state = useStore();
   const adminTextures = useAdminStore((s) => s.textures);
+  const [thicknessFilter, setThicknessFilter] = useState<'all' | 15 | 18>('all');
   const hasIslands = useKitchenStore((s) => s.cabinets?.some((c) => c.type === 'island'));
-  const { countertopConfig, setCountertopConfig, qstoneCatalog, addQstoneCatalogItem } = useKitchenStore();
-
-  const handleSelectQstone = (tex: any) => {
-    const matched = qstoneCatalog.find(
-      (p) => p.id === tex.id || p.textureUrl === tex.url || p.name.toLowerCase() === tex.name.toLowerCase()
-    );
-    if (matched) {
-      setCountertopConfig({ selectedProductId: matched.id, enabled: true });
-    } else {
-      const isSintered = tex.name.toLowerCase().includes('sinteriz') || tex.category === 'piedras_marmoles';
-      addQstoneCatalogItem({
-        id: tex.id,
-        code: tex.code || 'QS-CUSTOM',
-        name: tex.name,
-        materialType: isSintered ? 'sinterizado' : 'quarzo',
-        thicknessMm: tex.name.includes('20') ? 20 : (tex.name.includes('18') ? 18 : 12),
-        priceM2Clp: tex.priceM2Clp || 280000,
-        sheetWidthMm: 3200,
-        sheetHeightMm: 1600,
-        colorHex: tex.url && tex.url.startsWith('#') ? tex.url : '#F8FAFC',
-        textureUrl: tex.url,
-        finish: tex.finish || 'Pulido Seda',
-        description: `${tex.brand || 'Sysprotec'} - Formato Placa`,
-        active: true,
-      });
-      setCountertopConfig({ selectedProductId: tex.id, enabled: true });
-    }
-  };
 
   const applyTexture = (url: string, name: string) => {
     const nameLower = name.toLowerCase();
@@ -84,15 +59,26 @@ export const TexturesSection = ({
   };
 
   // Filtrar exclusivamente terminaciones aprobadas por el Superadministrador (VB) y activas
+  // Las cubiertas de cuarzo/sinterizado (Qstone Sysprotec) se configuran exclusivamente en el modal de cubiertas
   const activeApprovedAdminTextures = (adminTextures || [])
     .filter(t => t.active && (t.approvalStatus === 'approved' || !t.approvalStatus))
+    .filter(t => {
+      const cat = t.category;
+      const n = (t.name || '').toLowerCase();
+      const b = (t.brand || t.providerName || '').toLowerCase();
+      const isStone = cat === 'piedras_marmoles' || n.includes('qstone') || b.includes('qstone') || b.includes('sysprotec');
+      return !isStone;
+    })
     .map(t => ({
       id: t.id,
-      name: `${t.brand ? t.brand + ' ' : ''}${t.name}`,
+      name: t.name.toLowerCase().includes((t.brand || '').toLowerCase()) ? t.name : `${t.brand ? t.brand + ' ' : ''}${t.name}`,
       code: t.code,
       url: t.url || t.previewUrl || '#CCCCCC',
       category: t.category,
-      brand: t.brand || t.providerName
+      brand: t.brand || t.providerName,
+      providerName: t.providerName,
+      thicknessMm: t.thicknessMm || (t.category === 'hpl_autor' ? 0.9 : (t.name.includes('15') ? 15 : 18)),
+      sheetFormat: t.sheetFormat
     }));
 
   // Combinación única con defaults
@@ -102,51 +88,87 @@ export const TexturesSection = ({
 
   const allTextures = Array.from(combinedMap.values());
   
-  const masisaTextures = allTextures.filter(t => t.name.toLowerCase().includes('masisa') || t.brand?.toLowerCase() === 'masisa');
-  const qstoneTextures = allTextures.filter(t => {
-    const n = t.name.toLowerCase();
+  const isMasisaItem = (t: any) => {
+    const n = (t.name || '').toLowerCase();
     const b = (t.brand || '').toLowerCase();
-    return n.includes('qstone') || b.includes('qstone') || b.includes('sysprotec') || t.category === 'piedras_marmoles';
-  });
-  const abetTextures = allTextures.filter(t => {
-    const n = t.name.toLowerCase();
-    const b = (t.brand || '').toLowerCase();
-    return n.includes('abet') || n.includes('laminati') || n.includes('hpl') || t.category === 'hpl_autor' || b.includes('abet');
-  });
-  const otherTextures = allTextures.filter(t => {
-    const n = t.name.toLowerCase();
-    const b = (t.brand || '').toLowerCase();
-    const isMasisa = n.includes('masisa') || b.includes('masisa');
-    const isQstone = n.includes('qstone') || b.includes('qstone') || b.includes('sysprotec') || t.category === 'piedras_marmoles';
-    const isAbet = n.includes('abet') || n.includes('laminati') || n.includes('hpl') || t.category === 'hpl_autor' || b.includes('abet');
-    return !isMasisa && !isQstone && !isAbet;
-  });
+    const p = (t.providerName || '').toLowerCase();
+    return n.includes('masisa') || b.includes('masisa') || p.includes('masisa');
+  };
 
-  const renderTextureButton = (tex: any) => (
-    <div key={tex.id} className="relative group">
-      <button 
-        onClick={() => applyTexture(tex.url, tex.name)}
-        className={`flex flex-col items-center gap-1 p-1 rounded transition-colors w-full cursor-pointer ${
-          isLight 
-            ? 'bg-white border border-slate-300 hover:border-orange-500 shadow-sm' 
-            : 'bg-white/5 border border-white/10 hover:border-orange-500/50'
-        }`}
-        title={`${tex.name} ${tex.code ? `(${tex.code})` : ''}`}
-      >
-        <div 
-          className={`w-full aspect-square rounded border group-hover:shadow-[0_0_10px_rgba(249,115,22,0.3)] bg-cover bg-center ${
-            isLight ? 'border-slate-200' : 'border-white/20'
+  const isAbetItem = (t: any) => {
+    const n = (t.name || '').toLowerCase();
+    const b = (t.brand || '').toLowerCase();
+    const p = (t.providerName || '').toLowerCase();
+    return n.includes('abet') || b.includes('abet') || p.includes('abet') || n.includes('laminati') || n.includes('hpl') || t.category === 'hpl_autor';
+  };
+
+  // Filtrado por espesor si aplica (solo afecta a melaminas / maderas / tableros)
+  const matchesThickness = (t: any) => {
+    if (thicknessFilter === 'all') return true;
+    if (isAbetItem(t)) return true;
+    return t.thicknessMm === thicknessFilter;
+  };
+
+  const masisaTextures = allTextures.filter(t => isMasisaItem(t) && matchesThickness(t));
+  const abetTextures = allTextures.filter(t => !isMasisaItem(t) && isAbetItem(t));
+  const otherTextures = allTextures.filter(t => !isMasisaItem(t) && !isAbetItem(t) && matchesThickness(t));
+
+  const renderTextureButton = (tex: any) => {
+    const is15 = tex.thicknessMm === 15;
+    const is18 = tex.thicknessMm === 18;
+    return (
+      <div key={tex.id} className="relative group">
+        <button 
+          onClick={() => {
+            applyTexture(tex.url, tex.name);
+            // Solo ajustar espesor global de la estructura si se está configurando la estructura o todo el mueble,
+            // y solo para tableros autoportantes (>= 12 mm). Nunca para láminas HPL (0.8/0.9 mm) ni al cambiar solo puertas.
+            if (
+              tex.thicknessMm &&
+              tex.thicknessMm >= 12 &&
+              (state.targetPart === 'structure' || state.targetPart === 'all') &&
+              state.setThickness
+            ) {
+              state.setThickness(Number((tex.thicknessMm / 10).toFixed(2)));
+            }
+          }}
+          className={`flex flex-col items-center gap-1 p-1 rounded transition-colors w-full cursor-pointer relative ${
+            isLight 
+              ? 'bg-white border border-slate-300 hover:border-orange-500 shadow-sm' 
+              : 'bg-white/5 border border-white/10 hover:border-orange-500/50'
           }`}
-          style={tex.url.startsWith('#') ? { backgroundColor: tex.url } : { backgroundImage: `url('${tex.url}')` }}
-        />
-        <span className={`text-[8px] uppercase tracking-wider font-bold truncate w-full text-center ${
-          isLight ? 'text-slate-800' : 'text-slate-400'
-        }`}>
-          {tex.name.length > 15 ? tex.name.substring(0, 15) + '...' : tex.name}
-        </span>
-      </button>
-    </div>
-  );
+          title={`${tex.name} ${tex.thicknessMm ? `[${tex.thicknessMm}mm]` : ''} ${tex.code ? `(${tex.code})` : ''}`}
+        >
+          {/* Badge de Espesor visible en esquina superior derecha */}
+          {tex.thicknessMm && (
+            <span
+              className={`absolute top-1 right-1 px-1 py-0.2 rounded text-[7px] font-mono font-extrabold uppercase shadow-sm z-10 ${
+                is15
+                  ? 'bg-blue-600 text-white'
+                  : is18
+                  ? 'bg-orange-500 text-black'
+                  : 'bg-zinc-700 text-zinc-200'
+              }`}
+            >
+              {tex.thicknessMm}mm
+            </span>
+          )}
+
+          <div 
+            className={`w-full aspect-square rounded border group-hover:shadow-[0_0_10px_rgba(249,115,22,0.3)] bg-cover bg-center ${
+              isLight ? 'border-slate-200' : 'border-white/20'
+            }`}
+            style={tex.url.startsWith('#') ? { backgroundColor: tex.url } : { backgroundImage: `url('${tex.url}')` }}
+          />
+          <span className={`text-[8px] uppercase tracking-wider font-bold truncate w-full text-center ${
+            isLight ? 'text-slate-800' : 'text-slate-400'
+          }`}>
+            {tex.name.length > 17 ? tex.name.substring(0, 17) + '...' : tex.name}
+          </span>
+        </button>
+      </div>
+    );
+  };
 
   return (
     <div className={`mb-8 p-3 rounded-lg border ${
@@ -204,6 +226,37 @@ export const TexturesSection = ({
         </div>
       </div>
 
+      {/* Filtro de Espesor de Melamina: Todos / 15 mm / 18 mm */}
+      <div className={`flex items-center justify-between p-1.5 rounded-lg border mb-3.5 ${
+        isLight ? 'bg-slate-100 border-slate-300' : 'bg-black/30 border-white/10'
+      }`}>
+        <span className={`text-[9px] uppercase font-bold tracking-wider pl-1 ${isLight ? 'text-slate-600' : 'text-zinc-400'}`}>
+          Filtro Calibre:
+        </span>
+        <div className="flex items-center gap-1">
+          {[
+            { id: 'all' as const, label: 'Todos' },
+            { id: 15 as const, label: '15 mm' },
+            { id: 18 as const, label: '18 mm' },
+          ].map((f) => (
+            <button
+              key={String(f.id)}
+              type="button"
+              onClick={() => setThicknessFilter(f.id)}
+              className={`px-2 py-0.5 rounded text-[9px] font-bold font-mono transition-all cursor-pointer ${
+                thicknessFilter === f.id
+                  ? 'bg-orange-500 text-black font-extrabold shadow-xs'
+                  : isLight
+                  ? 'bg-white text-slate-700 hover:bg-slate-200 border border-slate-300'
+                  : 'bg-white/5 text-zinc-300 hover:bg-white/10'
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {masisaTextures.length > 0 && (
         <div className="mb-4">
           <label className={`text-[10px] uppercase tracking-widest font-bold block mb-2 ${
@@ -215,75 +268,12 @@ export const TexturesSection = ({
         </div>
       )}
 
-      {qstoneTextures.length > 0 && (
-        <div className="mb-4">
-          <div className="flex items-center justify-between mb-2">
-            <label className={`text-[10px] uppercase tracking-widest font-bold ${
-              isLight ? 'text-slate-700' : 'text-slate-400'
-            }`}>
-              3. Sysprotec / Qstone (Cubiertas Técnicas)
-            </label>
-            <span className={`text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border ${
-              isLight
-                ? 'bg-amber-100 text-amber-900 border-amber-300'
-                : 'bg-amber-500/20 text-amber-400 border-amber-500/30'
-            }`}>
-              Solo Cubiertas
-            </span>
-          </div>
-          <div className="grid grid-cols-3 gap-2">
-            {qstoneTextures.map((t) => {
-              const isSelected =
-                countertopConfig?.enabled &&
-                (countertopConfig.selectedProductId === t.id ||
-                  qstoneCatalog.find((p) => p.id === countertopConfig.selectedProductId)?.textureUrl === t.url ||
-                  qstoneCatalog.find((p) => p.id === countertopConfig.selectedProductId)?.name.toLowerCase() === t.name.toLowerCase());
-
-              return (
-                <div key={t.id} className="relative group">
-                  <button
-                    onClick={() => handleSelectQstone(t)}
-                    className={`flex flex-col items-center gap-1 p-1 rounded-lg transition-all w-full cursor-pointer relative ${
-                      isSelected
-                        ? 'bg-amber-500/15 border-2 border-amber-500 shadow-[0_0_12px_rgba(245,158,11,0.35)]'
-                        : isLight
-                        ? 'bg-white border border-slate-300 hover:border-amber-500 shadow-sm'
-                        : 'bg-white/5 border border-white/10 hover:border-amber-500/50'
-                    }`}
-                    title={`${t.name} (Aplica exclusivamente a la Cubierta)`}
-                  >
-                    {isSelected && (
-                      <span className="absolute top-1 right-1 bg-amber-500 text-slate-950 text-[7px] font-extrabold px-1 rounded shadow">
-                        ACTIVO
-                      </span>
-                    )}
-                    <div
-                      className={`w-full aspect-square rounded border group-hover:shadow-[0_0_10px_rgba(245,158,11,0.3)] bg-cover bg-center ${
-                        isSelected ? 'border-amber-500' : isLight ? 'border-slate-200' : 'border-white/20'
-                      }`}
-                      style={t.url.startsWith('#') ? { backgroundColor: t.url } : { backgroundImage: `url('${t.url}')` }}
-                    />
-                    <span
-                      className={`text-[8px] uppercase tracking-wider font-bold truncate w-full text-center ${
-                        isSelected ? 'text-amber-500 font-extrabold' : isLight ? 'text-slate-800' : 'text-slate-400'
-                      }`}
-                    >
-                      {t.name.length > 15 ? t.name.substring(0, 15) + '...' : t.name}
-                    </span>
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
       {abetTextures.length > 0 && (
         <div className="mb-4">
           <div className="flex items-center justify-between mb-2">
             <label className={`text-[10px] uppercase tracking-widest font-bold ${
               isLight ? 'text-slate-700' : 'text-slate-400'
-            }`}>4. Abet Laminati (HPL)</label>
+            }`}>3. Abet Laminati (HPL)</label>
             <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/30">
               Laminado de Alta Presión
             </span>
@@ -345,7 +335,7 @@ export const TexturesSection = ({
         <div className="mb-4">
           <label className={`text-[10px] uppercase tracking-widest font-bold block mb-2 ${
             isLight ? 'text-slate-700' : 'text-slate-400'
-          }`}>5. Otros Proveedores Homologados</label>
+          }`}>4. Otros Proveedores Homologados</label>
           <div className="grid grid-cols-3 gap-2">
             {otherTextures.map(t => renderTextureButton(t))}
           </div>

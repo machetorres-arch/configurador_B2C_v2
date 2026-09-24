@@ -442,25 +442,40 @@ export function KitchenModuleContextMenu({
   const approvedBackofficeTextures = (adminTextures || [])
     .filter((t) => t.active && (t.approvalStatus === 'approved' || !t.approvalStatus))
     .filter((t) => {
-      const n = t.name.toLowerCase();
+      const n = (t.name || '').toLowerCase();
       const b = (t.brand || '').toLowerCase();
-      return !n.includes('qstone') && !b.includes('qstone') && !b.includes('sysprotec') && t.category !== 'piedras_marmoles';
+      const p = (t.providerName || '').toLowerCase();
+      return !n.includes('qstone') && !b.includes('qstone') && !p.includes('qstone') && !b.includes('sysprotec') && t.category !== 'piedras_marmoles';
     })
     .map((t) => ({
       id: t.id,
-      name: `${t.brand ? t.brand + ' ' : ''}${t.name}`,
+      name: t.name.toLowerCase().includes((t.brand || '').toLowerCase()) ? t.name : `${t.brand ? t.brand + ' ' : ''}${t.name}`,
       url: t.url || t.previewUrl || '#CCCCCC',
+      brand: t.brand || t.providerName,
+      providerName: t.providerName,
+      category: t.category,
     }));
 
   const allTextures = [...DEFAULT_TEXTURES, ...approvedBackofficeTextures];
-  const masisaTextures = allTextures.filter(t => t.name.toLowerCase().includes('masisa'));
+  const masisaTextures = allTextures.filter(t => {
+    const n = (t.name || '').toLowerCase();
+    const b = ((t as any).brand || '').toLowerCase();
+    const p = ((t as any).providerName || '').toLowerCase();
+    return n.includes('masisa') || b.includes('masisa') || p.includes('masisa');
+  });
   const abetTextures = allTextures.filter(t => {
-    const n = t.name.toLowerCase();
-    return n.includes('abet') || n.includes('laminati') || n.includes('hpl');
+    const n = (t.name || '').toLowerCase();
+    const b = ((t as any).brand || '').toLowerCase();
+    const p = ((t as any).providerName || '').toLowerCase();
+    return n.includes('abet') || b.includes('abet') || p.includes('abet') || n.includes('laminati') || n.includes('hpl') || (t as any).category === 'hpl_autor';
   });
   const otherTextures = allTextures.filter(t => {
-    const n = t.name.toLowerCase();
-    return !n.includes('masisa') && !n.includes('abet') && !n.includes('laminati') && !n.includes('hpl');
+    const n = (t.name || '').toLowerCase();
+    const b = ((t as any).brand || '').toLowerCase();
+    const p = ((t as any).providerName || '').toLowerCase();
+    const isMas = n.includes('masisa') || b.includes('masisa') || p.includes('masisa');
+    const isAb = n.includes('abet') || b.includes('abet') || p.includes('abet') || n.includes('laminati') || n.includes('hpl') || (t as any).category === 'hpl_autor';
+    return !isMas && !isAb;
   });
 
   const variant = activeCabinet.variant || (activeCabinet.width > 60 ? '2_doors' : '1_door');
@@ -532,31 +547,48 @@ export function KitchenModuleContextMenu({
   const hasInteractiveElements = !isDecoration && interactiveElements.length > 0;
   const anyElementOpen = interactiveElements.some(el => isElementOpen(el.id));
 
-  const renderTextureButton = (tex: any) => (
-    <div key={tex.id} className="relative group">
-      <button 
-        onClick={() => handleApplyTexture(tex.url, tex.name)}
-        className={`flex flex-col items-center gap-1 p-1 rounded-lg transition-colors w-full border cursor-pointer ${
-          isLight
-            ? 'bg-white border-slate-200 hover:border-orange-500 shadow-sm'
-            : 'bg-white/5 border-white/10 hover:border-orange-500/60'
-        }`}
-        title={tex.name}
-      >
-        <div 
-          className={`w-full aspect-square rounded-md border group-hover:shadow-[0_0_10px_rgba(249,115,22,0.3)] bg-cover bg-center ${
-            isLight ? 'border-slate-300' : 'border-white/20'
+  const renderTextureButton = (tex: any) => {
+    const is15 = tex.thicknessMm === 15;
+    const is18 = tex.thicknessMm === 18;
+    return (
+      <div key={tex.id} className="relative group">
+        <button 
+          onClick={() => handleApplyTexture(tex.url, tex.name)}
+          className={`flex flex-col items-center gap-1 p-1 rounded-lg transition-colors w-full border cursor-pointer relative ${
+            isLight
+              ? 'bg-white border-slate-200 hover:border-orange-500 shadow-sm'
+              : 'bg-white/5 border-white/10 hover:border-orange-500/60'
           }`}
-          style={tex.url.startsWith('#') ? { backgroundColor: tex.url } : { backgroundImage: `url('${tex.url}')` }}
-        />
-        <span className={`text-[8px] uppercase tracking-wider truncate w-full text-center ${
-          isLight ? 'text-slate-600 font-bold' : 'text-slate-400'
-        }`}>
-          {tex.name.length > 14 ? tex.name.substring(0, 14) + '...' : tex.name}
-        </span>
-      </button>
-    </div>
-  );
+          title={`${tex.name} ${tex.thicknessMm ? `[${tex.thicknessMm}mm]` : ''}`}
+        >
+          {tex.thicknessMm && (
+            <span
+              className={`absolute top-1 right-1 px-1 py-0.2 rounded text-[7px] font-mono font-extrabold uppercase shadow-xs z-10 ${
+                is15
+                  ? 'bg-blue-600 text-white'
+                  : is18
+                  ? 'bg-orange-500 text-black'
+                  : 'bg-zinc-700 text-zinc-200'
+              }`}
+            >
+              {tex.thicknessMm}mm
+            </span>
+          )}
+          <div 
+            className={`w-full aspect-square rounded-md border group-hover:shadow-[0_0_10px_rgba(249,115,22,0.3)] bg-cover bg-center ${
+              isLight ? 'border-slate-300' : 'border-white/20'
+            }`}
+            style={tex.url.startsWith('#') ? { backgroundColor: tex.url } : { backgroundImage: `url('${tex.url}')` }}
+          />
+          <span className={`text-[8px] uppercase tracking-wider truncate w-full text-center ${
+            isLight ? 'text-slate-600 font-bold' : 'text-slate-400'
+          }`}>
+            {tex.name.length > 14 ? tex.name.substring(0, 14) + '...' : tex.name}
+          </span>
+        </button>
+      </div>
+    );
+  };
 
   const getModuleTitle = () => {
     if (activeCabinet.variant?.startsWith('corner_blind')) return 'Esquinero Ciego';
