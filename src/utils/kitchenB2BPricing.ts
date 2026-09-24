@@ -142,9 +142,15 @@ export function calculateKitchenDualQuote(customMarginPercent?: number, customAd
   const b2bHardwareItems: B2BQuoteItem[] = [];
 
   hardwareList.forEach((hw) => {
-    let unitPrice = 1800; // precio base por defecto
     const itemLower = hw.Item.toLowerCase();
     const catLower = hw.Categoria.toLowerCase();
+
+    // Los tableros y planchas se cuantifican y cotizan en la categoría de tableros
+    if (catLower === 'tableros' || itemLower.includes('plancha')) {
+      return;
+    }
+
+    let unitPrice = 1800; // precio base por defecto
 
     if (itemLower.includes('bisagra') || catLower.includes('bisagra')) {
       const match = supplies.find((s) => s.id.includes('bisagra') || s.name.toLowerCase().includes('bisagra'));

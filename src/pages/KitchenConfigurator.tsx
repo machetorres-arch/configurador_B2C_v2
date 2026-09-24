@@ -274,25 +274,37 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
     if (!activeCabinetId) return;
     const part = globalState.targetPart;
     const activeCabinet = cabinets.find((c) => c.id === activeCabinetId);
+    const urlLower = url.toLowerCase();
+    const effectiveMat: 'melamina' | 'hpl' = (mat === 'hpl' || urlLower.includes('abet') || urlLower.includes('laminati') || urlLower.includes('fiore') || urlLower.includes('broccato')) ? 'hpl' : (mat as any);
+
     if (part === 'all') {
       updateCabinet(activeCabinetId, {
-        structureColor: url, structureMaterial: mat as any,
-        doorColor: url, doorMaterial: mat as any,
-        drawerFrontColor: url, drawerFrontMaterial: mat as any,
-        drawerInnerColor: url, drawerInnerMaterial: mat as any,
-        shelfColor: url, shelfMaterial: mat as any,
-        backColor: url, backMaterial: mat as any,
-        socleColor: url, socleMaterial: mat as any,
-        leftCoverPanel: activeCabinet?.leftCoverPanel?.enabled ? { ...activeCabinet.leftCoverPanel, color: url, material: mat as any } : undefined,
-        rightCoverPanel: activeCabinet?.rightCoverPanel?.enabled ? { ...activeCabinet.rightCoverPanel, color: url, material: mat as any } : undefined,
+        structureColor: url, structureMaterial: effectiveMat,
+        doorColor: url, doorMaterial: effectiveMat,
+        drawerFrontColor: url, drawerFrontMaterial: effectiveMat,
+        drawerInnerColor: url, drawerInnerMaterial: effectiveMat,
+        shelfColor: url, shelfMaterial: effectiveMat,
+        backColor: url, backMaterial: effectiveMat,
+        socleColor: url, socleMaterial: effectiveMat,
+        leftCoverPanel: activeCabinet?.leftCoverPanel?.enabled ? { ...activeCabinet.leftCoverPanel, color: url, material: effectiveMat } : undefined,
+        rightCoverPanel: activeCabinet?.rightCoverPanel?.enabled ? { ...activeCabinet.rightCoverPanel, color: url, material: effectiveMat } : undefined,
       });
-    } else if (part === 'structure') updateCabinet(activeCabinetId, { structureColor: url, structureMaterial: mat as any });
-    else if (part === 'doors') updateCabinet(activeCabinetId, { doorColor: url, doorMaterial: mat as any });
-    else if (part === 'drawerFronts') updateCabinet(activeCabinetId, { drawerFrontColor: url, drawerFrontMaterial: mat as any });
-    else if (part === 'drawerInner') updateCabinet(activeCabinetId, { drawerInnerColor: url, drawerInnerMaterial: mat as any });
-    else if (part === 'shelves') updateCabinet(activeCabinetId, { shelfColor: url, shelfMaterial: mat as any });
-    else if (part === 'back') updateCabinet(activeCabinetId, { backColor: url, backMaterial: mat as any });
-    else if (part === 'socle') updateCabinet(activeCabinetId, { socleColor: url, socleMaterial: mat as any });
+      globalState.setDoorColor(url);
+      globalState.setDoorMaterial(effectiveMat);
+    } else if (part === 'structure') {
+      updateCabinet(activeCabinetId, { structureColor: url, structureMaterial: effectiveMat });
+    } else if (part === 'doors') {
+      updateCabinet(activeCabinetId, { doorColor: url, doorMaterial: effectiveMat });
+      globalState.setDoorColor(url);
+      globalState.setDoorMaterial(effectiveMat);
+    } else if (part === 'drawerFronts') {
+      updateCabinet(activeCabinetId, { drawerFrontColor: url, drawerFrontMaterial: effectiveMat });
+      globalState.setDrawerFrontColor(url);
+      globalState.setDrawerFrontMaterial(effectiveMat);
+    } else if (part === 'drawerInner') updateCabinet(activeCabinetId, { drawerInnerColor: url, drawerInnerMaterial: effectiveMat });
+    else if (part === 'shelves') updateCabinet(activeCabinetId, { shelfColor: url, shelfMaterial: effectiveMat });
+    else if (part === 'back') updateCabinet(activeCabinetId, { backColor: url, backMaterial: effectiveMat });
+    else if (part === 'socle') updateCabinet(activeCabinetId, { socleColor: url, socleMaterial: effectiveMat });
     else if (part === 'coverPanels') {
       updateCabinet(activeCabinetId, {
         leftCoverPanel: activeCabinet?.leftCoverPanel?.enabled ? { ...activeCabinet.leftCoverPanel, color: url, material: mat as any } : undefined,
@@ -340,27 +352,30 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
     }
 
     const part = globalState.targetPart;
+    const urlLower = url.toLowerCase();
+    const effectiveMat: 'melamina' | 'hpl' = (mat === 'hpl' || urlLower.includes('abet') || urlLower.includes('laminati') || urlLower.includes('fiore') || urlLower.includes('broccato')) ? 'hpl' : (mat as any);
+
     if (part === 'islandBack') {
       setIslandBackConfig({
         enabled: true,
         materialType: 'decorative',
         decorativeColor: url,
-        decorativeMaterial: mat as any,
+        decorativeMaterial: effectiveMat,
       });
       return;
     }
-    applyGlobalTexture(part, url, mat as any);
+    applyGlobalTexture(part, url, effectiveMat);
     if (part === 'structure' || part === 'all') {
       globalState.setStructureColor(url);
-      globalState.setStructureMaterial(mat as any);
+      globalState.setStructureMaterial(effectiveMat);
     }
     if (part === 'doors' || part === 'all') {
       globalState.setDoorColor(url);
-      globalState.setDoorMaterial(mat as any);
+      globalState.setDoorMaterial(effectiveMat);
     }
     if (part === 'drawerFronts' || part === 'all') {
       globalState.setDrawerFrontColor(url);
-      globalState.setDrawerFrontMaterial(mat as any);
+      globalState.setDrawerFrontMaterial(effectiveMat);
     }
     if (part === 'drawerInner' || part === 'all') {
       globalState.setDrawerInnerColor(url);

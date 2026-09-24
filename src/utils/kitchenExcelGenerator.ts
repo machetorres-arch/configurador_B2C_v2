@@ -1,7 +1,7 @@
 import * as XLSX from 'xlsx-js-style';
 import { useStore } from '../store';
 import { useKitchenStore } from '../store/kitchenStore';
-import { generateKitchenPartsList, generateKitchenHardwareList, HARDWARE_SPECS } from './kitchenManufacturing';
+import { generateKitchenPartsList, generateKitchenHardwareList, HARDWARE_SPECS, isHplFinish } from './kitchenManufacturing';
 import { generateEdgeBandingList } from './manufacturing';
 import { generateCountertopPieces, detectContinuousCabinetRuns } from './countertopNesting';
 
@@ -12,7 +12,7 @@ export const exportKitchenToExcel = () => {
     const cabinets = kState.cabinets;
     const thickness = state.thickness;
     const kerf = 3.2; // mm
-    const hplOversize = 20; // mm
+    const hplOversize = 10; // mm (1 cm más ancho y largo para prensado y posterior refilado en taller)
     const m2PorPlacaMDF = 2.44 * 1.83; // 4.4652 m²
     const m2PorPlacaHPL = 3.05 * 1.30; // 3.965 m²
 
@@ -56,38 +56,40 @@ export const exportKitchenToExcel = () => {
     const dataHPL: any[] = [];
 
     parts.forEach((p, idx) => {
-      const isFront = p.name.toLowerCase().includes('puerta') || p.name.toLowerCase().includes('frente');
+      const isFront = p.name.toLowerCase().includes('puerta') || p.name.toLowerCase().includes('frente') || p.name.toLowerCase().includes('panel ciego');
       const decorName = getTextureName(p.material);
-      const isHPL = (isFront ? state.doorMaterial : state.structureMaterial) === 'hpl';
+      const isHPL = isFront && isHplFinish(p.material, state.doorMaterial);
 
       if (isHPL) {
         dataHPL.push({
           Gabinete: p.notes?.includes('Cab') ? p.notes : `Gabinete ${(p.moduleIndex || 0) + 1}`,
-          Pieza: `${p.name} (Cara HPL)`,
-          Material: 'HPL / Laminado Alta Presión',
+          Pieza: `${p.name} (Cara HPL +1cm refilado)`,
+          Material: 'Laminado Alta Presión (Abet Laminati 0.9mm)',
           Decorativo: decorName,
           'Largo Corte HPL (mm)': (p.length + hplOversize).toFixed(1),
           'Ancho Corte HPL (mm)': (p.width + hplOversize).toFixed(1),
-          Cantidad: p.qty
+          'Espesor (mm)': '0.9',
+          Cantidad: p.qty,
+          Notas: 'Sobremedida +1cm para prensado sobre MDF 18mm y posterior refilado'
         });
       }
 
       dataPlacas.push({
         Gabinete: p.notes?.includes('Cab') ? p.notes : `Gabinete ${(p.moduleIndex || 0) + 1}`,
-        Pieza: p.name,
-        Material: isHPL ? 'MDF Desnudo (Sustrato HPL)' : 'Melamina Estándar',
-        Decorativo: decorName,
+        Pieza: isHPL ? `${p.name} (Sustrato Base MDF 18mm)` : p.name,
+        Material: isHPL ? 'MDF Crudo Desnudo (Sustrato Base)' : 'Melamina Estándar',
+        Decorativo: isHPL ? 'MDF Desnudo 18mm' : decorName,
         'Cortes Totales': p.qty,
         Cantidad: p.qty,
         'Largo (mm)': p.length.toFixed(1),
         'Ancho (mm)': p.width.toFixed(1),
-        'Veta (Orientación)': p.grainDirection === 'horizontal' ? 'Horizontal' : 'Vertical',
-        'Espesor (mm)': p.thickness.toFixed(1),
+        'Veta (Orientación)': isHPL ? 'Sin Veta (Libre)' : (p.grainDirection === 'horizontal' ? 'Horizontal' : 'Vertical'),
+        'Espesor (mm)': isHPL ? '18.0' : p.thickness.toFixed(1),
         'Tapacanto Largo 1': p.edgeL1 ? 'Sí' : 'No',
         'Tapacanto Largo 2': p.edgeL2 ? 'Sí' : 'No',
         'Tapacanto Ancho 1': p.edgeW1 ? 'Sí' : 'No',
         'Tapacanto Ancho 2': p.edgeW2 ? 'Sí' : 'No',
-        Notas: p.notes || ''
+        Notas: isHPL ? `Sustrato base MDF 18mm para prensado de ${decorName}` : (p.notes || '')
       });
     });
 
@@ -250,15 +252,19 @@ export const exportKitchenToExcel = () => {
     applyStyles(wsEdgeBanding, [16, 40, 14, 16, 35]);
 
     XLSX.utils.book_append_sheet(wb, wsPlacas, '1_Placas_y_Cortes');
+    let sheetNum = 2;
     if (dataHPL.length > 0) {
       const wsHPL = XLSX.utils.json_to_sheet(dataHPL);
-      applyStyles(wsHPL, [16, 28, 26, 24, 18, 18, 10]);
-      XLSX.utils.book_append_sheet(wb, wsHPL, '2_Corte_HPL');
+      applyStyles(wsHPL, [16, 32, 30, 24, 20, 20, 14, 10, 45]);
+      XLSX.utils.book_append_sheet(wb, wsHPL, `${sheetNum}_Corte_HPL`);
+      sheetNum++;
     }
-    XLSX.utils.book_append_sheet(wb, wsBoM, '2_BOM_y_Herrajes');
-    XLSX.utils.book_append_sheet(wb, wsEdgeBanding, '3_Metros_Tapacanto');
+    XLSX.utils.book_append_sheet(wb, wsBoM, `${sheetNum}_BOM_y_Herrajes`);
+    sheetNum++;
+    XLSX.utils.book_append_sheet(wb, wsEdgeBanding, `${sheetNum}_Metros_Tapacanto`);
+    sheetNum++;
 
-    // Hoja 4: Marmolería y Cubiertas Qstone
+    // Cubiertas Qstone si aplica
     if (kState.countertopConfig?.enabled) {
       const ctBOM = generateCountertopPieces(cabinets, kState.countertopConfig, kState.qstoneCatalog, kState.islandBackConfig, kState.walls, kState.architecturalElements, kState.roomConfig);
       if (ctBOM && ctBOM.pieces.length > 0) {
@@ -276,7 +282,7 @@ export const exportKitchenToExcel = () => {
 
         const wsStone = XLSX.utils.json_to_sheet(dataStone);
         applyStyles(wsStone, [18, 36, 26, 14, 14, 14, 16, 18, 38]);
-        XLSX.utils.book_append_sheet(wb, wsStone, '4_Cubiertas_Qstone');
+        XLSX.utils.book_append_sheet(wb, wsStone, `${sheetNum}_Cubiertas_Qstone`);
       }
     }
 

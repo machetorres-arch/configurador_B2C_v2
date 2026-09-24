@@ -38,6 +38,22 @@ export function getNominalSlideLength(innerDepthMm: number): number {
 }
 
 /**
+ * Determina si una pieza, textura o módulo corresponde a Laminado de Alta Presión HPL (Abet Laminati u otros)
+ */
+export function isHplFinish(materialUrlOrColor?: string, doorMaterial?: string, cab?: CabinetType): boolean {
+  if (doorMaterial === 'hpl' || cab?.doorMaterial === 'hpl') return true;
+  if (!materialUrlOrColor) return false;
+  const s = materialUrlOrColor.toLowerCase();
+  return (
+    s.includes('abet') ||
+    s.includes('laminati') ||
+    s.includes('hpl') ||
+    s.includes('fiore') ||
+    s.includes('broccato')
+  );
+}
+
+/**
  * Determina si un mueble de cocina tiene puertas y admite repisas interiores
  */
 export function isCabinetWithDoors(cab: CabinetType): boolean {
@@ -1794,6 +1810,7 @@ export function generateKitchenHardwareList(cabinets: CabinetType[]) {
     let structColor = state.structureColor;
     let backsM2 = 0;
     let hplDoorsM2 = 0;
+    let mdfSustratoM2 = 0;
 
     let cantosFrontMeters = 0;
     let cantosStructMeters = 0;
@@ -1802,13 +1819,18 @@ export function generateKitchenHardwareList(cabinets: CabinetType[]) {
       const pArea = (p.length * p.width * p.qty) / 1000000;
       const isFront = p.name.includes('Puerta') || p.name.includes('Frente') || p.name.includes('Panel Ciego');
       const isBack = p.thickness === 3 || p.name.includes('Fondo') || p.name.includes('Trasera');
+      const isHPL = isFront && isHplFinish(p.material, state.doorMaterial);
 
       if (isBack) {
         backsM2 += pArea;
       } else if (isFront) {
         doorsColor = p.material || state.doorColor;
-        if (state.doorMaterial === 'hpl') {
-          hplDoorsM2 += pArea;
+        if (isHPL) {
+          // Norma de fabricación: el laminado HPL se corta 1 cm (10mm) más ancho y más largo para prensado y refilado
+          const hplPieceArea = (((p.length + 10) * (p.width + 10)) * p.qty) / 1000000;
+          hplDoorsM2 += hplPieceArea;
+          // Sustrato base de MDF desnudo 18mm a la medida final del mueble
+          mdfSustratoM2 += pArea;
         } else {
           doorsM2 += pArea;
         }
@@ -1828,7 +1850,7 @@ export function generateKitchenHardwareList(cabinets: CabinetType[]) {
       }
     });
 
-    // 0.1 Tableros de Puertas / Frentes
+    // 0.1 Tableros de Puertas / Frentes Melamina Estándar
     if (doorsM2 > 0) {
       const requiredDoorsBoards = Math.max(1, Math.ceil((doorsM2 * 1.18) / m2PorPlacaMDF));
       const eff = ((doorsM2 / (requiredDoorsBoards * m2PorPlacaMDF)) * 100).toFixed(1);
@@ -1841,7 +1863,7 @@ export function generateKitchenHardwareList(cabinets: CabinetType[]) {
       });
     }
 
-    // 0.2 Tableros HPL si aplica
+    // 0.2 Tableros HPL y Sustrato MDF Crudo 18mm si aplica
     if (hplDoorsM2 > 0) {
       const reqHpl = Math.max(1, Math.ceil((hplDoorsM2 * 1.15) / m2PorPlacaHPL));
       const effHpl = ((hplDoorsM2 / (reqHpl * m2PorPlacaHPL)) * 100).toFixed(1);
@@ -1849,16 +1871,25 @@ export function generateKitchenHardwareList(cabinets: CabinetType[]) {
         Categoria: 'Tableros',
         Item: `Plancha Laminado HPL Puertas (${getColorName(doorsColor)})`,
         Cantidad: reqHpl,
-        Unidad: 'Planchas (3050x1300mm)',
-        Detalles: `Enchape decorativo alta resistencia. Área: ${hplDoorsM2.toFixed(2)} m² | Efic.: ${effHpl}%`
+        Unidad: 'Planchas (3050x1300x0.9mm)',
+        Detalles: `Enchape HPL (+1cm sobremedida refilado). Área corte: ${hplDoorsM2.toFixed(2)} m² | Efic.: ${effHpl}%`
       });
-      const reqMdfSustrato = Math.max(1, Math.ceil((hplDoorsM2 * 1.18) / m2PorPlacaMDF));
+      const reqMdfSustrato = Math.max(1, Math.ceil((mdfSustratoM2 * 1.18) / m2PorPlacaMDF));
+      const effMdf = ((mdfSustratoM2 / (reqMdfSustrato * m2PorPlacaMDF)) * 100).toFixed(1);
       hardware.push({
         Categoria: 'Tableros',
-        Item: `Plancha MDF Crudo / Sustrato p/ HPL (${thicknessMm}mm)`,
+        Item: 'Plancha MDF Crudo / Sustrato Base p/ HPL (18mm)',
         Cantidad: reqMdfSustrato,
-        Unidad: `Planchas (2440x1830x${thicknessMm}mm)`,
-        Detalles: `Alma base para prensado HPL. Área: ${hplDoorsM2.toFixed(2)} m²`
+        Unidad: 'Planchas (2440x1830x18mm)',
+        Detalles: `Alma base desnuda para prensado HPL 18mm. Área neta: ${mdfSustratoM2.toFixed(2)} m² | Efic.: ${effMdf}%`
+      });
+      const litersGlue = Math.max(1, Math.ceil(mdfSustratoM2 * 0.35));
+      hardware.push({
+        Categoria: 'Insumos',
+        Item: 'Adhesivo de Contacto Alta Resistencia (Prensado HPL)',
+        Cantidad: litersGlue,
+        Unidad: 'Litros / Galón',
+        Detalles: `Pegado de alta resistencia HPL sobre sustrato MDF 18mm (${(mdfSustratoM2 * 2).toFixed(1)} m² caras)`
       });
     }
 

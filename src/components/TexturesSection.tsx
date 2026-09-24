@@ -27,10 +27,11 @@ export const TexturesSection = ({
 
   const applyTexture = (url: string, name: string) => {
     const nameLower = name.toLowerCase();
+    const urlLower = url.toLowerCase();
     
     // Auto-detectar material por el nombre del archivo/textura
-    const isHPL = nameLower.includes('abet') || nameLower.includes('hpl') || nameLower.includes('laminati');
-    const mat = isHPL ? 'hpl' : 'melamina';
+    const isHPL = nameLower.includes('abet') || nameLower.includes('hpl') || nameLower.includes('laminati') || urlLower.includes('abet') || urlLower.includes('fiore') || urlLower.includes('broccato');
+    const mat: 'melamina' | 'hpl' = isHPL ? 'hpl' : 'melamina';
     
     if (onSelectTexture) {
       onSelectTexture(url, mat);

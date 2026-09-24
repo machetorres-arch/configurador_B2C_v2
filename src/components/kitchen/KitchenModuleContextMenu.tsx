@@ -371,7 +371,8 @@ export function KitchenModuleContextMenu({
 
   const handleApplyTexture = (url: string, name: string) => {
     const nameLower = name.toLowerCase();
-    const isHPL = nameLower.includes('abet') || nameLower.includes('hpl') || nameLower.includes('laminati');
+    const urlLower = url.toLowerCase();
+    const isHPL = nameLower.includes('abet') || nameLower.includes('hpl') || nameLower.includes('laminati') || urlLower.includes('abet') || urlLower.includes('fiore') || urlLower.includes('broccato');
     const mat: 'melamina' | 'hpl' = isHPL ? 'hpl' : 'melamina';
 
     if (isHPL && activeCabinet.hplBalancer === undefined) {
@@ -384,6 +385,10 @@ export function KitchenModuleContextMenu({
         break;
       case 'doors':
         updateCabinet(activeCabinetId, { doorColor: url, doorMaterial: mat });
+        if (isHPL) {
+          globalStore.setDoorMaterial('hpl');
+          globalStore.setDoorColor(url);
+        }
         break;
       case 'drawerFronts':
         updateCabinet(activeCabinetId, { drawerFrontColor: url, drawerFrontMaterial: mat });

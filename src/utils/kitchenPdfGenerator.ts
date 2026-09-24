@@ -1,7 +1,7 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { CabinetType, useKitchenStore } from '../store/kitchenStore';
-import { generateKitchenPartsList, generateKitchenHardwareList, HARDWARE_SPECS } from './kitchenManufacturing';
+import { generateKitchenPartsList, generateKitchenHardwareList, HARDWARE_SPECS, isHplFinish } from './kitchenManufacturing';
 import { generateCountertopPieces } from './countertopNesting';
 import { renderArquifyPdfLogo } from './pdfLogo';
 import { getFriendlyColorName } from './colorNames';
@@ -184,9 +184,23 @@ export function exportKitchenPDF(cabinets: CabinetType[], state: any, filename =
   const doorSheets = Math.ceil((doorM2 * 1.15) / sheetMelM2) || (doorParts.length > 0 ? 1 : 0);
   const backSheets = Math.ceil((backM2 * 1.12) / sheetDurolacM2) || (backParts.length > 0 ? 1 : 0);
 
+  const isDoorHPL = doorParts.some(p => isHplFinish(p.material, state.doorMaterial)) || state.doorMaterial === 'hpl';
+  const sheetHplM2 = (3.05 * 1.30); // 3.965 m²
+  const hplDoorM2 = doorParts.reduce((acc, p) => acc + (((p.length + 10) * (p.width + 10) * p.qty) / 1000000), 0);
+  const hplSheets = Math.ceil((hplDoorM2 * 1.15) / sheetHplM2) || (doorParts.length > 0 ? 1 : 0);
+  const mdfSustratoSheets = Math.ceil((doorM2 * 1.18) / sheetDurolacM2) || (doorParts.length > 0 ? 1 : 0);
+
   const nestingSummary = [
     ['Melamina Estructura y Cajones', `${thicknessMm} mm`, '2500 x 1830 mm', `${structParts.reduce((a, b) => a + b.qty, 0)} unid.`, `${structM2.toFixed(2)} m²`, `${structSheets} planchas`, `${Math.min(92, Math.round((structM2 / (structSheets * sheetMelM2)) * 100))}%`],
-    ['Melamina / HPL Puertas y Frentes', `${thicknessMm} mm`, '2500 x 1830 mm', `${doorParts.reduce((a, b) => a + b.qty, 0)} unid.`, `${doorM2.toFixed(2)} m²`, `${doorSheets} planchas`, doorSheets > 0 ? `${Math.min(92, Math.round((doorM2 / (doorSheets * sheetMelM2)) * 100))}%` : '-'],
+    ...(isDoorHPL
+      ? [
+          ['Laminado HPL Puertas (Abet Laminati)', '0.9 mm', '3050 x 1300 mm', `${doorParts.reduce((a, b) => a + b.qty, 0)} unid.`, `${hplDoorM2.toFixed(2)} m²`, `${hplSheets} planchas`, hplSheets > 0 ? `${Math.min(92, Math.round((hplDoorM2 / (hplSheets * sheetHplM2)) * 100))}%` : '-'],
+          ['MDF Crudo 18mm Sustrato Base', '18 mm', '2440 x 1830 mm', `${doorParts.reduce((a, b) => a + b.qty, 0)} unid.`, `${doorM2.toFixed(2)} m²`, `${mdfSustratoSheets} planchas`, mdfSustratoSheets > 0 ? `${Math.min(92, Math.round((doorM2 / (mdfSustratoSheets * sheetDurolacM2)) * 100))}%` : '-'],
+        ]
+      : [
+          ['Melamina Puertas y Frentes', `${thicknessMm} mm`, '2500 x 1830 mm', `${doorParts.reduce((a, b) => a + b.qty, 0)} unid.`, `${doorM2.toFixed(2)} m²`, `${doorSheets} planchas`, doorSheets > 0 ? `${Math.min(92, Math.round((doorM2 / (doorSheets * sheetMelM2)) * 100))}%` : '-'],
+        ]
+    ),
     ['Durolac / MDF Traseras y Fondos', '3.5 mm', '2440 x 1830 mm', `${backParts.reduce((a, b) => a + b.qty, 0)} unid.`, `${backM2.toFixed(2)} m²`, `${backSheets} planchas`, backSheets > 0 ? `${Math.min(94, Math.round((backM2 / (backSheets * sheetDurolacM2)) * 100))}%` : '-'],
   ];
 

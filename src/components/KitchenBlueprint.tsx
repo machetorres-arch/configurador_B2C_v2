@@ -5,7 +5,7 @@ import { useKitchenStore, CabinetType } from '../store/kitchenStore';
 import { analyzeRoomWalls } from '../utils/roomGeometry';
 import { getCabinetBox2D } from '../utils/kitchenCollision';
 import { Part } from '../utils/manufacturing';
-import { generateKitchenPartsList, generateKitchenHardwareList, HARDWARE_SPECS, getResolvedCabinetShelfElevations, isCabinetWithDoors, isCabinetWithSplitDoors } from '../utils/kitchenManufacturing';
+import { generateKitchenPartsList, generateKitchenHardwareList, HARDWARE_SPECS, getResolvedCabinetShelfElevations, isCabinetWithDoors, isCabinetWithSplitDoors, isHplFinish } from '../utils/kitchenManufacturing';
 import { optimizeNesting, NestingPart, BoardResult } from '../utils/nesting';
 import { exportKitchenPDF } from '../utils/kitchenPdfGenerator';
 import { exportBlueprintDomToPdf } from '../utils/blueprintPdfExport';
@@ -215,6 +215,7 @@ export function KitchenBlueprint() {
   allParts.forEach((p, pIdx) => {
     const isFront = p.name.includes('Puerta') || p.name.includes('Frente') || p.name.includes('Panel Ciego');
     const isBack = p.thickness === 3 || p.thickness === 3.5 || p.material === 'Melamina Fondo' || (p.name.includes('Fondo') && !p.name.includes('Soporte')) || (p.name.includes('Trasera') && !p.name.includes('Barra') && !p.name.includes('Caja Cajón'));
+    const isHPL = isFront && isHplFinish(p.material, state.doorMaterial);
 
     let groupKey = '';
     let label = '';
@@ -230,13 +231,13 @@ export function KitchenBlueprint() {
       materialCategory = 'backs';
       thick = 3;
     } else if (isFront) {
-      const isHPL = state.doorMaterial === 'hpl';
       if (isHPL) {
-        groupKey = `HPL_DOORS_${p.material}`;
-        label = `PLANCHA LAMINADO HPL PUERTAS Y FRENTES - COLOR: ${matName}`;
+        groupKey = `HPL_DOORS_${p.material || 'abet'}`;
+        label = `PLANCHA LAMINADO HPL PUERTAS Y FRENTES 0.9MM (ABET LAMINATI) - COLOR: ${matName}`;
         materialCategory = 'hpl';
         w = 3050;
         h = 1300;
+        thick = 0.9;
       } else {
         groupKey = `MEL_DOORS_${p.material}`;
         label = `PLANCHA MELAMINA PUERTAS Y FRENTES ${thicknessMm}MM - COLOR: ${matName}`;
@@ -253,7 +254,7 @@ export function KitchenBlueprint() {
         key: groupKey,
         label,
         materialCategory,
-        materialName: matName,
+        materialName: isHPL ? `${matName} (Laminado HPL)` : matName,
         color: p.material || '#FFFFFF',
         thicknessMm: thick,
         w,
@@ -265,23 +266,69 @@ export function KitchenBlueprint() {
     const isWoodGrain = p.material?.includes('roble') || p.material?.includes('nogal') || p.material?.includes('madera') || p.material?.includes('hickory') || p.material?.includes('wood');
     const allowRotation = isBack ? true : !isWoodGrain;
 
-    boardGroups[groupKey].parts.push({
-      id: `p-${pIdx}-${p.name}`,
-      name: p.name,
-      width: Math.round(p.width),
-      length: Math.round(p.length),
-      color: p.material || '#FFFFFF',
-      qty: p.qty,
-      edgeL1: isBack ? false : !!p.edgeL1,
-      edgeL2: isBack ? false : !!p.edgeL2,
-      edgeW1: isBack ? false : !!p.edgeW1,
-      edgeW2: isBack ? false : !!p.edgeW2,
-      allowRotation
-    });
+    if (isHPL) {
+      // 1. Plancha HPL Abet Laminati (3050 x 1300 mm): corte con sobremedida de +1 cm (+10 mm) en largo y ancho
+      boardGroups[groupKey].parts.push({
+        id: `p-hpl-${pIdx}-${p.name}`,
+        name: `${p.name} (HPL +1cm refilado)`,
+        width: Math.round(p.width) + 10,
+        length: Math.round(p.length) + 10,
+        color: p.material || '#FFFFFF',
+        qty: p.qty,
+        edgeL1: false,
+        edgeL2: false,
+        edgeW1: false,
+        edgeW2: false,
+        allowRotation: false // Respetar orientación de diseño en laminado Abet
+      });
+
+      // 2. Plancha MDF Crudo 18mm (Sustrato Base): corte a la medida final del mueble
+      const subKey = 'MDF_CRUDO_SUSTRATO_18MM';
+      if (!boardGroups[subKey]) {
+        boardGroups[subKey] = {
+          key: subKey,
+          label: 'PLANCHA MDF CRUDO 18MM (SUSTRATO BASE PUERTAS Y FRENTES HPL)',
+          materialCategory: 'doors',
+          materialName: 'MDF Crudo 18mm (Sustrato Base)',
+          color: '#E2D9C8',
+          thicknessMm: 18,
+          w: 2440,
+          h: 1830,
+          parts: []
+        };
+      }
+      boardGroups[subKey].parts.push({
+        id: `p-mdf-${pIdx}-${p.name}`,
+        name: `${p.name} (Sustrato MDF 18mm)`,
+        width: Math.round(p.width),
+        length: Math.round(p.length),
+        color: '#E2D9C8',
+        qty: p.qty,
+        edgeL1: false,
+        edgeL2: false,
+        edgeW1: false,
+        edgeW2: false,
+        allowRotation: true // MDF crudo desnudo no tiene veta direccional, optimización libre para máxima eficiencia
+      });
+    } else {
+      boardGroups[groupKey].parts.push({
+        id: `p-${pIdx}-${p.name}`,
+        name: p.name,
+        width: Math.round(p.width),
+        length: Math.round(p.length),
+        color: p.material || '#FFFFFF',
+        qty: p.qty,
+        edgeL1: isBack ? false : !!p.edgeL1,
+        edgeL2: isBack ? false : !!p.edgeL2,
+        edgeW1: isBack ? false : !!p.edgeW1,
+        edgeW2: isBack ? false : !!p.edgeW2,
+        allowRotation
+      });
+    }
   });
 
   const boardResults: (BoardResult & { label: string; materialName: string; materialCategory: string; thicknessMm: number })[] = [];
-  const groupOrder = ['doors', 'hpl', 'structure', 'backs'];
+  const groupOrder = ['hpl', 'doors', 'structure', 'backs'];
   const sortedGroups = Object.values(boardGroups).sort((a, b) => {
     return groupOrder.indexOf(a.materialCategory) - groupOrder.indexOf(b.materialCategory);
   });
@@ -2776,7 +2823,7 @@ export function KitchenBlueprint() {
                 </h2>
                 <div className="flex gap-4 text-xs text-slate-600 mt-1 font-medium">
                   <span><strong>Estructura:</strong> {getColorName(cab.structureColor || state.structureColor)} {thicknessMm}mm</span>
-                  <span><strong>Frentes:</strong> {state.doorMaterial === 'hpl' ? `${getColorName(cab.doorColor || state.doorColor)} (HPL 0.9mm s/ Sustrato ${thicknessMm}mm)` : `${getColorName(cab.doorColor || state.doorColor)} ${thicknessMm}mm`}</span>
+                  <span><strong>Frentes:</strong> {isHplFinish(cab.doorColor || state.doorColor, cab.doorMaterial || state.doorMaterial) ? `${getColorName(cab.doorColor || state.doorColor)} (HPL 0.9mm + Sustrato MDF 18mm)` : `${getColorName(cab.doorColor || state.doorColor)} ${thicknessMm}mm`}</span>
                   <span><strong>Trasera:</strong> Durolac 3.5mm</span>
                 </div>
               </div>
@@ -2814,8 +2861,8 @@ export function KitchenBlueprint() {
                             {part.qty} UN
                           </span>
                           <span className="text-[11px] text-slate-800 font-mono font-black">
-                            {part.name.includes('Puerta') && state.doorMaterial === 'hpl'
-                              ? `${Math.round(part.thickness)}mm (HPL)`
+                            {part.name.includes('Puerta') && isHplFinish(part.material, cab.doorMaterial || state.doorMaterial)
+                              ? '18mm (HPL s/ MDF 18mm)'
                               : `${Number(part.thickness.toFixed(1))}mm`}
                           </span>
                         </div>
