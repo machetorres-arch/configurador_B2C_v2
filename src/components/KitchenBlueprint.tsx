@@ -1114,7 +1114,7 @@ export function KitchenBlueprint() {
     const cabD = Math.round(cab.depth * 10);
     const cabH = Math.round(cab.height * 10);
 
-    const legsH = (cab.type === 'base' || cab.type === 'tall' || cab.type === 'island') ? 150 : 0;
+    const legsH = (cab.type === 'base' || cab.type === 'tall' || cab.type === 'island') ? ((kState.socleHeight ?? 10) * 10) : 0;
     const bodyH = cabH - legsH;
 
     // VISTA DE PLANTA: cotas en TOP (Ancho) y RIGHT (Profundidad)
@@ -1733,7 +1733,7 @@ export function KitchenBlueprint() {
             <div>
               <div className="font-bold text-black uppercase tracking-wider mb-1 text-[8.5px]">ESPECIFICACIONES ARQUITECTÓNICAS</div>
               <div className="text-slate-700 leading-tight space-y-0.5 text-[8px]">
-                <div>• <strong className="text-black">ALTURA CIELO-PISO:</strong> 2200 mm | Zócalo H=100-150 mm</div>
+                <div>• <strong className="text-black">ALTURA CIELO-PISO:</strong> 2200 mm | Zócalo H={(kState.socleHeight ?? 10) * 10} mm</div>
                 <div>• <strong className="text-black">NIVEL CUBIERTA:</strong> N.P.T. +0.90 m | Faldón e=20-40 mm</div>
                 <div>• <strong className="text-black">REPLANTEO:</strong> Verificar plomos, escuadras y puntos MEP en obra</div>
               </div>
@@ -2462,14 +2462,9 @@ export function KitchenBlueprint() {
                 </svg>
               </div>
 
-            {/* SECTOR MEDIO E INFERIOR: VISTAS FRONTALES DE LOS MUROS ACTIVOS - ALTO ADAPTATIVO */}
+            {/* SECTOR MEDIO E INFERIOR: VISTAS FRONTALES DE LOS MUROS ACTIVOS - ESCALA UNIFICADA ISO/DIN */}
             <div className="grid grid-cols-12 gap-3 flex-1 pt-1.5 pb-1 items-stretch overflow-hidden">
-              {displayWalls.map((wData, wIdx) => {
-                const wall = wData.wall;
-                const cabs = wData.cabinetsOnWall;
-                const wallLenMm = Math.max(1200, Math.round(wall.length * 10));
-                const maxH = 2400; // mm
-
+              {(() => {
                 const isSingle = displayWalls.length === 1;
                 // Viewbox de elevación adaptativo para llenar la cuadrícula armónicamente
                 const elevW = isSingle ? 750 : displayWalls.length === 2 ? 460 : 360;
@@ -2477,82 +2472,134 @@ export function KitchenBlueprint() {
                 const elevPadX = isSingle ? 50 : 35;
                 const elevPadY = 20;
                 const groundY = elevH - 35;
+                const maxH = 2400; // mm
 
-                const elevScaleX = (elevW - elevPadX * 2) / wallLenMm;
-                const elevScaleY = (groundY - elevPadY) / maxH;
-                const elevScale = Math.min(elevScaleX, elevScaleY);
+                // Escala Única Normalizada (Norma ISO 128 / DIN) para mantener rigurosa correspondencia geométrica en todas las vistas
+                const maxWallLenMm = Math.max(1200, ...displayWalls.map(w => Math.round(w.wall.length * 10)));
+                const commonElevScaleX = (elevW - elevPadX * 2) / maxWallLenMm;
+                const commonElevScaleY = (groundY - elevPadY) / maxH;
+                const commonElevScale = Math.min(commonElevScaleX, commonElevScaleY);
 
-                const wallDrawW = wallLenMm * elevScale;
-                const wallStartX = (elevW - wallDrawW) / 2;
+                return displayWalls.map((wData, wIdx) => {
+                  const wall = wData.wall;
+                  const cabs = wData.cabinetsOnWall;
+                  const wallLenMm = Math.max(1200, Math.round(wall.length * 10));
+                  const elevScale = commonElevScale;
 
-                return (
-                  <div key={wIdx} className={`${colSpanClass} border border-slate-200 p-2.5 rounded flex flex-col justify-between bg-white relative h-full`}>
-                    <div className="flex justify-between items-center mb-1 border-b border-slate-200 pb-0.5">
-                      <div className="flex items-center gap-1.5">
-                        <span className="w-4 h-4 rounded-full border border-green-600 text-green-600 font-bold text-[8px] flex items-center justify-center">
-                          {wall.label}
-                        </span>
-                        <span className="text-[8.5px] font-black text-slate-900 tracking-wider">
-                          VISTA FRONTAL {wall.label}
-                        </span>
+                  const wallDrawW = wallLenMm * elevScale;
+                  const wallStartX = (elevW - wallDrawW) / 2;
+                  const socleHMm = (kState.socleHeight ?? 10) * 10;
+                  const socleScaleH = socleHMm * elevScale;
+
+                  return (
+                    <div key={wIdx} className={`${colSpanClass} border border-slate-200 p-2.5 rounded flex flex-col justify-between bg-white relative h-full`}>
+                      <div className="flex justify-between items-center mb-1 border-b border-slate-200 pb-0.5">
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-4 h-4 rounded-full border border-green-600 text-green-600 font-bold text-[8px] flex items-center justify-center">
+                            {wall.label}
+                          </span>
+                          <span className="text-[8.5px] font-black text-slate-900 tracking-wider">
+                            VISTA FRONTAL {wall.label}
+                          </span>
+                        </div>
+                        <span className="text-[7.5px] font-mono text-slate-500">L = {wallLenMm} mm</span>
                       </div>
-                      <span className="text-[7.5px] font-mono text-slate-500">L = {wallLenMm} mm</span>
-                    </div>
 
-                    {/* Dibujo Elevación SVG Dinámica con Rango Completo */}
-                    <div className="flex-1 flex items-center justify-center overflow-hidden py-1">
-                      <svg viewBox={`0 0 ${elevW} ${elevH}`} className="w-full h-full max-h-[380px]">
-                        {/* Línea de Suelo (+0.00) */}
-                        <line x1="8" y1={groundY} x2={elevW - 8} y2={groundY} stroke="#0f172a" strokeWidth="1.2" />
-                        <text x="10" y={groundY + 10} fontSize="7" fill="#64748b">0.00</text>
+                      {/* Dibujo Elevación SVG Dinámica con Escala Común Normalizada */}
+                      <div className="flex-1 flex items-center justify-center overflow-hidden py-1">
+                        <svg viewBox={`0 0 ${elevW} ${elevH}`} className="w-full h-full max-h-[380px]">
+                          {/* Línea de Suelo (+0.00) */}
+                          <line x1="8" y1={groundY} x2={elevW - 8} y2={groundY} stroke="#0f172a" strokeWidth="1.2" />
+                          <text x="10" y={groundY + 10} fontSize="7" fill="#64748b">0.00</text>
 
-                        {/* Muro Trasero de Fondo */}
-                        <rect
-                          x={wallStartX}
-                          y={groundY - 2200 * elevScale}
-                          width={wallDrawW}
-                          height={2200 * elevScale}
-                          fill="#f8fafc"
-                          stroke="#cbd5e1"
-                          strokeWidth="0.8"
-                        />
+                          {/* Muro Trasero de Fondo */}
+                          <rect
+                            x={wallStartX}
+                            y={groundY - 2200 * elevScale}
+                            width={wallDrawW}
+                            height={2200 * elevScale}
+                            fill="#f8fafc"
+                            stroke="#cbd5e1"
+                            strokeWidth="0.8"
+                          />
 
-                        {/* Línea de Zócalo General (h=100mm) */}
-                        <rect
-                          x={wallStartX}
-                          y={groundY - 100 * elevScale}
-                          width={wallDrawW}
-                          height={100 * elevScale}
-                          fill="#e2e8f0"
-                          stroke="#94a3b8"
-                          strokeWidth="0.6"
-                        />
+                          {/* Línea de Zócalo General de Muro (h = socleHMm) */}
+                          <rect
+                            x={wallStartX}
+                            y={groundY - socleScaleH}
+                            width={wallDrawW}
+                            height={socleScaleH}
+                            fill="#f1f5f9"
+                            stroke="#cbd5e1"
+                            strokeWidth="0.6"
+                          />
 
-                        {/* Renderizado de los Módulos Reales en la Elevación */}
-                        {cabs.map((cItem, ci) => {
-                          const cab = cItem.cab;
-                          const cLeftX = wallStartX + Math.max(0, cItem.offsetMm * elevScale);
-                          const cW = cItem.widthMm * elevScale;
-                          const cH = cItem.heightMm * elevScale;
-                          const cBottomY = groundY - (cItem.yBottomMm * elevScale);
-                          const cTopY = cBottomY - cH;
+                          {/* Renderizado de los Módulos Reales en la Elevación */}
+                          {cabs.map((cItem, ci) => {
+                            const cab = cItem.cab;
+                            const isTall = cab.type === 'tall';
+                            const isWall = cab.type === 'wall';
+                            const isBase = cab.type === 'base' || cab.type === 'island';
+                            const hasSocle = isBase || isTall;
 
-                          const isTall = cab.type === 'tall';
-                          const isWall = cab.type === 'wall';
-                          const isBase = cab.type === 'base' || cab.type === 'island';
+                            const legsHMm = hasSocle ? socleHMm : 0;
+                            const legsH = legsHMm * elevScale;
 
-                          return (
-                            <g key={ci}>
-                              {/* Caja Principal del Módulo */}
-                              <rect
-                                x={cLeftX}
-                                y={cTopY}
-                                width={cW}
-                                height={cH}
-                                fill="#ffffff"
-                                stroke="#0f172a"
-                                strokeWidth="1.2"
-                              />
+                            const cLeftX = wallStartX + Math.max(0, cItem.offsetMm * elevScale);
+                            const cW = cItem.widthMm * elevScale;
+                            const cH = cItem.heightMm * elevScale;
+                            const cBottomY = groundY - (cItem.yBottomMm * elevScale);
+                            const cTopY = hasSocle ? (groundY - cH) : (cBottomY - cH);
+                            const bodyH = hasSocle ? (cH - legsH) : cH;
+                            const bodyBottomY = cTopY + bodyH;
+
+                            return (
+                              <g key={ci}>
+                                {/* Zócalo y Patas Regulables bajo el Módulo (Norma ISO/DIN) */}
+                                {hasSocle && legsH > 0 && (
+                                  <g>
+                                    {/* Franja de zócalo continuo bajo el mueble */}
+                                    <rect
+                                      x={cLeftX}
+                                      y={bodyBottomY}
+                                      width={cW}
+                                      height={legsH}
+                                      fill="#e2e8f0"
+                                      stroke="#475569"
+                                      strokeWidth="0.8"
+                                    />
+                                    {/* Patas técnicas retranqueadas */}
+                                    <rect
+                                      x={cLeftX + Math.max(2.5, cW * 0.08)}
+                                      y={bodyBottomY}
+                                      width={Math.max(2, cW * 0.04)}
+                                      height={legsH}
+                                      fill="#94a3b8"
+                                      stroke="#475569"
+                                      strokeWidth="0.4"
+                                    />
+                                    <rect
+                                      x={cLeftX + cW - Math.max(2.5, cW * 0.08) - Math.max(2, cW * 0.04)}
+                                      y={bodyBottomY}
+                                      width={Math.max(2, cW * 0.04)}
+                                      height={legsH}
+                                      fill="#94a3b8"
+                                      stroke="#475569"
+                                      strokeWidth="0.4"
+                                    />
+                                  </g>
+                                )}
+
+                                {/* Caja Principal del Módulo (Casco) */}
+                                <rect
+                                  x={cLeftX}
+                                  y={cTopY}
+                                  width={cW}
+                                  height={bodyH}
+                                  fill="#ffffff"
+                                  stroke="#0f172a"
+                                  strokeWidth="1.2"
+                                />
 
                               {/* Si es Base: Cubierta Superior (+0.90) con Respaldo en Rojo */}
                               {isBase && (
@@ -2569,36 +2616,33 @@ export function KitchenBlueprint() {
                                 </g>
                               )}
 
-                              {/* Detalles de Frentes / Puertas / Cajones */}
+                              {/* Detalles de Frentes / Puertas / Cajones sobre el cuerpo del mueble */}
                               {cab.variant === '4_drawers' ? (
                                 <g stroke="#0f172a" strokeWidth="0.7">
-                                  <line x1={cLeftX} y1={cTopY + cH * 0.25} x2={cLeftX + cW} y2={cTopY + cH * 0.25} />
-                                  <line x1={cLeftX} y1={cTopY + cH * 0.5} x2={cLeftX + cW} y2={cTopY + cH * 0.5} />
-                                  <line x1={cLeftX} y1={cTopY + cH * 0.75} x2={cLeftX + cW} y2={cTopY + cH * 0.75} />
+                                  <line x1={cLeftX} y1={cTopY + bodyH * 0.25} x2={cLeftX + cW} y2={cTopY + bodyH * 0.25} />
+                                  <line x1={cLeftX} y1={cTopY + bodyH * 0.5} x2={cLeftX + cW} y2={cTopY + bodyH * 0.5} />
+                                  <line x1={cLeftX} y1={cTopY + bodyH * 0.75} x2={cLeftX + cW} y2={cTopY + bodyH * 0.75} />
                                 </g>
                               ) : cab.variant === '2_pot_drawers' ? (
                                 <g stroke="#0f172a" strokeWidth="0.7">
-                                  <line x1={cLeftX} y1={cTopY + cH * 0.5} x2={cLeftX + cW} y2={cTopY + cH * 0.5} />
+                                  <line x1={cLeftX} y1={cTopY + bodyH * 0.5} x2={cLeftX + cW} y2={cTopY + bodyH * 0.5} />
                                 </g>
                               ) : cab.variant === '2_doors' || cab.variant === 'wall_2_doors' || cab.variant === 'tall_2_doors' ? (
                                 <g stroke="#0f172a" strokeWidth="0.7">
-                                  <line x1={cLeftX + cW / 2} y1={cTopY} x2={cLeftX + cW / 2} y2={cBottomY} />
+                                  <line x1={cLeftX + cW / 2} y1={cTopY} x2={cLeftX + cW / 2} y2={bodyBottomY} />
                                   {/* Diagonales de apertura */}
-                                  <path d={`M ${cLeftX} ${cTopY + cH / 2} L ${cLeftX + cW / 2} ${cTopY} L ${cLeftX + cW / 2} ${cBottomY} Z`} fill="none" stroke="#c026d3" strokeWidth="0.6" />
-                                  <path d={`M ${cLeftX + cW} ${cTopY + cH / 2} L ${cLeftX + cW / 2} ${cTopY} L ${cLeftX + cW / 2} ${cBottomY} Z`} fill="none" stroke="#c026d3" strokeWidth="0.6" />
+                                  <path d={`M ${cLeftX} ${cTopY + bodyH / 2} L ${cLeftX + cW / 2} ${cTopY} L ${cLeftX + cW / 2} ${bodyBottomY} Z`} fill="none" stroke="#c026d3" strokeWidth="0.6" />
+                                  <path d={`M ${cLeftX + cW} ${cTopY + bodyH / 2} L ${cLeftX + cW / 2} ${cTopY} L ${cLeftX + cW / 2} ${bodyBottomY} Z`} fill="none" stroke="#c026d3" strokeWidth="0.6" />
                                 </g>
                               ) : isTall ? (
                                 <g stroke="#0f172a" strokeWidth="0.7">
-                                  <line x1={cLeftX} y1={cTopY + cH * 0.3} x2={cLeftX + cW} y2={cTopY + cH * 0.3} />
-                                  <line x1={cLeftX} y1={cTopY + cH * 0.7} x2={cLeftX + cW} y2={cTopY + cH * 0.7} />
-                                  <text x={cLeftX + cW / 2} y={cTopY + cH * 0.52} fontSize="6" fill="#ea580c" fontWeight="bold" textAnchor="middle">
-                                    HORNO EMPOTRADO
-                                  </text>
+                                  <line x1={cLeftX} y1={cTopY + bodyH * 0.3} x2={cLeftX + cW} y2={cTopY + bodyH * 0.3} />
+                                  <line x1={cLeftX} y1={cTopY + bodyH * 0.7} x2={cLeftX + cW} y2={cTopY + bodyH * 0.7} />
                                 </g>
                               ) : (
                                 <g>
                                   {/* Puerta 1 hoja con diagonal */}
-                                  <path d={`M ${cLeftX} ${cTopY + cH / 2} L ${cLeftX + cW} ${cTopY} L ${cLeftX + cW} ${cBottomY} Z`} fill="none" stroke="#c026d3" strokeWidth="0.6" />
+                                  <path d={`M ${cLeftX} ${cTopY + bodyH / 2} L ${cLeftX + cW} ${cTopY} L ${cLeftX + cW} ${bodyBottomY} Z`} fill="none" stroke="#c026d3" strokeWidth="0.6" />
                                 </g>
                               )}
 
@@ -2634,9 +2678,30 @@ export function KitchenBlueprint() {
                           </text>
                         </g>
 
-                        {/* Indicador de Nivel +0.90 Cubierta */}
+                        {/* Cota de Altura de Zócalo a la Izquierda */}
+                        <g stroke="#475569" strokeWidth="0.6">
+                          <line x1={wallStartX - 3} y1={groundY} x2={wallStartX - 3} y2={groundY - socleScaleH} />
+                          <line x1={wallStartX - 5.5} y1={groundY} x2={wallStartX - 0.5} y2={groundY} />
+                          <line x1={wallStartX - 5.5} y1={groundY - socleScaleH} x2={wallStartX - 0.5} y2={groundY - socleScaleH} />
+                          <text
+                            x={wallStartX - 6}
+                            y={groundY - socleScaleH / 2 + 2}
+                            fontSize="5.5"
+                            fontWeight="bold"
+                            fill="#334155"
+                            stroke="none"
+                            textAnchor="end"
+                          >
+                            {socleHMm}
+                          </text>
+                        </g>
+
+                        {/* Indicador de Nivel +0.90 Cubierta y Nivel Zócalo */}
                         <text x={wallStartX + wallDrawW + 6} y={groundY - 900 * elevScale + 3} fontSize="6" fill="#e11d48" fontWeight="bold">
                           +0.90
+                        </text>
+                        <text x={wallStartX + wallDrawW + 6} y={groundY - socleScaleH + 2} fontSize="5" fill="#475569" fontWeight="bold">
+                          +{(socleHMm / 1000).toFixed(2)}
                         </text>
 
                         {/* Cota de Largo Total del Muro Inferior */}
@@ -2652,12 +2717,13 @@ export function KitchenBlueprint() {
                     </div>
 
                     <div className="text-[7px] text-slate-500 border-t border-slate-100 pt-0.5 flex justify-between">
-                      <span>Murales con puertas y anclajes a muro</span>
+                      <span>Zócalo H={socleHMm} mm | Murales con puertas y anclajes</span>
                       <span className="font-bold text-slate-700">Costados {getColorName(state.doorColor)}</span>
                     </div>
                   </div>
                 );
-              })}
+              });
+            })()}
             </div>
 
             {/* VIÑETA ARQUITECTÓNICA INFERIOR ESTANDARIZADA (EN LA BASE EXACTA DE LA HOJA) */}
@@ -2692,7 +2758,7 @@ export function KitchenBlueprint() {
         const totalH = cab.depth + cab.height;
         const viewScale = Math.min(260 / totalW, 440 / totalH, 2.2);
 
-        const legsH = (cab.type === 'base' || cab.type === 'tall' || cab.type === 'island') ? 15 : 0;
+        const legsH = (cab.type === 'base' || cab.type === 'tall' || cab.type === 'island') ? (kState.socleHeight ?? 10) : 0;
         const bodyH = cab.height - legsH;
 
         return (

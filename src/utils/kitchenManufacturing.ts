@@ -112,7 +112,8 @@ export function getDefaultShelvesCount(cab: CabinetType): number {
   }
   if (v === '1_door_1_drawer') {
     const isBaseOrTall = cab.type === 'base' || cab.type === 'tall' || cab.type === 'island';
-    const legsHeight = isBaseOrTall ? 10 : 0;
+    const socleH = useKitchenStore.getState().socleHeight ?? 10;
+    const legsHeight = isBaseOrTall ? socleH : 0;
     const cabH = cab.height - legsHeight;
     const doorH = cabH - 18 - 0.9;
     return doorH > 40 ? 1 : 0;
@@ -125,7 +126,8 @@ export function getDefaultShelvesCount(cab: CabinetType): number {
  */
 export function getCabinetHingesPositions(cab: CabinetType): number[] {
   const isBaseOrTall = cab.type === 'base' || cab.type === 'tall' || cab.type === 'island';
-  const legsHeight = isBaseOrTall ? 10 : 0;
+  const socleH = useKitchenStore.getState().socleHeight ?? 10;
+  const legsHeight = isBaseOrTall ? socleH : 0;
   const cabH = cab.height - legsHeight;
   const v = cab.variant || (cab.width > 60 ? '2_doors' : '1_door');
 
@@ -191,7 +193,8 @@ export function getCabinetHingesPositions(cab: CabinetType): number[] {
  */
 export function getResolvedCabinetShelfElevations(cab: CabinetType, thicknessCm = 1.8): number[] {
   const isBaseOrTall = cab.type === 'base' || cab.type === 'tall' || cab.type === 'island';
-  const legsHeight = isBaseOrTall ? 10 : 0;
+  const socleH = useKitchenStore.getState().socleHeight ?? 10;
+  const legsHeight = isBaseOrTall ? socleH : 0;
   const cabH = cab.height - legsHeight;
   const v = cab.variant || (cab.width > 60 ? '2_doors' : '1_door');
 
@@ -302,8 +305,10 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
     const h = cab.height;
     const d = cab.depth;
     
-    // Base cabinet legs
-    const legsHeight = (cab.type === 'base' || cab.type === 'island') ? 15 : 0;
+    // Base, tall and island cabinet legs/socle
+    const isBaseOrTall = cab.type === 'base' || cab.type === 'tall' || cab.type === 'island';
+    const socleH = kState.socleHeight ?? 10;
+    const legsHeight = isBaseOrTall ? socleH : 0;
     const cabH = h - legsHeight;
     const innerW = w - thickness * 2;
     const innerH = cabH - thickness * ((cab.type === 'base' || cab.type === 'island') ? 1 : 2);
@@ -2277,7 +2282,8 @@ export function generateKitchenHardwareList(cabinets: CabinetType[]) {
 
     // 7. ZÓCALO Y PERFILERÍA OPTIMIZADA A TIRAS DE 3000mm (3m)
     if (kState.showSocle && baseCabinets.length > 0) {
-        const socleSystem = calculateSocleSystem(baseCabinets, kState.walls, kState.roomConfig?.vertices);
+        const socleH = kState.socleHeight ?? 10;
+        const socleSystem = calculateSocleSystem(baseCabinets, kState.walls, kState.roomConfig?.vertices, kState.socleFinish, socleH);
         const frontLengthMm = socleSystem.pieces.reduce((acc, p) => acc + p.length, 0) * 10;
         const lateralLengthMm = socleSystem.laterals.reduce((acc, l) => acc + l.depth, 0) * 10;
         const totalLinearLengthMm = frontLengthMm + lateralLengthMm;
@@ -2293,7 +2299,7 @@ export function generateKitchenHardwareList(cabinets: CabinetType[]) {
             Item: `Zócalo de PVC/Aluminio con Sello de Agua (${socleFinishLabel} - Tira 3000mm / 3m)`,
             Cantidad: socleStrips,
             Unidad: 'Tiras',
-            Detalles: `Protección hidrófuga perimetral 10cm en acabado ${socleFinishLabel}. Optimizado a tiras comerciales continuas de 3m (${(totalLinearLengthMm/1000).toFixed(2)} m lineales)`
+            Detalles: `Protección hidrófuga perimetral ${socleH}cm en acabado ${socleFinishLabel}. Optimizado a tiras comerciales continuas de 3m (${(totalLinearLengthMm/1000).toFixed(2)} m lineales)`
         });
         if (straightJointsCount > 0) {
             hardware.push({

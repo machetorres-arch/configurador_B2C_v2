@@ -208,6 +208,7 @@ interface KitchenState {
   activeCabinetId: string | null;
   showSocle: boolean;
   socleFinish: 'aluminum' | 'black';
+  socleHeight: number;
   golaSystem: GolaSystem;
   golaIncompatibilityAlert: GolaIncompatibilityAlert | null;
   drawingStart: [number, number] | null;
@@ -242,6 +243,7 @@ interface KitchenState {
   setDrawingStart: (pos: [number, number] | null) => void;
   setShowSocle: (val: boolean) => void;
   setSocleFinish: (finish: 'aluminum' | 'black') => void;
+  setSocleHeight: (height: number) => void;
   setGolaSystem: (system: GolaSystem) => void;
   setGolaIncompatibilityAlert: (alert: GolaIncompatibilityAlert | null) => void;
   updateCabinet: (id: string, updates: Partial<CabinetType>) => void;
@@ -524,6 +526,7 @@ export const useKitchenStore = create<KitchenState>((set, get) => {
       architecturalElements: JSON.parse(JSON.stringify(state.architecturalElements)),
       showSocle: state.showSocle,
       socleFinish: state.socleFinish,
+      socleHeight: state.socleHeight || 10,
       golaSystem: state.golaSystem,
       countertopConfig: JSON.parse(JSON.stringify(state.countertopConfig)),
       islandBackConfig: JSON.parse(JSON.stringify(state.islandBackConfig)),
@@ -542,6 +545,7 @@ export const useKitchenStore = create<KitchenState>((set, get) => {
   activeCabinetId: null,
   showSocle: false,
   socleFinish: 'aluminum',
+  socleHeight: 10,
   golaSystem: 'none',
   drawingStart: null,
   isRoomPlannerOpen: false,
@@ -584,6 +588,7 @@ export const useKitchenStore = create<KitchenState>((set, get) => {
       architecturalElements: JSON.parse(JSON.stringify(state.architecturalElements)),
       showSocle: state.showSocle,
       socleFinish: state.socleFinish,
+      socleHeight: state.socleHeight || 10,
       golaSystem: state.golaSystem,
       countertopConfig: JSON.parse(JSON.stringify(state.countertopConfig)),
       islandBackConfig: JSON.parse(JSON.stringify(state.islandBackConfig)),
@@ -599,6 +604,7 @@ export const useKitchenStore = create<KitchenState>((set, get) => {
       architecturalElements: previousState.architecturalElements,
       showSocle: previousState.showSocle,
       socleFinish: (previousState as any).socleFinish || 'aluminum',
+      socleHeight: (previousState as any).socleHeight || 10,
       golaSystem: previousState.golaSystem,
       countertopConfig: previousState.countertopConfig,
       islandBackConfig: previousState.islandBackConfig,
@@ -622,6 +628,7 @@ export const useKitchenStore = create<KitchenState>((set, get) => {
       architecturalElements: JSON.parse(JSON.stringify(state.architecturalElements)),
       showSocle: state.showSocle,
       socleFinish: state.socleFinish,
+      socleHeight: state.socleHeight || 10,
       golaSystem: state.golaSystem,
       countertopConfig: JSON.parse(JSON.stringify(state.countertopConfig)),
       islandBackConfig: JSON.parse(JSON.stringify(state.islandBackConfig)),
@@ -637,6 +644,7 @@ export const useKitchenStore = create<KitchenState>((set, get) => {
       architecturalElements: nextState.architecturalElements,
       showSocle: nextState.showSocle,
       socleFinish: (nextState as any).socleFinish || 'aluminum',
+      socleHeight: (nextState as any).socleHeight || 10,
       golaSystem: nextState.golaSystem,
       countertopConfig: nextState.countertopConfig,
       islandBackConfig: nextState.islandBackConfig,
@@ -799,6 +807,7 @@ export const useKitchenStore = create<KitchenState>((set, get) => {
   setDrawingStart: (pos) => set({ drawingStart: pos }),
   setShowSocle: (val) => set((state) => ({ history: saveSnapshot(state), showSocle: val })),
   setSocleFinish: (finish) => set((state) => ({ history: saveSnapshot(state), socleFinish: finish })),
+  setSocleHeight: (height) => set((state) => ({ history: saveSnapshot(state), socleHeight: height })),
   setGolaIncompatibilityAlert: (alert) => set({ golaIncompatibilityAlert: alert }),
   setGolaSystem: (system) => {
     const state = useKitchenStore.getState();

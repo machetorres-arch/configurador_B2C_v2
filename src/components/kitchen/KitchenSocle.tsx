@@ -6,6 +6,7 @@ export function KitchenSocle() {
   const cabinets = useKitchenStore((state) => state.cabinets);
   const showSocle = useKitchenStore((state) => state.showSocle);
   const socleFinish = useKitchenStore((state) => state.socleFinish || 'aluminum');
+  const socleHeight = useKitchenStore((state) => state.socleHeight || 10);
   const toolMode = useKitchenStore((state) => state.toolMode);
   const activeCabinetId = useKitchenStore((state) => state.activeCabinetId);
   const walls = useKitchenStore((state) => state.walls);
@@ -22,10 +23,11 @@ export function KitchenSocle() {
     validCabinets,
     walls,
     roomConfig?.vertices,
-    socleFinish
+    socleFinish,
+    socleHeight
   );
 
-  const legsHeight = 10;
+  const legsHeight = socleHeight;
   const socleThickness = 1.2;
 
   // Visual PBR material properties calibrated for high contrast and realistic surface

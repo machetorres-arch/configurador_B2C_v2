@@ -15,6 +15,7 @@ export function KitchenIslandBackPanel() {
   const walls = useKitchenStore((s) => s.walls);
   const architecturalElements = useKitchenStore((s) => s.architecturalElements);
   const roomConfig = useKitchenStore((s) => s.roomConfig);
+  const socleHeight = useKitchenStore((s) => s.socleHeight ?? 10);
 
   const islandRuns = useMemo(() => {
     if (!islandBackConfig?.enabled) return [];
@@ -182,13 +183,13 @@ export function KitchenIslandBackPanel() {
             {effectiveHeightMode === 'with_socle' && (() => {
               const socleColor = run.cabinets[0]?.socleColor || '#d1d5db';
               const socleThickness = 1.2;
-              const socleHeight = 10;
+              const socleH = socleHeight;
               const socleZ = -cabDepthCm / 2 + 2;
               return (
-                <group position={[0, socleHeight / 2, socleZ]}>
+                <group position={[0, socleH / 2, socleZ]}>
                   {socleColor.startsWith('#') ? (
                     <mesh castShadow={!isTransparent} receiveShadow={!isTransparent}>
-                      <boxGeometry args={[totalLengthCm, socleHeight, socleThickness]} />
+                      <boxGeometry args={[totalLengthCm, socleH, socleThickness]} />
                       <meshStandardMaterial
                         color={socleColor}
                         metalness={0.8}
@@ -202,7 +203,7 @@ export function KitchenIslandBackPanel() {
                   ) : (
                     <Board
                       position={[0, 0, 0]}
-                      args={[totalLengthCm, socleHeight, socleThickness]}
+                      args={[totalLengthCm, socleH, socleThickness]}
                       color="#ffffff"
                       textureUrl={socleColor}
                       materialType={run.cabinets[0]?.socleMaterial || 'melamina'}

@@ -8,6 +8,7 @@ interface ArchitecturalWindowProps {
   depth: number;
   isSelected?: boolean;
   viewMode?: '2d' | '3d';
+  isOpen?: boolean;
 }
 
 export function ArchitecturalWindow({

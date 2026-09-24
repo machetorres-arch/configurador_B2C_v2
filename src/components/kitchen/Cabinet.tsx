@@ -922,7 +922,7 @@ interface CabinetProps extends CabinetType {
 }
 
 export function Cabinet({ id, type, variant, width, height, depth, position, rotation, color, structureColor, doorColor, drawerFrontColor, drawerInnerColor, shelfColor, backColor, socleColor, structureMaterial, doorMaterial, drawerFrontMaterial, drawerInnerMaterial, shelfMaterial, backMaterial, socleMaterial, grainDirection, grainElements, hplBalancer, isOpen, openElements, index, shelvesCount, shelvesCountLower, shelvesCountUpper, handleConfig: propHandleConfig, leftCoverPanel, rightCoverPanel }: CabinetProps) {
-   const { activeCabinetId, setActiveCabinet, setDraggingCabinetId, setToolMode, showSocle, cabinets, viewMode, golaSystem, countertopConfig, qstoneCatalog, setOpenElement, handleConfig: storeHandleConfig } = useKitchenStore();
+   const { activeCabinetId, setActiveCabinet, setDraggingCabinetId, setToolMode, showSocle, socleHeight, cabinets, viewMode, golaSystem, countertopConfig, qstoneCatalog, setOpenElement, handleConfig: storeHandleConfig } = useKitchenStore();
    const handleConfig = propHandleConfig || storeHandleConfig;
 
    // Sanitización estricta: Piedras y cuarzos Qstone aplican ÚNICAMENTE a la cubierta.
@@ -1069,7 +1069,7 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
    const golaCenterX = 0;
 
    const isBaseOrTall = type === 'base' || type === 'tall' || type === 'island';
-   const legsHeight = isBaseOrTall ? 10 : 0;
+   const legsHeight = isBaseOrTall ? (socleHeight ?? 10) : 0;
    const cabH = height - legsHeight;
    const innerW = width - (thickness * 2);
    const gap = 0.3; // 3mm de cantería

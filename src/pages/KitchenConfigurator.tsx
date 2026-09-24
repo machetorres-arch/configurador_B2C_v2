@@ -97,7 +97,7 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
 
   const isLight = theme === 'light';
 
-  const { viewMode, setViewMode, toolMode, setToolMode, cabinets, addCabinet, activeCabinetId, updateCabinet, removeCabinet, setActiveCabinet, applyGlobalTexture, showSocle, setShowSocle, socleFinish, setSocleFinish, roomConfig, setRoomPlannerOpen, walls, architecturalElements, activeArchElementId, addArchitecturalElement, updateArchitecturalElement, removeArchitecturalElement, setActiveArchElement, golaSystem, setGolaSystem, countertopConfig, setCountertopConfig, qstoneCatalog, islandBackConfig, setIslandBackConfig, mepPoints, handleConfig, undo, redo, canUndo, canRedo } = useKitchenStore();
+  const { viewMode, setViewMode, toolMode, setToolMode, cabinets, addCabinet, activeCabinetId, updateCabinet, removeCabinet, setActiveCabinet, applyGlobalTexture, showSocle, setShowSocle, socleFinish, setSocleFinish, socleHeight, setSocleHeight, roomConfig, setRoomPlannerOpen, walls, architecturalElements, activeArchElementId, addArchitecturalElement, updateArchitecturalElement, removeArchitecturalElement, setActiveArchElement, golaSystem, setGolaSystem, countertopConfig, setCountertopConfig, qstoneCatalog, islandBackConfig, setIslandBackConfig, mepPoints, handleConfig, undo, redo, canUndo, canRedo } = useKitchenStore();
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -1219,106 +1219,113 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                         </div>
                       )}
                     </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <ToggleBtn isLight={isLight} active={globalState.isTransparent} onClick={globalState.toggleTransparent} label="Transparente" />
-                      <ToggleBtn isLight={isLight} active={showSocle} onClick={() => setShowSocle(!showSocle)} label="Zócalo" />
+                    <div>
+                      <ToggleBtn isLight={isLight} active={globalState.isTransparent} onClick={globalState.toggleTransparent} label="Modo Transparente (Rayos X)" />
                     </div>
+                  </div>
+                </div>
 
-                    {showSocle && (
-                      <div className={`flex flex-col gap-1.5 p-2.5 rounded-lg border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-white/[0.02] border-white/10'}`}>
-                        <div className="flex items-center justify-between">
-                          <label className={isLight ? "text-[11px] uppercase tracking-wider text-slate-700 font-bold" : "text-[11px] uppercase tracking-wider text-slate-300 font-bold"}>Acabado de Zócalo</label>
-                          <span className="text-[10px] font-semibold text-orange-500">10 cm</span>
+                {/* ACCESOS RÁPIDOS A SISTEMAS GLOBALES */}
+                <div className={`p-4 rounded-xl border ${
+                  isLight ? 'bg-slate-50 border-slate-200 shadow-sm' : 'bg-white/5 border-white/10'
+                }`}>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className={`text-xs uppercase tracking-wider font-bold ${isLight ? 'text-orange-600' : 'text-orange-400'}`}>
+                      Sistemas y Perfilería Global
+                    </h3>
+                    <span className="text-[10px] font-semibold text-slate-400 uppercase">Toda la Cocina</span>
+                  </div>
+
+                  <div className="flex flex-col gap-2.5">
+                    {/* Tarjeta Zócalo */}
+                    <div 
+                      onClick={() => {
+                        setRightTab('engineering');
+                        setOpenAccordions(prev => ({ ...prev, socle: true }));
+                      }}
+                      className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between group ${
+                        isLight 
+                          ? 'bg-white border-slate-200 hover:border-orange-500 hover:shadow-xs' 
+                          : 'bg-white/[0.03] border-white/10 hover:border-orange-500/50 hover:bg-white/[0.06]'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className={`p-2 rounded-lg shrink-0 ${
+                          showSocle 
+                            ? 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20' 
+                            : (isLight ? 'bg-slate-100 text-slate-400' : 'bg-white/5 text-slate-500')
+                        }`}>
+                          <Layers size={15} />
                         </div>
-                        <div className="grid grid-cols-2 gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => setSocleFinish('aluminum')}
-                            className={`py-1.5 px-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${
-                              socleFinish === 'aluminum'
-                                ? 'bg-orange-500 text-black shadow-sm'
-                                : isLight
-                                  ? 'bg-white text-slate-800 border border-slate-300 hover:border-orange-500'
-                                  : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50'
-                            }`}
-                          >
-                            <span className="w-2.5 h-2.5 rounded-full bg-slate-300 border border-slate-400 shrink-0" />
-                            Gris Satinado
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setSocleFinish('black')}
-                            className={`py-1.5 px-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${
-                              socleFinish === 'black'
-                                ? 'bg-orange-500 text-black shadow-sm'
-                                : isLight
-                                  ? 'bg-white text-slate-800 border border-slate-300 hover:border-orange-500'
-                                  : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50'
-                            }`}
-                          >
-                            <span className="w-2.5 h-2.5 rounded-full bg-zinc-900 border border-zinc-700 shrink-0" />
-                            Negro Mate
-                          </button>
+                        <div className="flex flex-col min-w-0">
+                          <span className={`text-xs font-bold leading-tight ${isLight ? 'text-slate-800' : 'text-slate-200'}`}>
+                            Zócalo Continuo
+                          </span>
+                          <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                            {!showSocle 
+                              ? 'Oculto / Desactivado' 
+                              : `${socleFinish === 'black' ? 'Negro Mate' : 'Gris Satinado'} (${socleHeight ?? 10} cm)`
+                            }
+                          </span>
                         </div>
                       </div>
-                    )}
-
-                    <div className={`flex flex-col gap-1.5 pt-2 border-t ${isLight ? 'border-slate-200' : 'border-white/10'}`}>
-                      <label className={isLight ? "text-xs uppercase tracking-wider text-slate-700 font-bold" : labelClass}>Sistema Riel Gola (Provelcar)</label>
-                      <div className="grid grid-cols-3 gap-1.5">
-                        <button
-                          onClick={() => setGolaSystem('none')}
-                          className={`py-1.5 px-1 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-colors cursor-pointer ${
-                            golaSystem === 'none'
-                              ? 'bg-orange-500 text-black shadow-sm'
-                              : isLight
-                                ? 'bg-white text-slate-800 border border-slate-300 hover:border-orange-500'
-                                : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50'
-                          }`}
-                        >
-                          Sin Gola
-                        </button>
-                        <button
-                          onClick={() => setGolaSystem('aluminum')}
-                          className={`py-1.5 px-1 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-colors cursor-pointer flex items-center justify-center gap-1 ${
-                            golaSystem === 'aluminum'
-                              ? 'bg-orange-500 text-black shadow-sm'
-                              : isLight
-                                ? 'bg-white text-slate-800 border border-slate-300 hover:border-orange-500'
-                                : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50'
-                          }`}
-                        >
-                          <span className="w-2 h-2 rounded-full bg-slate-300 border border-slate-400 shrink-0" />
-                          Gris Satin
-                        </button>
-                        <button
-                          onClick={() => setGolaSystem('black')}
-                          className={`py-1.5 px-1 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-colors cursor-pointer flex items-center justify-center gap-1 ${
-                            golaSystem === 'black'
-                              ? 'bg-orange-500 text-black shadow-sm'
-                              : isLight
-                                ? 'bg-white text-slate-800 border border-slate-300 hover:border-orange-500'
-                                : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50'
-                          }`}
-                        >
-                          <span className="w-2 h-2 rounded-full bg-zinc-900 border border-zinc-700 shrink-0" />
-                          Negro
-                        </button>
+                      <div className="flex items-center gap-1 text-[11px] font-bold text-orange-600 dark:text-orange-400 group-hover:translate-x-0.5 transition-transform shrink-0 ml-2">
+                        <span>Configurar</span>
+                        <ChevronRight size={14} />
                       </div>
                     </div>
 
-                    <div className={`flex items-center justify-between p-3 rounded-xl border mt-3 ${
+                    {/* Tarjeta Sistema Gola */}
+                    <div 
+                      onClick={() => {
+                        setRightTab('engineering');
+                        setOpenAccordions(prev => ({ ...prev, gola: true }));
+                      }}
+                      className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between group ${
+                        isLight 
+                          ? 'bg-white border-slate-200 hover:border-orange-500 hover:shadow-xs' 
+                          : 'bg-white/[0.03] border-white/10 hover:border-orange-500/50 hover:bg-white/[0.06]'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className={`p-2 rounded-lg shrink-0 ${
+                          golaSystem !== 'none' 
+                            ? 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20' 
+                            : (isLight ? 'bg-slate-100 text-slate-400' : 'bg-white/5 text-slate-500')
+                        }`}>
+                          <Sliders size={15} />
+                        </div>
+                        <div className="flex flex-col min-w-0">
+                          <span className={`text-xs font-bold leading-tight ${isLight ? 'text-slate-800' : 'text-slate-200'}`}>
+                            Sistema Riel Gola
+                          </span>
+                          <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                            {golaSystem === 'none' 
+                              ? 'Sin Gola (Tiradores convencionales)' 
+                              : `Provelcar (${golaSystem === 'black' ? 'Negro' : 'Gris Satin'})`
+                            }
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 text-[11px] font-bold text-orange-600 dark:text-orange-400 group-hover:translate-x-0.5 transition-transform shrink-0 ml-2">
+                        <span>Configurar</span>
+                        <ChevronRight size={14} />
+                      </div>
+                    </div>
+
+                    {/* Tarjeta Cubiertas Qstone */}
+                    <div className={`flex items-center justify-between p-3 rounded-xl border ${
                       isLight ? 'bg-amber-50/70 border-amber-200' : 'bg-amber-950/20 border-amber-500/30'
                     }`}>
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-lg bg-amber-500/20 border border-amber-500/30 text-amber-400 flex items-center justify-center font-bold text-xs">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-8 h-8 rounded-lg bg-amber-500/20 border border-amber-500/30 text-amber-500 dark:text-amber-400 flex items-center justify-center font-bold text-xs shrink-0">
                           QS
                         </div>
-                        <div>
-                          <div className={`text-xs font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                        <div className="flex flex-col min-w-0">
+                          <div className={`text-xs font-bold leading-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>
                             Cubiertas Qstone
                           </div>
-                          <div className="text-[10px] text-slate-400">
+                          <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
                             {countertopConfig.enabled
                               ? `${qstoneCatalog.find(p => p.id === countertopConfig.selectedProductId)?.materialType === 'sinterizado' ? 'Sinterizado 12mm' : 'Cuarzo'} (Activa)`
                               : 'Desactivada'}
@@ -1326,8 +1333,9 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                         </div>
                       </div>
                       <button
+                        type="button"
                         onClick={() => setIsCountertopModalOpen(true)}
-                        className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold rounded-lg transition shadow-sm cursor-pointer"
+                        className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold rounded-lg transition shadow-sm cursor-pointer shrink-0 ml-2"
                       >
                         Configurar
                       </button>
@@ -1531,7 +1539,7 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                       ? (isLight ? 'bg-orange-100 text-orange-800 border-orange-200' : 'bg-orange-500/20 text-orange-400 border-orange-500/30')
                       : (isLight ? 'bg-slate-100 text-slate-600 border-slate-200' : 'bg-white/5 text-slate-400 border-white/10')
                   }`}>
-                    {!showSocle ? 'Sin Zócalo' : socleFinish === 'black' ? 'Negro Mate (10cm)' : 'Gris Satinado (10cm)'}
+                    {!showSocle ? 'Sin Zócalo' : `${socleFinish === 'black' ? 'Negro Mate' : 'Gris Satinado'} (${socleHeight ?? 10}cm)`}
                   </span>
                   {openAccordions.socle ? (
                     <ChevronDown size={16} className={isLight ? "text-orange-600" : "text-orange-400"} />
@@ -1552,9 +1560,47 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                         isLight={isLight}
                         active={showSocle}
                         onClick={() => setShowSocle(!showSocle)}
-                        label={showSocle ? "Activo (10cm)" : "Oculto"}
+                        label={showSocle ? `Activo (${socleHeight ?? 10}cm)` : "Oculto"}
                       />
                     </div>
+
+                    {showSocle && (
+                      <div className="flex flex-col gap-2 pt-2 border-t border-slate-200 dark:border-white/10">
+                        <label className={isLight ? "text-xs uppercase tracking-wider text-slate-700 font-bold" : labelClass}>
+                          Altura de Zócalo / Patas
+                        </label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setSocleHeight(10)}
+                            className={`py-2 px-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer flex flex-col items-center justify-center gap-0.5 ${
+                              (socleHeight ?? 10) === 10
+                                ? 'bg-orange-500 text-black shadow-sm'
+                                : isLight
+                                  ? 'bg-white text-slate-800 border border-slate-300 hover:border-orange-500'
+                                  : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50'
+                            }`}
+                          >
+                            <span>10 cm (100 mm)</span>
+                            <span className="text-[10px] font-normal lowercase opacity-80">Estándar Moderno</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSocleHeight(15)}
+                            className={`py-2 px-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer flex flex-col items-center justify-center gap-0.5 ${
+                              (socleHeight ?? 10) === 15
+                                ? 'bg-orange-500 text-black shadow-sm'
+                                : isLight
+                                  ? 'bg-white text-slate-800 border border-slate-300 hover:border-orange-500'
+                                  : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50'
+                            }`}
+                          >
+                            <span>15 cm (150 mm)</span>
+                            <span className="text-[10px] font-normal lowercase opacity-80">Estándar Europeo</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
 
                     {showSocle && (
                       <div className="flex flex-col gap-2 pt-2 border-t border-slate-200 dark:border-white/10">

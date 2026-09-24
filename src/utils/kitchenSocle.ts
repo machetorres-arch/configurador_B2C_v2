@@ -48,7 +48,8 @@ export function calculateSocleSystem(
   cabinets: CabinetType[],
   walls: WallType[] = [],
   _roomVertices: any[] = [],
-  socleFinish: 'aluminum' | 'black' | string = 'aluminum'
+  socleFinish: 'aluminum' | 'black' | string = 'aluminum',
+  socleHeight: number = 10
 ): ProcessedSocleSystem {
   // Filter all floor-standing cabinets that have legs/socle
   const floorCabinets = cabinets.filter(
@@ -62,7 +63,7 @@ export function calculateSocleSystem(
   }
 
   const socleColor = socleFinish === 'black' ? '#18181b' : (socleFinish === 'aluminum' ? '#e2e8f0' : (floorCabinets[0]?.socleColor || '#e2e8f0'));
-  const legsHeight = 10;
+  const legsHeight = socleHeight || 10;
   const socleY = legsHeight / 2;
 
   // Helper to get unit vectors and front/flank coordinates for a cabinet
