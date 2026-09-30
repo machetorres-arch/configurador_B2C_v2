@@ -1,7 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { Edges, OrthographicCamera, PerspectiveCamera, OrbitControls, Environment, Grid, Line, Text } from '@react-three/drei';
+import { preloadFont } from 'troika-three-text';
 import * as THREE from 'three';
+
+// Precarga silenciosa en segundo plano para eliminar la suspensión de Troika/Drei al insertar el primer mueble
+try {
+  preloadFont({ characters: '0123456789.,MODcmPtaCiegoABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz:+-×/ ⚠️✛' }, () => {});
+} catch {
+  // Ignorar en entornos sin soporte de workers
+}
 import { useKitchenStore } from '../../store/kitchenStore';
 import { useStore } from '../../store';
 import { Wall } from './Wall';
@@ -758,17 +766,19 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
 
         <RoomFloorAndDimensions onPointerDown={handlePointerDown} />
         {effectiveWalls.map(wall => <Wall key={wall.id} {...wall} />)}
-        {cabinets.map((cab, idx) => {
-          if (toolMode === 'move_active' && cab.id === useKitchenStore.getState().activeCabinetId) return null;
-          return <Cabinet key={cab.id} {...cab} index={idx} />;
-        })}
-        <KitchenSocle />
-        <KitchenCountertop3D />
-        <KitchenIslandBackPanel />
-        <KitchenRunDimensions />
-        <KitchenSpatialDimensions />
-        <ArchitecturalElementsRenderer />
-        <KitchenMepScene />
+        <React.Suspense fallback={null}>
+          {cabinets.map((cab, idx) => {
+            if (toolMode === 'move_active' && cab.id === useKitchenStore.getState().activeCabinetId) return null;
+            return <Cabinet key={cab.id} {...cab} index={idx} />;
+          })}
+          <KitchenSocle />
+          <KitchenCountertop3D />
+          <KitchenIslandBackPanel />
+          <KitchenRunDimensions />
+          <KitchenSpatialDimensions />
+          <ArchitecturalElementsRenderer />
+          <KitchenMepScene />
+        </React.Suspense>
 
         {/* Drawing Preview */}
         {toolMode === 'draw_wall' && drawingStart && currentMousePos && (

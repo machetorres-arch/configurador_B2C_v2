@@ -253,18 +253,20 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activeCabinetId, activeArchElementId, removeCabinet, removeArchitecturalElement, setActiveCabinet, setActiveArchElement]);
 
-  const handleTextureSelect = (url: string, mat: string) => {
+  const handleTextureSelect = (url: string, mat: string, thicknessMm?: number) => {
     // Protección estricta: Piedras y cuarzos Qstone aplican ÚNICAMENTE a cubiertas
+    const isExplicitCabinetMat = mat === 'melamina' || mat === 'hpl' || mat === 'durolac';
     const isStone =
-      mat === 'cuarzo' ||
+      !isExplicitCabinetMat &&
+      (mat === 'cuarzo' ||
       mat === 'sinterizado' ||
       mat === 'granito' ||
       mat === 'marmol' ||
-      qstoneCatalog.some((p) => p.textureUrl === url || p.id === url || (p.colorHex === url && !url.startsWith('#')));
+      qstoneCatalog.some((p) => p.id === url || (Boolean(p.textureUrl) && !p.textureUrl?.startsWith('#') && !url.startsWith('#') && p.textureUrl === url)));
 
     if (isStone) {
       const matchedProd =
-        qstoneCatalog.find((p) => p.textureUrl === url || p.id === url) || qstoneCatalog[0];
+        qstoneCatalog.find((p) => p.id === url || (Boolean(p.textureUrl) && !p.textureUrl?.startsWith('#') && !url.startsWith('#') && p.textureUrl === url)) || qstoneCatalog[0];
       if (matchedProd) {
         setCountertopConfig({ selectedProductId: matchedProd.id, enabled: true });
       }
@@ -289,21 +291,22 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
         leftCoverPanel: activeCabinet?.leftCoverPanel?.enabled ? { ...activeCabinet.leftCoverPanel, color: url, material: effectiveMat } : undefined,
         rightCoverPanel: activeCabinet?.rightCoverPanel?.enabled ? { ...activeCabinet.rightCoverPanel, color: url, material: effectiveMat } : undefined,
       });
-      globalState.setDoorColor(url);
-      globalState.setDoorMaterial(effectiveMat);
     } else if (part === 'structure') {
       updateCabinet(activeCabinetId, { structureColor: url, structureMaterial: effectiveMat });
     } else if (part === 'doors') {
       updateCabinet(activeCabinetId, { doorColor: url, doorMaterial: effectiveMat });
-      globalState.setDoorColor(url);
-      globalState.setDoorMaterial(effectiveMat);
     } else if (part === 'drawerFronts') {
       updateCabinet(activeCabinetId, { drawerFrontColor: url, drawerFrontMaterial: effectiveMat });
-      globalState.setDrawerFrontColor(url);
-      globalState.setDrawerFrontMaterial(effectiveMat);
     } else if (part === 'drawerInner') updateCabinet(activeCabinetId, { drawerInnerColor: url, drawerInnerMaterial: effectiveMat });
     else if (part === 'shelves') updateCabinet(activeCabinetId, { shelfColor: url, shelfMaterial: effectiveMat });
-    else if (part === 'back') updateCabinet(activeCabinetId, { backColor: url, backMaterial: effectiveMat });
+    else if (part === 'back') {
+      const isDuro = mat === 'durolac' || thicknessMm === 3;
+      updateCabinet(activeCabinetId, { 
+        backColor: url, 
+        backMaterial: (isDuro ? 'durolac' : effectiveMat) as any,
+        backThickness: thicknessMm || (isDuro ? 3 : 15)
+      });
+    }
     else if (part === 'socle') updateCabinet(activeCabinetId, { socleColor: url, socleMaterial: effectiveMat });
     else if (part === 'coverPanels') {
       updateCabinet(activeCabinetId, {
@@ -333,18 +336,20 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
     }
   };
 
-  const handleGlobalTextureSelect = (url: string, mat: string) => {
+  const handleGlobalTextureSelect = (url: string, mat: string, thicknessMm?: number) => {
     // Protección estricta: Piedras y cuarzos Qstone aplican ÚNICAMENTE a cubiertas
+    const isExplicitCabinetMat = mat === 'melamina' || mat === 'hpl' || mat === 'durolac';
     const isStone =
-      mat === 'cuarzo' ||
+      !isExplicitCabinetMat &&
+      (mat === 'cuarzo' ||
       mat === 'sinterizado' ||
       mat === 'granito' ||
       mat === 'marmol' ||
-      qstoneCatalog.some((p) => p.textureUrl === url || p.id === url || (p.colorHex === url && !url.startsWith('#')));
+      qstoneCatalog.some((p) => p.id === url || (Boolean(p.textureUrl) && !p.textureUrl?.startsWith('#') && !url.startsWith('#') && p.textureUrl === url)));
 
     if (isStone) {
       const matchedProd =
-        qstoneCatalog.find((p) => p.textureUrl === url || p.id === url) || qstoneCatalog[0];
+        qstoneCatalog.find((p) => p.id === url || (Boolean(p.textureUrl) && !p.textureUrl?.startsWith('#') && !url.startsWith('#') && p.textureUrl === url)) || qstoneCatalog[0];
       if (matchedProd) {
         setCountertopConfig({ selectedProductId: matchedProd.id, enabled: true });
       }
@@ -353,29 +358,29 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
 
     const part = globalState.targetPart;
     const urlLower = url.toLowerCase();
-    const effectiveMat: 'melamina' | 'hpl' = (mat === 'hpl' || urlLower.includes('abet') || urlLower.includes('laminati') || urlLower.includes('fiore') || urlLower.includes('broccato')) ? 'hpl' : (mat as any);
+    const effectiveMat: 'melamina' | 'hpl' | 'durolac' = mat === 'durolac' ? 'durolac' : ((mat === 'hpl' || urlLower.includes('abet') || urlLower.includes('laminati') || urlLower.includes('fiore') || urlLower.includes('broccato')) ? 'hpl' : (mat as any));
 
     if (part === 'islandBack') {
       setIslandBackConfig({
         enabled: true,
         materialType: 'decorative',
         decorativeColor: url,
-        decorativeMaterial: effectiveMat,
+        decorativeMaterial: effectiveMat as any,
       });
       return;
     }
-    applyGlobalTexture(part, url, effectiveMat);
+    applyGlobalTexture(part, url, effectiveMat, thicknessMm);
     if (part === 'structure' || part === 'all') {
       globalState.setStructureColor(url);
-      globalState.setStructureMaterial(effectiveMat);
+      globalState.setStructureMaterial(effectiveMat as any);
     }
     if (part === 'doors' || part === 'all') {
       globalState.setDoorColor(url);
-      globalState.setDoorMaterial(effectiveMat);
+      globalState.setDoorMaterial(effectiveMat as any);
     }
     if (part === 'drawerFronts' || part === 'all') {
       globalState.setDrawerFrontColor(url);
-      globalState.setDrawerFrontMaterial(effectiveMat);
+      globalState.setDrawerFrontMaterial(effectiveMat as any);
     }
     if (part === 'drawerInner' || part === 'all') {
       globalState.setDrawerInnerColor(url);
@@ -387,6 +392,8 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
     }
     if (part === 'back' || part === 'all') {
       globalState.setBackColor(url);
+      if (globalState.setBackMaterial) globalState.setBackMaterial(effectiveMat);
+      if (globalState.setBackThickness && thicknessMm) globalState.setBackThickness(thicknessMm);
     }
     if (part === 'socle' || part === 'all') {
       globalState.setSocleColor(url);
@@ -431,7 +438,11 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
         {/* Acceso directo a Área de Cocina, Vistas y Reinicio */}
         <div className="flex items-center gap-3">
           <button
-            onClick={() => setRoomPlannerOpen(true)}
+            onClick={() => {
+              if (activeCabinetId) setActiveCabinet(null);
+              if (activeArchElementId) setActiveArchElement(null);
+              setRoomPlannerOpen(true);
+            }}
             className={`flex items-center gap-2 px-3.5 py-1.5 border rounded-lg transition-all text-xs font-bold uppercase tracking-wider shadow-sm group ${
               isLight
                 ? 'bg-orange-50 hover:bg-orange-100 border-orange-200 hover:border-orange-400 text-orange-600 hover:text-orange-700'
@@ -548,7 +559,11 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                <h3 className={`text-[10px] uppercase tracking-widest font-bold mb-3 ${isLight ? 'text-slate-500' : 'text-slate-500'}`}>Herramientas</h3>
                <div className="flex flex-col gap-2">
                   <button
-                    onClick={() => setRoomPlannerOpen(true)}
+                    onClick={() => {
+                      if (activeCabinetId) setActiveCabinet(null);
+                      if (activeArchElementId) setActiveArchElement(null);
+                      setRoomPlannerOpen(true);
+                    }}
                     className="flex items-center gap-3 p-3 rounded-lg text-xs font-extrabold uppercase tracking-wider transition-all bg-[#FACC15] text-black hover:bg-[#eab308] shadow-[0_0_15px_rgba(250,204,21,0.25)]"
                   >
                     <Layers size={16} />
@@ -559,7 +574,11 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                   </button>
 
                   <button
-                    onClick={() => setIsCountertopModalOpen(true)}
+                    onClick={() => {
+                      if (activeCabinetId) setActiveCabinet(null);
+                      if (activeArchElementId) setActiveArchElement(null);
+                      setIsCountertopModalOpen(true);
+                    }}
                     className={`flex items-center gap-3 p-3 rounded-lg text-xs font-extrabold uppercase tracking-wider transition-all border cursor-pointer ${
                       countertopConfig.enabled
                         ? 'bg-amber-500/20 border-amber-500 text-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.2)]'
@@ -584,7 +603,7 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                     </div>
                   </button>
 
-                  <ToolButton isLight={isLight} active={toolMode === 'draw_wall'} onClick={() => { setToolMode('draw_wall'); setViewMode('2d'); }} icon={<PenTool size={16}/>} label="Dibujar Tramo Muro" />
+                  <ToolButton isLight={isLight} active={toolMode === 'draw_wall'} onClick={() => { if (activeCabinetId) setActiveCabinet(null); if (activeArchElementId) setActiveArchElement(null); setToolMode('draw_wall'); setViewMode('2d'); }} icon={<PenTool size={16}/>} label="Dibujar Tramo Muro" />
                </div>
             </div>
 
@@ -779,7 +798,7 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                          return (
                            <div
                              key={cab.id}
-                             onClick={() => setActiveCabinet(cab.id)}
+                             onClick={() => setActiveCabinet(isSelected ? null : cab.id)}
                              className={`p-3 rounded-xl border transition-all cursor-pointer group flex flex-col gap-2 ${
                                isSelected
                                  ? isLight
@@ -904,7 +923,11 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
           )}
         </button>
         <button
-          onClick={() => setRightTab('materials')}
+          onClick={() => {
+            if (activeCabinetId) setActiveCabinet(null);
+            if (activeArchElementId) setActiveArchElement(null);
+            setRightTab('materials');
+          }}
           className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
             rightTab === 'materials'
               ? 'bg-orange-500 text-black shadow-[0_0_12px_rgba(249,115,22,0.25)]'
@@ -917,7 +940,11 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
           <span>Acabados</span>
         </button>
         <button
-          onClick={() => setRightTab('engineering')}
+          onClick={() => {
+            if (activeCabinetId) setActiveCabinet(null);
+            if (activeArchElementId) setActiveArchElement(null);
+            setRightTab('engineering');
+          }}
           className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
             rightTab === 'engineering'
               ? 'bg-orange-500 text-black shadow-[0_0_12px_rgba(249,115,22,0.25)]'
@@ -930,7 +957,11 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
           <span>Herrajes</span>
         </button>
         <button
-          onClick={() => setRightTab('mep')}
+          onClick={() => {
+            if (activeCabinetId) setActiveCabinet(null);
+            if (activeArchElementId) setActiveArchElement(null);
+            setRightTab('mep');
+          }}
           className={`relative flex items-center justify-center gap-1.5 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
             rightTab === 'mep'
               ? 'bg-cyan-600 text-white shadow-[0_0_12px_rgba(6,182,212,0.35)]'

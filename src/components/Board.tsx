@@ -49,8 +49,12 @@ export function Board({ position, args, color, textureUrl, materialType, transpa
         const img = clonedTex.image;
         const imgAspect = img && img.width > 0 ? (img.height / img.width) : 1;
         
-        const realWidthCm = materialType === "hpl" ? 120 : 100;
-        const realHeightCm = realWidthCm * imgAspect;
+        const isHpl = materialType === "hpl";
+        // Dimensiones estándar reales del tablero/plancha (cm):
+        // HPL: estándar ~120 x 240/305 cm
+        // Melamina: formato industrial comercial estándar de 183 x 244 cm / 250 cm
+        const realWidthCm = isHpl ? 120 : 183;
+        const realHeightCm = (!isHpl && imgAspect === 1) ? 244 : (realWidthCm * imgAspect);
         
         let mapWidth = args[0];
         let mapHeight = args[1];
@@ -67,10 +71,8 @@ export function Board({ position, args, color, textureUrl, materialType, transpa
 
         clonedTex.repeat.set(mapWidth / realWidthCm, mapHeight / realHeightCm);
         
-        if (materialType === "hpl" && isFrontPanel) {
-          
-          // For closet, it is -totalWidth / 2. For kitchen, maybe we can just use a fixed 0, 
-          // or find the min X of all cabinets.
+        if (isFrontPanel) {
+          // Anclaje de origen para proyección continua de tablero (Veta Corrida / Continuidad Frontal)
           let closetLeftX = -totalWidth / 2;
           if (kitchenCabinets.length > 0 && closetModules.length === 0) {
              const minX = Math.min(...kitchenCabinets.map(c => (c.position?.[0] ?? 0) - c.width/2));
@@ -85,7 +87,7 @@ export function Board({ position, args, color, textureUrl, materialType, transpa
           const offsetX = (boardLeftX - closetLeftX) / realWidthCm;
           const offsetY = (boardBottomY - closetBottomY) / realHeightCm;
           clonedTex.offset.set(offsetX, offsetY);
-        } else if (materialType === "hpl" && mapWidth > mapHeight) {
+        } else if (isHpl && mapWidth > mapHeight) {
            clonedTex.rotation = Math.PI / 2;
         }
 

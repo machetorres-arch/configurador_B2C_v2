@@ -58,6 +58,8 @@ export interface Part {
   edgeW2: boolean;
   notes?: string;
   grainDirection?: 'vertical' | 'horizontal';
+  isHpl?: boolean;
+  materialCategory?: 'doors' | 'structure' | 'backs' | 'cover';
 }
 
 export function getNominalSlideLength(innerDepthMm: number): number {

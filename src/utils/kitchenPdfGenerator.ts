@@ -169,8 +169,8 @@ export function exportKitchenPDF(cabinets: CabinetType[], state: any, filename =
   doc.text('3. RESUMEN DE CUBICACIÓN Y OPTIMIZACIÓN DE PLANCHAS (NESTING 2D)', 14, 11);
 
   // Calcular cubicación agrupada
-  const structParts = allParts.filter(p => p.thickness >= 15 && !p.name.includes('Puerta') && !p.name.includes('Frente') && !p.name.includes('Panel Ciego'));
-  const doorParts = allParts.filter(p => p.thickness >= 15 && (p.name.includes('Puerta') || p.name.includes('Frente') || p.name.includes('Panel Ciego')));
+  const structParts = allParts.filter(p => p.thickness >= 15 && (!p.name.includes('Puerta') && !p.name.includes('Frente') && !p.name.includes('Panel Ciego') || p.name.toLowerCase().includes('contrafrente')));
+  const doorParts = allParts.filter(p => p.thickness >= 15 && (p.name.includes('Puerta') || p.name.includes('Frente') || p.name.includes('Panel Ciego')) && !p.name.toLowerCase().includes('contrafrente'));
   const backParts = allParts.filter(p => p.thickness < 15 || p.name.includes('Fondo') || p.name.includes('Trasera'));
 
   const structM2 = structParts.reduce((acc, p) => acc + (p.length * p.width * p.qty) / 1000000, 0);

@@ -213,9 +213,12 @@ export function KitchenBlueprint() {
   const boardGroups: Record<string, BoardGroupDef> = {};
 
   allParts.forEach((p, pIdx) => {
-    const isFront = p.name.includes('Puerta') || p.name.includes('Frente') || p.name.includes('Panel Ciego');
+    const isFront = (p.name.includes('Puerta') || p.name.includes('Frente') || p.name.includes('Panel Ciego')) &&
+                    !p.name.toLowerCase().includes('contrafrente') &&
+                    !p.name.toLowerCase().includes('amarre') &&
+                    !p.name.toLowerCase().includes('caja');
     const isBack = p.thickness === 3 || p.thickness === 3.5 || p.material === 'Melamina Fondo' || (p.name.includes('Fondo') && !p.name.includes('Soporte')) || (p.name.includes('Trasera') && !p.name.includes('Barra') && !p.name.includes('Caja Cajón'));
-    const isHPL = isFront && isHplFinish(p.material, state.doorMaterial);
+    const isHPL = isFront && (p.isHpl !== undefined ? p.isHpl : isHplFinish(p.material, undefined, kState.cabinets.find(c => c.id === p.moduleId)));
 
     let groupKey = '';
     let label = '';
@@ -226,10 +229,17 @@ export function KitchenBlueprint() {
     const matName = getColorName(p.material);
 
     if (isBack) {
-      groupKey = `BACKS_${p.material || 'mdf3mm'}`;
-      label = `PLANCHA DUROLAC / MDF 3MM (FONDOS Y TRASERAS) - COLOR: ${matName}`;
-      materialCategory = 'backs';
-      thick = 3;
+      if (p.thickness === 3 || p.thickness === 3.2 || p.thickness === 3.5 || p.material?.toLowerCase().includes('durolac')) {
+        groupKey = `BACKS_DUROLAC_3MM`;
+        label = `PLANCHA DUROLAC 3MM BLANCO (FONDOS Y TRASERAS)`;
+        materialCategory = 'backs';
+        thick = 3;
+      } else {
+        groupKey = `MEL_STRUCT_${p.material}_${p.thickness || thicknessMm}`;
+        label = `PLANCHA MELAMINA ${p.thickness || thicknessMm}MM (ESTRUCTURA Y TRASERAS) - COLOR: ${matName}`;
+        materialCategory = 'structure';
+        thick = p.thickness || thicknessMm;
+      }
     } else if (isFront) {
       if (isHPL) {
         groupKey = `HPL_DOORS_${p.material || 'abet'}`;
@@ -2861,7 +2871,7 @@ export function KitchenBlueprint() {
                             {part.qty} UN
                           </span>
                           <span className="text-[11px] text-slate-800 font-mono font-black">
-                            {part.name.includes('Puerta') && isHplFinish(part.material, cab.doorMaterial || state.doorMaterial)
+                            {(part.name.includes('Puerta') || part.name.includes('Frente')) && !part.name.toLowerCase().includes('contrafrente') && isHplFinish(part.material, cab.doorMaterial || state.doorMaterial)
                               ? '18mm (HPL s/ MDF 18mm)'
                               : `${Number(part.thickness.toFixed(1))}mm`}
                           </span>

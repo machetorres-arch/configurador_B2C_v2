@@ -52,7 +52,7 @@ export function Configurator() {
         {state.modules.map((m, i) => (
           <button 
             key={m.id} 
-            onClick={() => state.setActiveModule(m.id)} 
+            onClick={() => state.setActiveModule(state.activeModuleId === m.id ? null : m.id)} 
             className={`flex-shrink-0 px-4 py-2 rounded-md whitespace-nowrap text-[10px] uppercase tracking-widest font-bold transition-all ${state.activeModuleId === m.id ? 'bg-orange-500 text-black shadow-[0_0_10px_rgba(249,115,22,0.3)] border border-orange-400' : 'bg-white/10 text-slate-300 border border-transparent hover:bg-white/20'}`}
           >
             Mod {i + 1}
@@ -67,11 +67,20 @@ export function Configurator() {
         <div className="p-4 bg-white/5 border border-white/10 rounded-lg mb-6 shadow-inner">
           <div className="flex justify-between items-center mb-4 border-b border-white/10 pb-2">
             <h3 className="text-[10px] uppercase tracking-widest text-orange-400 font-bold">Configurar Módulo</h3>
-            {state.modules.length > 1 && (
-              <button onClick={() => state.removeModule(activeMod.id)} className="text-[10px] text-rose-400 hover:text-rose-300 flex items-center gap-1 uppercase tracking-widest">
-                <Trash2 size={12} /> Eliminar
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => state.setActiveModule(null)} 
+                className="text-[10px] text-slate-400 hover:text-white uppercase tracking-widest px-1.5 py-0.5 rounded border border-white/10 hover:border-white/20 transition-colors"
+                title="Cerrar modo individual y volver a global"
+              >
+                Cerrar
               </button>
-            )}
+              {state.modules.length > 1 && (
+                <button onClick={() => state.removeModule(activeMod.id)} className="text-[10px] text-rose-400 hover:text-rose-300 flex items-center gap-1 uppercase tracking-widest">
+                  <Trash2 size={12} /> Eliminar
+                </button>
+              )}
+            </div>
           </div>
           <SliderControl label="Ancho del Módulo" value={activeMod.width} min={30} max={120} unit="cm" onChange={(v) => state.updateModule(activeMod.id, { width: v })} />
           <SliderControl label="Repisas Horizontales" value={activeMod.shelves} min={0} max={activeMod.hasHanger ? 2 : 10} onChange={(v) => state.updateModule(activeMod.id, { shelves: v })} />
@@ -86,19 +95,21 @@ export function Configurator() {
         </div>
       )}
 
-      <h2 className={sectionTitle}>Dimensiones Globales</h2>
+      <div onClick={() => { if (state.activeModuleId) state.setActiveModule(null); }}>
+        <h2 className={sectionTitle}>Dimensiones Globales</h2>
+      </div>
       <p className="text-[9px] text-slate-500 mb-2 uppercase tracking-widest leading-relaxed">Formato de Melamina Máx: 250 x 183 cm</p>
       <div className="flex flex-col gap-1">
-        <SliderControl label="Alto Total" value={state.height} min={50} max={250} unit="cm" onChange={state.setHeight} />
-        <SliderControl label="Profundidad" value={state.depth} min={20} max={183} unit="cm" onChange={state.setDepth} />
+        <SliderControl label="Alto Total" value={state.height} min={50} max={250} unit="cm" onChange={(v) => { if (state.activeModuleId) state.setActiveModule(null); state.setHeight(v); }} />
+        <SliderControl label="Profundidad" value={state.depth} min={20} max={183} unit="cm" onChange={(v) => { if (state.activeModuleId) state.setActiveModule(null); state.setDepth(v); }} />
         
         <div className="flex flex-col gap-2 mb-2 mt-2">
           <label className={labelClass}>Grosor Muro (mm)</label>
           <div className="flex gap-2">
             {[1.5, 1.8, 2.5].map((val) => (
               <button 
-                key={val}
-                onClick={() => state.setThickness(val)}
+                key={val} 
+                onClick={() => { if (state.activeModuleId) state.setActiveModule(null); state.setThickness(val); }}
                 className={`flex-1 py-1.5 rounded text-xs uppercase tracking-widest font-mono transition-colors ${state.thickness === val ? 'bg-orange-500 text-black font-bold shadow-[0_0_10px_rgba(249,115,22,0.2)]' : 'bg-white/5 text-slate-400 border border-white/10 hover:border-orange-500/50'}`}
               >
                 {val * 10}
@@ -108,22 +119,28 @@ export function Configurator() {
         </div>
       </div>
 
-      <h2 className={sectionTitle}>Estructura Perimetral</h2>
+      <div onClick={() => { if (state.activeModuleId) state.setActiveModule(null); }}>
+        <h2 className={sectionTitle}>Estructura Perimetral</h2>
+      </div>
       <div className="grid grid-cols-2 gap-2">
-        <ToggleBtn active={state.showLeftWall} onClick={state.toggleLeftWall} label="Lat. Izquierdo" />
-        <ToggleBtn active={state.showRightWall} onClick={state.toggleRightWall} label="Lat. Derecho" />
-        <ToggleBtn active={state.showTopWall} onClick={state.toggleTopWall} label="Techo Superior" />
-        <ToggleBtn active={state.showBottomWall} onClick={state.toggleBottomWall} label="Base Inferior" />
-        <ToggleBtn active={state.showBackWall} onClick={state.toggleBackWall} label="Placa Fondo" />
+        <ToggleBtn active={state.showLeftWall} onClick={() => { if (state.activeModuleId) state.setActiveModule(null); state.toggleLeftWall(); }} label="Lat. Izquierdo" />
+        <ToggleBtn active={state.showRightWall} onClick={() => { if (state.activeModuleId) state.setActiveModule(null); state.toggleRightWall(); }} label="Lat. Derecho" />
+        <ToggleBtn active={state.showTopWall} onClick={() => { if (state.activeModuleId) state.setActiveModule(null); state.toggleTopWall(); }} label="Techo Superior" />
+        <ToggleBtn active={state.showBottomWall} onClick={() => { if (state.activeModuleId) state.setActiveModule(null); state.toggleBottomWall(); }} label="Base Inferior" />
+        <ToggleBtn active={state.showBackWall} onClick={() => { if (state.activeModuleId) state.setActiveModule(null); state.toggleBackWall(); }} label="Placa Fondo" />
       </div>
 
-      <h2 className={sectionTitle}>Zócalo y Patas</h2>
+      <div onClick={() => { if (state.activeModuleId) state.setActiveModule(null); }}>
+        <h2 className={sectionTitle}>Zócalo y Patas</h2>
+      </div>
       <div className="grid grid-cols-2 gap-2 mb-6">
-        <ToggleBtn active={state.showSocle} onClick={state.toggleSocle} label="Zócalo" />
-        <ToggleBtn active={state.showLegs} onClick={state.toggleLegs} label="Patas" />
+        <ToggleBtn active={state.showSocle} onClick={() => { if (state.activeModuleId) state.setActiveModule(null); state.toggleSocle(); }} label="Zócalo" />
+        <ToggleBtn active={state.showLegs} onClick={() => { if (state.activeModuleId) state.setActiveModule(null); state.toggleLegs(); }} label="Patas" />
       </div>
 
-      <TexturesSection />
+      <div onClick={() => { if (state.activeModuleId) state.setActiveModule(null); }}>
+        <TexturesSection />
+      </div>
 
       {[state.structureMaterial, state.doorMaterial, state.drawerFrontMaterial, state.drawerInnerMaterial, state.shelfMaterial].includes('hpl') && (
         <div className="mb-6 p-3 border border-orange-500/30 rounded-lg bg-orange-500/10">

@@ -112,6 +112,7 @@ export function KitchenModuleContextMenu({
     setViewMode, 
     handleConfig: globalHandleConfig, 
     golaSystem,
+    setGolaSystem,
     islandBackConfig,
     setIslandBackConfig,
     countertopConfig
@@ -369,11 +370,12 @@ export function KitchenModuleContextMenu({
     updateCabinet(activeCabinetId, { isOpen: nextState, openElements: newOpenElements });
   };
 
-  const handleApplyTexture = (url: string, name: string) => {
+  const handleApplyTexture = (url: string, name: string, specificThickness?: number, specificMat?: 'melamina' | 'hpl' | 'durolac') => {
     const nameLower = name.toLowerCase();
     const urlLower = url.toLowerCase();
     const isHPL = nameLower.includes('abet') || nameLower.includes('hpl') || nameLower.includes('laminati') || urlLower.includes('abet') || urlLower.includes('fiore') || urlLower.includes('broccato');
-    const mat: 'melamina' | 'hpl' = isHPL ? 'hpl' : 'melamina';
+    const isDurolac = specificMat === 'durolac' || nameLower.includes('durolac');
+    const mat: 'melamina' | 'hpl' | 'durolac' = specificMat || (isDurolac ? 'durolac' : (isHPL ? 'hpl' : 'melamina'));
 
     if (isHPL && activeCabinet.hplBalancer === undefined) {
       updateCabinet(activeCabinetId, { hplBalancer: true });
@@ -381,41 +383,41 @@ export function KitchenModuleContextMenu({
 
     switch (targetZone) {
       case 'structure':
-        updateCabinet(activeCabinetId, { structureColor: url, structureMaterial: mat });
+        updateCabinet(activeCabinetId, { structureColor: url, structureMaterial: mat as any });
         break;
       case 'doors':
-        updateCabinet(activeCabinetId, { doorColor: url, doorMaterial: mat });
-        if (isHPL) {
-          globalStore.setDoorMaterial('hpl');
-          globalStore.setDoorColor(url);
-        }
+        updateCabinet(activeCabinetId, { doorColor: url, doorMaterial: mat as any });
         break;
       case 'drawerFronts':
-        updateCabinet(activeCabinetId, { drawerFrontColor: url, drawerFrontMaterial: mat });
+        updateCabinet(activeCabinetId, { drawerFrontColor: url, drawerFrontMaterial: mat as any });
         break;
       case 'drawerInner':
-        updateCabinet(activeCabinetId, { drawerInnerColor: url, drawerInnerMaterial: mat });
+        updateCabinet(activeCabinetId, { drawerInnerColor: url, drawerInnerMaterial: mat as any });
         break;
       case 'shelves':
-        updateCabinet(activeCabinetId, { shelfColor: url, shelfMaterial: mat });
+        updateCabinet(activeCabinetId, { shelfColor: url, shelfMaterial: mat as any });
         break;
       case 'back':
-        updateCabinet(activeCabinetId, { backColor: url, backMaterial: mat });
+        updateCabinet(activeCabinetId, { 
+          backColor: url, 
+          backMaterial: mat,
+          backThickness: specificThickness || (mat === 'durolac' ? 3 : 15)
+        });
         break;
       case 'socle':
-        updateCabinet(activeCabinetId, { socleColor: url, socleMaterial: mat });
+        updateCabinet(activeCabinetId, { socleColor: url, socleMaterial: mat as any });
         break;
       case 'coverPanels':
         updateCabinet(activeCabinetId, {
           leftCoverPanel: activeCabinet.leftCoverPanel?.enabled ? {
             ...activeCabinet.leftCoverPanel,
             color: url,
-            material: mat
+            material: mat as any
           } : undefined,
           rightCoverPanel: activeCabinet.rightCoverPanel?.enabled ? {
             ...activeCabinet.rightCoverPanel,
             color: url,
-            material: mat
+            material: mat as any
           } : undefined
         });
         break;
@@ -425,7 +427,7 @@ export function KitchenModuleContextMenu({
             enabled: true,
             extendToFloor: activeCabinet.leftCoverPanel?.extendToFloor ?? false,
             color: url,
-            material: mat,
+            material: mat as any,
             thickness: activeCabinet.leftCoverPanel?.thickness
           }
         });
@@ -436,7 +438,7 @@ export function KitchenModuleContextMenu({
             enabled: true,
             extendToFloor: activeCabinet.rightCoverPanel?.extendToFloor ?? false,
             color: url,
-            material: mat,
+            material: mat as any,
             thickness: activeCabinet.rightCoverPanel?.thickness
           }
         });
@@ -459,6 +461,7 @@ export function KitchenModuleContextMenu({
       brand: t.brand || t.providerName,
       providerName: t.providerName,
       category: t.category,
+      thicknessMm: t.thicknessMm || (t.category === 'hpl_autor' ? 0.9 : (t.name?.includes('15') ? 15 : 18)),
     }));
 
   const allTextures = [...DEFAULT_TEXTURES, ...approvedBackofficeTextures];
@@ -558,7 +561,11 @@ export function KitchenModuleContextMenu({
     return (
       <div key={tex.id} className="relative group">
         <button 
-          onClick={() => handleApplyTexture(tex.url, tex.name)}
+          onClick={() => {
+            const isBack = targetZone === 'back';
+            const specificMat = isBack ? (tex.category === 'hpl_autor' ? 'hpl' : 'melamina') : undefined;
+            handleApplyTexture(tex.url, tex.name, tex.thicknessMm, specificMat);
+          }}
           className={`flex flex-col items-center gap-1 p-1 rounded-lg transition-colors w-full border cursor-pointer relative ${
             isLight
               ? 'bg-white border-slate-200 hover:border-orange-500 shadow-sm'
@@ -1418,11 +1425,20 @@ export function KitchenModuleContextMenu({
 
             {/* Aviso si sistema Gola activo en módulo base o isla */}
             {golaSystem !== 'none' && (activeCabinet.type === 'base' || activeCabinet.type === 'island') && (
-              <div className={`p-2 rounded-lg border flex items-start gap-1.5 text-[10px] leading-tight ${
+              <div className={`p-2 rounded-lg border flex items-center justify-between gap-1.5 text-[10px] leading-tight ${
                 isLight ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-amber-950/30 border-amber-700/50 text-amber-300'
               }`}>
-                <ShieldAlert size={13} className="shrink-0 mt-0.5 text-amber-500" />
-                <span>Perfil Gola activo en mueble inferior (los tiradores frontales quedan ocultos).</span>
+                <div className="flex items-start gap-1.5">
+                  <ShieldAlert size={13} className="shrink-0 mt-0.5 text-amber-500" />
+                  <span>Perfil Gola activo (los tiradores frontales quedan ocultos).</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setGolaSystem('none')}
+                  className="px-2 py-0.5 bg-amber-500 hover:bg-amber-400 text-black font-bold rounded text-[9px] uppercase tracking-wider shrink-0 cursor-pointer shadow-xs"
+                >
+                  Quitar Gola
+                </button>
               </div>
             )}
 
@@ -1440,6 +1456,9 @@ export function KitchenModuleContextMenu({
                 const newLength = item.lengths.includes(currentHConfig.lengthMm)
                   ? currentHConfig.lengthMm
                   : item.lengths[0] || 0;
+                if (golaSystem !== 'none') {
+                  setGolaSystem('none');
+                }
                 updateCabinet(activeCabinet.id, {
                   handleConfig: {
                     model: modelId,
@@ -1985,7 +2004,7 @@ export function KitchenModuleContextMenu({
                   { id: 'structure', label: 'Paredes / Casco' },
                   { id: 'drawerInner', label: 'Cajas Cajón' },
                   { id: 'shelves', label: 'Repisas' },
-                  { id: 'back', label: 'Fondo Interior' },
+                  { id: 'back', label: 'Trasera / Fondo' },
                   { id: 'socle', label: 'Zócalo' }
                 ].map(part => {
                   const isSelected = targetZone === part.id;
@@ -2009,6 +2028,71 @@ export function KitchenModuleContextMenu({
                   );
                 })}
               </div>
+
+              {/* Panel de Opciones Específicas de Trasera / Fondo para el módulo seleccionado */}
+              {targetZone === 'back' && (
+                <div className={`mt-2 p-2.5 rounded-xl border flex flex-col gap-2 ${
+                  isLight ? 'bg-orange-50/80 border-orange-200 shadow-xs' : 'bg-black/40 border-orange-500/30'
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <span className={`text-[10px] uppercase font-bold tracking-wider ${
+                      isLight ? 'text-orange-950' : 'text-orange-400'
+                    }`}>
+                      Configuración Trasera del Módulo
+                    </span>
+                    <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/30">
+                      Exclusivo
+                    </span>
+                  </div>
+                  <p className={`text-[10px] leading-tight ${isLight ? 'text-slate-600' : 'text-zinc-400'}`}>
+                    Elige <strong>Durolac Blanco 3 mm</strong> (estándar en ranura de laterales) o selecciona cualquier <strong>decorativo de Melamina o HPL</strong> (15/18 mm) del catálogo inferior.
+                  </p>
+
+                  <div className="grid grid-cols-2 gap-2 mt-0.5">
+                    {/* Botón Durolac 3 mm Blanco */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleApplyTexture('#FFFFFF', 'Durolac Blanco 3mm', 3, 'durolac');
+                      }}
+                      className={`p-2 rounded-lg border text-left flex flex-col gap-1 transition-all cursor-pointer ${
+                        (activeCabinet.backThickness === 3 || activeCabinet.backMaterial === 'durolac' || (activeCabinet.backColor === '#FFFFFF' && !activeCabinet.backThickness))
+                          ? 'bg-orange-500 text-black border-orange-600 font-extrabold shadow-xs'
+                          : isLight
+                            ? 'bg-white text-slate-800 border-slate-300 hover:border-orange-500'
+                            : 'bg-white/5 text-zinc-300 border-white/10 hover:border-orange-500/50'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold">Durolac Blanco</span>
+                        <span className="text-[8px] font-mono px-1 py-0.2 rounded bg-black/10 dark:bg-white/10 font-bold">3 mm</span>
+                      </div>
+                      <span className="text-[8px] opacity-80 leading-tight">MDF lacado blanco estándar</span>
+                    </button>
+
+                    {/* Botón Igualar al Casco de este Módulo */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const structColor = activeCabinet.structureColor || '#ffffff';
+                        const structMat = activeCabinet.structureMaterial || 'melamina';
+                        handleApplyTexture(structColor, 'Melamina Casco', 15, structMat);
+                      }}
+                      className={`p-2 rounded-lg border text-left flex flex-col gap-1 transition-all cursor-pointer ${
+                        isLight
+                          ? 'bg-white text-slate-800 border-slate-300 hover:border-orange-500'
+                          : 'bg-white/5 text-zinc-300 border-white/10 hover:border-orange-500/50'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold">Igualar al Casco</span>
+                        <span className="text-[8px] font-mono px-1 py-0.2 rounded bg-black/10 dark:bg-white/10 font-bold">Mismo Color</span>
+                      </div>
+                      <span className="text-[8px] opacity-80 leading-tight">Mismo color del casco</span>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Masisa */}

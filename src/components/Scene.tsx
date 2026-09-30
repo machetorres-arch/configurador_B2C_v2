@@ -1,3 +1,4 @@
+import React, { Suspense } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Environment, ContactShadows } from '@react-three/drei';
 import { Closet } from './Closet';
@@ -11,10 +12,14 @@ function SceneContents() {
       <color attach="background" args={['#242424']} />
       <ambientLight intensity={0.6} />
       <directionalLight position={[100, 200, 150]} castShadow intensity={1.2} shadow-mapSize={[2048, 2048]} />
-      <Environment preset="city" />
+      <Suspense fallback={null}>
+        <Environment preset="city" />
+      </Suspense>
       
       <group position={[0, -75, 0]}>
-        <Closet />
+        <Suspense fallback={null}>
+          <Closet />
+        </Suspense>
         <ContactShadows position={[0, 0, 0]} opacity={0.6} scale={400} blur={2.5} far={20} />
         
         {/* Room Floor */}

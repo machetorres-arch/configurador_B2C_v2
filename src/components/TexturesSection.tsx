@@ -15,7 +15,7 @@ export const TexturesSection = ({
   badgeText,
   isLight = false,
 }: { 
-  onSelectTexture?: (url: string, mat: 'hpl' | 'melamina') => void;
+  onSelectTexture?: (url: string, mat: 'hpl' | 'melamina' | 'durolac', thicknessMm?: number) => void;
   title?: string;
   badgeText?: string;
   isLight?: boolean;
@@ -25,16 +25,17 @@ export const TexturesSection = ({
   const [thicknessFilter, setThicknessFilter] = useState<'all' | 15 | 18>('all');
   const hasIslands = useKitchenStore((s) => s.cabinets?.some((c) => c.type === 'island'));
 
-  const applyTexture = (url: string, name: string) => {
+  const applyTexture = (url: string, name: string, specificThickness?: number, specificMat?: 'hpl' | 'melamina' | 'durolac') => {
     const nameLower = name.toLowerCase();
     const urlLower = url.toLowerCase();
     
     // Auto-detectar material por el nombre del archivo/textura
     const isHPL = nameLower.includes('abet') || nameLower.includes('hpl') || nameLower.includes('laminati') || urlLower.includes('abet') || urlLower.includes('fiore') || urlLower.includes('broccato');
-    const mat: 'melamina' | 'hpl' = isHPL ? 'hpl' : 'melamina';
+    const isDurolac = specificMat === 'durolac' || nameLower.includes('durolac');
+    const mat: 'melamina' | 'hpl' | 'durolac' = specificMat || (isDurolac ? 'durolac' : (isHPL ? 'hpl' : 'melamina'));
     
     if (onSelectTexture) {
-      onSelectTexture(url, mat);
+      onSelectTexture(url, mat, specificThickness);
       return;
     }
 
@@ -43,19 +44,23 @@ export const TexturesSection = ({
         enabled: true,
         materialType: 'decorative',
         decorativeColor: url,
-        decorativeMaterial: mat,
+        decorativeMaterial: mat as any,
       });
       return;
     }
 
     state.applyTextureToTarget(url);
     switch(state.targetPart) {
-      case 'structure': state.setStructureMaterial(mat); break;
-      case 'doors': state.setDoorMaterial(mat); break;
-      case 'drawerFronts': state.setDrawerFrontMaterial(mat); break;
-      case 'drawerInner': state.setDrawerInnerMaterial(mat); break;
-      case 'shelves': state.setShelfMaterial(mat); break;
-      case 'socle': state.setSocleMaterial(mat); break;
+      case 'structure': state.setStructureMaterial(mat as any); break;
+      case 'doors': state.setDoorMaterial(mat as any); break;
+      case 'drawerFronts': state.setDrawerFrontMaterial(mat as any); break;
+      case 'drawerInner': state.setDrawerInnerMaterial(mat as any); break;
+      case 'shelves': state.setShelfMaterial(mat as any); break;
+      case 'back': 
+        state.setBackMaterial?.(mat);
+        if (specificThickness) state.setBackThickness?.(specificThickness);
+        break;
+      case 'socle': state.setSocleMaterial(mat as any); break;
     }
   };
 
@@ -121,7 +126,9 @@ export const TexturesSection = ({
       <div key={tex.id} className="relative group">
         <button 
           onClick={() => {
-            applyTexture(tex.url, tex.name);
+            const isBack = state.targetPart === 'back';
+            const specificMat = isBack ? (tex.category === 'hpl_autor' ? 'hpl' : 'melamina') : undefined;
+            applyTexture(tex.url, tex.name, tex.thicknessMm, specificMat);
             // Solo ajustar espesor global de la estructura si se está configurando la estructura o todo el mueble,
             // y solo para tableros autoportantes (>= 12 mm). Nunca para láminas HPL (0.8/0.9 mm) ni al cambiar solo puertas.
             if (
@@ -205,7 +212,7 @@ export const TexturesSection = ({
             { id: 'coverPanels' as PartType, label: 'Tapas Laterales' },
             { id: 'drawerInner' as PartType, label: 'Cajas Cajón' },
             { id: 'shelves' as PartType, label: 'Repisas' },
-            { id: 'back' as PartType, label: 'Fondo Interior' },
+            { id: 'back' as PartType, label: 'Trasera / Fondo' },
             { id: 'socle' as PartType, label: 'Zócalo' },
           ].map(part => (
             <button 
@@ -225,6 +232,74 @@ export const TexturesSection = ({
             </button>
           ))}
         </div>
+
+        {/* Opciones Especiales de Trasera / Fondo (Durolac Blanco 3mm vs Melamina 15/18mm) */}
+        {state.targetPart === 'back' && (
+          <div className={`p-2.5 rounded-xl border flex flex-col gap-2 ${
+            isLight ? 'bg-orange-50/80 border-orange-200 shadow-xs' : 'bg-black/40 border-orange-500/30'
+          }`}>
+            <div className="flex items-center justify-between">
+              <span className={`text-[10px] uppercase font-bold tracking-wider ${
+                isLight ? 'text-orange-950' : 'text-orange-400'
+              }`}>
+                Configuración Trasera / Fondo
+              </span>
+              <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/30">
+                Norma Fabricación
+              </span>
+            </div>
+            <p className={`text-[10px] leading-tight ${isLight ? 'text-slate-600' : 'text-zinc-400'}`}>
+              Elige <strong>Durolac Blanco 3 mm</strong> (único color oficial de Durolac para ranura/clavado) o cualquiera de los decorativos de <strong>Melamina o HPL</strong> (15 mm / 18 mm) del catálogo y backoffice.
+            </p>
+
+            <div className="grid grid-cols-2 gap-2 mt-0.5">
+              {/* Opción Durolac 3 mm Blanco */}
+              <button
+                type="button"
+                onClick={() => {
+                  applyTexture('#FFFFFF', 'Durolac Blanco 3mm', 3, 'durolac');
+                }}
+                className={`p-2 rounded-lg border text-left flex flex-col gap-1 transition-all cursor-pointer ${
+                  (state.backThickness === 3 || state.backMaterial === 'durolac' || (state.backColor === '#FFFFFF' && !state.backThickness))
+                    ? 'bg-orange-500 text-black border-orange-600 font-extrabold shadow-xs'
+                    : isLight
+                      ? 'bg-white text-slate-800 border-slate-300 hover:border-orange-500'
+                      : 'bg-white/5 text-zinc-300 border-white/10 hover:border-orange-500/50'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold">Durolac Blanco</span>
+                  <span className="text-[8px] font-mono px-1 py-0.2 rounded bg-black/10 dark:bg-white/10 font-bold">3 mm</span>
+                </div>
+                <span className="text-[8px] opacity-80 leading-tight">MDF lacado blanco estándar</span>
+              </button>
+
+              {/* Opción Igualar al Casco / Paredes */}
+              <button
+                type="button"
+                onClick={() => {
+                  const structColor = state.structureColor || '#ffffff';
+                  const thickMm = Math.round((state.thickness || 1.8) * 10);
+                  const structMat = state.structureMaterial || 'melamina';
+                  applyTexture(structColor, 'Melamina Casco', thickMm, structMat);
+                }}
+                className={`p-2 rounded-lg border text-left flex flex-col gap-1 transition-all cursor-pointer ${
+                  isLight
+                    ? 'bg-white text-slate-800 border-slate-300 hover:border-orange-500'
+                    : 'bg-white/5 text-zinc-300 border-white/10 hover:border-orange-500/50'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold">Igualar al Casco</span>
+                  <span className="text-[8px] font-mono px-1 py-0.2 rounded bg-black/10 dark:bg-white/10 font-bold">
+                    {Math.round((state.thickness || 1.8) * 10)} mm
+                  </span>
+                </div>
+                <span className="text-[8px] opacity-80 leading-tight">Mismo color del casco</span>
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Filtro de Espesor de Melamina: Todos / 15 mm / 18 mm */}

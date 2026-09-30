@@ -2,7 +2,6 @@ import * as XLSX from 'xlsx-js-style';
 import { useStore } from '../store';
 import { useKitchenStore } from '../store/kitchenStore';
 import { generateKitchenPartsList, generateKitchenHardwareList, HARDWARE_SPECS, isHplFinish } from './kitchenManufacturing';
-import { generateEdgeBandingList } from './manufacturing';
 import { generateCountertopPieces, detectContinuousCabinetRuns } from './countertopNesting';
 
 export const exportKitchenToExcel = () => {
@@ -18,7 +17,6 @@ export const exportKitchenToExcel = () => {
 
     const parts = generateKitchenPartsList(cabinets);
     const hardware = generateKitchenHardwareList(cabinets);
-    const edgeBanding = generateEdgeBandingList(parts);
 
     const DEFAULT_NAMES: Record<string, string> = {
       '#FFFFFF': 'Blanco',
@@ -54,11 +52,16 @@ export const exportKitchenToExcel = () => {
 
     const dataPlacas: any[] = [];
     const dataHPL: any[] = [];
+    const dataEdgeBanding: any[] = [];
+    const edgeSummary: Record<string, { desc: string; decorName: string; metersNet: number; metersWaste: number; rollThickness: number }> = {};
 
     parts.forEach((p, idx) => {
-      const isFront = p.name.toLowerCase().includes('puerta') || p.name.toLowerCase().includes('frente') || p.name.toLowerCase().includes('panel ciego');
+      const isFront = (p.name.toLowerCase().includes('puerta') || p.name.toLowerCase().includes('frente') || p.name.toLowerCase().includes('panel ciego')) &&
+                      !p.name.toLowerCase().includes('contrafrente') &&
+                      !p.name.toLowerCase().includes('amarre') &&
+                      !p.name.toLowerCase().includes('caja');
       const decorName = getTextureName(p.material);
-      const isHPL = isFront && isHplFinish(p.material, state.doorMaterial);
+      const isHPL = isFront && (p.isHpl !== undefined ? p.isHpl : isHplFinish(p.material, undefined, cabinets.find(c => c.id === p.moduleId)));
 
       if (isHPL) {
         dataHPL.push({
@@ -77,8 +80,8 @@ export const exportKitchenToExcel = () => {
       dataPlacas.push({
         Gabinete: p.notes?.includes('Cab') ? p.notes : `Gabinete ${(p.moduleIndex || 0) + 1}`,
         Pieza: isHPL ? `${p.name} (Sustrato Base MDF 18mm)` : p.name,
-        Material: isHPL ? 'MDF Crudo Desnudo (Sustrato Base)' : 'Melamina Estándar',
-        Decorativo: isHPL ? 'MDF Desnudo 18mm' : decorName,
+        Material: isHPL ? 'MDF Crudo Desnudo (Sustrato Base)' : (p.thickness === 3 ? 'Durolac / MDF 3mm' : 'Melamina Estándar'),
+        Decorativo: isHPL ? `${decorName} (HPL)` : decorName,
         'Cortes Totales': p.qty,
         Cantidad: p.qty,
         'Largo (mm)': p.length.toFixed(1),
@@ -91,6 +94,40 @@ export const exportKitchenToExcel = () => {
         'Tapacanto Ancho 2': p.edgeW2 ? 'Sí' : 'No',
         Notas: isHPL ? `Sustrato base MDF 18mm para prensado de ${decorName}` : (p.notes || '')
       });
+
+      // Tapacantos por pieza técnica
+      const cantosL = (p.edgeL1 ? 1 : 0) + (p.edgeL2 ? 1 : 0);
+      const cantosW = (p.edgeW1 ? 1 : 0) + (p.edgeW2 ? 1 : 0);
+      const metersNet = (((cantosL * p.length) + (cantosW * p.width)) * p.qty) / 1000;
+
+      if (metersNet > 0) {
+        const edgeThick = isFront ? (state.edgeBandingThicknessFronts || 1.0) : (state.edgeBandingThicknessCabinets || 0.45);
+        const tipoCanto = isFront ? `Tapacanto PVC 22x${edgeThick.toFixed(2)}mm Frentes` : `Tapacanto PVC 22x${edgeThick.toFixed(2)}mm Estructura`;
+
+        dataEdgeBanding.push({
+          Gabinete: p.notes?.includes('Cab') ? p.notes : `Gabinete ${(p.moduleIndex || 0) + 1}`,
+          Pieza: p.name,
+          'Ubicación / Tipo': isFront ? 'Frente / Puerta' : 'Casco / Estructura',
+          'Color / Decorativo': decorName,
+          'Espesor Canto (mm)': edgeThick.toFixed(2),
+          'Largo (mm)': p.length.toFixed(1),
+          'Ancho (mm)': p.width.toFixed(1),
+          Cantidad: p.qty,
+          'Largo 1': p.edgeL1 ? 'Sí' : '-',
+          'Largo 2': p.edgeL2 ? 'Sí' : '-',
+          'Ancho 1': p.edgeW1 ? 'Sí' : '-',
+          'Ancho 2': p.edgeW2 ? 'Sí' : '-',
+          'Metros Netos (m)': Number(metersNet.toFixed(2)),
+          'Metros c/ Merma 10% (m)': Number((metersNet * 1.1).toFixed(2))
+        });
+
+        const sumKey = `${isFront ? 'FRONT' : 'STRUCT'}_${decorName}_${edgeThick}`;
+        if (!edgeSummary[sumKey]) {
+          edgeSummary[sumKey] = { desc: tipoCanto, decorName, metersNet: 0, metersWaste: 0, rollThickness: edgeThick };
+        }
+        edgeSummary[sumKey].metersNet += metersNet;
+        edgeSummary[sumKey].metersWaste += metersNet * 1.1;
+      }
     });
 
     // Panel Trasero Continuo de Isla (en Melamina o HPL decorativo)
@@ -204,10 +241,49 @@ export const exportKitchenToExcel = () => {
       });
     });
 
+    // Añadir resumen consolidado al final de dataEdgeBanding
+    if (Object.keys(edgeSummary).length > 0) {
+      dataEdgeBanding.push({
+        Gabinete: '--- RESUMEN CONSOLIDADO DE COMPRA ---',
+        Pieza: '----------------------------------------',
+        'Ubicación / Tipo': '----------------',
+        'Color / Decorativo': '----------------',
+        'Espesor Canto (mm)': '--',
+        'Largo (mm)': '-',
+        'Ancho (mm)': '-',
+        Cantidad: '-',
+        'Largo 1': '-',
+        'Largo 2': '-',
+        'Ancho 1': '-',
+        'Ancho 2': '-',
+        'Metros Netos (m)': 0,
+        'Metros c/ Merma 10% (m)': 0
+      });
+
+      Object.values(edgeSummary).forEach(s => {
+        dataEdgeBanding.push({
+          Gabinete: 'TOTAL COMPRA',
+          Pieza: s.desc,
+          'Ubicación / Tipo': s.desc.includes('Frentes') ? 'Puertas/Frentes' : (s.desc.includes('Isla') ? 'Revestimiento Isla' : 'Cuerpo/Estructura'),
+          'Color / Decorativo': s.decorName,
+          'Espesor Canto (mm)': s.rollThickness.toFixed(2),
+          'Largo (mm)': '-',
+          'Ancho (mm)': '-',
+          Cantidad: 1,
+          'Largo 1': '-',
+          'Largo 2': '-',
+          'Ancho 1': '-',
+          'Ancho 2': '-',
+          'Metros Netos (m)': Number(s.metersNet.toFixed(2)),
+          'Metros c/ Merma 10% (m)': Math.ceil(s.metersWaste)
+        });
+      });
+    }
+
     const wb = XLSX.utils.book_new();
     const wsPlacas = XLSX.utils.json_to_sheet(dataPlacas);
     const wsBoM = XLSX.utils.json_to_sheet(dataBoM);
-    const wsEdgeBanding = XLSX.utils.json_to_sheet(edgeBanding);
+    const wsEdgeBanding = XLSX.utils.json_to_sheet(dataEdgeBanding);
 
     // Styling function
     const applyStyles = (ws: any, colWidths: number[]) => {
@@ -249,7 +325,7 @@ export const exportKitchenToExcel = () => {
 
     applyStyles(wsPlacas, [16, 28, 26, 24, 12, 10, 14, 14, 18, 14, 18, 18, 18, 18, 30]);
     applyStyles(wsBoM, [16, 52, 14, 24, 50]);
-    applyStyles(wsEdgeBanding, [16, 40, 14, 16, 35]);
+    applyStyles(wsEdgeBanding, [18, 32, 22, 26, 18, 14, 14, 10, 10, 10, 10, 10, 18, 22]);
 
     XLSX.utils.book_append_sheet(wb, wsPlacas, '1_Placas_y_Cortes');
     let sheetNum = 2;

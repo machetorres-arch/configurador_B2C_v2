@@ -1659,7 +1659,7 @@ function syncTextureToKitchenStore(tex: CustomTextureItem) {
         sheetWidthMm: 3200,
         sheetHeightMm: 1600,
         colorHex: tex.url && tex.url.startsWith('#') ? tex.url : '#F5F5F7',
-        textureUrl: tex.url || tex.previewUrl,
+        textureUrl: (tex.url && !tex.url.startsWith('#')) ? tex.url : ((tex.previewUrl && !tex.previewUrl.startsWith('#')) ? tex.previewUrl : undefined),
         finish: tex.finish || 'Pulido Seda',
         description: `${tex.brand || 'SYSPROTEC (QSTONE)'} - ${tex.finish || 'Formato Placa'}`,
         active: true,

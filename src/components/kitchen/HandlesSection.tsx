@@ -14,7 +14,7 @@ interface HandlesSectionProps {
 }
 
 export function HandlesSection({ isLight }: HandlesSectionProps) {
-  const { handleConfig, setHandleConfig, golaSystem } = useKitchenStore();
+  const { handleConfig, setHandleConfig, golaSystem, setGolaSystem } = useKitchenStore();
 
   const selectedModelItem = HANDLE_CATALOG.find((m) => m.id === handleConfig.model) || HANDLE_CATALOG[0];
 
@@ -32,6 +32,11 @@ export function HandlesSection({ isLight }: HandlesSectionProps) {
       ? handleConfig.lengthMm
       : item.lengths[0] || 0;
 
+    // Al seleccionar un modelo de tirador, desactivar el riel Gola para mostrar los tiradores
+    if (golaSystem !== 'none') {
+      setGolaSystem('none');
+    }
+
     setHandleConfig({
       model: modelId,
       finish: newFinish,
@@ -40,10 +45,16 @@ export function HandlesSection({ isLight }: HandlesSectionProps) {
   };
 
   const handleSelectFinish = (finish: HandleFinish) => {
+    if (golaSystem !== 'none') {
+      setGolaSystem('none');
+    }
     setHandleConfig({ finish });
   };
 
   const handleSelectLength = (len: number) => {
+    if (golaSystem !== 'none') {
+      setGolaSystem('none');
+    }
     setHandleConfig({ lengthMm: len });
   };
 
@@ -52,15 +63,24 @@ export function HandlesSection({ isLight }: HandlesSectionProps) {
   return (
     <div className="flex flex-col gap-4">
       {isGolaActive && (
-        <div className={`p-2.5 rounded-lg border flex items-start gap-2 text-xs ${
+        <div className={`p-2.5 rounded-lg border flex items-center justify-between gap-2 text-xs ${
           isLight 
             ? 'bg-amber-50 border-amber-200 text-amber-900' 
             : 'bg-amber-950/30 border-amber-700/50 text-amber-300'
         }`}>
-          <ShieldAlert size={16} className="shrink-0 mt-0.5 text-amber-500" />
-          <p className="leading-snug text-[11px]">
-            <strong>Perfil Gola activo:</strong> El sistema Gola suprime tiradores visibles en el frente. Si cambias a &ldquo;Sin Gola&rdquo;, se aplicará el tirador seleccionado aquí.
-          </p>
+          <div className="flex items-start gap-2">
+            <ShieldAlert size={16} className="shrink-0 mt-0.5 text-amber-500" />
+            <p className="leading-snug text-[11px]">
+              <strong>Perfil Gola activo:</strong> Selecciona cualquier tirador o pulsa el botón para desactivar Gola y mostrar tiradores en los muebles.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setGolaSystem('none')}
+            className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded text-[10px] font-bold uppercase tracking-wider shrink-0 cursor-pointer shadow-xs transition-colors"
+          >
+            Quitar Gola
+          </button>
         </div>
       )}
 

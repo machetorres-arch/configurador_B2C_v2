@@ -128,7 +128,8 @@ export interface CabinetType {
   drawerFrontMaterial?: 'melamina' | 'hpl';
   drawerInnerMaterial?: 'melamina' | 'hpl';
   shelfMaterial?: 'melamina' | 'hpl';
-  backMaterial?: 'melamina' | 'hpl';
+  backMaterial?: 'melamina' | 'hpl' | 'durolac';
+  backThickness?: number;
   socleMaterial?: 'melamina' | 'hpl';
   grainDirection?: 'vertical' | 'horizontal';
   grainElements?: Record<string, 'vertical' | 'horizontal'>;
@@ -252,7 +253,7 @@ interface KitchenState {
   setRoomConfig: (config: RoomConfig) => void;
   setWallColor: (color: string) => void;
   setFloorType: (floorType: string) => void;
-  applyGlobalTexture: (part: 'structure' | 'doors' | 'drawerFronts' | 'drawerInner' | 'shelves' | 'back' | 'socle' | 'islandBack' | 'coverPanels' | 'all', url: string, mat: 'melamina' | 'hpl') => void;
+  applyGlobalTexture: (part: 'structure' | 'doors' | 'drawerFronts' | 'drawerInner' | 'shelves' | 'back' | 'socle' | 'islandBack' | 'coverPanels' | 'all', url: string, mat: 'melamina' | 'hpl' | 'durolac', thicknessMm?: number) => void;
   setCountertopConfig: (config: Partial<CountertopConfig>) => void;
   setIslandBackConfig: (updates: Partial<IslandBackConfig>) => void;
   setCountertopSink: (model: SinkModelId, cabinetId?: string | null) => { success: boolean; error?: string };
@@ -986,20 +987,22 @@ export const useKitchenStore = create<KitchenState>((set, get) => {
   },
   setWallColor: (color) => set({ wallColor: color }),
   setFloorType: (floorType) => set({ floorType }),
-  applyGlobalTexture: (part, url, mat) =>
+  applyGlobalTexture: (part, url, mat, thicknessMm) =>
     set((state) => {
       // Si la textura o material corresponde a cuarzo, sinterizado o piedra Qstone de marmolería,
       // DEBE aplicarse ÚNICAMENTE a las cubiertas y nunca a gabinetes/puertas/cajones.
+      const isExplicitCabinetMat = mat === 'melamina' || mat === 'hpl' || mat === 'durolac';
       const isStone =
-        (mat as any) === 'cuarzo' ||
+        !isExplicitCabinetMat &&
+        ((mat as any) === 'cuarzo' ||
         (mat as any) === 'sinterizado' ||
         (mat as any) === 'granito' ||
         (mat as any) === 'marmol' ||
-        state.qstoneCatalog.some((p) => p.textureUrl === url || p.id === url);
+        state.qstoneCatalog.some((p) => p.id === url || (Boolean(p.textureUrl) && !p.textureUrl?.startsWith('#') && !url.startsWith('#') && p.textureUrl === url)));
 
       if (isStone) {
         const matchedProd =
-          state.qstoneCatalog.find((p) => p.textureUrl === url || p.id === url) ||
+          state.qstoneCatalog.find((p) => p.id === url || (Boolean(p.textureUrl) && !p.textureUrl?.startsWith('#') && !url.startsWith('#') && p.textureUrl === url)) ||
           state.qstoneCatalog[0];
         if (matchedProd) {
           setTimeout(() => {
@@ -1019,7 +1022,7 @@ export const useKitchenStore = create<KitchenState>((set, get) => {
             enabled: true,
             materialType: 'decorative',
             decorativeColor: url,
-            decorativeMaterial: mat,
+            decorativeMaterial: mat as any,
           },
         };
       }
@@ -1028,38 +1031,41 @@ export const useKitchenStore = create<KitchenState>((set, get) => {
         const updates: Partial<CabinetType> = {};
         if (part === 'structure' || part === 'all') {
           updates.structureColor = url;
-          updates.structureMaterial = mat;
+          updates.structureMaterial = mat as any;
         }
         if (part === 'doors' || part === 'all') {
           updates.doorColor = url;
-          updates.doorMaterial = mat;
+          updates.doorMaterial = mat as any;
         }
         if (part === 'drawerFronts' || part === 'all') {
           updates.drawerFrontColor = url;
-          updates.drawerFrontMaterial = mat;
+          updates.drawerFrontMaterial = mat as any;
         }
         if (part === 'drawerInner' || part === 'all') {
           updates.drawerInnerColor = url;
-          updates.drawerInnerMaterial = mat;
+          updates.drawerInnerMaterial = mat as any;
         }
         if (part === 'shelves' || part === 'all') {
           updates.shelfColor = url;
-          updates.shelfMaterial = mat;
+          updates.shelfMaterial = mat as any;
         }
         if (part === 'back' || part === 'all') {
           updates.backColor = url;
-          updates.backMaterial = mat;
+          updates.backMaterial = mat as any;
+          if (part === 'back' && thicknessMm !== undefined) {
+            updates.backThickness = thicknessMm;
+          }
         }
         if (part === 'socle' || part === 'all') {
           updates.socleColor = url;
-          updates.socleMaterial = mat;
+          updates.socleMaterial = mat as any;
         }
         if (part === 'coverPanels' || part === 'all') {
           if (c.leftCoverPanel) {
-            updates.leftCoverPanel = { ...c.leftCoverPanel, color: url, material: mat };
+            updates.leftCoverPanel = { ...c.leftCoverPanel, color: url, material: mat as any };
           }
           if (c.rightCoverPanel) {
-            updates.rightCoverPanel = { ...c.rightCoverPanel, color: url, material: mat };
+            updates.rightCoverPanel = { ...c.rightCoverPanel, color: url, material: mat as any };
           }
         }
         return { ...c, ...updates };
