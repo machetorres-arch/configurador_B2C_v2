@@ -336,7 +336,7 @@ export function CountertopConfigModal({ isOpen, onClose, isLight: isLightProp }:
             }`}
           >
             <Sparkles className="w-3.5 h-3.5" />
-            Catálogo Qstone ({qstoneCatalog.length})
+            Catálogo Qstone ({fullCatalog.length})
           </button>
           <button
             onClick={() => setActiveTab('dimensions')}

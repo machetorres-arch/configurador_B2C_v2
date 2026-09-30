@@ -464,26 +464,38 @@ export function KitchenModuleContextMenu({
       thicknessMm: t.thicknessMm || (t.category === 'hpl_autor' ? 0.9 : (t.name?.includes('15') ? 15 : 18)),
     }));
 
-  const allTextures = [...DEFAULT_TEXTURES, ...approvedBackofficeTextures];
+  const allTextures = approvedBackofficeTextures;
   const masisaTextures = allTextures.filter(t => {
     const n = (t.name || '').toLowerCase();
     const b = ((t as any).brand || '').toLowerCase();
     const p = ((t as any).providerName || '').toLowerCase();
     return n.includes('masisa') || b.includes('masisa') || p.includes('masisa');
   });
+  const araucoTextures = allTextures.filter(t => {
+    const n = (t.name || '').toLowerCase();
+    const b = ((t as any).brand || '').toLowerCase();
+    const p = ((t as any).providerName || '').toLowerCase();
+    const isMas = n.includes('masisa') || b.includes('masisa') || p.includes('masisa');
+    const isAra = n.includes('arauco') || b.includes('arauco') || p.includes('arauco') || n.includes('vesto') || b.includes('vesto');
+    return !isMas && isAra;
+  });
   const abetTextures = allTextures.filter(t => {
     const n = (t.name || '').toLowerCase();
     const b = ((t as any).brand || '').toLowerCase();
     const p = ((t as any).providerName || '').toLowerCase();
-    return n.includes('abet') || b.includes('abet') || p.includes('abet') || n.includes('laminati') || n.includes('hpl') || (t as any).category === 'hpl_autor';
+    const isMas = n.includes('masisa') || b.includes('masisa') || p.includes('masisa');
+    const isAra = n.includes('arauco') || b.includes('arauco') || p.includes('arauco') || n.includes('vesto') || b.includes('vesto');
+    const isAb = n.includes('abet') || b.includes('abet') || p.includes('abet') || n.includes('laminati') || n.includes('hpl') || (t as any).category === 'hpl_autor';
+    return !isMas && !isAra && isAb;
   });
   const otherTextures = allTextures.filter(t => {
     const n = (t.name || '').toLowerCase();
     const b = ((t as any).brand || '').toLowerCase();
     const p = ((t as any).providerName || '').toLowerCase();
     const isMas = n.includes('masisa') || b.includes('masisa') || p.includes('masisa');
+    const isAra = n.includes('arauco') || b.includes('arauco') || p.includes('arauco') || n.includes('vesto') || b.includes('vesto');
     const isAb = n.includes('abet') || b.includes('abet') || p.includes('abet') || n.includes('laminati') || n.includes('hpl') || (t as any).category === 'hpl_autor';
-    return !isMas && !isAb;
+    return !isMas && !isAra && !isAb;
   });
 
   const variant = activeCabinet.variant || (activeCabinet.width > 60 ? '2_doors' : '1_door');
@@ -2109,13 +2121,27 @@ export function KitchenModuleContextMenu({
               </div>
             )}
 
+            {/* Arauco / Vesto */}
+            {araucoTextures.length > 0 && (
+              <div className="flex flex-col gap-2">
+                <div className={`text-[10px] uppercase tracking-wider font-semibold ${
+                  isLight ? 'text-slate-600' : 'text-zinc-400'
+                }`}>
+                  3. Arauco / Vesto (Melaminas)
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {araucoTextures.map(t => renderTextureButton(t))}
+                </div>
+              </div>
+            )}
+
             {/* Abet */}
             {abetTextures.length > 0 && (
               <div className="flex flex-col gap-2">
                 <div className={`text-[10px] uppercase tracking-wider font-semibold ${
                   isLight ? 'text-slate-600' : 'text-zinc-400'
                 }`}>
-                  3. Abet Laminati (HPL)
+                  4. Abet Laminati (HPL)
                 </div>
 
                 {/* Sub-opción contextual en Abet Laminati: Trascara Balancer Blanco 0,9 mm */}
@@ -2164,7 +2190,7 @@ export function KitchenModuleContextMenu({
                 <div className={`text-[10px] uppercase tracking-wider font-semibold ${
                   isLight ? 'text-slate-600' : 'text-zinc-400'
                 }`}>
-                  4. Otras Terminaciones de Proveedor
+                  5. Otras Terminaciones de Proveedor
                 </div>
                 <div className="grid grid-cols-3 gap-2">
                   {otherTextures.map(t => renderTextureButton(t))}
