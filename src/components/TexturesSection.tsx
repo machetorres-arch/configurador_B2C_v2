@@ -87,18 +87,29 @@ export const TexturesSection = ({
       sheetFormat: t.sheetFormat
     }));
 
-  // Combinación única con defaults
-  const combinedMap = new Map<string, any>();
-  DEFAULT_TEXTURES.forEach(t => combinedMap.set(t.id, t));
-  activeApprovedAdminTextures.forEach(t => combinedMap.set(t.id, t));
-
-  const allTextures = Array.from(combinedMap.values());
+  // Solo usar defaults de emergencia si no hay ninguna textura en el gestor
+  const allTextures = activeApprovedAdminTextures.length > 0 
+    ? activeApprovedAdminTextures 
+    : DEFAULT_TEXTURES.map(t => ({
+        ...t,
+        code: 'DEF',
+        category: 'solidos' as const,
+        providerName: t.brand,
+        sheetFormat: '1.83 x 2.50 m'
+      }));
   
   const isMasisaItem = (t: any) => {
     const n = (t.name || '').toLowerCase();
     const b = (t.brand || '').toLowerCase();
     const p = (t.providerName || '').toLowerCase();
     return n.includes('masisa') || b.includes('masisa') || p.includes('masisa');
+  };
+
+  const isAraucoItem = (t: any) => {
+    const n = (t.name || '').toLowerCase();
+    const b = (t.brand || '').toLowerCase();
+    const p = (t.providerName || '').toLowerCase();
+    return n.includes('arauco') || b.includes('arauco') || p.includes('arauco') || n.includes('vesto') || b.includes('vesto');
   };
 
   const isAbetItem = (t: any) => {
@@ -116,8 +127,9 @@ export const TexturesSection = ({
   };
 
   const masisaTextures = allTextures.filter(t => isMasisaItem(t) && matchesThickness(t));
-  const abetTextures = allTextures.filter(t => !isMasisaItem(t) && isAbetItem(t));
-  const otherTextures = allTextures.filter(t => !isMasisaItem(t) && !isAbetItem(t) && matchesThickness(t));
+  const araucoTextures = allTextures.filter(t => !isMasisaItem(t) && isAraucoItem(t) && matchesThickness(t));
+  const abetTextures = allTextures.filter(t => !isMasisaItem(t) && !isAraucoItem(t) && isAbetItem(t));
+  const otherTextures = allTextures.filter(t => !isMasisaItem(t) && !isAraucoItem(t) && !isAbetItem(t) && matchesThickness(t));
 
   const renderTextureButton = (tex: any) => {
     const is15 = tex.thicknessMm === 15;
@@ -344,12 +356,23 @@ export const TexturesSection = ({
         </div>
       )}
 
+      {araucoTextures.length > 0 && (
+        <div className="mb-4">
+          <label className={`text-[10px] uppercase tracking-widest font-bold block mb-2 ${
+            isLight ? 'text-slate-700' : 'text-slate-400'
+          }`}>3. Arauco / Vesto (Melaminas)</label>
+          <div className="grid grid-cols-3 gap-2">
+            {araucoTextures.map(t => renderTextureButton(t))}
+          </div>
+        </div>
+      )}
+
       {abetTextures.length > 0 && (
         <div className="mb-4">
           <div className="flex items-center justify-between mb-2">
             <label className={`text-[10px] uppercase tracking-widest font-bold ${
               isLight ? 'text-slate-700' : 'text-slate-400'
-            }`}>3. Abet Laminati (HPL)</label>
+            }`}>4. Abet Laminati (HPL)</label>
             <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/30">
               Laminado de Alta Presión
             </span>
@@ -411,7 +434,7 @@ export const TexturesSection = ({
         <div className="mb-4">
           <label className={`text-[10px] uppercase tracking-widest font-bold block mb-2 ${
             isLight ? 'text-slate-700' : 'text-slate-400'
-          }`}>4. Otros Proveedores Homologados</label>
+          }`}>5. Otros Proveedores Homologados</label>
           <div className="grid grid-cols-3 gap-2">
             {otherTextures.map(t => renderTextureButton(t))}
           </div>

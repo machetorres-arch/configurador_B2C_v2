@@ -53,42 +53,43 @@ export function CountertopConfigModal({ isOpen, onClose, isLight: isLightProp }:
   const adminTextures = useAdminStore((s) => s.textures);
 
   const fullCatalog = useMemo(() => {
-    const list = [...qstoneCatalog];
-    const existingIds = new Set(list.map((p) => p.id));
-
-    (adminTextures || [])
+    // 1. Tomar texturas de cubiertas activas y aprobadas del adminStore
+    const stoneTextures = (adminTextures || [])
       .filter((t) => t.active && (t.approvalStatus === 'approved' || !t.approvalStatus))
       .filter((t) => {
         const cat = t.category;
-        const n = t.name.toLowerCase();
+        const n = (t.name || '').toLowerCase();
         const b = (t.brand || t.providerName || '').toLowerCase();
         return cat === 'piedras_marmoles' || n.includes('qstone') || b.includes('qstone') || b.includes('sysprotec');
-      })
-      .forEach((t) => {
-        if (!existingIds.has(t.id)) {
-          const isSintered =
-            t.name.toLowerCase().includes('sinteriz') ||
-            (t.finish && t.finish.toLowerCase().includes('sinteriz')) ||
-            t.category === 'piedras_marmoles';
-          list.push({
-            id: t.id,
-            code: t.code || 'QS-CUSTOM',
-            name: t.name,
-            materialType: isSintered ? 'sinterizado' : 'quarzo',
-            thicknessMm: t.name.includes('20') ? 20 : (t.name.includes('18') ? 18 : 12),
-            priceM2Clp: t.priceM2Clp || Math.round((t.priceSheetClp || 280000) / 3.965) || 280000,
-            sheetWidthMm: 3200,
-            sheetHeightMm: 1600,
-            colorHex: t.url && t.url.startsWith('#') ? t.url : '#F5F5F7',
-            textureUrl: t.url || t.previewUrl,
-            finish: t.finish || 'Pulido Seda',
-            description: `${t.brand || 'SYSPROTEC (QSTONE)'} - ${t.finish || 'Formato Placa'}`,
-            active: true,
-          });
-        }
       });
-    return list;
-  }, [qstoneCatalog, adminTextures]);
+
+    if (stoneTextures.length > 0) {
+      return stoneTextures.map((t) => {
+        const isSintered =
+          t.name.toLowerCase().includes('sinteriz') ||
+          (t.finish && t.finish.toLowerCase().includes('sinteriz')) ||
+          (t.thicknessMm === 12 || t.name.includes('12'));
+        const thickness = t.thicknessMm || (isSintered ? 12 : (t.name.includes('20') ? 20 : 18));
+        return {
+          id: t.id,
+          code: t.code || 'QS-CUSTOM',
+          name: t.name,
+          materialType: isSintered ? ('sinterizado' as const) : ('quarzo' as const),
+          thicknessMm: (thickness === 12 || thickness === 18 || thickness === 20 ? thickness : 18) as 12 | 18 | 20,
+          priceM2Clp: t.priceM2Clp || Math.round((t.priceSheetClp || 280000) / 3.965) || 280000,
+          sheetWidthMm: 3200,
+          sheetHeightMm: 1600,
+          colorHex: t.url && t.url.startsWith('#') ? t.url : '#F5F5F7',
+          textureUrl: (t.url && !t.url.startsWith('#')) ? t.url : ((t.previewUrl && !t.previewUrl.startsWith('#')) ? t.previewUrl : undefined),
+          finish: t.finish || 'Pulido Seda',
+          description: `${t.brand || 'SYSPROTEC (QSTONE)'} - ${t.finish || 'Formato Placa'}`,
+          active: true,
+        };
+      });
+    }
+
+    return qstoneCatalog.filter((p) => p.active !== false);
+  }, [adminTextures, qstoneCatalog]);
 
   const [activeTab, setActiveTab] = useState<'material' | 'dimensions' | 'appliances' | 'nesting'>('material');
   const [furnitureTypeTab, setFurnitureTypeTab] = useState<'base' | 'island'>('base');
