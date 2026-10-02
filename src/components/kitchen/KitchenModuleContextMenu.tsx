@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useKitchenStore, CabinetType } from '../../store/kitchenStore';
 import { useStore, PartType } from '../../store';
 import { useAdminStore } from '../../store/adminStore';
-import { isCabinetWithDoors, getDefaultShelvesCount, isCabinetWithSplitDoors, getSplitCabinetShelvesCounts } from '../../utils/kitchenManufacturing';
+import { isCabinetWithDoors, getDefaultShelvesCount, isCabinetWithSplitDoors, getSplitCabinetShelvesCounts, isWhiteMelamine } from '../../utils/kitchenManufacturing';
 import { SlidersHorizontal, X, RefreshCw, ArrowUpDown, ArrowLeftRight, RotateCw, Move3D, DoorOpen, DoorClosed, Layers, Trash2, Palette, Sparkles, Box, Info, Check, ShieldAlert, Sliders, ChevronDown, ChevronRight } from 'lucide-react';
 import { HANDLE_CATALOG, FINISH_LABELS, FINISH_HEX, HandleModelId, HandleFinish, KitchenHandleConfig } from '../../types/handle';
 import { IslandBackPanelConfigSection } from './IslandBackPanelConfigSection';
@@ -2105,6 +2105,124 @@ export function KitchenModuleContextMenu({
                   </div>
                 </div>
               )}
+
+              {/* Selector Interactivo y Regla de Restricción Técnica para Fondo de Cajón */}
+              {targetZone === 'drawerInner' && (() => {
+                const innerColor = activeCabinet.drawerInnerColor || activeCabinet.structureColor || useStore.getState().structureColor;
+                const isWhite = isWhiteMelamine(innerColor);
+                const isOver50 = activeCabinet.width > 50;
+                const currentBottomMat = activeCabinet.drawerBottomMaterial || (isWhite && !isOver50 ? 'durolac' : 'melamina');
+                const isDurolacActive = currentBottomMat === 'durolac' && isWhite && !isOver50;
+
+                return (
+                  <div className={`mt-2 p-3.5 rounded-2xl border flex flex-col gap-2.5 shadow-sm transition-all ${
+                    isLight ? 'bg-orange-50/90 border-orange-200' : 'bg-black/40 border-orange-500/30'
+                  }`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className={`text-[11px] uppercase font-extrabold tracking-wider ${
+                        isLight ? 'text-orange-950' : 'text-orange-400'
+                      }`}>
+                        Configuración Fondo de Cajón
+                      </span>
+                      <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-md shrink-0 ${
+                        isDurolacActive
+                          ? (isLight ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30')
+                          : (isLight ? 'bg-blue-100 text-blue-800 border border-blue-200' : 'bg-blue-500/20 text-blue-300 border border-blue-500/30')
+                      }`}>
+                        {isDurolacActive ? 'Durolac 3 mm' : 'Melamina 15/18 mm'}
+                      </span>
+                    </div>
+
+                    <p className={`text-[11px] leading-snug font-medium ${isLight ? 'text-slate-700' : 'text-zinc-300'}`}>
+                      {!isWhite
+                        ? 'Caja en melamina de color/madera: Por estándar de mercado, el fondo se fabrica en la misma melamina (15/18 mm).'
+                        : isOver50
+                          ? `Módulo de ${activeCabinet.width} cm (> 50 cm): Restricción de sobrecarga activa. Durolac 3 mm restringido para evitar pandeo.`
+                          : `Módulo de ${activeCabinet.width} cm (≤ 50 cm) con melamina blanca: Puedes alternar entre Durolac 3 mm o Melamina.`}
+                    </p>
+
+                    {/* Botones de Selección Interactiva de Fondo de Cajón */}
+                    <div className="flex flex-col gap-2 mt-1">
+                      {/* Opción A: Durolac Blanco 3 mm */}
+                      <button
+                        type="button"
+                        disabled={!isWhite || isOver50}
+                        onClick={() => {
+                          if (isWhite && !isOver50) {
+                            updateCabinet(activeCabinet.id, { 
+                              drawerBottomMaterial: 'durolac',
+                              drawerBottomThickness: 3
+                            });
+                          }
+                        }}
+                        className={`p-3 rounded-xl border text-left flex items-center justify-between gap-3 transition-all ${
+                          !isWhite || isOver50
+                            ? 'opacity-40 cursor-not-allowed bg-slate-100 dark:bg-white/5 border-slate-200 dark:border-white/5 text-slate-400'
+                            : isDurolacActive
+                              ? 'bg-orange-500 text-black border-orange-600 font-extrabold shadow-sm cursor-pointer ring-2 ring-orange-500/20'
+                              : isLight
+                                ? 'bg-white text-slate-800 border-slate-300 hover:border-orange-500 hover:bg-orange-50/40 cursor-pointer shadow-xs'
+                                : 'bg-white/5 text-zinc-200 border-white/10 hover:border-orange-500/50 cursor-pointer'
+                        }`}
+                      >
+                        <div className="flex flex-col gap-0.5 min-w-0">
+                          <span className="text-xs font-bold leading-snug">Durolac Blanco</span>
+                          <span className={`text-[11px] leading-tight font-medium ${isDurolacActive ? 'text-black/80' : isLight ? 'text-slate-500' : 'text-zinc-400'}`}>
+                            {!isWhite 
+                              ? 'Solo disponible en melamina blanca' 
+                              : isOver50 
+                                ? 'Restringido (Módulo > 50 cm)' 
+                                : 'MDF lacado 3 mm ranurado'}
+                          </span>
+                        </div>
+                        <span className={`text-xs font-mono font-bold px-2 py-1 rounded-md shrink-0 ${
+                          isDurolacActive 
+                            ? 'bg-black/15 text-black' 
+                            : isLight 
+                              ? 'bg-slate-100 text-slate-700' 
+                              : 'bg-white/10 text-zinc-200'
+                        }`}>
+                          3 mm
+                        </span>
+                      </button>
+
+                      {/* Opción B: Misma Melamina */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          updateCabinet(activeCabinet.id, { 
+                            drawerBottomMaterial: 'melamina',
+                            drawerBottomThickness: 15
+                          });
+                        }}
+                        className={`p-3 rounded-xl border text-left flex items-center justify-between gap-3 transition-all cursor-pointer ${
+                          !isDurolacActive
+                            ? 'bg-orange-500 text-black border-orange-600 font-extrabold shadow-sm ring-2 ring-orange-500/20'
+                            : isLight
+                              ? 'bg-white text-slate-800 border-slate-300 hover:border-orange-500 hover:bg-orange-50/40 shadow-xs'
+                              : 'bg-white/5 text-zinc-200 border-white/10 hover:border-orange-500/50'
+                        }`}
+                      >
+                        <div className="flex flex-col gap-0.5 min-w-0">
+                          <span className="text-xs font-bold leading-snug">Misma Melamina Estructural</span>
+                          <span className={`text-[11px] leading-tight font-medium ${!isDurolacActive ? 'text-black/80' : isLight ? 'text-slate-500' : 'text-zinc-400'}`}>
+                            Mismo tono y espesor de la caja
+                          </span>
+                        </div>
+                        <span className={`text-xs font-mono font-bold px-2 py-1 rounded-md shrink-0 ${
+                          !isDurolacActive 
+                            ? 'bg-black/15 text-black' 
+                            : isLight 
+                              ? 'bg-slate-100 text-slate-700' 
+                              : 'bg-white/10 text-zinc-200'
+                        }`}>
+                          15/18 mm
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Masisa */}

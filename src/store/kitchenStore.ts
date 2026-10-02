@@ -130,6 +130,8 @@ export interface CabinetType {
   shelfMaterial?: 'melamina' | 'hpl';
   backMaterial?: 'melamina' | 'hpl' | 'durolac';
   backThickness?: number;
+  drawerBottomMaterial?: 'melamina' | 'durolac';
+  drawerBottomThickness?: number;
   socleMaterial?: 'melamina' | 'hpl';
   grainDirection?: 'vertical' | 'horizontal';
   grainElements?: Record<string, 'vertical' | 'horizontal'>;

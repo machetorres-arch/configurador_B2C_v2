@@ -1,10 +1,7 @@
+import { useAdminStore } from '../store/adminStore';
+
 export function getFriendlyColorName(colorVal?: string, customTextures?: any[]): string {
   if (!colorVal) return 'Blanco Estándar';
-  
-  // Base64 or long data URIs
-  if (colorVal.startsWith('data:')) {
-    return 'Textura Personalizada (Cargada)';
-  }
 
   const hexMap: Record<string, string> = {
     '#FFFFFF': 'Blanco Frost',
@@ -28,12 +25,38 @@ export function getFriendlyColorName(colorVal?: string, customTextures?: any[]):
 
   const upper = colorVal.toUpperCase();
   if (hexMap[upper]) return hexMap[upper];
-  if (colorVal.startsWith('#')) return `Color ${colorVal}`;
 
-  if (customTextures && Array.isArray(customTextures)) {
-    const found = customTextures.find((t: any) => t.url === colorVal);
-    if (found?.name) return found.name;
+  // Check admin store textures (all official brand textures + user added textures)
+  let adminTextures: any[] = [];
+  try {
+    adminTextures = useAdminStore.getState().textures || [];
+  } catch {}
+
+  const allTextures = [...(customTextures || []), ...adminTextures];
+  if (allTextures.length > 0) {
+    const found = allTextures.find((t: any) =>
+      t && (
+        t.url === colorVal ||
+        t.previewUrl === colorVal ||
+        t.id === colorVal ||
+        (t.name && t.name.toLowerCase() === colorVal.toLowerCase())
+      )
+    );
+    if (found?.name) {
+      const brand = found.brand || found.providerName;
+      if (brand && !found.name.toLowerCase().includes(brand.toLowerCase())) {
+        return `${brand} ${found.name}`;
+      }
+      return found.name;
+    }
   }
+
+  // Base64 or long data URIs without a name match
+  if (colorVal.startsWith('data:')) {
+    return 'Textura Personalizada';
+  }
+
+  if (colorVal.startsWith('#')) return `Color ${colorVal}`;
 
   const parts = colorVal.split('/');
   const last = parts[parts.length - 1].replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');

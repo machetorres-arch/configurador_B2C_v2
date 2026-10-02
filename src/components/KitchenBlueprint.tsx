@@ -217,7 +217,8 @@ export function KitchenBlueprint() {
                     !p.name.toLowerCase().includes('contrafrente') &&
                     !p.name.toLowerCase().includes('amarre') &&
                     !p.name.toLowerCase().includes('caja');
-    const isBack = p.thickness === 3 || p.thickness === 3.5 || p.material === 'Melamina Fondo' || (p.name.includes('Fondo') && !p.name.includes('Soporte')) || (p.name.includes('Trasera') && !p.name.includes('Barra') && !p.name.includes('Caja Cajón'));
+    const is3mmBack = p.thickness === 3 || p.thickness === 3.2 || p.thickness === 3.5 || p.material?.toLowerCase().includes('durolac');
+    const isBack = is3mmBack || p.material === 'Melamina Fondo' || (p.name.includes('Fondo') && !p.name.includes('Soporte')) || (p.name.includes('Trasera') && !p.name.includes('Barra') && !p.name.includes('Caja Cajón'));
     const isHPL = isFront && (p.isHpl !== undefined ? p.isHpl : isHplFinish(p.material, undefined, kState.cabinets.find(c => c.id === p.moduleId)));
 
     let groupKey = '';
@@ -225,38 +226,29 @@ export function KitchenBlueprint() {
     let materialCategory: 'doors' | 'structure' | 'backs' | 'hpl' = 'structure';
     let w = 2440;
     let h = 1830;
-    let thick = thicknessMm;
-    const matName = getColorName(p.material);
+    let thick = p.thickness || thicknessMm;
+    const matName = is3mmBack ? 'Durolac Blanco 3mm' : getColorName(p.material);
 
-    if (isBack) {
-      if (p.thickness === 3 || p.thickness === 3.2 || p.thickness === 3.5 || p.material?.toLowerCase().includes('durolac')) {
-        groupKey = `BACKS_DUROLAC_3MM`;
-        label = `PLANCHA DUROLAC 3MM BLANCO (FONDOS Y TRASERAS)`;
-        materialCategory = 'backs';
-        thick = 3;
-      } else {
-        groupKey = `MEL_STRUCT_${p.material}_${p.thickness || thicknessMm}`;
-        label = `PLANCHA MELAMINA ${p.thickness || thicknessMm}MM (ESTRUCTURA Y TRASERAS) - COLOR: ${matName}`;
-        materialCategory = 'structure';
-        thick = p.thickness || thicknessMm;
-      }
-    } else if (isFront) {
-      if (isHPL) {
-        groupKey = `HPL_DOORS_${p.material || 'abet'}`;
-        label = `PLANCHA LAMINADO HPL PUERTAS Y FRENTES 0.9MM (ABET LAMINATI) - COLOR: ${matName}`;
-        materialCategory = 'hpl';
-        w = 3050;
-        h = 1300;
-        thick = 0.9;
-      } else {
-        groupKey = `MEL_DOORS_${p.material}`;
-        label = `PLANCHA MELAMINA PUERTAS Y FRENTES ${thicknessMm}MM - COLOR: ${matName}`;
-        materialCategory = 'doors';
-      }
+    if (is3mmBack) {
+      groupKey = `BACKS_DUROLAC_3MM`;
+      label = `PLANCHA DUROLAC 3MM BLANCO (FONDOS Y TRASERAS)`;
+      materialCategory = 'backs';
+      thick = 3;
+    } else if (isHPL) {
+      groupKey = `HPL_DOORS_${p.material || 'abet'}`;
+      label = `PLANCHA LAMINADO HPL PUERTAS Y FRENTES 0.9MM (ABET LAMINATI) - COLOR: ${matName}`;
+      materialCategory = 'hpl';
+      w = 3050;
+      h = 1300;
+      thick = 0.9;
     } else {
-      groupKey = `MEL_STRUCT_${p.material}`;
-      label = `PLANCHA MELAMINA ESTRUCTURA Y CAJONES ${thicknessMm}MM - COLOR: ${matName}`;
-      materialCategory = 'structure';
+      // Melamina unificada por decorativo y espesor (15mm o 18mm)
+      // Agrupa tanto casco/estructura, cajones, fondos/traseras 18mm y frentes si usan la misma melamina
+      groupKey = `MEL_${p.material || 'blanco'}_${thick}MM`;
+      label = isFront
+        ? `PLANCHA MELAMINA PUERTAS Y FRENTES ${thick}MM - COLOR: ${matName}`
+        : `PLANCHA MELAMINA ESTRUCTURA Y CAJONES ${thick}MM - COLOR: ${matName}`;
+      materialCategory = isFront ? 'doors' : 'structure';
     }
 
     if (!boardGroups[groupKey]) {
@@ -271,6 +263,9 @@ export function KitchenBlueprint() {
         h,
         parts: []
       };
+    } else if (!is3mmBack && !isHPL && boardGroups[groupKey].materialCategory !== materialCategory) {
+      // Si la misma plancha combina frentes y estructura, actualizar etiqueta descriptiva
+      boardGroups[groupKey].label = `PLANCHA MELAMINA ${thick}MM (ESTRUCTURA Y FRENTES) - COLOR: ${matName}`;
     }
 
     const isWoodGrain = p.material?.includes('roble') || p.material?.includes('nogal') || p.material?.includes('madera') || p.material?.includes('hickory') || p.material?.includes('wood');

@@ -73,6 +73,93 @@ export function getNominalSlideLength(innerDepthMm: number): number {
   return 250; // Fallback mínimo si el mueble es demasiado poco profundo
 }
 
+/**
+ * Determina si una textura o color corresponde a Melamina Blanca
+ */
+export function isWhiteMelamine(color?: string): boolean {
+  if (!color) return false;
+  const c = color.trim().toLowerCase();
+  return (
+    c === '#ffffff' ||
+    c === '#fff' ||
+    c === '#f8fafc' ||
+    c === '#f9fafb' ||
+    c === '#f3f4f6' ||
+    c === 'white' ||
+    c === 'blanco' ||
+    c.includes('blanco') ||
+    c.includes('white') ||
+    c.includes('def_mas_blanco')
+  );
+}
+
+export interface DrawerBottomSpecs {
+  isDurolac: boolean;
+  thicknessMm: number;
+  thicknessCm: number;
+  materialName: string;
+  notes: string;
+  isRestrictedFromDurolac: boolean;
+}
+
+/**
+ * Aplica las reglas técnicas de fabricación para el fondo de cajón:
+ * 1. Por defecto, el fondo es de la misma melamina (color y espesor 15/18mm) que la caja interior del cajón.
+ * 2. Si la melamina interior es blanca (15 o 18mm), se permite Durolac blanco de 3mm SOLO hasta ancho de 50 cm (500mm).
+ *    Si el ancho es > 50 cm, se restringe Durolac 3mm y pasa a melamina blanca de 15/18mm por resistencia a la flexión.
+ */
+export function getDrawerBottomSpecs(
+  cabinetWidthCm: number,
+  drawerInnerColor?: string,
+  drawerInnerMaterial?: 'melamina' | 'hpl',
+  thicknessCm: number = 1.8,
+  drawerBottomMaterial?: 'melamina' | 'durolac'
+): DrawerBottomSpecs {
+  const isWhite = isWhiteMelamine(drawerInnerColor);
+  const isOver50 = cabinetWidthCm > 50;
+
+  // Si el usuario seleccionó explícitamente melamina
+  if (drawerBottomMaterial === 'melamina') {
+    const thickMm = Math.round(thicknessCm * 10);
+    return {
+      isDurolac: false,
+      thicknessMm: thickMm,
+      thicknessCm: thicknessCm,
+      materialName: drawerInnerColor || (isWhite ? `Melamina Blanca ${thickMm}mm` : 'Melamina Cajón'),
+      notes: `Fondo Melamina ${thickMm}mm (Misma melamina de la caja del cajón)`,
+      isRestrictedFromDurolac: false
+    };
+  }
+
+  // Si el usuario seleccionó durolac o está en automático
+  const canUseDurolac3mm = isWhite && !isOver50;
+
+  if (canUseDurolac3mm) {
+    return {
+      isDurolac: true,
+      thicknessMm: 3,
+      thicknessCm: 0.3,
+      materialName: 'Durolac Blanco 3mm',
+      notes: 'Fondo Durolac blanco 3mm ranurado/clavado (Gabinete <= 50cm)',
+      isRestrictedFromDurolac: false
+    };
+  }
+
+  const thickMm = Math.round(thicknessCm * 10);
+  const isRestricted = isWhite && isOver50;
+
+  return {
+    isDurolac: false,
+    thicknessMm: thickMm,
+    thicknessCm: thicknessCm,
+    materialName: drawerInnerColor || (isWhite ? `Melamina Blanca ${thickMm}mm` : 'Melamina Cajón'),
+    isRestrictedFromDurolac: isRestricted,
+    notes: isRestricted
+      ? `Fondo Melamina Blanca ${thickMm}mm (Restricción técnica: Ancho > 50cm no admite Durolac 3mm por flexión)`
+      : `Fondo Melamina ${thickMm}mm (Misma melamina de la caja del cajón)`
+  };
+}
+
 export function generatePartsList(data: ManufacturingData): Part[] {
   const parts: Part[] = [];
   const { thickness, height, depth, modules, showLeftWall, showRightWall, showTopWall, showBottomWall, showBackWall } = data;
@@ -301,17 +388,18 @@ export function generatePartsList(data: ManufacturingData): Part[] {
         notes: `Testero posterior p/ ${hwSpec.slideName}`
       });
 
+      const closetBotSpecs = getDrawerBottomSpecs(mod.width, 'Melamina Cuerpo', undefined, thickness);
       parts.push({
         name: `Fondo Cajón ${modName}`,
         moduleId: mod.id,
         moduleIndex: index,
         qty: mod.drawers,
         length: drawerBoxLength,
-        width: drawerBoxOuterWidth,
-        thickness: 3,
-        material: 'Melamina Fondo',
+        width: closetBotSpecs.isDurolac ? drawerBoxOuterWidth : drawerFrontBackLength,
+        thickness: closetBotSpecs.thicknessMm,
+        material: closetBotSpecs.isDurolac ? 'Durolac Blanco 3mm' : 'Melamina Fondo',
         edgeL1: false, edgeL2: false, edgeW1: false, edgeW2: false,
-        notes: 'Fondo clavado/ranurado'
+        notes: closetBotSpecs.notes
       });
     }
 

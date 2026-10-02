@@ -5,6 +5,7 @@ import { Part, generateEdgeBandingList } from './manufacturing';
 import { calculateSocleSystem } from './kitchenSocle';
 import { calculateGolaSystem } from './kitchenGola';
 import { HANDLE_CATALOG, FINISH_LABELS } from '../types/handle';
+import { getFriendlyColorName } from './colorNames';
 
 // Parámetros técnicos de herrajes según marca (igualados con el configurador de closets)
 export const HARDWARE_SPECS = {
@@ -35,6 +36,76 @@ export function getNominalSlideLength(innerDepthMm: number): number {
     }
   }
   return 250; // Fallback mínimo
+}
+
+/**
+ * Determina si una textura o color corresponde a Melamina Blanca
+ */
+export function isWhiteMelamine(color?: string): boolean {
+  if (!color) return false;
+  const c = color.trim().toLowerCase();
+  return (
+    c === '#ffffff' ||
+    c === '#fff' ||
+    c === '#f8fafc' ||
+    c === '#f9fafb' ||
+    c === '#f3f4f6' ||
+    c === 'white' ||
+    c === 'blanco' ||
+    c.includes('blanco') ||
+    c.includes('white') ||
+    c.includes('def_mas_blanco')
+  );
+}
+
+export interface DrawerBottomSpecs {
+  isDurolac: boolean;
+  thicknessMm: number;
+  thicknessCm: number;
+  materialName: string;
+  notes: string;
+  isRestrictedFromDurolac: boolean;
+}
+
+/**
+ * Aplica las reglas técnicas de fabricación para el fondo de cajón:
+ * 1. Por defecto, el fondo es de la misma melamina (color y espesor 15/18mm) que la caja interior del cajón.
+ * 2. Si la melamina interior es blanca (15 o 18mm), se permite Durolac blanco de 3mm SOLO hasta ancho de 50 cm (500mm).
+ *    Si el ancho es > 50 cm, se restringe Durolac 3mm y pasa a melamina blanca de 15/18mm por resistencia a la flexión.
+ */
+export function getDrawerBottomSpecs(
+  cabinetWidthCm: number,
+  drawerInnerColor?: string,
+  drawerInnerMaterial?: 'melamina' | 'hpl',
+  thicknessCm: number = 1.8
+): DrawerBottomSpecs {
+  const isWhite = isWhiteMelamine(drawerInnerColor);
+  const canUseDurolac3mm = isWhite && cabinetWidthCm <= 50;
+
+  if (canUseDurolac3mm) {
+    return {
+      isDurolac: true,
+      thicknessMm: 3,
+      thicknessCm: 0.3,
+      materialName: 'Durolac Blanco 3mm',
+      notes: 'Fondo Durolac blanco 3mm ranurado/clavado (Gabinete <= 50cm)',
+      isRestrictedFromDurolac: false
+    };
+  }
+
+  const thickMm = Math.round(thicknessCm * 10);
+  const isRestricted = isWhite && cabinetWidthCm > 50;
+
+  return {
+    isDurolac: false,
+    thicknessMm: thickMm,
+    thicknessCm: thicknessCm,
+    materialName: drawerInnerColor || (isWhite ? `Melamina Blanca ${thickMm}mm` : 'Melamina Cajón'),
+    isRestrictedFromDurolac: isRestricted,
+    notes: isRestricted
+      ? `Fondo Melamina Blanca ${thickMm}mm (Restricción técnica: Ancho > 50cm no admite Durolac 3mm por flexión)`
+      : `Fondo Melamina ${thickMm}mm (Misma melamina de la caja del cajón)`
+  };
 }
 
 /**
@@ -1125,18 +1196,19 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
                 edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
                 notes: `P/ ${hwSpec.slideName}`
             });
-            // Fondo de cajón 3mm
+            // Fondo de cajón interior
+            const botSpecs = getDrawerBottomSpecs(w, cInnerMat, cab.drawerInnerMaterial || state.drawerInnerMaterial, thickness);
             parts.push({
                 name: `Fondo Cajón Interior ${i + 1} ${cabName}`,
                 moduleId: cab.id,
                 moduleIndex: index,
                 qty: 1,
                 length: drawerBoxLength,
-                width: drawerBoxOuterWidth,
-                thickness: 3,
-                material: cab.backColor || '#dddddd',
+                width: botSpecs.isDurolac ? drawerBoxOuterWidth : drawerFrontBackLength,
+                thickness: botSpecs.thicknessMm,
+                material: botSpecs.materialName,
                 edgeL1: false, edgeL2: false, edgeW1: false, edgeW2: false,
-                notes: 'Fondo ranurado/clavado 3mm'
+                notes: botSpecs.notes
             });
         }
 
@@ -1224,12 +1296,13 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
             edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
             notes: `Testero posterior p/ ${hwSpec.slideName}`
         });
+        const botSpecsSink = getDrawerBottomSpecs(w, cInnerMat, cab.drawerInnerMaterial || state.drawerInnerMaterial, thickness);
         parts.push({
             name: `Fondo Cajón Inferior ${cabName}`,
             moduleId: cab.id, moduleIndex: index, qty: 1,
-            length: drawerBoxLength, width: drawerBoxOuterWidth, thickness: 3, material: cab.backColor || '#dddddd',
+            length: drawerBoxLength, width: botSpecsSink.isDurolac ? drawerBoxOuterWidth : drawerFrontBackLength, thickness: botSpecsSink.thicknessMm, material: botSpecsSink.materialName,
             edgeL1: false, edgeL2: false, edgeW1: false, edgeW2: false,
-            notes: 'Fondo ranurado/clavado 3mm'
+            notes: botSpecsSink.notes
         });
 
         // Cajón 2: Superior en U para salvar sifón sanitario
@@ -1269,18 +1342,18 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
             notes: 'Paredes interiores que conforman el calado central del sifón'
         });
         parts.push({
-            name: `Fondo Alas Cajón en U (3mm) ${cabName}`,
+            name: `Fondo Alas Cajón en U ${cabName}`,
             moduleId: cab.id, moduleIndex: index, qty: 2,
-            length: drawerBoxLength, width: wingW * 10, thickness: 3, material: cab.backColor || '#dddddd',
+            length: drawerBoxLength, width: wingW * 10, thickness: botSpecsSink.thicknessMm, material: botSpecsSink.materialName,
             edgeL1: false, edgeL2: false, edgeW1: false, edgeW2: false,
-            notes: 'Fondo de cada ala lateral del cajón en U'
+            notes: botSpecsSink.notes
         });
         parts.push({
-            name: `Fondo Banda Frontal Cajón en U (3mm) ${cabName}`,
+            name: `Fondo Banda Frontal Cajón en U ${cabName}`,
             moduleId: cab.id, moduleIndex: index, qty: 1,
-            length: frontBandLength * 10, width: uCutoutW * 10, thickness: 3, material: cab.backColor || '#dddddd',
+            length: frontBandLength * 10, width: uCutoutW * 10, thickness: botSpecsSink.thicknessMm, material: botSpecsSink.materialName,
             edgeL1: false, edgeL2: false, edgeW1: false, edgeW2: false,
-            notes: 'Fondo de la unión frontal central del cajón en U'
+            notes: botSpecsSink.notes
         });
     } else if (cab.variant === 'spice_rack') {
         const isGola = (kState.golaSystem === 'aluminum' || kState.golaSystem === 'black') && (cab.type === 'base' || cab.type === 'island');
@@ -1763,13 +1836,14 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
                 edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
                 notes: `Testero posterior p/ ${hwSpec.slideName}`
             });
-            // Fondo de cajón (3mm)
+            // Fondo de cajón según reglas técnicas (Durolac 3mm si blanco y <=50cm, sino misma melamina)
+            const botSpecs = getDrawerBottomSpecs(w, cInnerMat, cab.drawerInnerMaterial || state.drawerInnerMaterial, thickness);
             parts.push({
                 name: `Fondo Cajón ${cabName} (${i+1})`,
                 moduleId: cab.id, moduleIndex: index, qty: 1,
-                length: drawerBoxLength, width: drawerBoxOuterWidth, thickness: 3, material: cab.backColor || '#dddddd',
+                length: drawerBoxLength, width: botSpecs.isDurolac ? drawerBoxOuterWidth : drawerFrontBackLength, thickness: botSpecs.thicknessMm, material: botSpecs.materialName,
                 edgeL1: false, edgeL2: false, edgeW1: false, edgeW2: false,
-                notes: 'Fondo ranurado/clavado 3mm'
+                notes: botSpecs.notes
             });
         }
     } else if (cab.variant !== 'wall_open' && cab.variant !== 'tall_open' && cab.variant !== 'open' && !cab.variant?.includes('wine_rack') && !cab.variant?.startsWith('wall_corner_blind')) {
@@ -1831,39 +1905,8 @@ export function generateKitchenHardwareList(cabinets: CabinetType[]) {
     const rawThick = state.thickness || 1.8;
     const thicknessMm = Math.round((rawThick >= 1.2 ? rawThick : 1.8) * 10);
 
-    const DEFAULT_NAMES: Record<string, string> = {
-      '#FFFFFF': 'Blanco Frost',
-      '#171717': 'Negro Profundo',
-      '#F8F9FA': 'Bianco Polo',
-      '#202020': 'Nero',
-      '#D4A373': 'Roble Natural',
-      '#A3B18A': 'Verde Salvia',
-      '#588157': 'Verde Bosque',
-      '#3A5A40': 'Verde Olivo',
-      '#E0E1DD': 'Gris Humo',
-      '#778DA9': 'Azul Nórdico',
-      '#415A77': 'Azul Petróleo',
-      '#1B263B': 'Azul Noche',
-      '#2B2D42': 'Grafito Mate',
-      '#8D99AE': 'Gris Plata',
-      '#EDF2F4': 'Blanco Nieve',
-      '#DDA15E': 'Madera Teca',
-      '#BC6C25': 'Nogal Ceniza',
-    };
-
     const getColorName = (colorVal?: string) => {
-      if (!colorVal) return 'Melamina Blanca';
-      if (colorVal.startsWith('data:')) {
-        const found = state.customTextures?.find((t: any) => t.url === colorVal);
-        return found?.name || 'Textura Personalizada';
-      }
-      if (colorVal.startsWith('#')) {
-        return DEFAULT_NAMES[colorVal.toUpperCase()] || `Color ${colorVal}`;
-      }
-      const found = state.customTextures?.find((t: any) => t.url === colorVal);
-      if (found) return found.name;
-      const parts = colorVal.split('/');
-      return parts[parts.length - 1].replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
+      return getFriendlyColorName(colorVal, state.customTextures);
     };
 
     // 0. CÁLCULO DE TABLEROS Y PLANCHAS (Melaminas, MDF 3mm, Laminados HPL)

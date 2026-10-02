@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { useStore } from '../store';
 import { Board } from './Board';
-import { getNominalSlideLength } from '../utils/manufacturing';
+import { getNominalSlideLength, getDrawerBottomSpecs } from '../utils/manufacturing';
 import { Text, Line, Cylinder, useCursor, Edges } from '@react-three/drei';
 
 function AssemblyJoint({
@@ -738,8 +738,13 @@ export function Closet() {
         drawerElements.push(
           <Board key={`drawer-F-${mod.id}-${d}`} position={[innerCenterX, yBoxCenter, boxZCenter + drawerBoxLength/2 - thickness/2]} args={[boxOuterWidth - thickness*2, sideHeight, thickness]} {...modDrawerInnerProps} />
         );
+        const closetBotSpecs = getDrawerBottomSpecs(mod.width, state.drawerInnerColor || state.structureColor, state.drawerInnerMaterial, thickness);
+        const closetBotY = closetBotSpecs.isDurolac ? yBoxBase + 0.15 : yBoxBase + thickness / 2;
+        const closetBotProps = closetBotSpecs.isDurolac ? { color: '#ffffff' } : modDrawerInnerProps;
+        const closetBotThickness = closetBotSpecs.thicknessCm;
+
         drawerElements.push(
-          <Board key={`drawer-Bot-${mod.id}-${d}`} position={[innerCenterX, yBoxBase + 0.3, boxZCenter]} args={[boxOuterWidth - thickness*2, 0.3, drawerBoxLength - thickness*2]} color="#dddddd" />
+          <Board key={`drawer-Bot-${mod.id}-${d}`} position={[innerCenterX, closetBotY, boxZCenter]} args={[boxOuterWidth - thickness*2, closetBotThickness, drawerBoxLength - thickness*2]} {...closetBotProps} />
         );
         
         // Add drawer assembly joints (Front/Back walls to Side walls)

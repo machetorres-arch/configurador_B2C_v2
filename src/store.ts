@@ -63,6 +63,7 @@ export interface ClosetState {
   backColor: string;
   backMaterial?: MaterialType | 'durolac';
   backThickness?: number;
+  drawerBottomMaterial?: 'melamina' | 'durolac';
   hplInnerFace: 'blanco' | 'color'; // only applies if a part is HPL
 
   edgeBandingThicknessCabinets: 0.5 | 1.0 | 1.5 | 2.0;
@@ -117,6 +118,7 @@ export interface ClosetState {
   setBackColor: (c: string) => void;
   setBackMaterial?: (m: MaterialType | 'durolac') => void;
   setBackThickness?: (t: number) => void;
+  setDrawerBottomMaterial?: (m: 'melamina' | 'durolac') => void;
   setHplInnerFace: (f: 'blanco' | 'color') => void;
   setEdgeBandingThicknessCabinets: (t: 0.5 | 1.0 | 1.5 | 2.0) => void;
   setEdgeBandingThicknessFronts: (t: 0.5 | 1.0 | 1.5 | 2.0) => void;
@@ -474,6 +476,7 @@ export const useStore = create<ClosetState>((set, get) => {
   setBackColor: (c) => set({ backColor: c }),
   setBackMaterial: (m) => set({ backMaterial: m }),
   setBackThickness: (t) => set({ backThickness: t }),
+  setDrawerBottomMaterial: (m) => set({ drawerBottomMaterial: m }),
   setHplInnerFace: (f) => set({ hplInnerFace: f }),
   setEdgeBandingThicknessCabinets: (t) => set({ edgeBandingThicknessCabinets: t }),
   setEdgeBandingThicknessFronts: (t) => set({ edgeBandingThicknessFronts: t }),

@@ -4,6 +4,7 @@ import { useSupabaseAuthStore } from './supabaseAuthStore';
 import { useKitchenStore } from './kitchenStore';
 
 export type ProjectType = 'closet' | 'kitchen' | 'special' | 'hpl-bathroom' | 'office' | 'chair';
+export type ProjectStatus = 'designed' | 'quoted' | 'sold' | 'in_production';
 
 export interface ProjectItem {
   id: string;
@@ -14,6 +15,10 @@ export interface ProjectItem {
   description: string;
   totalCostEstimateClp: number;
   data: any;
+  status?: ProjectStatus;
+  soldDate?: string;
+  finalSalePriceClp?: number;
+  orderNumber?: string;
 }
 
 export type SupplyCategory = 'melamina' | 'herrajes' | 'cubiertas_qstone' | 'madera' | 'fijaciones_sellantes';
@@ -984,6 +989,36 @@ const getInitialState = () => {
   };
 };
 
+function sanitizeStringForStorage(val: string | undefined, maxLen = 4000): string {
+  if (!val) return '';
+  if (val.startsWith('data:image') || val.length > maxLen) {
+    if (val.startsWith('#')) return val;
+    return '#CCCCCC';
+  }
+  return val;
+}
+
+function sanitizeObjectForStorage(obj: any, depth = 0): any {
+  if (depth > 5) return undefined;
+  if (!obj || typeof obj !== 'object') {
+    if (typeof obj === 'string' && (obj.startsWith('data:image') || obj.length > 4000)) {
+      return '#CCCCCC';
+    }
+    return obj;
+  }
+  if (Array.isArray(obj)) {
+    return obj.slice(0, 80).map((item) => sanitizeObjectForStorage(item, depth + 1));
+  }
+  const clean: Record<string, any> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (k === 'screenshot' || k === 'previewImage' || k === 'thumbnail' || k === 'meshGeometry') {
+      continue;
+    }
+    clean[k] = sanitizeObjectForStorage(v, depth + 1);
+  }
+  return clean;
+}
+
 const saveToLocalStorage = (state: {
   isAuthenticated: boolean;
   adminEmail: string | null;
@@ -994,28 +1029,100 @@ const saveToLocalStorage = (state: {
   textures: CustomTextureItem[];
   manufacturingRates?: ManufacturingRateConfig;
 }) => {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+
+  // 1. Sanitizar texturas (remover data URLs / SVGs gigantes)
+  const cleanTextures = (state.textures || []).map((t) => ({
+    ...t,
+    url: sanitizeStringForStorage(t.url, 4000),
+    previewUrl: sanitizeStringForStorage(t.previewUrl, 4000),
+  }));
+
+  // 2. Sanitizar proyectos (remover binarios/blobs gigantes de data)
+  const cleanProjects = (state.projects || []).map((p) => ({
+    ...p,
+    data: sanitizeObjectForStorage(p.data),
+  }));
+
+  const cleanState = {
+    ...state,
+    textures: cleanTextures,
+    projects: cleanProjects,
+  };
+
   try {
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(state));
-  } catch (e: any) {
-    console.warn('Quota exceeded on full state save, attempting resilient textures save:', e);
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(cleanState));
+  } catch (e1: any) {
+    console.warn('LocalStorage quota warning (Tier 1), attempting pruned save:', e1?.message);
     try {
-      // Si la cuota de localStorage se llena por imágenes grandes, guardar URLs seguras
-      const resilientTextures = state.textures.map((t) => {
-        if (t.url && t.url.length > 250000) {
-          return {
-            ...t,
-            url: t.previewUrl && t.previewUrl.length <= 250000 ? t.previewUrl : '#CCCCCC',
-            previewUrl: t.previewUrl && t.previewUrl.length <= 250000 ? t.previewUrl : '#CCCCCC',
-          };
-        }
-        return t;
-      });
+      // Tier 2: Conservar los 30 proyectos más recientes con datos aligerados
+      const tier2Projects = cleanProjects.slice(0, 30).map((p) => ({
+        ...p,
+        data: p.data ? {
+          cabinets: Array.isArray(p.data.cabinets)
+            ? p.data.cabinets.map((c: any) => ({
+                id: c.id,
+                name: c.name,
+                type: c.type,
+                width: c.width,
+                height: c.height,
+                depth: c.depth,
+                structureColor: c.structureColor,
+                doorColor: c.doorColor,
+                finish: c.finish,
+                drawersCount: c.drawersCount,
+                doorsCount: c.doorsCount,
+                hasGola: c.hasGola,
+              }))
+            : undefined,
+          modules: p.data.modules,
+          roomConfig: p.data.roomConfig ? {
+            width: p.data.roomConfig.width,
+            length: p.data.roomConfig.length,
+            height: p.data.roomConfig.height,
+            shape: p.data.roomConfig.shape,
+          } : undefined,
+          countertopMaterial: p.data.countertopMaterial,
+          totalFloorM2: p.data.totalFloorM2,
+        } : {},
+      }));
+
       localStorage.setItem(
         LOCAL_STORAGE_KEY,
-        JSON.stringify({ ...state, textures: resilientTextures })
+        JSON.stringify({
+          ...cleanState,
+          projects: tier2Projects,
+        })
       );
-    } catch (err2) {
-      console.error('Critical: unable to persist to localStorage', err2);
+    } catch (e2: any) {
+      console.warn('LocalStorage quota warning (Tier 2), attempting emergency minimal save:', e2?.message);
+      try {
+        // Tier 3: Guardar sólo metadatos esenciales de proyectos
+        const tier3Projects = cleanProjects.slice(0, 15).map((p) => ({
+          id: p.id,
+          name: p.name,
+          client: p.client,
+          date: p.date,
+          type: p.type,
+          description: p.description,
+          totalCostEstimateClp: p.totalCostEstimateClp,
+          status: p.status,
+          finalSalePriceClp: p.finalSalePriceClp,
+          orderNumber: p.orderNumber,
+          soldDate: p.soldDate,
+          data: {},
+        }));
+
+        localStorage.setItem(
+          LOCAL_STORAGE_KEY,
+          JSON.stringify({
+            ...cleanState,
+            projects: tier3Projects,
+          })
+        );
+      } catch (e3) {
+        console.warn('LocalStorage limit reached; in-memory state preserved safely without throwing.', e3);
+      }
     }
   }
 };
@@ -1144,6 +1251,7 @@ export const useAdminStore = create<AdminState>((set, get) => {
         ...projectData,
         id: newId,
         date: new Date().toISOString().split('T')[0],
+        status: projectData.status || 'designed',
       };
       const currentProjects = get().projects;
       persist({ projects: [newProj, ...currentProjects] });
@@ -1339,44 +1447,7 @@ export const useAdminStore = create<AdminState>((set, get) => {
       });
 
       // Si no hubo menciones directas en proyectos reales pero el proveedor tiene texturas,
-      // asegurar datos de muestra consistentes para demostración
-      if (anonymousProjectsList.length === 0 && providerTextures.length > 0) {
-        const firstTex = providerTextures[0];
-        const secondTex = providerTextures[1] || providerTextures[0];
-        productUsageMap.set(firstTex.id, {
-          code: firstTex.code,
-          name: firstTex.name,
-          count: 8,
-          estimatedAreaM2: 3.6
-        });
-        if (secondTex && secondTex.id !== firstTex.id) {
-          productUsageMap.set(secondTex.id, {
-            code: secondTex.code,
-            name: secondTex.name,
-            count: 4,
-            estimatedAreaM2: 1.8
-          });
-        }
-        anonymousProjectsList.push({
-          id: 'anon-sample-1',
-          code: 'PRJ-1042',
-          type: 'kitchen',
-          date: '2026-08-28',
-          productsUsedCount: 8,
-          matchedProducts: [{ code: firstTex.code, name: firstTex.name, count: 8 }]
-        });
-        if (secondTex && secondTex.id !== firstTex.id) {
-          anonymousProjectsList.push({
-            id: 'anon-sample-2',
-            code: 'PRJ-1089',
-            type: 'special',
-            date: '2026-09-02',
-            productsUsedCount: 4,
-            matchedProducts: [{ code: secondTex.code, name: secondTex.name, count: 4 }]
-          });
-        }
-      }
-
+      // no inventar proyectos ficticios; devolver únicamente métricas reales
       const productsBreakdown = Array.from(productUsageMap.values());
       const totalProductsUsed = productsBreakdown.reduce((sum, item) => sum + item.count, 0);
 

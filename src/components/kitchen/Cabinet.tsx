@@ -13,7 +13,7 @@ import { FridgeFDVSignatureSBS } from './decoration/FridgeFDVSignatureSBS';
 import { PlantDecoration } from './decoration/PlantDecoration';
 import { DishwasherFDVActive12C } from './decoration/DishwasherFDVActive12C';
 import { KitchenHandle3D } from './KitchenHandle3D';
-import { getResolvedCabinetShelfElevations } from '../../utils/kitchenManufacturing';
+import { getResolvedCabinetShelfElevations, getDrawerBottomSpecs } from '../../utils/kitchenManufacturing';
 
 export function AssemblyJoint({
   position, 
@@ -921,7 +921,7 @@ interface CabinetProps extends CabinetType {
   index?: number;
 }
 
-export function Cabinet({ id, type, variant, width, height, depth, position, rotation, color, structureColor, doorColor, drawerFrontColor, drawerInnerColor, shelfColor, backColor, socleColor, structureMaterial, doorMaterial, drawerFrontMaterial, drawerInnerMaterial, shelfMaterial, backMaterial, socleMaterial, grainDirection, grainElements, hplBalancer, isOpen, openElements, index, shelvesCount, shelvesCountLower, shelvesCountUpper, handleConfig: propHandleConfig, leftCoverPanel, rightCoverPanel, backThickness }: CabinetProps) {
+export function Cabinet({ id, type, variant, width, height, depth, position, rotation, color, structureColor, doorColor, drawerFrontColor, drawerInnerColor, shelfColor, backColor, socleColor, structureMaterial, doorMaterial, drawerFrontMaterial, drawerInnerMaterial, shelfMaterial, backMaterial, socleMaterial, grainDirection, grainElements, hplBalancer, isOpen, openElements, index, shelvesCount, shelvesCountLower, shelvesCountUpper, handleConfig: propHandleConfig, leftCoverPanel, rightCoverPanel, backThickness, drawerBottomMaterial, drawerBottomThickness }: CabinetProps) {
    const { activeCabinetId, setActiveCabinet, setDraggingCabinetId, setToolMode, showSocle, socleHeight, cabinets, viewMode, golaSystem, countertopConfig, qstoneCatalog, setOpenElement, handleConfig: storeHandleConfig } = useKitchenStore();
    const handleConfig = propHandleConfig || storeHandleConfig;
 
@@ -1173,6 +1173,11 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
             const yBoxBottom = yBoxCenter - sideHeight/2;
             const yBottomPanel = yBoxBottom + 1.2;
             
+            const botSpecs = getDrawerBottomSpecs(width, cInner, drawerInnerMaterial, thickness, drawerBottomMaterial);
+            const botPanelY = botSpecs.isDurolac ? yBottomPanel + 0.15 : yBottomPanel + thickness / 2;
+            const botPanelThickness = botSpecs.thicknessCm;
+            const botColorProps = botSpecs.isDurolac ? { color: '#ffffff' } : parseColor(cInner, drawerInnerMaterial);
+            
             return (
                <group key={keyPrefix}>
                   {/* Fixed Undermount Slides (Attached to Cabinet) */}
@@ -1201,7 +1206,7 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                      <Board position={[skw/2 - thickness/2, yBoxCenter, drawerBoxZCenter]} args={[thickness, sideHeight, drawerBoxLength]} {...parseColor(cInner, drawerInnerMaterial)} />
                      <Board position={[0, yBoxCenter + 0.6, drawerBoxZCenter - drawerBoxLength/2 + thickness/2]} args={[skw - thickness*2, sideHeight - 1.2, thickness]} {...parseColor(cInner, drawerInnerMaterial)} />
                      <Board position={[0, yBoxCenter + 0.6, drawerBoxZCenter + drawerBoxLength/2 - thickness/2]} args={[skw - thickness*2, sideHeight - 1.2, thickness]} {...parseColor(cInner, drawerInnerMaterial)} />
-                     <Board position={[0, yBottomPanel + 0.15, drawerBoxZCenter]} args={[skw - thickness*2, 0.3, drawerBoxLength - thickness*2]} color="#dddddd" />
+                     <Board position={[0, botPanelY, drawerBoxZCenter]} args={[skw - thickness*2, botPanelThickness, drawerBoxLength - thickness*2]} {...botColorProps} />
                      
                      {/* Uniones del Cajón a la Trasera y al Contrafrente */}
                      <AssemblyJoint position={[-skw/2 + thickness, yBoxCenter, drawerBoxZCenter - drawerBoxLength/2 + thickness]} length={sideHeight} axis="y" pointing="right" thickness={thickness} count={1} overrideAssemblyType={useStore.getState().drawerAssemblyType} />
@@ -1341,22 +1346,32 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                      <AssemblyJoint position={[-skw / 2 + thickness, yBoxCenter, drawerBoxZCenter + drawerBoxLength / 2 - thickness]} length={sideHeight} axis="y" pointing="right" thickness={thickness} count={1} overrideAssemblyType={useStore.getState().drawerAssemblyType} />
                      <AssemblyJoint position={[skw / 2 - thickness, yBoxCenter, drawerBoxZCenter + drawerBoxLength / 2 - thickness]} length={sideHeight} axis="y" pointing="left" thickness={thickness} count={1} overrideAssemblyType={useStore.getState().drawerAssemblyType} />
 
-                     {/* Fondo de Cajón 3mm con forma en U (alas y unión frontal) */}
-                     <Board
-                        position={[-skw / 2 + wingW / 2, yBottomPanel, drawerBoxZCenter]}
-                        args={[wingW, 0.3, drawerBoxLength]}
-                        color="#dddddd"
-                     />
-                     <Board
-                        position={[skw / 2 - wingW / 2, yBottomPanel, drawerBoxZCenter]}
-                        args={[wingW, 0.3, drawerBoxLength]}
-                        color="#dddddd"
-                     />
-                     <Board
-                        position={[0, yBottomPanel, drawerBoxZCenter + drawerBoxLength / 2 - frontBandLength / 2]}
-                        args={[uCutoutW, 0.3, frontBandLength]}
-                        color="#dddddd"
-                     />
+                     {/* Fondo de Cajón con forma en U (alas y unión frontal) según reglas técnicas */}
+                     {(() => {
+                        const botSpecsSink = getDrawerBottomSpecs(width, cInner, drawerInnerMaterial, thickness, drawerBottomMaterial);
+                        const botPanelYSink = botSpecsSink.isDurolac ? yBottomPanel + 0.15 : yBottomPanel + thickness / 2;
+                        const botThicknessSink = botSpecsSink.thicknessCm;
+                        const botColorPropsSink = botSpecsSink.isDurolac ? { color: '#ffffff' } : parseColor(cInner, drawerInnerMaterial);
+                        return (
+                           <>
+                              <Board
+                                 position={[-skw / 2 + wingW / 2, botPanelYSink, drawerBoxZCenter]}
+                                 args={[wingW, botThicknessSink, drawerBoxLength]}
+                                 {...botColorPropsSink}
+                              />
+                              <Board
+                                 position={[skw / 2 - wingW / 2, botPanelYSink, drawerBoxZCenter]}
+                                 args={[wingW, botThicknessSink, drawerBoxLength]}
+                                 {...botColorPropsSink}
+                              />
+                              <Board
+                                 position={[0, botPanelYSink, drawerBoxZCenter + drawerBoxLength / 2 - frontBandLength / 2]}
+                                 args={[uCutoutW, botThicknessSink, frontBandLength]}
+                                 {...botColorPropsSink}
+                              />
+                           </>
+                        );
+                     })()}
 
                      {/* Correderas móviles bajo el cajón */}
                      <mesh position={[-skw / 2 + thickness + 1.0, yBoxBottom + 0.6, drawerBoxZCenter]}>

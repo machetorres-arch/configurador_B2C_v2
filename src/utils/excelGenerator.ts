@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx-js-style';
 import { useStore } from '../store';
+import { getFriendlyColorName } from './colorNames';
 
 export const exportToExcel = () => {
   const state = useStore.getState();
@@ -26,25 +27,8 @@ export const exportToExcel = () => {
   let totalScrews = 0;
   let totalDowels = 0;
 
-  const DEFAULT_NAMES: Record<string, string> = {
-  '#FFFFFF': 'Blanco',
-  '#171717': 'Negro',
-  '#F8F9FA': 'Bianco Polo',
-  '#202020': 'Nero'
-};
-
-const getTextureName = (urlOrColor: string) => {
-    if (!urlOrColor) return 'Color Sólido';
-    if (urlOrColor.startsWith('data:') || urlOrColor.startsWith('http')) {
-       const tex = customTextures.find((t: any) => t.url === urlOrColor);
-       return tex ? tex.name.replace(/\.[^/.]+$/, "") : 'Textura Personalizada';
-    }
-    
-    if (DEFAULT_NAMES[urlOrColor.toUpperCase()]) {
-       return DEFAULT_NAMES[urlOrColor.toUpperCase()];
-    }
-    
-    return `Color ${urlOrColor}`;
+  const getTextureName = (urlOrColor: string) => {
+    return getFriendlyColorName(urlOrColor, customTextures);
   };
   
   // Helpers

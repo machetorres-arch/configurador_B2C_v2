@@ -39,12 +39,13 @@ interface ProjectsManagerTabProps {
 }
 
 export function ProjectsManagerTab({ onLoadProjectToModule }: ProjectsManagerTabProps) {
-  const { projects, saveProject, renameProject, duplicateProject, deleteProject, clearAllProjects, syncCloudProjects } = useAdminStore();
+  const { projects, saveProject, updateProject, renameProject, duplicateProject, deleteProject, clearAllProjects, syncCloudProjects } = useAdminStore();
   const { user: supabaseUser, tenant: supabaseTenant } = useSupabaseAuthStore();
   const { saveProjectToCloud } = useTenantDataStore();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedType, setSelectedType] = useState<'all' | ProjectType>('all');
+  const [selectedStatus, setSelectedStatus] = useState<'all' | 'designed' | 'quoted' | 'sold' | 'in_production'>('all');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editClient, setEditClient] = useState('');
@@ -55,6 +56,12 @@ export function ProjectsManagerTab({ onLoadProjectToModule }: ProjectsManagerTab
   const [newDescription, setNewDescription] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
   const [feedbackMsg, setFeedbackMsg] = useState<{ text: string; type: 'success' | 'info' } | null>(null);
+
+  // Modal para registrar venta
+  const [saleModalProject, setSaleModalProject] = useState<ProjectItem | null>(null);
+  const [salePrice, setSalePrice] = useState<number>(0);
+  const [saleOrderNum, setSaleOrderNum] = useState<string>('');
+  const [saleDate, setSaleDate] = useState<string>('');
 
   // Sincronizar al montar si hay supabase
   useEffect(() => {
@@ -78,12 +85,97 @@ export function ProjectsManagerTab({ onLoadProjectToModule }: ProjectsManagerTab
   // Filtered projects
   const filteredProjects = projects.filter((p) => {
     const matchesType = selectedType === 'all' || p.type === selectedType;
+    const currentStatus = p.status || 'designed';
+    const matchesStatus = selectedStatus === 'all' || currentStatus === selectedStatus;
     const matchesSearch =
       p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       p.client.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.description.toLowerCase().includes(searchTerm.toLowerCase());
-    return matchesType && matchesSearch;
+      p.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (p.orderNumber && p.orderNumber.toLowerCase().includes(searchTerm.toLowerCase()));
+    return matchesType && matchesStatus && matchesSearch;
   });
+
+  // Métricas rápidas de pipeline
+  const totalProjectsCount = projects.length;
+  const soldProjects = projects.filter((p) => p.status === 'sold' || p.status === 'in_production');
+  const soldVolumeClp = soldProjects.reduce((acc, p) => acc + (p.finalSalePriceClp || p.totalCostEstimateClp || 0), 0);
+  const totalDesignedVolumeClp = projects.reduce((acc, p) => acc + (p.totalCostEstimateClp || 0), 0);
+  const conversionRate = totalProjectsCount > 0 ? Math.round((soldProjects.length / totalProjectsCount) * 100) : 0;
+
+  const handleOpenSaleModal = (proj: ProjectItem) => {
+    setSaleModalProject(proj);
+    setSalePrice(proj.finalSalePriceClp || proj.totalCostEstimateClp || 1500000);
+    setSaleOrderNum(proj.orderNumber || `OT-${Math.floor(1000 + Math.random() * 9000)}`);
+    setSaleDate(proj.soldDate || new Date().toISOString().split('T')[0]);
+  };
+
+  const handleConfirmSale = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!saleModalProject) return;
+
+    updateProject(saleModalProject.id, {
+      status: 'sold',
+      finalSalePriceClp: Number(salePrice) || saleModalProject.totalCostEstimateClp,
+      orderNumber: saleOrderNum.trim(),
+      soldDate: saleDate || new Date().toISOString().split('T')[0],
+    });
+
+    showNotification(`¡Venta registrada con éxito para "${saleModalProject.name}"!`);
+    setSaleModalProject(null);
+  };
+
+  const handleChangeStatus = (proj: ProjectItem, newStatus: 'designed' | 'quoted' | 'sold' | 'in_production') => {
+    if (newStatus === 'sold' && proj.status !== 'sold') {
+      handleOpenSaleModal(proj);
+    } else {
+      updateProject(proj.id, { status: newStatus });
+      showNotification(`Estado de "${proj.name}" actualizado a ${getStatusLabel(newStatus)}.`);
+    }
+  };
+
+  const getStatusLabel = (status?: string) => {
+    switch (status) {
+      case 'quoted':
+        return 'Cotizado';
+      case 'sold':
+        return 'Vendido';
+      case 'in_production':
+        return 'En Taller';
+      case 'designed':
+      default:
+        return 'Diseñado (Borrador)';
+    }
+  };
+
+  const getStatusBadge = (status?: string) => {
+    switch (status) {
+      case 'sold':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+            ✓ Vendido
+          </span>
+        );
+      case 'in_production':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-purple-500/20 text-purple-400 border border-purple-500/30">
+            ⚙ En Taller
+          </span>
+        );
+      case 'quoted':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-500/20 text-amber-400 border border-amber-500/30">
+            📋 Cotizado
+          </span>
+        );
+      case 'designed':
+      default:
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-blue-500/10 text-blue-400 border border-blue-500/20">
+            ✏ Diseñado
+          </span>
+        );
+    }
+  };
 
   const showNotification = (text: string, type: 'success' | 'info' = 'success') => {
     setFeedbackMsg({ text, type });
@@ -323,82 +415,144 @@ export function ProjectsManagerTab({ onLoadProjectToModule }: ProjectsManagerTab
         </div>
       )}
 
-      {/* Action & Filter Bar */}
-      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 bg-zinc-900/80 p-4 rounded-xl border border-zinc-800">
-        {/* Search */}
-        <div className="relative flex-1">
-          <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Buscar por proyecto, cliente o descripción..."
-            className="w-full pl-10 pr-4 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-orange-500"
-          />
+      {/* Summary KPI Strip */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="bg-zinc-900/80 border border-zinc-800 rounded-xl p-3">
+          <div className="text-[10px] uppercase font-bold text-zinc-400">Total en Cartera</div>
+          <div className="text-xl font-extrabold text-white mt-0.5">{totalProjectsCount}</div>
+          <div className="text-[10px] text-zinc-500 font-mono">${(totalDesignedVolumeClp / 1000000).toFixed(2)}M CLP est.</div>
         </div>
 
-        {/* Type Tabs */}
-        <div className="flex items-center gap-1 bg-zinc-950 p-1 rounded-lg border border-zinc-800 overflow-x-auto">
-          {[
-            { id: 'all', label: 'Todos' },
-            { id: 'kitchen', label: 'Cocinas' },
-            { id: 'closet', label: 'Clósets' },
-            { id: 'office', label: 'Oficinas' },
-            { id: 'special', label: 'Muebles Esp.' },
-            { id: 'hpl-bathroom', label: 'Baños HPL' },
-            { id: 'chair', label: 'Sillas' },
-          ].map((tab) => (
+        <div className="bg-zinc-900/80 border border-emerald-500/30 rounded-xl p-3">
+          <div className="text-[10px] uppercase font-bold text-emerald-400 flex items-center justify-between">
+            <span>Ventas Cerradas</span>
+            <span className="text-[9px] bg-emerald-500/20 px-1.5 py-0.2 rounded font-mono font-bold">{conversionRate}% conv.</span>
+          </div>
+          <div className="text-xl font-extrabold text-emerald-400 mt-0.5">{soldProjects.length}</div>
+          <div className="text-[10px] text-emerald-300/80 font-mono">${(soldVolumeClp / 1000000).toFixed(2)}M CLP real</div>
+        </div>
+
+        <div className="bg-zinc-900/80 border border-blue-500/20 rounded-xl p-3">
+          <div className="text-[10px] uppercase font-bold text-blue-400">En Diseño / Borrador</div>
+          <div className="text-xl font-extrabold text-blue-400 mt-0.5">
+            {projects.filter((p) => !p.status || p.status === 'designed').length}
+          </div>
+          <div className="text-[10px] text-zinc-500 font-mono">Demanda potencial</div>
+        </div>
+
+        <div className="bg-zinc-900/80 border border-amber-500/20 rounded-xl p-3">
+          <div className="text-[10px] uppercase font-bold text-amber-400">Cotizados / En Taller</div>
+          <div className="text-xl font-extrabold text-amber-400 mt-0.5">
+            {projects.filter((p) => p.status === 'quoted' || p.status === 'in_production').length}
+          </div>
+          <div className="text-[10px] text-zinc-500 font-mono">En negociación / taller</div>
+        </div>
+      </div>
+
+      {/* Action & Filter Bar */}
+      <div className="space-y-3 bg-zinc-900/80 p-4 rounded-xl border border-zinc-800">
+        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+          {/* Search */}
+          <div className="relative flex-1">
+            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Buscar por proyecto, cliente, N° OT o descripción..."
+              className="w-full pl-10 pr-4 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-orange-500"
+            />
+          </div>
+
+          {/* Type Tabs */}
+          <div className="flex items-center gap-1 bg-zinc-950 p-1 rounded-lg border border-zinc-800 overflow-x-auto">
+            {[
+              { id: 'all', label: 'Todos' },
+              { id: 'kitchen', label: 'Cocinas' },
+              { id: 'closet', label: 'Clósets' },
+              { id: 'office', label: 'Oficinas' },
+              { id: 'special', label: 'Muebles Esp.' },
+              { id: 'hpl-bathroom', label: 'Baños HPL' },
+              { id: 'chair', label: 'Sillas' },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setSelectedType(tab.id as any)}
+                className={`px-3 py-1.5 rounded-md text-[11px] font-semibold transition-all whitespace-nowrap ${
+                  selectedType === tab.id
+                    ? 'bg-orange-500 text-white shadow'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-zinc-900'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Actions Buttons */}
+          <div className="flex items-center gap-2 shrink-0">
+            {projects.length > 0 && (
+              <button
+                onClick={() => {
+                  if (window.confirm('¿Confirmas eliminar TODOS los proyectos guardados y reiniciar desde cero?')) {
+                    clearAllProjects();
+                    showNotification('Todos los proyectos han sido eliminados.');
+                  }
+                }}
+                className="px-3 py-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 hover:text-red-300 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                title="Eliminar todos los proyectos y partir desde cero"
+              >
+                <Trash2 size={14} />
+                <span className="hidden sm:inline">Vaciar Todo</span>
+              </button>
+            )}
+
+            {supabaseUser && supabaseTenant && (
+              <button
+                onClick={handleManualSync}
+                disabled={isSyncing}
+                className="px-3 py-2 bg-zinc-950 border border-sky-500/30 text-sky-400 hover:text-sky-300 hover:bg-sky-500/10 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                title="Sincronizar proyectos con base de datos en la nube"
+              >
+                <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />
+                <span className="hidden sm:inline">{isSyncing ? 'Sincronizando...' : 'Sincronizar Nube'}</span>
+              </button>
+            )}
+
+            {/* Create Button */}
             <button
-              key={tab.id}
-              onClick={() => setSelectedType(tab.id as any)}
-              className={`px-3 py-1.5 rounded-md text-[11px] font-semibold transition-all whitespace-nowrap ${
-                selectedType === tab.id
-                  ? 'bg-orange-500 text-white shadow'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-zinc-900'
+              onClick={() => setIsCreatingNew(!isCreatingNew)}
+              className="px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-400 hover:to-amber-500 text-white rounded-lg text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-md shadow-orange-500/20 transition-all cursor-pointer"
+            >
+              <Plus size={16} /> Guardar Nuevo
+            </button>
+          </div>
+        </div>
+
+        {/* Pipeline Status Filter Pills */}
+        <div className="flex items-center gap-2 pt-2 border-t border-zinc-800/80 overflow-x-auto text-xs">
+          <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider shrink-0 flex items-center gap-1">
+            <Filter size={12} /> Pipeline:
+          </span>
+          {[
+            { id: 'all', label: 'Todos los estados' },
+            { id: 'designed', label: '✏ Diseñados' },
+            { id: 'quoted', label: '📋 Cotizados' },
+            { id: 'sold', label: '✓ Vendidos' },
+            { id: 'in_production', label: '⚙ En Taller' },
+          ].map((st) => (
+            <button
+              key={st.id}
+              onClick={() => setSelectedStatus(st.id as any)}
+              className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                selectedStatus === st.id
+                  ? 'bg-zinc-100 text-zinc-950 font-bold shadow'
+                  : 'bg-zinc-950 text-zinc-400 hover:text-white border border-zinc-800'
               }`}
             >
-              {tab.label}
+              {st.label}
             </button>
           ))}
-        </div>
-
-        {/* Actions Buttons */}
-        <div className="flex items-center gap-2 shrink-0">
-          {projects.length > 0 && (
-            <button
-              onClick={() => {
-                if (window.confirm('¿Confirmas eliminar TODOS los proyectos guardados y reiniciar desde cero?')) {
-                  clearAllProjects();
-                  showNotification('Todos los proyectos han sido eliminados.');
-                }
-              }}
-              className="px-3 py-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 hover:text-red-300 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer"
-              title="Eliminar todos los proyectos y partir desde cero"
-            >
-              <Trash2 size={14} />
-              <span className="hidden sm:inline">Vaciar Todo</span>
-            </button>
-          )}
-
-          {supabaseUser && supabaseTenant && (
-            <button
-              onClick={handleManualSync}
-              disabled={isSyncing}
-              className="px-3 py-2 bg-zinc-950 border border-sky-500/30 text-sky-400 hover:text-sky-300 hover:bg-sky-500/10 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer"
-              title="Sincronizar proyectos con base de datos en la nube"
-            >
-              <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />
-              <span className="hidden sm:inline">{isSyncing ? 'Sincronizando...' : 'Sincronizar Nube'}</span>
-            </button>
-          )}
-
-          {/* Create Button */}
-          <button
-            onClick={() => setIsCreatingNew(!isCreatingNew)}
-            className="px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-400 hover:to-amber-500 text-white rounded-lg text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-md shadow-orange-500/20 transition-all cursor-pointer"
-          >
-            <Plus size={16} /> Guardar Nuevo
-          </button>
         </div>
       </div>
 
@@ -507,9 +661,10 @@ export function ProjectsManagerTab({ onLoadProjectToModule }: ProjectsManagerTab
               className="group bg-zinc-900/90 border border-zinc-800 hover:border-zinc-700 rounded-xl p-4 transition-all hover:bg-zinc-900 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 shadow-sm"
             >
               {/* Left Info */}
-              <div className="space-y-1.5 flex-1 min-w-0">
+              <div className="space-y-2 flex-1 min-w-0">
                 <div className="flex flex-wrap items-center gap-2.5">
                   {getModuleBadge(proj.type)}
+                  {getStatusBadge(proj.status)}
 
                   {editingId === proj.id ? (
                     <div className="flex items-center gap-2">
@@ -555,7 +710,7 @@ export function ProjectsManagerTab({ onLoadProjectToModule }: ProjectsManagerTab
                   )}
                 </div>
 
-                <div className="flex flex-wrap items-center gap-4 text-[11px] text-slate-400">
+                <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-400">
                   <span className="flex items-center gap-1 text-slate-300">
                     <User size={12} className="text-zinc-500" />
                     Cliente: <strong className="text-slate-200">{proj.client || 'General'}</strong>
@@ -567,13 +722,46 @@ export function ProjectsManagerTab({ onLoadProjectToModule }: ProjectsManagerTab
                   <span className="text-orange-400/90 font-mono font-semibold">
                     Est. ${proj.totalCostEstimateClp?.toLocaleString('es-CL') || '0'} CLP
                   </span>
+
+                  {/* Detalle si fue vendido */}
+                  {proj.status === 'sold' && (
+                    <span className="flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 font-mono font-bold">
+                      Venta: ${(proj.finalSalePriceClp || proj.totalCostEstimateClp || 0).toLocaleString('es-CL')} CLP
+                      {proj.orderNumber && ` • OT: ${proj.orderNumber}`}
+                    </span>
+                  )}
                 </div>
 
                 <p className="text-xs text-zinc-500 truncate max-w-2xl">{proj.description}</p>
               </div>
 
-              {/* Action Buttons */}
+              {/* Action Buttons & Status Selector */}
               <div className="flex flex-wrap items-center gap-2 shrink-0">
+                {/* Pipeline Status Selector */}
+                <select
+                  value={proj.status || 'designed'}
+                  onChange={(e) => handleChangeStatus(proj, e.target.value as any)}
+                  className="py-1.5 px-2 bg-zinc-950 border border-zinc-700 text-xs rounded-lg text-slate-300 font-medium focus:border-orange-500 focus:outline-none cursor-pointer"
+                  title="Cambiar estado del proyecto en el pipeline"
+                >
+                  <option value="designed">✏ Diseñado</option>
+                  <option value="quoted">📋 Cotizado</option>
+                  <option value="sold">✓ Vendido</option>
+                  <option value="in_production">⚙ En Taller</option>
+                </select>
+
+                {/* Quick Register Sale Button if not sold */}
+                {proj.status !== 'sold' && proj.status !== 'in_production' && (
+                  <button
+                    onClick={() => handleOpenSaleModal(proj)}
+                    className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer shadow-sm shadow-emerald-600/30"
+                    title="Registrar cierre de venta con precio y N° OT"
+                  >
+                    <Check size={13} />
+                    <span>Registrar Venta</span>
+                  </button>
+                )}
+
                 {/* Open in Configurator */}
                 <button
                   onClick={() => handleOpenInConfigurator(proj)}
@@ -623,6 +811,93 @@ export function ProjectsManagerTab({ onLoadProjectToModule }: ProjectsManagerTab
           ))
         )}
       </div>
+
+      {/* Modal Registrar Venta */}
+      {saleModalProject && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+          <div className="bg-zinc-900 border border-zinc-700 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+            <div className="px-6 py-4 bg-zinc-950 border-b border-zinc-800 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                  <Check size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Registrar Cierre de Venta</h3>
+                  <p className="text-[11px] text-zinc-400">Proyecto: {saleModalProject.name}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSaleModalProject(null)}
+                className="p-1.5 text-zinc-400 hover:text-white rounded-lg"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmSale} className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1">
+                  Monto Real de Venta (CLP) <span className="text-emerald-400">*</span>
+                </label>
+                <input
+                  type="number"
+                  required
+                  value={salePrice}
+                  onChange={(e) => setSalePrice(Number(e.target.value))}
+                  placeholder="1500000"
+                  className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-sm text-white font-mono focus:border-emerald-500 focus:outline-none"
+                />
+                <p className="text-[10px] text-zinc-500 mt-1">
+                  Presupuesto base diseñado: ${saleModalProject.totalCostEstimateClp?.toLocaleString('es-CL')} CLP
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">
+                    N° Orden / Factura / OT
+                  </label>
+                  <input
+                    type="text"
+                    value={saleOrderNum}
+                    onChange={(e) => setSaleOrderNum(e.target.value)}
+                    placeholder="OT-4029"
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-700 rounded-xl text-xs text-white focus:border-emerald-500 focus:outline-none font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">
+                    Fecha de Cierre
+                  </label>
+                  <input
+                    type="date"
+                    value={saleDate}
+                    onChange={(e) => setSaleDate(e.target.value)}
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-700 rounded-xl text-xs text-white focus:border-emerald-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-3 border-t border-zinc-800 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSaleModalProject(null)}
+                  className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-slate-300 text-xs font-semibold rounded-xl"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-lg shadow-emerald-600/20"
+                >
+                  <Check size={14} /> Confirmar Venta
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

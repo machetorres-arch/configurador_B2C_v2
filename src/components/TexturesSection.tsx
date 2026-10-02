@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useStore, PartType } from '../store';
 import { useAdminStore } from '../store/adminStore';
 import { useKitchenStore } from '../store/kitchenStore';
+import { isWhiteMelamine } from '../utils/manufacturing';
 
 const DEFAULT_TEXTURES = [
   { id: 'def_mas_blanco_15', name: 'Masisa Blanco', url: '#FFFFFF', thicknessMm: 15, brand: 'Masisa' },
@@ -312,6 +313,133 @@ export const TexturesSection = ({
             </div>
           </div>
         )}
+
+        {/* Opciones Especiales de Cajas Cajón / Fondo de Cajón */}
+        {state.targetPart === 'drawerInner' && (() => {
+          const innerColor = state.drawerInnerColor || state.structureColor || '#ffffff';
+          const isWhite = isWhiteMelamine(innerColor);
+          const kitchenCabinets = useKitchenStore.getState().cabinets || [];
+          const drawerCabinets = kitchenCabinets.filter(c => 
+            c.variant === '4_drawers' || c.variant === '2_pot_drawers' || c.variant === '2_drawers_1_pot' || 
+            c.variant === '1_door_1_drawer' || c.variant === 'sink_u_drawer' || c.variant === 'tall_inner_drawers' ||
+            c.variant === 'spice_rack'
+          );
+          const hasCabinetsOver50 = drawerCabinets.some(c => c.width > 50);
+          const currentBottomMat = state.drawerBottomMaterial || (isWhite && !hasCabinetsOver50 ? 'durolac' : 'melamina');
+          const isDurolacActive = currentBottomMat === 'durolac' && isWhite && !hasCabinetsOver50;
+
+          return (
+            <div className={`p-3.5 rounded-2xl border flex flex-col gap-2.5 shadow-sm transition-all ${
+              isLight ? 'bg-orange-50/90 border-orange-200' : 'bg-black/40 border-orange-500/30'
+            }`}>
+              <div className="flex items-center justify-between gap-2">
+                <span className={`text-[11px] uppercase font-extrabold tracking-wider ${
+                  isLight ? 'text-orange-950' : 'text-orange-400'
+                }`}>
+                  Configuración Fondo de Cajón
+                </span>
+                <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-md shrink-0 ${
+                  isDurolacActive
+                    ? (isLight ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30')
+                    : (isLight ? 'bg-blue-100 text-blue-800 border border-blue-200' : 'bg-blue-500/20 text-blue-300 border border-blue-500/30')
+                }`}>
+                  {isDurolacActive ? 'Durolac 3 mm' : 'Melamina 15/18 mm'}
+                </span>
+              </div>
+
+              <p className={`text-[11px] leading-snug font-medium ${isLight ? 'text-slate-700' : 'text-zinc-300'}`}>
+                {!isWhite
+                  ? 'Cajas en melamina madera/color: Por estándar industrial, el fondo se fabrica en la misma melamina seleccionada (15/18 mm).'
+                  : hasCabinetsOver50
+                    ? 'Módulos > 50 cm detectados: Restricción estructural activa. Durolac 3 mm restringido para evitar pandeo o desfondamiento.'
+                    : 'Melamina blanca (≤ 50 cm): Puedes alternar entre Durolac blanco 3 mm o Melamina.'}
+              </p>
+
+              <div className="flex flex-col gap-2 mt-1">
+                {/* Opción Durolac 3 mm Blanco */}
+                <button
+                  type="button"
+                  disabled={!isWhite || hasCabinetsOver50}
+                  onClick={() => {
+                    if (isWhite && !hasCabinetsOver50) {
+                      state.setDrawerBottomMaterial?.('durolac');
+                      const { cabinets, updateCabinet } = useKitchenStore.getState();
+                      cabinets.forEach(c => {
+                        if (c.width <= 50) {
+                          updateCabinet(c.id, { drawerBottomMaterial: 'durolac', drawerBottomThickness: 3 });
+                        }
+                      });
+                    }
+                  }}
+                  className={`p-3 rounded-xl border text-left flex items-center justify-between gap-3 transition-all ${
+                    !isWhite || hasCabinetsOver50
+                      ? 'opacity-40 cursor-not-allowed bg-slate-100 dark:bg-white/5 border-slate-200 dark:border-white/5 text-slate-400'
+                      : isDurolacActive
+                        ? 'bg-orange-500 text-black border-orange-600 font-extrabold shadow-sm cursor-pointer ring-2 ring-orange-500/20'
+                        : isLight
+                          ? 'bg-white text-slate-800 border-slate-300 hover:border-orange-500 hover:bg-orange-50/40 cursor-pointer shadow-xs'
+                          : 'bg-white/5 text-zinc-200 border-white/10 hover:border-orange-500/50 cursor-pointer'
+                  }`}
+                >
+                  <div className="flex flex-col gap-0.5 min-w-0">
+                    <span className="text-xs font-bold leading-snug">Durolac Blanco</span>
+                    <span className={`text-[11px] leading-tight font-medium ${isDurolacActive ? 'text-black/80' : isLight ? 'text-slate-500' : 'text-zinc-400'}`}>
+                      {!isWhite 
+                        ? 'Solo disponible en melamina blanca' 
+                        : hasCabinetsOver50 
+                          ? 'Restringido (Módulos > 50 cm)' 
+                          : 'MDF lacado 3 mm ranurado'}
+                    </span>
+                  </div>
+                  <span className={`text-xs font-mono font-bold px-2 py-1 rounded-md shrink-0 ${
+                    isDurolacActive 
+                      ? 'bg-black/15 text-black' 
+                      : isLight 
+                        ? 'bg-slate-100 text-slate-700' 
+                        : 'bg-white/10 text-zinc-200'
+                  }`}>
+                    3 mm
+                  </span>
+                </button>
+
+                {/* Opción Misma Melamina */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    state.setDrawerBottomMaterial?.('melamina');
+                    const { cabinets, updateCabinet } = useKitchenStore.getState();
+                    cabinets.forEach(c => {
+                      updateCabinet(c.id, { drawerBottomMaterial: 'melamina', drawerBottomThickness: 15 });
+                    });
+                  }}
+                  className={`p-3 rounded-xl border text-left flex items-center justify-between gap-3 transition-all cursor-pointer ${
+                    !isDurolacActive
+                      ? 'bg-orange-500 text-black border-orange-600 font-extrabold shadow-sm ring-2 ring-orange-500/20'
+                      : isLight
+                        ? 'bg-white text-slate-800 border-slate-300 hover:border-orange-500 hover:bg-orange-50/40 shadow-xs'
+                        : 'bg-white/5 text-zinc-200 border-white/10 hover:border-orange-500/50'
+                  }`}
+                >
+                  <div className="flex flex-col gap-0.5 min-w-0">
+                    <span className="text-xs font-bold leading-snug">Misma Melamina Estructural</span>
+                    <span className={`text-[11px] leading-tight font-medium ${!isDurolacActive ? 'text-black/80' : isLight ? 'text-slate-500' : 'text-zinc-400'}`}>
+                      Mismo tono y espesor de la caja
+                    </span>
+                  </div>
+                  <span className={`text-xs font-mono font-bold px-2 py-1 rounded-md shrink-0 ${
+                    !isDurolacActive 
+                      ? 'bg-black/15 text-black' 
+                      : isLight 
+                        ? 'bg-slate-100 text-slate-700' 
+                        : 'bg-white/10 text-zinc-200'
+                  }`}>
+                    15/18 mm
+                  </span>
+                </button>
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       {/* Filtro de Espesor de Melamina: Todos / 15 mm / 18 mm */}
