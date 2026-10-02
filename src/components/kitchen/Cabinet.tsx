@@ -960,7 +960,11 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
       ? (qstoneCatalog?.find((p) => p.id === countertopConfig.selectedProductId) || qstoneCatalog?.[0])
       : null;
    const stoneThicknessCm = (activeProduct?.thicknessMm || 20) / 10;
-   const rawRegruesoCm = (countertopConfig?.enabled && isBaseOrIsland) ? (countertopConfig.regruesoCm || 0) : 0;
+   const rawRegruesoCm = (countertopConfig?.enabled && isBaseOrIsland)
+      ? (type === 'island'
+          ? (countertopConfig.islandRegruesoCm ?? countertopConfig.regruesoCm ?? 0)
+          : (countertopConfig.baseRegruesoCm ?? countertopConfig.regruesoCm ?? 0))
+      : 0;
    const regruesoDeduct = isGolaActive
       ? Math.max(0, rawRegruesoCm - 3.5)
       : (rawRegruesoCm > 0 ? (Math.max(0, rawRegruesoCm - stoneThicknessCm) + (rawRegruesoCm > stoneThicknessCm ? 0.3 : 0)) : 0);

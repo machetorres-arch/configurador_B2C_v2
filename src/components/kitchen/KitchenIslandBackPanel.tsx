@@ -16,6 +16,7 @@ export function KitchenIslandBackPanel() {
   const architecturalElements = useKitchenStore((s) => s.architecturalElements);
   const roomConfig = useKitchenStore((s) => s.roomConfig);
   const socleHeight = useKitchenStore((s) => s.socleHeight ?? 10);
+  const socleFinish = useKitchenStore((s) => s.socleFinish || 'aluminum');
 
   const islandRuns = useMemo(() => {
     if (!islandBackConfig?.enabled) return [];
@@ -65,8 +66,8 @@ export function KitchenIslandBackPanel() {
           panelHeightCm = cabTopY;
           panelCenterY = panelHeightCm / 2;
         } else {
-          // Con zócalo libre de 10 cm
-          const socleGapCm = 10;
+          // Con zócalo libre calibrado dinámicamente según altura global
+          const socleGapCm = socleHeight;
           panelHeightCm = Math.max(10, cabTopY - socleGapCm);
           panelCenterY = socleGapCm + panelHeightCm / 2;
         }
@@ -158,6 +159,7 @@ export function KitchenIslandBackPanel() {
                         }
                         materialType={islandBackConfig.decorativeMaterial}
                         isFrontPanel={true}
+                        grainDirection={islandBackConfig.grainDirection || 'vertical'}
                       />
                     );
                   });
@@ -175,13 +177,18 @@ export function KitchenIslandBackPanel() {
                   }
                   materialType={islandBackConfig.decorativeMaterial}
                   isFrontPanel={true}
+                  grainDirection={islandBackConfig.grainDirection || 'vertical'}
                 />
               )
             )}
 
             {/* Zócalo trasero continuo cuando se selecciona trasera con decorativo y opción "Con zócalo" */}
             {effectiveHeightMode === 'with_socle' && (() => {
-              const socleColor = run.cabinets[0]?.socleColor || '#d1d5db';
+              const isBlack = socleFinish === 'black';
+              const defaultSocleColor = isBlack ? '#18181b' : '#e2e8f0';
+              const socleColor = isBlack ? '#18181b' : (socleFinish === 'aluminum' ? '#e2e8f0' : (run.cabinets[0]?.socleColor || defaultSocleColor));
+              const socleMetalness = isBlack ? 0.25 : 0.40;
+              const socleRoughness = isBlack ? 0.70 : 0.28;
               const socleThickness = 1.2;
               const socleH = socleHeight;
               const socleZ = -cabDepthCm / 2 + 2;
@@ -192,8 +199,8 @@ export function KitchenIslandBackPanel() {
                       <boxGeometry args={[totalLengthCm, socleH, socleThickness]} />
                       <meshStandardMaterial
                         color={socleColor}
-                        metalness={0.8}
-                        roughness={0.25}
+                        metalness={socleMetalness}
+                        roughness={socleRoughness}
                         transparent={isTransparent}
                         opacity={isTransparent ? 0.3 : 1}
                         depthWrite={!isTransparent}
@@ -227,7 +234,7 @@ export function KitchenIslandBackPanel() {
                 sideHeightCm = cabTopY;
                 sideCenterY = sideHeightCm / 2;
               } else {
-                const socleGapCm = 10;
+                const socleGapCm = socleHeight;
                 sideHeightCm = Math.max(10, cabTopY - socleGapCm);
                 sideCenterY = socleGapCm + sideHeightCm / 2;
               }
@@ -251,6 +258,7 @@ export function KitchenIslandBackPanel() {
                       }
                       materialType={islandBackConfig.decorativeMaterial}
                       isFrontPanel={true}
+                      grainDirection={islandBackConfig.grainDirection || 'vertical'}
                     />
                   )}
 
@@ -266,6 +274,7 @@ export function KitchenIslandBackPanel() {
                       }
                       materialType={islandBackConfig.decorativeMaterial}
                       isFrontPanel={true}
+                      grainDirection={islandBackConfig.grainDirection || 'vertical'}
                     />
                   )}
                 </group>

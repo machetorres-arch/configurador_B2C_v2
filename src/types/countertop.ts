@@ -344,6 +344,7 @@ export interface IslandBackConfig {
   decorativeMaterial: 'melamina' | 'hpl';
   heightMode: 'to_floor' | 'with_socle'; // estrictamente 'to_floor' cuando materialType === 'countertop'
   thicknessCm: number;
+  grainDirection?: 'vertical' | 'horizontal'; // Sentido de la veta del panel decorativo
   sidesEnabled?: boolean; // Activar costados/laterales decorativos en isla
   sideLeftEnabled?: boolean; // Lateral izquierdo habilitado
   sideRightEnabled?: boolean; // Lateral derecho habilitado
@@ -358,6 +359,7 @@ export const DEFAULT_ISLAND_BACK_CONFIG: IslandBackConfig = {
   decorativeMaterial: 'melamina',
   heightMode: 'to_floor',
   thicknessCm: 1.8,
+  grainDirection: 'vertical',
   sidesEnabled: false,
   sideLeftEnabled: true,
   sideRightEnabled: true,

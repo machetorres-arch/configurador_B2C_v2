@@ -10,7 +10,9 @@ import {
   ChevronUp, 
   Sparkles,
   Palette,
-  Sliders
+  Sliders,
+  ArrowUpDown,
+  ArrowLeftRight
 } from 'lucide-react';
 import { DottedDepthSlider } from './DottedDepthSlider';
 
@@ -26,7 +28,8 @@ export function IslandBackPanelConfigSection({ isLight = false }: { isLight?: bo
     countertopConfig,
     qstoneCatalog,
     cabinets,
-    setShowSocle
+    setShowSocle,
+    socleHeight = 10
   } = useKitchenStore();
 
   const [showTexturePicker, setShowTexturePicker] = useState(false);
@@ -416,7 +419,7 @@ export function IslandBackPanelConfigSection({ isLight = false }: { isLight?: bo
                       isLight ? 'text-slate-500' : 'text-slate-400'
                     }`}
                   >
-                    Línea zócalo 10 cm libre
+                    Línea zócalo {socleHeight} cm libre
                   </span>
                 </button>
               </div>
@@ -639,7 +642,107 @@ export function IslandBackPanelConfigSection({ isLight = false }: { isLight?: bo
             )}
           </div>
 
-          {/* 4. Costados Laterales Decorativos de Isla (Melamina / HPL / MDF Laminado) */}
+          {/* 4. Sentido / Orientación de la Veta */}
+          {!isCountertopMat && (
+            <div>
+              <label
+                className={`block text-[11px] uppercase tracking-wider font-bold mb-2 ${
+                  isLight ? 'text-slate-700' : 'text-slate-300'
+                }`}
+              >
+                4. Sentido / Orientación de la Veta:
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIslandBackConfig({ grainDirection: 'vertical' })}
+                  className={`flex flex-col items-start p-2.5 rounded-lg border text-left transition-all cursor-pointer ${
+                    (islandBackConfig.grainDirection || 'vertical') === 'vertical'
+                      ? 'border-orange-500 bg-orange-500/10 shadow-sm'
+                      : isLight
+                        ? 'bg-white border-slate-300 hover:border-slate-400'
+                        : 'bg-white/5 border-white/10 hover:border-white/20'
+                  }`}
+                >
+                  <div className="flex items-center justify-between w-full mb-1">
+                    <div className="flex items-center gap-1.5">
+                      <ArrowUpDown size={13} className={(islandBackConfig.grainDirection || 'vertical') === 'vertical' ? 'text-orange-500' : 'text-slate-400'} />
+                      <span
+                        className={`text-xs font-bold uppercase tracking-wider ${
+                          (islandBackConfig.grainDirection || 'vertical') === 'vertical'
+                            ? isLight
+                              ? 'text-orange-700'
+                              : 'text-orange-400'
+                            : isLight
+                              ? 'text-slate-800'
+                              : 'text-slate-200'
+                        }`}
+                      >
+                        Vertical
+                      </span>
+                    </div>
+                    {(islandBackConfig.grainDirection || 'vertical') === 'vertical' && (
+                      <div className="w-4 h-4 rounded-full bg-orange-500 text-black flex items-center justify-center">
+                        <Check size={10} strokeWidth={3} />
+                      </div>
+                    )}
+                  </div>
+                  <span
+                    className={`text-[10px] leading-tight ${
+                      isLight ? 'text-slate-500' : 'text-slate-400'
+                    }`}
+                  >
+                    Veta a lo alto (Estándar)
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIslandBackConfig({ grainDirection: 'horizontal' })}
+                  className={`flex flex-col items-start p-2.5 rounded-lg border text-left transition-all cursor-pointer ${
+                    islandBackConfig.grainDirection === 'horizontal'
+                      ? 'border-orange-500 bg-orange-500/10 shadow-sm'
+                      : isLight
+                        ? 'bg-white border-slate-300 hover:border-slate-400'
+                        : 'bg-white/5 border-white/10 hover:border-white/20'
+                  }`}
+                >
+                  <div className="flex items-center justify-between w-full mb-1">
+                    <div className="flex items-center gap-1.5">
+                      <ArrowLeftRight size={13} className={islandBackConfig.grainDirection === 'horizontal' ? 'text-orange-500' : 'text-slate-400'} />
+                      <span
+                        className={`text-xs font-bold uppercase tracking-wider ${
+                          islandBackConfig.grainDirection === 'horizontal'
+                            ? isLight
+                              ? 'text-orange-700'
+                              : 'text-orange-400'
+                            : isLight
+                              ? 'text-slate-800'
+                              : 'text-slate-200'
+                        }`}
+                      >
+                        Horizontal
+                      </span>
+                    </div>
+                    {islandBackConfig.grainDirection === 'horizontal' && (
+                      <div className="w-4 h-4 rounded-full bg-orange-500 text-black flex items-center justify-center">
+                        <Check size={10} strokeWidth={3} />
+                      </div>
+                    )}
+                  </div>
+                  <span
+                    className={`text-[10px] leading-tight ${
+                      isLight ? 'text-slate-500' : 'text-slate-400'
+                    }`}
+                  >
+                    Veta apaisada / continua
+                  </span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* 5. Costados Laterales Decorativos de Isla (Melamina / HPL / MDF Laminado) */}
           {!isCountertopMat && (
             <div
               className={`p-3.5 rounded-xl border flex flex-col gap-3 transition-all ${
@@ -660,7 +763,7 @@ export function IslandBackPanelConfigSection({ isLight = false }: { isLight?: bo
                       isLight ? 'text-slate-800' : 'text-slate-200'
                     }`}
                   >
-                    4. Costados Laterales de Isla:
+                    5. Costados Laterales de Isla:
                   </span>
                 </div>
 

@@ -77,10 +77,11 @@ export function getDrawerBottomSpecs(
   cabinetWidthCm: number,
   drawerInnerColor?: string,
   drawerInnerMaterial?: 'melamina' | 'hpl',
-  thicknessCm: number = 1.8
+  thicknessCm: number = 1.8,
+  drawerBottomMaterialOverride?: 'melamina' | 'durolac'
 ): DrawerBottomSpecs {
   const isWhite = isWhiteMelamine(drawerInnerColor);
-  const canUseDurolac3mm = isWhite && cabinetWidthCm <= 50;
+  const canUseDurolac3mm = drawerBottomMaterialOverride === 'durolac' || (drawerBottomMaterialOverride === undefined && isWhite && cabinetWidthCm <= 50);
 
   if (canUseDurolac3mm) {
     return {
@@ -1227,7 +1228,9 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
         });
     } else if (cab.variant === 'sink_u_drawer') {
         const isGola = (kState.golaSystem === 'aluminum' || kState.golaSystem === 'black') && (cab.type === 'base' || cab.type === 'island');
-        const regruesoCm = (ctConfig?.enabled && (cab.type === 'base' || cab.type === 'island')) ? (ctConfig.regruesoCm || 0) : 0;
+        const regruesoCm = (ctConfig?.enabled && (cab.type === 'base' || cab.type === 'island'))
+            ? (cab.type === 'island' ? (ctConfig.islandRegruesoCm ?? ctConfig.regruesoCm ?? 0) : (ctConfig.baseRegruesoCm ?? ctConfig.regruesoCm ?? 0))
+            : 0;
         const regruesoDeduction = isGola ? Math.max(0, regruesoCm - 3.5) : regruesoCm;
         
         let lowerH = (cabH - gap * 3) / 2;
@@ -1357,7 +1360,9 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
         });
     } else if (cab.variant === 'spice_rack') {
         const isGola = (kState.golaSystem === 'aluminum' || kState.golaSystem === 'black') && (cab.type === 'base' || cab.type === 'island');
-        const regruesoCm = (ctConfig?.enabled && (cab.type === 'base' || cab.type === 'island')) ? (ctConfig.regruesoCm || 0) : 0;
+        const regruesoCm = (ctConfig?.enabled && (cab.type === 'base' || cab.type === 'island'))
+            ? (cab.type === 'island' ? (ctConfig.islandRegruesoCm ?? ctConfig.regruesoCm ?? 0) : (ctConfig.baseRegruesoCm ?? ctConfig.regruesoCm ?? 0))
+            : 0;
         const regruesoDeduction = isGola ? Math.max(0, regruesoCm - 3.5) : regruesoCm;
         const doorH = isGola ? (cabH - 3.5 - gap * 2) : (cabH - regruesoDeduction - gap * 2);
 
@@ -1743,7 +1748,9 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
         }
 
         // Modificación de altura de frentes de cajón según el regrueso delantero de cubierta (0 a 5 cm)
-        const regruesoCm = (ctConfig?.enabled && (cab.type === 'base' || cab.type === 'island')) ? (ctConfig.regruesoCm || 0) : 0;
+        const regruesoCm = (ctConfig?.enabled && (cab.type === 'base' || cab.type === 'island'))
+            ? (cab.type === 'island' ? (ctConfig.islandRegruesoCm ?? ctConfig.regruesoCm ?? 0) : (ctConfig.baseRegruesoCm ?? ctConfig.regruesoCm ?? 0))
+            : 0;
         const regruesoDeduction = isGola ? Math.max(0, regruesoCm - 3.5) : regruesoCm;
         if (regruesoDeduction > 0 && drawerHeights.length > 0) {
             const topIdx = drawerHeights.length - 1;
