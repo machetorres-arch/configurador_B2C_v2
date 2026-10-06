@@ -16,6 +16,7 @@ import { SaveProjectModal } from '../components/common/SaveProjectModal';
 import { CountertopConfigModal } from '../components/kitchen/CountertopConfigModal';
 import { GolaRegruesoIncompatibilityModal } from '../components/kitchen/GolaRegruesoIncompatibilityModal';
 import { KitchenB2BQuoteModal } from '../components/kitchen/KitchenB2BQuoteModal';
+import { ExportBimModal } from '../components/kitchen/ExportBimModal';
 import { calculatePolygonArea } from '../utils/roomGeometry';
 import { KitchenMepPanel } from '../components/kitchen/KitchenMepPanel';
 import { detectMepClashes } from '../utils/mepClashDetection';
@@ -194,6 +195,7 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
   const [isCountertopModalOpen, setIsCountertopModalOpen] = useState(false);
   const [isB2BQuoteOpen, setIsB2BQuoteOpen] = useState(false);
+  const [isBimModalOpen, setIsBimModalOpen] = useState(false);
   const [isExportingLabels, setIsExportingLabels] = useState(false);
   const [leftTab, setLeftTab] = useState<'modules' | 'placed'>('modules');
   const [rightTab, setRightTab] = useState<'module' | 'materials' | 'engineering' | 'mep'>('module');
@@ -532,6 +534,19 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
           >
             <DollarSign size={14} className="text-amber-500" />
             <span>Cotización B2B</span>
+          </button>
+
+          <button
+            onClick={() => setIsBimModalOpen(true)}
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 border rounded-lg transition-all text-xs font-bold uppercase tracking-wider shadow-sm cursor-pointer ${
+              isLight
+                ? 'bg-indigo-50 hover:bg-indigo-100 border-indigo-300 text-indigo-900'
+                : 'bg-indigo-500/15 hover:bg-indigo-500/25 border-indigo-500/40 text-indigo-400 hover:text-indigo-300'
+            }`}
+            title="Descargar paquete de modelado 3D y OpenBIM (.OBJ, .IFC, .DXF 3D, .ZIP) para Revit, SketchUp, Archicad y Blender"
+          >
+            <Box size={14} className="text-indigo-500" />
+            <span>Exportar 3D / BIM</span>
           </button>
 
           <button
@@ -2046,6 +2061,13 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
    <KitchenB2BQuoteModal
      isOpen={isB2BQuoteOpen}
      onClose={() => setIsB2BQuoteOpen(false)}
+   />
+
+   {/* Modal Exportación Modelo 3D & OpenBIM (.OBJ, .IFC, .DXF 3D, .ZIP) */}
+   <ExportBimModal
+     isOpen={isBimModalOpen}
+     onClose={() => setIsBimModalOpen(false)}
+     isLight={isLight}
    />
     </div>
   );

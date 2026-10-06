@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Printer, Download, X, HelpCircle, FileText, CheckCircle2, Loader2, QrCode, Cpu, FileSpreadsheet, DollarSign, Edit3 } from 'lucide-react';
+import { Printer, Download, X, HelpCircle, FileText, CheckCircle2, Loader2, QrCode, Cpu, FileSpreadsheet, DollarSign, Edit3, Box } from 'lucide-react';
 import { useStore } from '../store';
 import { useKitchenStore, CabinetType } from '../store/kitchenStore';
 import { analyzeRoomWalls } from '../utils/roomGeometry';
@@ -11,6 +11,7 @@ import { exportKitchenPDF } from '../utils/kitchenPdfGenerator';
 import { exportBlueprintDomToPdf } from '../utils/blueprintPdfExport';
 import { exportKitchenToExcel } from '../utils/kitchenExcelGenerator';
 import { KitchenB2BQuoteModal } from './kitchen/KitchenB2BQuoteModal';
+import { ExportBimModal } from './kitchen/ExportBimModal';
 import { getFriendlyColorName } from '../utils/colorNames';
 import { generateCountertopPieces } from '../utils/countertopNesting';
 import { calculateCncMachiningForPart } from '../utils/kitchenCncMachining';
@@ -25,6 +26,7 @@ export function KitchenBlueprint() {
   const [isExportingLabels, setIsExportingLabels] = useState(false);
   const [isExportingDxf, setIsExportingDxf] = useState(false);
   const [isB2BQuoteOpen, setIsB2BQuoteOpen] = useState(false);
+  const [isBimModalOpen, setIsBimModalOpen] = useState(false);
   const [exportProgress, setExportProgress] = useState<{ current: number; total: number } | null>(null);
   const [generatedPdfUrl, setGeneratedPdfUrl] = useState<string | null>(null);
 
@@ -1456,16 +1458,66 @@ export function KitchenBlueprint() {
                     </g>
                   );
                 })()
-              ) : isTall ? (
-                <g stroke="#0f172a" strokeWidth="0.7">
-                  <line x1={0} y1={bodyH * 0.3} x2={cabW} y2={bodyH * 0.3} />
-                  <line x1={0} y1={bodyH * 0.7} x2={cabW} y2={bodyH * 0.7} />
-                  <text x={cabW / 2} y={bodyH * 0.52} fontSize={Math.max(14, fSizeElev * 0.42)} fill="#ea580c" fontWeight="bold" textAnchor="middle">
-                    HORNO EMPOTRADO
-                  </text>
-                  <path d={`M 0 ${bodyH * 0.15} L ${cabW} 0 L ${cabW} ${bodyH * 0.3} Z`} fill="none" stroke="#c026d3" strokeWidth={strokeElev * 0.8} strokeDasharray="4,4" />
-                  <path d={`M 0 ${bodyH * 0.85} L ${cabW} ${bodyH * 0.7} L ${cabW} ${bodyH} Z`} fill="none" stroke="#c026d3" strokeWidth={strokeElev * 0.8} strokeDasharray="4,4" />
+              ) : (cab.variant === 'tall_oven_micro' || cab.variant === 'tall_oven_vent' || (cab.variant && cab.variant.includes('oven'))) ? (
+                (() => {
+                  // Torre Horno + Microondas: 4 zonas verticales (de abajo hacia arriba)
+                  // bodyH es la altura del cuerpo en mm (ej. 2050mm)
+                  // En SVG: Y=0 es el techo del cuerpo, Y=bodyH es el fondo/base del cuerpo
+                  const baseH = 700; // 70cm puerta inferior
+                  const ovenH = 600; // 60cm nicho horno
+                  const microH = 380; // 38cm nicho microondas
+                  const yBaseTop = Math.max(0, bodyH - baseH); // Cota superior de la puerta inferior
+                  const yOvenTop = Math.max(0, yBaseTop - ovenH); // Cota superior del nicho de horno
+                  const yMicroTop = Math.max(0, yOvenTop - microH); // Cota superior del nicho microondas
+                  const topDoorH = yMicroTop; // Altura restante puerta superior
+
+                  return (
+                    <g>
+                      {/* 1. Puerta Inferior (0 a 70cm) */}
+                      <line x1={0} y1={yBaseTop} x2={cabW} y2={yBaseTop} stroke="#0f172a" strokeWidth={strokeElev} />
+                      <path d={`M 0 ${(yBaseTop + bodyH) / 2} L ${cabW} ${yBaseTop} L ${cabW} ${bodyH} Z`} fill="none" stroke="#c026d3" strokeWidth={strokeElev * 0.8} strokeDasharray="4,4" />
+                      <text x={cabW / 2} y={(yBaseTop + bodyH) / 2 + 5} fontSize={Math.max(13, fSizeElev * 0.38)} fill="#c026d3" fontWeight="bold" textAnchor="middle" fontFamily="monospace">Puerta Base</text>
+
+                      {/* 2. Nicho Horno Empotrado (60cm) */}
+                      <rect x={12} y={yOvenTop + 8} width={cabW - 24} height={ovenH - 16} fill="#f1f5f9" stroke="#0f172a" strokeWidth={strokeElev * 0.8} />
+                      <line x1={0} y1={yOvenTop} x2={cabW} y2={yOvenTop} stroke="#0f172a" strokeWidth={strokeElev} />
+                      <text x={cabW / 2} y={yOvenTop + ovenH / 2 + 4} fontSize={Math.max(12, fSizeElev * 0.36)} fill="#ea580c" fontWeight="bold" textAnchor="middle" fontFamily="monospace">HORNO EMPOTRADO (60cm)</text>
+
+                      {/* 3. Nicho Microondas (38cm) */}
+                      <rect x={12} y={yMicroTop + 8} width={cabW - 24} height={microH - 16} fill="#f8fafc" stroke="#0f172a" strokeWidth={strokeElev * 0.8} />
+                      <line x1={0} y1={yMicroTop} x2={cabW} y2={yMicroTop} stroke="#0f172a" strokeWidth={strokeElev} />
+                      <text x={cabW / 2} y={yMicroTop + microH / 2 + 4} fontSize={Math.max(12, fSizeElev * 0.36)} fill="#0284c7" fontWeight="bold" textAnchor="middle" fontFamily="monospace">MICROONDAS (38cm)</text>
+
+                      {/* 4. Puerta Superior */}
+                      {topDoorH > 40 && (
+                        <>
+                          <path d={`M 0 ${topDoorH / 2} L ${cabW} 0 L ${cabW} ${topDoorH} Z`} fill="none" stroke="#c026d3" strokeWidth={strokeElev * 0.8} strokeDasharray="4,4" />
+                          <text x={cabW / 2} y={topDoorH / 2 + 5} fontSize={Math.max(13, fSizeElev * 0.38)} fill="#c026d3" fontWeight="bold" textAnchor="middle" fontFamily="monospace">Puerta Superior</text>
+                        </>
+                      )}
+                    </g>
+                  );
+                })()
+              ) : (cab.variant === 'tall_1_door' || (cab.variant && (cab.variant.includes('1_door') || cab.variant.includes('larga')))) ? (
+                <g>
+                  {/* Despensa 1 Puerta Larga completa */}
+                  <path d={`M 0 ${bodyH / 2} L ${cabW} 0 L ${cabW} ${bodyH} Z`} fill="none" stroke="#c026d3" strokeWidth={strokeElev * 0.8} strokeDasharray="4,4" />
+                  <text x={cabW / 2} y={bodyH / 2 + 6} fontSize={Math.max(14, fSizeElev * 0.42)} fill="#c026d3" fontWeight="bold" textAnchor="middle" fontFamily="monospace">Puerta Larga</text>
                 </g>
+              ) : isTall ? (
+                // Despensa 2 Puertas Partidas (Corte a 70cm)
+                (() => {
+                  const ySplit = Math.max(0, bodyH - 700);
+                  return (
+                    <g stroke="#0f172a" strokeWidth="0.7">
+                      <line x1={0} y1={ySplit} x2={cabW} y2={ySplit} strokeWidth={strokeElev} />
+                      <path d={`M 0 ${(ySplit + bodyH) / 2} L ${cabW} ${ySplit} L ${cabW} ${bodyH} Z`} fill="none" stroke="#c026d3" strokeWidth={strokeElev * 0.8} strokeDasharray="4,4" />
+                      <path d={`M 0 ${ySplit / 2} L ${cabW} 0 L ${cabW} ${ySplit} Z`} fill="none" stroke="#c026d3" strokeWidth={strokeElev * 0.8} strokeDasharray="4,4" />
+                      <text x={cabW / 2} y={(ySplit + bodyH) / 2 + 5} fontSize={Math.max(13, fSizeElev * 0.38)} fill="#c026d3" fontWeight="bold" textAnchor="middle" fontFamily="monospace">Puerta Inferior</text>
+                      <text x={cabW / 2} y={ySplit / 2 + 5} fontSize={Math.max(13, fSizeElev * 0.38)} fill="#c026d3" fontWeight="bold" textAnchor="middle" fontFamily="monospace">Puerta Superior</text>
+                    </g>
+                  );
+                })()
               ) : (
                 (() => {
                   const yDoorT = isBaseGola ? 35 : 0;
@@ -2101,6 +2153,16 @@ export function KitchenBlueprint() {
               <Cpu size={14} />
             )}
             <span>DXF CNC</span>
+          </button>
+
+          {/* Botón CAD/BIM: Exportar Paquete 3D & OpenBIM (.OBJ, .IFC, .DXF 3D, .ZIP) */}
+          <button 
+            onClick={() => setIsBimModalOpen(true)}
+            className="bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white px-3 py-1.5 rounded-lg font-bold uppercase text-[11px] tracking-wider shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
+            title="Descargar paquete de modelado 3D y OpenBIM (.OBJ, .IFC, .DXF 3D y .ZIP) para Revit, SketchUp, Archicad y Blender"
+          >
+            <Box size={14} />
+            <span>Pack 3D / BIM</span>
           </button>
         </div>
 
@@ -3416,6 +3478,13 @@ export function KitchenBlueprint() {
       <KitchenB2BQuoteModal
         isOpen={isB2BQuoteOpen}
         onClose={() => setIsB2BQuoteOpen(false)}
+      />
+
+      {/* Modal Exportación 3D & OpenBIM (.OBJ, .IFC, .DXF 3D, .ZIP) */}
+      <ExportBimModal
+        isOpen={isBimModalOpen}
+        onClose={() => setIsBimModalOpen(false)}
+        isLight={false}
       />
 
     </div>

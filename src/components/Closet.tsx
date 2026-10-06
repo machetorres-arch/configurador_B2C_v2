@@ -657,7 +657,7 @@ export function Closet() {
       const frontWidth = isInnerDrawer ? innerW - (spacerGap * 2) - 0.4 : mod.width - 0.3; 
       
       // Cálculo de proporciones del cajón interno
-      const slideClearance = 4.9; // 49mm según ficha técnica Provelcar
+      const slideClearance = 2.6; // 26mm según ficha técnica corredera telescópica lateral (13mm por lado)
       const boxOuterWidth = innerW - slideClearance - (totalSideReduction * 2);
       
       // Profundidad ajustada: si es cajón interno, necesitamos que vaya más atrás para no chocar con la puerta
@@ -665,7 +665,7 @@ export function Closet() {
       const innerDepthMm = (depth - (showBackWall ? 0.3 : 0) - internalClearanceZ) * 10;
       const nominalLengthMm = getNominalSlideLength(innerDepthMm);
       const nominalLength = nominalLengthMm / 10; // cm
-      const drawerBoxLength = nominalLength - 1; // NL - 10mm
+      const drawerBoxLength = nominalLength; // SKL = NL para corredera telescópica
       const sideHeight = 15;
       
       // Posiciones en el eje Z
@@ -763,19 +763,31 @@ export function Closet() {
         // Back board attached to Right side
         drawerElements.push(<AssemblyJoint key={`aj-drawer-BR-${mod.id}-${d}`} position={[rightFaceX, yBoxCenter, backFaceZ - thickness/2]} length={sideHeight} edgeOffset={1.5} axis="y" overrideAssemblyType={drawerAssemblyType} pointing="left" thickness={thickness} count={2} />);
 
-        // --- Rieles / Correderas ---
-        // Riel Móvil (Adosado al cajón, dentro de drawerElements)
+        // --- Rieles / Correderas Telescópicas ---
+        // Riel Móvil (Adosado al lateral del cajón a media altura, dentro de drawerElements)
         drawerElements.push(
-          <mesh key={`slide-mov-L-${mod.id}-${d}`} position={[innerCenterX - boxOuterWidth/2 - 0.6, yBoxCenter - sideHeight/2 + 1.5, boxZCenter]}>
-            <boxGeometry args={[0.6, 2.5, drawerBoxLength]} />
-            <meshStandardMaterial color="#cccccc" metalness={0.7} roughness={0.3} />
-          </mesh>
+          <group key={`slide-mov-L-${mod.id}-${d}`} position={[innerCenterX - boxOuterWidth/2 - 0.35, yBoxCenter, boxZCenter]}>
+            <mesh castShadow>
+              <boxGeometry args={[0.35, 3.5, drawerBoxLength]} />
+              <meshStandardMaterial color="#e2e8f0" metalness={0.15} roughness={0.35} />
+            </mesh>
+            <mesh position={[-0.12, 0, drawerBoxLength/2 - 3.5]}>
+              <boxGeometry args={[0.15, 1.4, 2.8]} />
+              <meshStandardMaterial color="#94a3b8" roughness={0.5} />
+            </mesh>
+          </group>
         );
         drawerElements.push(
-          <mesh key={`slide-mov-R-${mod.id}-${d}`} position={[innerCenterX + boxOuterWidth/2 + 0.6, yBoxCenter - sideHeight/2 + 1.5, boxZCenter]}>
-            <boxGeometry args={[0.6, 2.5, drawerBoxLength]} />
-            <meshStandardMaterial color="#cccccc" metalness={0.7} roughness={0.3} />
-          </mesh>
+          <group key={`slide-mov-R-${mod.id}-${d}`} position={[innerCenterX + boxOuterWidth/2 + 0.35, yBoxCenter, boxZCenter]}>
+            <mesh castShadow>
+              <boxGeometry args={[0.35, 3.5, drawerBoxLength]} />
+              <meshStandardMaterial color="#e2e8f0" metalness={0.15} roughness={0.35} />
+            </mesh>
+            <mesh position={[0.12, 0, drawerBoxLength/2 - 3.5]}>
+              <boxGeometry args={[0.15, 1.4, 2.8]} />
+              <meshStandardMaterial color="#94a3b8" roughness={0.5} />
+            </mesh>
+          </group>
         );
 
         parts.push(
@@ -790,21 +802,34 @@ export function Closet() {
             {drawerElements}
           </AnimatedDrawer>
         );
-        
-        // (Regruesos laterales fijos eliminados por cajón, ahora son laterales continuos)
 
-        // Riel Fijo (Adosado al mueble, fuera del grupo animado)
+        // Riel Fijo (Adosado al mueble / lateral interno, a media altura)
+        const slideFixXLeft = isInnerDrawer ? (innerCenterX - innerW/2 + spacerGap + thickness + 0.35) : (leftWallX + thickness + 0.35);
+        const slideFixXRight = isInnerDrawer ? (innerCenterX + innerW/2 - spacerGap - thickness - 0.35) : (rightWallX - thickness - 0.35);
+
         parts.push(
-          <mesh key={`slide-fix-L-${mod.id}-${d}`} position={[innerCenterX - boxOuterWidth/2 - 1.2, yBoxCenter - sideHeight/2 + 1.5, boxZCenter]}>
-            <boxGeometry args={[1, 3.5, nominalLength]} />
-            <meshStandardMaterial color="#999999" metalness={0.8} roughness={0.2} />
-          </mesh>
+          <group key={`slide-fix-L-${mod.id}-${d}`} position={[slideFixXLeft, yBoxCenter, boxZCenter]}>
+            <mesh castShadow>
+              <boxGeometry args={[0.4, 4.5, nominalLength]} />
+              <meshStandardMaterial color="#d8dde6" metalness={0.15} roughness={0.35} />
+            </mesh>
+            <mesh position={[0.15, 0, 0]}>
+              <boxGeometry args={[0.12, 1.8, nominalLength - 2]} />
+              <meshStandardMaterial color="#c5cbd3" metalness={0.2} roughness={0.4} />
+            </mesh>
+          </group>
         );
         parts.push(
-          <mesh key={`slide-fix-R-${mod.id}-${d}`} position={[innerCenterX + boxOuterWidth/2 + 1.2, yBoxCenter - sideHeight/2 + 1.5, boxZCenter]}>
-            <boxGeometry args={[1, 3.5, nominalLength]} />
-            <meshStandardMaterial color="#999999" metalness={0.8} roughness={0.2} />
-          </mesh>
+          <group key={`slide-fix-R-${mod.id}-${d}`} position={[slideFixXRight, yBoxCenter, boxZCenter]}>
+            <mesh castShadow>
+              <boxGeometry args={[0.4, 4.5, nominalLength]} />
+              <meshStandardMaterial color="#d8dde6" metalness={0.15} roughness={0.35} />
+            </mesh>
+            <mesh position={[-0.15, 0, 0]}>
+              <boxGeometry args={[0.12, 1.8, nominalLength - 2]} />
+              <meshStandardMaterial color="#c5cbd3" metalness={0.2} roughness={0.4} />
+            </mesh>
+          </group>
         );
       }
     }

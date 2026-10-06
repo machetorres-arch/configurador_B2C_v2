@@ -1165,13 +1165,13 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
           const renderUndermountDrawer = (keyPrefix: string, yPos: number, drawerH: number, colorProps: any, drawerKey = 'drawer-0') => {
             const innerDepthMm = (depth - 1.5) * 10;
             const nominalLength = getNominalSlideLength(innerDepthMm) / 10; // cm
-            const drawerBoxLength = nominalLength - 1.0; // SKL = NL - 10mm
+            const drawerBoxLength = nominalLength; // SKL = NL para corredera telescópica
             
             const drawerBoxZCenter = depth/2 - drawerBoxLength/2;
             const slideZCenter = depth/2 - nominalLength/2;
             
-            // SKW = LW - 49mm (PDF spec)
-            const skw = innerW - 4.9; 
+            // SKW = LW - 26mm (Holgura telescópica estándar 13mm por lado)
+            const skw = innerW - 2.6; 
             const sideHeight = Math.max(10, drawerH - 3);
             const yBoxCenter = yPos;
             const yBoxBottom = yBoxCenter - sideHeight/2;
@@ -1184,15 +1184,27 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
             
             return (
                <group key={keyPrefix}>
-                  {/* Fixed Undermount Slides (Attached to Cabinet) */}
-                  <mesh position={[-innerW/2 + 1.225, yBoxBottom + 0.6, slideZCenter]}>
-                     <boxGeometry args={[2.45, 1.2, nominalLength]} />
-                     <meshStandardMaterial color="#999999" metalness={0.8} roughness={0.2} />
-                  </mesh>
-                  <mesh position={[innerW/2 - 1.225, yBoxBottom + 0.6, slideZCenter]}>
-                     <boxGeometry args={[2.45, 1.2, nominalLength]} />
-                     <meshStandardMaterial color="#999999" metalness={0.8} roughness={0.2} />
-                  </mesh>
+                  {/* Corredera Telescópica Fija (Lateral del gabinete) - Montada al centro de la altura */}
+                  <group position={[-innerW/2 + 0.35, yBoxCenter, slideZCenter]}>
+                     <mesh castShadow>
+                        <boxGeometry args={[0.4, 4.5, nominalLength]} />
+                        <meshStandardMaterial color="#d8dde6" metalness={0.15} roughness={0.35} />
+                     </mesh>
+                     <mesh position={[0.15, 0, 0]}>
+                        <boxGeometry args={[0.12, 1.8, nominalLength - 2]} />
+                        <meshStandardMaterial color="#c5cbd3" metalness={0.2} roughness={0.4} />
+                     </mesh>
+                  </group>
+                  <group position={[innerW/2 - 0.35, yBoxCenter, slideZCenter]}>
+                     <mesh castShadow>
+                        <boxGeometry args={[0.4, 4.5, nominalLength]} />
+                        <meshStandardMaterial color="#d8dde6" metalness={0.15} roughness={0.35} />
+                     </mesh>
+                     <mesh position={[-0.15, 0, 0]}>
+                        <boxGeometry args={[0.12, 1.8, nominalLength - 2]} />
+                        <meshStandardMaterial color="#c5cbd3" metalness={0.2} roughness={0.4} />
+                     </mesh>
+                  </group>
 
                   <AnimatedDrawer openZOffset={drawerBoxLength - 3} forceOpen={isElementOpen(drawerKey)}>
                      {/* Drawer Front */}
@@ -1218,15 +1230,28 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                      <AssemblyJoint position={[-skw/2 + thickness, yBoxCenter, drawerBoxZCenter + drawerBoxLength/2 - thickness]} length={sideHeight} axis="y" pointing="right" thickness={thickness} count={1} overrideAssemblyType={useStore.getState().drawerAssemblyType} />
                      <AssemblyJoint position={[skw/2 - thickness, yBoxCenter, drawerBoxZCenter + drawerBoxLength/2 - thickness]} length={sideHeight} axis="y" pointing="left" thickness={thickness} count={1} overrideAssemblyType={useStore.getState().drawerAssemblyType} />
 
-                     {/* Movable Undermount Slides */}
-                     <mesh position={[-skw/2 + thickness + 1.0, yBoxBottom + 0.6, drawerBoxZCenter]}>
-                        <boxGeometry args={[2.0, 1.2, drawerBoxLength]} />
-                        <meshStandardMaterial color="#cccccc" metalness={0.7} roughness={0.3} />
-                     </mesh>
-                     <mesh position={[skw/2 - thickness - 1.0, yBoxBottom + 0.6, drawerBoxZCenter]}>
-                        <boxGeometry args={[2.0, 1.2, drawerBoxLength]} />
-                        <meshStandardMaterial color="#cccccc" metalness={0.7} roughness={0.3} />
-                     </mesh>
+                     {/* Rieles Telescópicos Móviles (Fijados al lateral exterior del cajón, a media altura) */}
+                     <group position={[-skw/2 - 0.35, yBoxCenter, drawerBoxZCenter]}>
+                        <mesh castShadow>
+                           <boxGeometry args={[0.35, 3.5, drawerBoxLength]} />
+                           <meshStandardMaterial color="#e2e8f0" metalness={0.15} roughness={0.35} />
+                        </mesh>
+                        {/* Gatillo plástico de desacople */}
+                        <mesh position={[-0.12, 0, drawerBoxLength/2 - 3.5]}>
+                           <boxGeometry args={[0.15, 1.4, 2.8]} />
+                           <meshStandardMaterial color="#94a3b8" roughness={0.5} />
+                        </mesh>
+                     </group>
+                     <group position={[skw/2 + 0.35, yBoxCenter, drawerBoxZCenter]}>
+                        <mesh castShadow>
+                           <boxGeometry args={[0.35, 3.5, drawerBoxLength]} />
+                           <meshStandardMaterial color="#e2e8f0" metalness={0.15} roughness={0.35} />
+                        </mesh>
+                        <mesh position={[0.12, 0, drawerBoxLength/2 - 3.5]}>
+                           <boxGeometry args={[0.15, 1.4, 2.8]} />
+                           <meshStandardMaterial color="#94a3b8" roughness={0.5} />
+                        </mesh>
+                     </group>
                   </AnimatedDrawer>
                </group>
             );
@@ -1235,10 +1260,10 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
          const renderSinkUDrawer = (yPos: number, drawerH: number, colorProps: any, drawerKey = 'drawer-0') => {
             const innerDepthMm = (depth - 1.5) * 10;
             const nominalLength = getNominalSlideLength(innerDepthMm) / 10; // cm
-            const drawerBoxLength = nominalLength - 1.0;
+            const drawerBoxLength = nominalLength;
             const drawerBoxZCenter = depth / 2 - drawerBoxLength / 2;
             const slideZCenter = depth / 2 - nominalLength / 2;
-            const skw = innerW - 4.9;
+            const skw = innerW - 2.6;
             const sideHeight = Math.max(10, drawerH - 4);
             const yBoxCenter = yPos;
             const yBoxBottom = yBoxCenter - sideHeight / 2;
@@ -1252,15 +1277,27 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
 
             return (
                <group key="sink-u-drawer">
-                  {/* Correderas ocultas fijadas a los laterales del mueble */}
-                  <mesh position={[-innerW / 2 + 1.225, yBoxBottom + 0.6, slideZCenter]}>
-                     <boxGeometry args={[2.45, 1.2, nominalLength]} />
-                     <meshStandardMaterial color="#999999" metalness={0.8} roughness={0.2} />
-                  </mesh>
-                  <mesh position={[innerW / 2 - 1.225, yBoxBottom + 0.6, slideZCenter]}>
-                     <boxGeometry args={[2.45, 1.2, nominalLength]} />
-                     <meshStandardMaterial color="#999999" metalness={0.8} roughness={0.2} />
-                  </mesh>
+                  {/* Corredera Telescópica Fija (Lateral del gabinete) al centro */}
+                  <group position={[-innerW/2 + 0.35, yBoxCenter, slideZCenter]}>
+                     <mesh castShadow>
+                        <boxGeometry args={[0.4, 4.5, nominalLength]} />
+                        <meshStandardMaterial color="#d8dde6" metalness={0.15} roughness={0.35} />
+                     </mesh>
+                     <mesh position={[0.15, 0, 0]}>
+                        <boxGeometry args={[0.12, 1.8, nominalLength - 2]} />
+                        <meshStandardMaterial color="#c5cbd3" metalness={0.2} roughness={0.4} />
+                     </mesh>
+                  </group>
+                  <group position={[innerW/2 - 0.35, yBoxCenter, slideZCenter]}>
+                     <mesh castShadow>
+                        <boxGeometry args={[0.4, 4.5, nominalLength]} />
+                        <meshStandardMaterial color="#d8dde6" metalness={0.15} roughness={0.35} />
+                     </mesh>
+                     <mesh position={[-0.15, 0, 0]}>
+                        <boxGeometry args={[0.12, 1.8, nominalLength - 2]} />
+                        <meshStandardMaterial color="#c5cbd3" metalness={0.2} roughness={0.4} />
+                     </mesh>
+                  </group>
 
                   {/* Sifón Sanitario 3D en el vano posterior del mueble (tubos cromados/PVC) */}
                   <group position={[0, legsHeight + cabH * 0.62, -depth / 2 + 16]}>
@@ -1377,15 +1414,27 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                         );
                      })()}
 
-                     {/* Correderas móviles bajo el cajón */}
-                     <mesh position={[-skw / 2 + thickness + 1.0, yBoxBottom + 0.6, drawerBoxZCenter]}>
-                        <boxGeometry args={[2.0, 1.2, drawerBoxLength]} />
-                        <meshStandardMaterial color="#cccccc" metalness={0.7} roughness={0.3} />
-                     </mesh>
-                     <mesh position={[skw / 2 - thickness - 1.0, yBoxBottom + 0.6, drawerBoxZCenter]}>
-                        <boxGeometry args={[2.0, 1.2, drawerBoxLength]} />
-                        <meshStandardMaterial color="#cccccc" metalness={0.7} roughness={0.3} />
-                     </mesh>
+                     {/* Rieles Telescópicos Móviles */}
+                     <group position={[-skw/2 - 0.35, yBoxCenter, drawerBoxZCenter]}>
+                        <mesh castShadow>
+                           <boxGeometry args={[0.35, 3.5, drawerBoxLength]} />
+                           <meshStandardMaterial color="#e2e8f0" metalness={0.15} roughness={0.35} />
+                        </mesh>
+                        <mesh position={[-0.12, 0, drawerBoxLength/2 - 3.5]}>
+                           <boxGeometry args={[0.15, 1.4, 2.8]} />
+                           <meshStandardMaterial color="#94a3b8" roughness={0.5} />
+                        </mesh>
+                     </group>
+                     <group position={[skw/2 + 0.35, yBoxCenter, drawerBoxZCenter]}>
+                        <mesh castShadow>
+                           <boxGeometry args={[0.35, 3.5, drawerBoxLength]} />
+                           <meshStandardMaterial color="#e2e8f0" metalness={0.15} roughness={0.35} />
+                        </mesh>
+                        <mesh position={[0.12, 0, drawerBoxLength/2 - 3.5]}>
+                           <boxGeometry args={[0.15, 1.4, 2.8]} />
+                           <meshStandardMaterial color="#94a3b8" roughness={0.5} />
+                        </mesh>
+                     </group>
                   </AnimatedDrawer>
                </group>
             );
@@ -2573,9 +2622,9 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
             const innerDrawersCount = 4;
             const innerDepthMm = (depth - 1.5) * 10;
             const nominalLength = getNominalSlideLength(innerDepthMm) / 10;
-            const drawerBoxLength = nominalLength - 1.0;
+            const drawerBoxLength = nominalLength;
             const drawerBoxZCenter = depth / 2 - drawerBoxLength / 2 - 3.5;
-            const skw = innerW - 4.9;
+            const skw = innerW - 2.6;
 
             return (
                <>
@@ -2603,15 +2652,27 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                      
                      return (
                          <group key={`inner-drw-${idx}`} visible={isDoorOpen}>
-                           {/* Correderas fijas ancladas a los costados */}
-                           <mesh position={[-innerW / 2 + 1.225, yCenter - drawerInnerH / 2 + 0.6, drawerBoxZCenter]}>
-                              <boxGeometry args={[2.45, 1.2, nominalLength]} />
-                              <meshStandardMaterial color="#999999" metalness={0.8} roughness={0.2} />
-                           </mesh>
-                           <mesh position={[innerW / 2 - 1.225, yCenter - drawerInnerH / 2 + 0.6, drawerBoxZCenter]}>
-                              <boxGeometry args={[2.45, 1.2, nominalLength]} />
-                              <meshStandardMaterial color="#999999" metalness={0.8} roughness={0.2} />
-                           </mesh>
+                           {/* Correderas telescópicas fijas a los costados al centro de la altura */}
+                           <group position={[-innerW / 2 + 0.35, yCenter, drawerBoxZCenter]}>
+                              <mesh castShadow>
+                                 <boxGeometry args={[0.4, 3.8, nominalLength]} />
+                                 <meshStandardMaterial color="#d8dde6" metalness={0.15} roughness={0.35} />
+                              </mesh>
+                              <mesh position={[0.15, 0, 0]}>
+                                 <boxGeometry args={[0.12, 1.6, nominalLength - 2]} />
+                                 <meshStandardMaterial color="#c5cbd3" metalness={0.2} roughness={0.4} />
+                              </mesh>
+                           </group>
+                           <group position={[innerW / 2 - 0.35, yCenter, drawerBoxZCenter]}>
+                              <mesh castShadow>
+                                 <boxGeometry args={[0.4, 3.8, nominalLength]} />
+                                 <meshStandardMaterial color="#d8dde6" metalness={0.15} roughness={0.35} />
+                              </mesh>
+                              <mesh position={[-0.15, 0, 0]}>
+                                 <boxGeometry args={[0.12, 1.6, nominalLength - 2]} />
+                                 <meshStandardMaterial color="#c5cbd3" metalness={0.2} roughness={0.4} />
+                              </mesh>
+                           </group>
 
                            <AnimatedDrawer 
                               openZOffset={drawerBoxLength - 2} 
@@ -2636,6 +2697,20 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                               <Board position={[skw / 2 - thickness / 2, yCenter, drawerBoxZCenter]} args={[thickness, drawerInnerH - 2, drawerBoxLength]} {...parseColor(cInner, drawerInnerMaterial)} />
                               <Board position={[0, yCenter + 0.6, drawerBoxZCenter - drawerBoxLength / 2 + thickness / 2]} args={[skw - thickness * 2, drawerInnerH - 3.2, thickness]} {...parseColor(cInner, drawerInnerMaterial)} />
                               <Board position={[0, yCenter - drawerInnerH / 2 + 1.35, drawerBoxZCenter]} args={[skw - thickness * 2, 0.3, drawerBoxLength - thickness * 2]} color="#dddddd" />
+
+                              {/* Rieles Telescópicos Móviles */}
+                              <group position={[-skw / 2 - 0.35, yCenter, drawerBoxZCenter]}>
+                                 <mesh castShadow>
+                                    <boxGeometry args={[0.35, 2.8, drawerBoxLength]} />
+                                    <meshStandardMaterial color="#e2e8f0" metalness={0.15} roughness={0.35} />
+                                 </mesh>
+                              </group>
+                              <group position={[skw / 2 + 0.35, yCenter, drawerBoxZCenter]}>
+                                 <mesh castShadow>
+                                    <boxGeometry args={[0.35, 2.8, drawerBoxLength]} />
+                                    <meshStandardMaterial color="#e2e8f0" metalness={0.15} roughness={0.35} />
+                                 </mesh>
+                              </group>
                            </AnimatedDrawer>
                         </group>
                      );

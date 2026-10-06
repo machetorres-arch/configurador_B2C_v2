@@ -26,20 +26,20 @@ export interface ManufacturingData {
 // Parámetros técnicos de herrajes según marca
 const HARDWARE_SPECS = {
   Provelcar: {
-    // Según plano técnico Provelcar "undermount full extension":
-    // SKW (Drawer Width) = LW (Inside Cabinet Width) - 49
-    slideClearanceTotal: 49, 
-    slideName: 'Corredera Oculta Provelcar Ext. Total (Cierre Suave)',
-    // Según plano: SKL (Drawer Length) = NL - 10
-    drawerLengthDeduction: 10,
+    // Corredera Telescópica Lateral de Bolas (Acero cincado 45mm, cierre suave / ext. total)
+    // SKW (Drawer Width) = LW (Inside Cabinet Width) - 26mm (13mm por lateral)
+    slideClearanceTotal: 26, 
+    slideName: 'Corredera Telescópica Lateral 45mm Ext. Total (Cierre Suave)',
+    // SKL (Drawer Length) = NL (Largo nominal sin descuento)
+    drawerLengthDeduction: 0,
     maxSideThickness: 18 // Espesor máximo admitido para el lateral del cajón
   },
   Hafele: {
-    // Referencia temporal a la espera de PDF. Asumimos descuento estándar Matrix
-    slideClearanceTotal: 42, 
-    slideName: 'Corredera Oculta Häfele (Cierre Suave)',
+    // Corredera Telescópica Heavy Duty Häfele (13mm por lado)
+    slideClearanceTotal: 26, 
+    slideName: 'Corredera Telescópica Häfele 45mm (Cierre Suave)',
     drawerLengthDeduction: 0,
-    maxSideThickness: 16
+    maxSideThickness: 18
   }
 };
 
