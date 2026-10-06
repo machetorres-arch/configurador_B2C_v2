@@ -1748,7 +1748,6 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                   <AnimatedDrawer 
                      openZOffset={cartDepth - 3} 
                      forceOpen={isElementOpen('drawer-0')}
-                     onClickAction={() => setOpenElement(id, 'drawer-0', !isElementOpen('drawer-0'))}
                   >
                      {/* Frente Exterior de Melamina */}
                      <Board 

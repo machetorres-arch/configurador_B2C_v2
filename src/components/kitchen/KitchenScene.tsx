@@ -91,6 +91,14 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
   }, [toolMode, activeCabinetId, activeArchElementId]);
 
   const dragInfoRef = useRef<{ id: string; startPointerX: number; startOffset: number } | null>(null);
+  const cabinetDragRef = useRef<{
+    id: string;
+    startPointer: { x: number; y: number };
+    startFloorHit: [number, number];
+    startCabPos: [number, number, number];
+    startRot: number;
+    hasMovedPastThreshold: boolean;
+  } | null>(null);
 
   useEffect(() => {
     const handleGlobalPointerUp = () => {
@@ -98,6 +106,7 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
       if (state.draggingCabinetId) {
         state.setDraggingCabinetId(null);
       }
+      cabinetDragRef.current = null;
       if (state.draggingArchElementId) {
         const dragId = state.draggingArchElementId;
         const el = state.architecturalElements.find((a) => a.id === dragId);
@@ -125,21 +134,48 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
        raycaster.setFromCamera(pointer, camera);
        const hit = raycaster.ray.intersectPlane(groundPlaneMath, intersectPoint);
        if (hit) {
-          const rawX = Math.round(intersectPoint.x * 2) / 2;
-          const rawZ = Math.round(intersectPoint.z * 2) / 2;
           const currentCabinets = useKitchenStore.getState().cabinets;
           const cab = currentCabinets.find(c => c.id === draggingCabinetId);
           if (cab) {
+             if (!cabinetDragRef.current || cabinetDragRef.current.id !== draggingCabinetId) {
+                cabinetDragRef.current = {
+                   id: draggingCabinetId,
+                   startPointer: { x: pointer.x, y: pointer.y },
+                   startFloorHit: [intersectPoint.x, intersectPoint.z],
+                   startCabPos: [cab.position[0], cab.position[1], cab.position[2]],
+                   startRot: cab.rotation || 0,
+                   hasMovedPastThreshold: false,
+                };
+             }
+
+             const drag = cabinetDragRef.current;
+             const pointerDist = Math.hypot(pointer.x - drag.startPointer.x, pointer.y - drag.startPointer.y);
+
+             // Umbral mínimo de movimiento para diferenciar un clic de un arrastre intencional
+             if (!drag.hasMovedPastThreshold) {
+                if (pointerDist > 0.015) {
+                   drag.hasMovedPastThreshold = true;
+                } else {
+                   return; // Si no se ha superado el umbral, es un clic simple: NO mover el mueble
+                }
+             }
+
+             // Desplazamiento relativo desde el punto de inicio de agarre
+             const deltaX = intersectPoint.x - drag.startFloorHit[0];
+             const deltaZ = intersectPoint.z - drag.startFloorHit[1];
+             const targetX = Math.round((drag.startCabPos[0] + deltaX) * 2) / 2;
+             const targetZ = Math.round((drag.startCabPos[2] + deltaZ) * 2) / 2;
+
              const result = resolvePlacement({
-                mouseX: rawX,
-                mouseZ: rawZ,
+                mouseX: targetX,
+                mouseZ: targetZ,
                 cabWidth: cab.width,
                 cabHeight: cab.height,
                 cabDepth: cab.depth,
                 cabType: cab.type,
                 variant: cab.variant,
                 customY: Array.isArray(cab.position) ? cab.position[1] : undefined,
-                preferredRot: cab.rotation || 0,
+                preferredRot: drag.startRot,
                 cabinets: currentCabinets,
                 ignoreId: cab.id,
                 walls: effectiveWalls,
@@ -156,6 +192,10 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
           }
        }
        return;
+    } else {
+       if (cabinetDragRef.current) {
+          cabinetDragRef.current = null;
+       }
     }
 
     const draggingArchElementId = useKitchenStore.getState().draggingArchElementId;

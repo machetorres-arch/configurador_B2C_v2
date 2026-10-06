@@ -349,12 +349,21 @@ function resolveCabinetsWithResize(
 
   const dist = (p1: [number, number], p2: [number, number]) => Math.hypot(p1[0] - p2[0], p1[1] - p2[1]);
 
+  // Helper to check if two cabinets share vertical space (overlap along Y axis > 10 cm)
+  const hasVerticalOverlap = (c1: CabinetType, c2: CabinetType) => {
+    const min1 = c1.position[1] - c1.height / 2;
+    const max1 = c1.position[1] + c1.height / 2;
+    const min2 = c2.position[1] - c2.height / 2;
+    const max2 = c2.position[1] + c2.height / 2;
+    return (Math.min(max1, max2) - Math.max(min1, min2)) > 10;
+  };
+
   // Find left neighbor of a cabinet
   const findLeftNeighbor = (cab: CabinetType, list: CabinetType[]) => {
     const { left } = getFlanks(cab);
     return list.find((other) => {
       if (other.id === cab.id) return false;
-      if (Math.abs(other.position[1] - cab.position[1]) > 30) return false;
+      if (!hasVerticalOverlap(cab, other)) return false;
       const otherFlanks = getFlanks(other);
       return dist(left, otherFlanks.right) < 4;
     });
@@ -365,7 +374,7 @@ function resolveCabinetsWithResize(
     const { right } = getFlanks(cab);
     return list.find((other) => {
       if (other.id === cab.id) return false;
-      if (Math.abs(other.position[1] - cab.position[1]) > 30) return false;
+      if (!hasVerticalOverlap(cab, other)) return false;
       const otherFlanks = getFlanks(other);
       return dist(right, otherFlanks.left) < 4;
     });
@@ -496,7 +505,7 @@ function resolveCabinetsWithResize(
     // Isolated cabinet: adjust if it collides with another cabinet on the same tier
     for (const other of nextCabinets) {
       if (other.id === targetId) continue;
-      if (Math.abs(other.position[1] - updatedTarget.position[1]) > 30) continue;
+      if (!hasVerticalOverlap(updatedTarget, other)) continue;
       const dx = other.position[0] - updatedTarget.position[0];
       const dz = other.position[2] - updatedTarget.position[2];
       const distance = Math.hypot(dx, dz);
