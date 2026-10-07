@@ -277,14 +277,17 @@ export function generatePartsList(data: ManufacturingData): Part[] {
 
     // 5. Cajones (Drawers)
     if (mod.drawers > 0) {
-      const isInnerDrawer = mod.doors && mod.innerDrawers;
-      const spacerGapMm = isInnerDrawer ? 30 : 0;
+      const isInnerDrawer = mod.doors && (mod.innerDrawers !== false);
+      const spacerGapMm = isInnerDrawer ? 35 : 0;
+      const innerWallThickMm = isInnerDrawer ? (thickness * 10) : 0;
+      const totalSideRedMm = spacerGapMm + innerWallThickMm;
+      const freeInnerWMm = innerW * 10 - (totalSideRedMm * 2);
       
       // 5.1 Frente de Cajón
-      // Si es interior, se hace más bajo para meter la mano (aprox 3cm de holgura). Si es exterior, holgura de 3mm.
-      const drawerFrontHeightMm = isInnerDrawer ? (270 - 30) : (270 - 3); 
-      // Ancho del frente: interior debe esquivar bisagras, exterior cubre el módulo.
-      const drawerFrontWidthMm = isInnerDrawer ? (innerW * 10 - (spacerGapMm * 2) - 4) : (mod.width * 10 - 3);
+      // Si es interior, se hace más bajo para meter la mano (uñero sin tirador: rebaje 50mm). Si es exterior, holgura de 3mm.
+      const drawerFrontHeightMm = isInnerDrawer ? (270 - 50) : (270 - 3); 
+      // Ancho del frente: interior corre libre entre laterales interiores con 4mm de holgura.
+      const drawerFrontWidthMm = isInnerDrawer ? (freeInnerWMm - 4) : (mod.width * 10 - 3);
 
       parts.push({
         name: `Frente Cajón ${modName}`,
@@ -296,14 +299,14 @@ export function generatePartsList(data: ManufacturingData): Part[] {
         thickness: thickness * 10,
         material: 'Melamina Frente Cajón',
         edgeL1: true, edgeL2: true, edgeW1: true, edgeW2: true,
-        notes: isInnerDrawer ? 'Tapacanto perimetral (Cajón Int.)' : 'Tapacanto perimetral',
+        notes: isInnerDrawer ? 'Tapacanto perimetral (Cajón Int. Uñero)' : 'Tapacanto perimetral',
         grainDirection: mod.overrides?.grainDirection || 'vertical'
       });
 
       // 5.2 Cajón Interior (Cálculo según herraje seleccionado)
       const hwSpec = HARDWARE_SPECS[data.drawerHardware || 'Provelcar'];
       // Largo Nominal de la corredera (NL)
-      const internalClearanceZ = isInnerDrawer ? (thickness * 10) + 10 : 0; 
+      const internalClearanceZ = isInnerDrawer ? (thickness * 10) + 15 : 0; 
       const innerDepthMm = (depth - (showBackWall ? 0.3 : 0)) * 10 - internalClearanceZ;
       const nominalLength = getNominalSlideLength(innerDepthMm);
       
@@ -341,8 +344,8 @@ export function generatePartsList(data: ManufacturingData): Part[] {
         });
       }
 
-      // Ancho exterior del cajón interior (SKW) = Ancho interno libre (LW) - Holgura del herraje (49mm según PDF)
-      const freeInnerW = innerW * 10 - ((spacerGapMm + thickness * 10) * 2);
+      // Ancho exterior del cajón interior (SKW) = Ancho interno libre (LW) - Holgura del herraje
+      const freeInnerW = isInnerDrawer ? freeInnerWMm : (innerW * 10);
       const drawerBoxOuterWidth = freeInnerW - hwSpec.slideClearanceTotal;
       
       // Frente y Trasera interior (va por dentro de los laterales del cajón, descontando el espesor de la melamina del cajón x2)

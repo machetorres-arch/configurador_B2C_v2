@@ -355,7 +355,12 @@ export function KitchenSpatialDimensions() {
       const jambLeft: [number, number] = [oX - hw * cos, oZ - hw * sin];
       const jambRight: [number, number] = [oX + hw * cos, oZ + hw * sin];
 
-      for (const jamb of [jambLeft, jambRight]) {
+      const jambs: Array<{ pt: [number, number]; side: string }> = [
+        { pt: jambLeft, side: 'left' },
+        { pt: jambRight, side: 'right' },
+      ];
+
+      for (const { pt: jamb, side } of jambs) {
         let closestCab: {
           cabPt: [number, number];
           dist: number;
@@ -384,7 +389,7 @@ export function KitchenSpatialDimensions() {
         if (closestCab) {
           const labelPrefix = op.type === 'door' ? 'Puerta' : 'Ventana';
           results.push({
-            id: `opening-dim-${op.id}-${jamb[0].toFixed(0)}`,
+            id: `opening-dim-${op.id}-${side}-${jamb[0].toFixed(0)}-${jamb[1].toFixed(0)}`,
             start: [closestCab.cabPt[0], closestCab.y, closestCab.cabPt[1]],
             end: [jamb[0], closestCab.y, jamb[1]],
             label: `${labelPrefix}: ${closestCab.dist.toFixed(1)} cm`,

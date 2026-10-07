@@ -126,6 +126,7 @@ export function KitchenModuleContextMenu({
     mechanisms: false,
     grain: false,
     shelves: false,
+    closetConfig: false,
     handles: false,
     coverPanels: false,
     finishes: false,
@@ -559,6 +560,22 @@ export function KitchenModuleContextMenu({
       elements.push({ id: 'drawer-1', label: 'Cacerolero Inferior', type: 'drawer' });
     } else if (isSpiceRack) {
       elements.push({ id: 'drawer-0', label: 'Especiero Extraíble', type: 'drawer' });
+    } else if (activeCabinet.type === 'closet' || activeCabinet.variant?.startsWith('closet_')) {
+      const isClosetDoors = Boolean(activeCabinet.hasDoors || activeCabinet.variant === 'closet_2_doors' || activeCabinet.variant === 'closet_inner_drawers');
+      if (isClosetDoors) {
+        if (activeCabinet.width > 50) {
+          elements.push({ id: 'door-0', label: 'Puerta Izquierda', type: 'door' });
+          elements.push({ id: 'door-1', label: 'Puerta Derecha', type: 'door' });
+        } else {
+          elements.push({ id: 'door-0', label: 'Puerta Clóset', type: 'door' });
+        }
+      }
+      const effDrawersCount = activeCabinet.drawersCount !== undefined 
+        ? activeCabinet.drawersCount 
+        : (activeCabinet.variant === 'closet_drawers' ? 4 : (activeCabinet.variant === 'closet_mixed' || activeCabinet.variant === 'closet_inner_drawers' ? 3 : (activeCabinet.variant === 'closet_2_doors' ? 2 : 0)));
+      for (let i = 0; i < effDrawersCount; i++) {
+        elements.push({ id: `drawer-${i}`, label: `Cajón ${i + 1}`, type: 'drawer' });
+      }
     }
     return elements;
   };
@@ -628,6 +645,14 @@ export function KitchenModuleContextMenu({
     if (activeCabinet.variant === 'wall_lift_up_double') return 'Aéreo Doble Puerta Elevable';
     if (activeCabinet.variant === 'wall_microwave_niche') return 'Aéreo Nicho Micro + Puerta';
     if (activeCabinet.variant === 'wall_open') return 'Aéreo Repisas a la Vista';
+    if (activeCabinet.variant === 'closet_hanger') return 'Clóset Barra + Maletero';
+    if (activeCabinet.variant === 'closet_mixed') return 'Clóset Mixto (Barra + Cajones)';
+    if (activeCabinet.variant === 'closet_shelves') return 'Clóset Lencero (Repisas)';
+    if (activeCabinet.variant === 'closet_drawers') return 'Clóset Cajonera';
+    if (activeCabinet.variant === 'closet_2_doors') return 'Clóset 2 Puertas Batientes';
+    if (activeCabinet.variant === 'closet_walkin') return 'Walk-in Closet Abierto';
+    if (activeCabinet.variant === 'closet_inner_drawers') return 'Clóset 2 Ptas + Cajones Ocultos';
+    if (activeCabinet.type === 'closet') return 'Clóset Modular';
     return activeCabinet.variant || activeCabinet.type;
   };
 
@@ -875,8 +900,8 @@ export function KitchenModuleContextMenu({
               </div>
               <input 
                 type="range"
-                min={activeCabinet.type === 'tall' ? 140 : (activeCabinet.type === 'base' ? 70 : 30)}
-                max={activeCabinet.type === 'tall' ? 240 : (activeCabinet.type === 'wall' ? 120 : 100)}
+                min={activeCabinet.type === 'closet' || activeCabinet.type === 'tall' ? 140 : (activeCabinet.type === 'base' ? 70 : 30)}
+                max={activeCabinet.type === 'closet' ? 260 : (activeCabinet.type === 'tall' ? 240 : (activeCabinet.type === 'wall' ? 120 : 100))}
                 step={5}
                 value={activeCabinet.height}
                 onChange={(e) => updateCabinet(activeCabinet.id, { height: Number(e.target.value) })}
@@ -892,8 +917,8 @@ export function KitchenModuleContextMenu({
               </div>
               <input 
                 type="range"
-                min={activeCabinet.type === 'island' ? 30 : 25}
-                max={activeCabinet.type === 'island' ? 120 : 80}
+                min={activeCabinet.type === 'closet' ? 40 : (activeCabinet.type === 'island' ? 30 : 25)}
+                max={activeCabinet.type === 'closet' ? 80 : (activeCabinet.type === 'island' ? 120 : 80)}
                 step={5}
                 value={activeCabinet.depth}
                 onChange={(e) => updateCabinet(activeCabinet.id, { depth: Number(e.target.value) })}
@@ -1059,8 +1084,8 @@ export function KitchenModuleContextMenu({
           </AccordionSection>
         )}
 
-        {/* ACORDEÓN 4: REPISAS INTERIORES (MÓDULOS CON PUERTA) */}
-        {isCabinetWithDoors(activeCabinet) && (
+        {/* ACORDEÓN 4: REPISAS INTERIORES (MÓDULOS CON PUERTA - EXCLUYE CLÓSETS) */}
+        {isCabinetWithDoors(activeCabinet) && activeCabinet.type !== 'closet' && !activeCabinet.variant?.startsWith('closet_') && (
           <AccordionSection
             id="shelves"
             title="Repisas Interiores"
@@ -1362,6 +1387,175 @@ export function KitchenModuleContextMenu({
             </div>
           );
         })()}
+          </AccordionSection>
+        )}
+
+        {/* ACORDEÓN ESPECIAL: CONFIGURACIÓN INTERIOR CLÓSET */}
+        {(activeCabinet.type === 'closet' || activeCabinet.variant?.startsWith('closet_')) && (
+          <AccordionSection
+            id="closetConfig"
+            title="Configuración de Clóset"
+            icon={Box}
+            badge={
+              <span className="font-mono text-orange-500 font-bold text-[10px]">
+                {activeCabinet.drawersCount ?? 0} caj.
+              </span>
+            }
+            isOpen={openSections.closetConfig}
+            onToggle={() => toggleSection('closetConfig')}
+            isLight={isLight}
+          >
+            <div className={`flex flex-col gap-3 p-3 rounded-xl border ${
+              isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-[#1c1c1f] border-white/5'
+            }`}>
+              {/* Repisas Regulables */}
+              <div className="flex items-center justify-between">
+                <div className="flex flex-col">
+                  <span className={`text-xs font-semibold ${isLight ? 'text-slate-800' : 'text-zinc-200'}`}>Repisas Interiores</span>
+                  <span className={`text-[10px] ${isLight ? 'text-slate-500' : 'text-zinc-400'}`}>Maletero + bandejas</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => updateCabinet(activeCabinet.id, { shelvesCount: Math.max(0, (activeCabinet.shelvesCount ?? 2) - 1) })}
+                    className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-sm cursor-pointer ${
+                      isLight ? 'bg-slate-200 hover:bg-slate-300 text-slate-800' : 'bg-white/10 hover:bg-white/20 text-white'
+                    }`}
+                  >
+                    -
+                  </button>
+                  <span className={`font-mono font-bold text-xs w-6 text-center ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                    {activeCabinet.shelvesCount ?? 2}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => updateCabinet(activeCabinet.id, { shelvesCount: Math.min(8, (activeCabinet.shelvesCount ?? 2) + 1) })}
+                    className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-sm cursor-pointer ${
+                      isLight ? 'bg-orange-500 hover:bg-orange-600 text-white' : 'bg-orange-500 hover:bg-orange-600 text-black'
+                    }`}
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+
+              {/* Cajones Telescópicos */}
+              <div className="flex items-center justify-between pt-2 border-t border-white/10">
+                <div className="flex flex-col">
+                  <span className={`text-xs font-semibold ${isLight ? 'text-slate-800' : 'text-zinc-200'}`}>Cajonera Inferior</span>
+                  <span className={`text-[10px] ${isLight ? 'text-slate-500' : 'text-zinc-400'}`}>Correderas telescópicas</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => updateCabinet(activeCabinet.id, { drawersCount: Math.max(0, (activeCabinet.drawersCount ?? 0) - 1) })}
+                    className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-sm cursor-pointer ${
+                      isLight ? 'bg-slate-200 hover:bg-slate-300 text-slate-800' : 'bg-white/10 hover:bg-white/20 text-white'
+                    }`}
+                  >
+                    -
+                  </button>
+                  <span className={`font-mono font-bold text-xs w-6 text-center ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                    {activeCabinet.drawersCount ?? 0}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => updateCabinet(activeCabinet.id, { drawersCount: Math.min(5, (activeCabinet.drawersCount ?? 0) + 1) })}
+                    className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-sm cursor-pointer ${
+                      isLight ? 'bg-orange-500 hover:bg-orange-600 text-white' : 'bg-orange-500 hover:bg-orange-600 text-black'
+                    }`}
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+
+              {/* Toggle Barra de Colgar */}
+              <div className="flex items-center justify-between pt-2 border-t border-white/10">
+                <span className={`text-xs font-semibold ${isLight ? 'text-slate-800' : 'text-zinc-200'}`}>Barra de Colgar Cromada</span>
+                <button
+                  type="button"
+                  onClick={() => updateCabinet(activeCabinet.id, { hasHanger: !Boolean(activeCabinet.hasHanger !== false) })}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    activeCabinet.hasHanger !== false
+                      ? 'bg-orange-500 text-black shadow-xs font-extrabold'
+                      : isLight
+                        ? 'bg-slate-200 text-slate-700'
+                        : 'bg-white/10 text-slate-400'
+                  }`}
+                >
+                  {activeCabinet.hasHanger !== false ? 'Activa' : 'Sin Barra'}
+                </button>
+              </div>
+
+              {/* Configuración de Zócalo Independiente del Clóset */}
+              <div className="pt-3 border-t border-white/10 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className={`text-xs font-semibold ${isLight ? 'text-slate-800' : 'text-zinc-200'}`}>
+                    Altura Zócalo Clóset
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => updateCabinet(activeCabinet.id, { closetSocleHeight: Math.max(5, (activeCabinet.closetSocleHeight ?? 7) - 1) })}
+                      className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-sm cursor-pointer ${
+                        isLight ? 'bg-slate-200 hover:bg-slate-300 text-slate-800' : 'bg-white/10 hover:bg-white/20 text-white'
+                      }`}
+                    >
+                      -
+                    </button>
+                    <span className={`font-mono font-bold text-xs w-10 text-center ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                      {activeCabinet.closetSocleHeight ?? 7} cm
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => updateCabinet(activeCabinet.id, { closetSocleHeight: Math.min(15, (activeCabinet.closetSocleHeight ?? 7) + 1) })}
+                      className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-sm cursor-pointer ${
+                        isLight ? 'bg-orange-500 hover:bg-orange-600 text-white' : 'bg-orange-500 hover:bg-orange-600 text-black'
+                      }`}
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+
+                {/* Acabado del Zócalo del Clóset */}
+                <div className="flex items-center justify-between">
+                  <span className={`text-xs font-semibold ${isLight ? 'text-slate-800' : 'text-zinc-200'}`}>
+                    Melamina del Zócalo
+                  </span>
+                  <div className="flex rounded-lg overflow-hidden border border-white/10 text-[11px] font-bold">
+                    <button
+                      type="button"
+                      onClick={() => updateCabinet(activeCabinet.id, { closetSocleColorMode: 'structure' })}
+                      className={`px-2 py-1 transition-all cursor-pointer ${
+                        (activeCabinet.closetSocleColorMode ?? 'structure') === 'structure'
+                          ? 'bg-orange-500 text-black'
+                          : isLight ? 'bg-slate-100 text-slate-600' : 'bg-white/5 text-slate-400'
+                      }`}
+                      title="Misma melamina de los laterales y casco"
+                    >
+                      Laterales
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => updateCabinet(activeCabinet.id, { closetSocleColorMode: 'doors' })}
+                      className={`px-2 py-1 transition-all cursor-pointer ${
+                        activeCabinet.closetSocleColorMode === 'doors'
+                          ? 'bg-orange-500 text-black'
+                          : isLight ? 'bg-slate-100 text-slate-600' : 'bg-white/5 text-slate-400'
+                      }`}
+                      title="Misma melamina de las puertas / frentes"
+                    >
+                      Puertas
+                    </button>
+                  </div>
+                </div>
+                <p className={`text-[10px] leading-tight ${isLight ? 'text-slate-500' : 'text-zinc-400'}`}>
+                  Laterales al piso y zócalo frontal de melamina (independiente de la cocina).
+                </p>
+              </div>
+            </div>
           </AccordionSection>
         )}
 
@@ -1791,7 +1985,7 @@ export function KitchenModuleContextMenu({
                   </div>
 
                   {/* Extensión al suelo para muebles de piso */}
-                  {(activeCabinet.type === 'base' || activeCabinet.type === 'tall' || activeCabinet.type === 'island') && (
+                  {(activeCabinet.type === 'base' || activeCabinet.type === 'tall' || activeCabinet.type === 'island' || activeCabinet.type === 'closet') && (
                     <label className="flex items-center justify-between gap-2 p-1.5 rounded bg-white/60 dark:bg-black/20 border border-slate-200 dark:border-white/5 cursor-pointer">
                       <span className={`text-[10px] font-medium ${isLight ? 'text-slate-700' : 'text-zinc-300'}`}>
                         Extender hasta el piso (Tapa zócalo)
@@ -1893,7 +2087,7 @@ export function KitchenModuleContextMenu({
                   </div>
 
                   {/* Extensión al suelo para muebles de piso */}
-                  {(activeCabinet.type === 'base' || activeCabinet.type === 'tall' || activeCabinet.type === 'island') && (
+                  {(activeCabinet.type === 'base' || activeCabinet.type === 'tall' || activeCabinet.type === 'island' || activeCabinet.type === 'closet') && (
                     <label className="flex items-center justify-between gap-2 p-1.5 rounded bg-white/60 dark:bg-black/20 border border-slate-200 dark:border-white/5 cursor-pointer">
                       <span className={`text-[10px] font-medium ${isLight ? 'text-slate-700' : 'text-zinc-300'}`}>
                         Extender hasta el piso (Tapa zócalo)

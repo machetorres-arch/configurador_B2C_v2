@@ -642,31 +642,33 @@ export function Closet() {
 
     // Drawers
     if (mod.drawers > 0) {
-      const isInnerDrawer = mod.doors && mod.innerDrawers;
+      const isInnerDrawer = mod.doors && (mod.innerDrawers !== false);
       const drawerStep = 27; // espacio total asignado por cajón
-      // Si son cajones interiores, dejamos una holgura mayor (3cm) entre ellos para meter la mano y abrir.
-      const frontHeight = isInnerDrawer ? drawerStep - 3 : drawerStep - 0.3; 
       
-      const spacerGap = isInnerDrawer ? 3 : 0;
+      const spacerGap = isInnerDrawer ? 3.5 : 0; // Regleta de separación de bisagras (35 mm)
       const innerWallThickness = isInnerDrawer ? thickness : 0;
       const totalSideReduction = spacerGap + innerWallThickness;
+      const freeInnerW = innerW - (totalSideReduction * 2);
+
+      // Si son cajones interiores, el frente es más bajo (rebaje de 5 cm) para meter la mano y abrir sin tirador.
+      const frontHeight = isInnerDrawer ? (drawerStep - 5.0) : (drawerStep - 0.3); 
 
       // Ancho del frente:
       // - Si es sobrepuesto (normal): Ancho total menos 3mm
-      // - Si es interno: Ancho interno libre (entre regletas) menos holgura 4mm
-      const frontWidth = isInnerDrawer ? innerW - (spacerGap * 2) - 0.4 : mod.width - 0.3; 
+      // - Si es interno: Ancho interno libre (entre regletas y laterales interiores) menos holgura 4mm
+      const frontWidth = isInnerDrawer ? (freeInnerW - 0.4) : (mod.width - 0.3); 
       
       // Cálculo de proporciones del cajón interno
       const slideClearance = 2.6; // 26mm según ficha técnica corredera telescópica lateral (13mm por lado)
-      const boxOuterWidth = innerW - slideClearance - (totalSideReduction * 2);
+      const boxOuterWidth = isInnerDrawer ? (freeInnerW - slideClearance) : (innerW - slideClearance);
       
-      // Profundidad ajustada: si es cajón interno, necesitamos que vaya más atrás para no chocar con la puerta
-      const internalClearanceZ = isInnerDrawer ? thickness + 1 : 0;
+      // Profundidad ajustada: si es cajón interno, va retrasado para no chocar con la puerta cerrada
+      const internalClearanceZ = isInnerDrawer ? (thickness + 1.5) : 0;
       const innerDepthMm = (depth - (showBackWall ? 0.3 : 0) - internalClearanceZ) * 10;
       const nominalLengthMm = getNominalSlideLength(innerDepthMm);
       const nominalLength = nominalLengthMm / 10; // cm
       const drawerBoxLength = nominalLength; // SKL = NL para corredera telescópica
-      const sideHeight = 15;
+      const sideHeight = isInnerDrawer ? 14 : 15;
       
       // Posiciones en el eje Z
       const innerBlockFrontZ = depth / 2 - internalClearanceZ;
@@ -693,11 +695,14 @@ export function Closet() {
       const drawerAssemblyType = state.drawerAssemblyType || 'spax';
 
       for (let d = 0; d < mod.drawers; d++) {
-        // yPosFront es el centro del frente del cajón, partiendo de la base del módulo
-        const yPosFront = baseOffset + (showBottomWall && isInnerDrawer ? thickness : 0) + drawerStep * d + drawerStep / 2;
+        // En cajón interior, anclamos el frente a la base del cajón para que la holgura (uñero) quede en la parte superior
+        const drawerBaseY = baseOffset + (showBottomWall && isInnerDrawer ? thickness : 0) + drawerStep * d;
+        const yPosFront = isInnerDrawer 
+          ? (drawerBaseY + 0.3 + frontHeight / 2) 
+          : (drawerBaseY + drawerStep / 2);
         
         // yBoxBase es la base de la caja interior, un poco más arriba de la base del frente
-        const yBoxBase = baseOffset + (showBottomWall && isInnerDrawer ? thickness : 0) + drawerStep * d + thickness + 1;
+        const yBoxBase = drawerBaseY + (isInnerDrawer ? 0.8 : (thickness + 1));
         const yBoxCenter = yBoxBase + sideHeight / 2;
 
         // Drawers
@@ -707,7 +712,7 @@ export function Closet() {
         drawerElements.push(
           <Board 
             key={`drawer-front-${mod.id}-${d}`} 
-            position={[modCenterX, yPosFront, frontZPos]} 
+            position={[innerCenterX, yPosFront, frontZPos]} 
             args={[frontWidth, frontHeight, thickness]}
              isFrontPanel={true}
              {...modDrawerFrontProps} grainDirection={mod.overrides?.grainElements?.['drawer-'+d] || modGrainDirection} hplBalancerOverride={modHplBalancer} 
@@ -836,7 +841,7 @@ export function Closet() {
 
     // Doors
     if (mod.doors) {
-      const isInnerDrawer = mod.innerDrawers;
+      const isInnerDrawer = mod.innerDrawers !== false;
       const totalDrawersHeight = (mod.drawers > 0 && !isInnerDrawer) ? mod.drawers * 27 : 0;
       // Las puertas deben cubrir la base del mueble si parten desde abajo (para alinear con cajones exteriores)
       const doorSpaceHeight = height - totalDrawersHeight;

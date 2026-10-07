@@ -8,7 +8,7 @@ import { getWallInwardNormal } from '../../utils/kitchenCollision';
 import { ArchitecturalDoor } from './ArchitecturalDoor';
 import { ArchitecturalWindow } from './ArchitecturalWindow';
 
-export function Wall({ id, start, end, thickness, height }: WallType & { id?: string }) {
+export function Wall({ id, start, end, thickness, height, isInterior }: WallType & { id?: string }) {
    const length = Math.hypot(end[0] - start[0], end[1] - start[1]);
    const cx = (start[0] + end[0]) / 2;
    const cz = (start[1] + end[1]) / 2;
@@ -21,10 +21,18 @@ export function Wall({ id, start, end, thickness, height }: WallType & { id?: st
    const activeArchElementId = useKitchenStore((s) => s.activeArchElementId);
    const setActiveArchElement = useKitchenStore((s) => s.setActiveArchElement);
    const setDraggingArchElementId = useKitchenStore((s) => s.setDraggingArchElementId);
+   const activeWallId = useKitchenStore((s) => s.activeWallId);
+   const setActiveWall = useKitchenStore((s) => s.setActiveWall);
    const toolMode = useKitchenStore((s) => s.toolMode);
+
+   // Solo los muros creados por el usuario (interiores) son interactivos y seleccionables.
+   // Los muros perimetrales exteriores quedan protegidos.
+   const isInteriorWall = Boolean(isInterior || (id && !id.startsWith('wall_v_') && !/^wall_\d+_/.test(id)));
+   const isWallSelected = isInteriorWall && !!id && activeWallId === id;
 
    const groupRef = useRef<THREE.Group>(null);
    const wallBodyRef = useRef<THREE.Group>(null);
+   const pointerDownPosRef = useRef<{ x: number; y: number } | null>(null);
 
    const wallElements = useMemo(() => {
       return architecturalElements.filter(el => {
@@ -137,6 +145,15 @@ export function Wall({ id, start, end, thickness, height }: WallType & { id?: st
       
       if (viewMode === '2d') {
          wallBodyRef.current.visible = true;
+         if (isInteriorWall) {
+            wallBodyRef.current.traverse((child: any) => {
+               if (child.isMesh && child.material && !child.material.wireframe) {
+                  child.material.transparent = false;
+                  child.material.opacity = 1.0;
+                  child.material.depthWrite = true;
+               }
+            });
+         }
          return;
       }
 
@@ -146,21 +163,85 @@ export function Wall({ id, start, end, thickness, height }: WallType & { id?: st
       const vCamZ = camZ - cz;
 
       const dot = vCamX * inwardNormal[0] + vCamZ * inwardNormal[1];
-      wallBodyRef.current.visible = dot > -5;
+
+      if (!isInteriorWall) {
+         // Muros exteriores perimetrales: corte tradicional (se ocultan si la cámara está afuera)
+         wallBodyRef.current.visible = dot > -5;
+      } else {
+         // Muros interiores: NUNCA se apagan para no perder el contexto ni dejar muebles flotando
+         wallBodyRef.current.visible = true;
+
+         // Cuando el muro queda frente a la cámara interponiéndose en la visual,
+         // pasa a modo transparente (opacity: 0.25) para que los muebles apoyados se entiendan claramente
+         const isOccluding = dot <= -2;
+         wallBodyRef.current.traverse((child: any) => {
+            if (child.isMesh && child.material && !child.material.wireframe) {
+               if (isOccluding) {
+                  child.material.transparent = true;
+                  child.material.opacity = 0.25;
+                  child.material.depthWrite = false;
+                  child.castShadow = false;
+               } else {
+                  child.material.transparent = false;
+                  child.material.opacity = 1.0;
+                  child.material.depthWrite = true;
+                  child.castShadow = true;
+               }
+            }
+         });
+      }
    });
 
    return (
      <group ref={groupRef} name="wallGroup" position={[cx, height/2, cz]} rotation={[0, rotY, 0]}>
-       <group ref={wallBodyRef} name="wallBodyGroup">
+       <group 
+         ref={wallBodyRef} 
+         name="wallBodyGroup"
+         onPointerDown={(e) => {
+           if (e.button === 0) {
+             pointerDownPosRef.current = { x: e.clientX, y: e.clientY };
+           }
+         }}
+         onPointerUp={(e) => {
+           if (e.button !== 0 || !pointerDownPosRef.current) return;
+           const dx = e.clientX - pointerDownPosRef.current.x;
+           const dy = e.clientY - pointerDownPosRef.current.y;
+           const dist = Math.hypot(dx, dy);
+           pointerDownPosRef.current = null;
+
+           // Si el puntero se movió más de 5 píxeles, fue un arrastre de rotación / órbita 3D: IGNORAR
+           if (dist > 5) return;
+
+           // Solo los muros interiores creados pueden seleccionarse
+           if (isInteriorWall && toolMode === 'select' && id) {
+             e.stopPropagation();
+             setActiveWall(id);
+           }
+         }}
+       >
          {wallOpenings.length === 0 ? (
            <mesh name="wall" castShadow receiveShadow>
              <boxGeometry args={[thickness, height, length]} />
-             <meshStandardMaterial color={viewMode === '2d' ? '#334155' : wallColor} roughness={0.85} metalness={0.05} />
-             <Edges scale={1} threshold={15} color={viewMode === '2d' ? '#0f172a' : '#94a3b8'} />
+             <meshStandardMaterial 
+               color={isWallSelected ? (viewMode === '2d' ? '#ea580c' : '#fb923c') : (viewMode === '2d' ? '#334155' : wallColor)} 
+               roughness={0.85} 
+               metalness={0.05} 
+             />
+             <Edges scale={1} threshold={15} color={isWallSelected ? '#f97316' : (viewMode === '2d' ? '#0f172a' : '#94a3b8')} />
            </mesh>
          ) : (
            <group name="segmentedWall">
              {wallSegments}
+           </group>
+         )}
+
+         {/* Visual outline and bounding highlight when wall is selected */}
+         {isWallSelected && (
+           <group position={[0, 0, 0]}>
+             <mesh position={[0, 0, 0]}>
+               <boxGeometry args={[thickness + 1.2, height + 1.2, length + 1.2]} />
+               <meshBasicMaterial color="#f97316" wireframe transparent opacity={0.6} />
+             </mesh>
            </group>
          )}
        </group>
@@ -256,12 +337,12 @@ export function Wall({ id, start, end, thickness, height }: WallType & { id?: st
          );
        })}
 
-       {showDimensions && (
+       {(showDimensions || isWallSelected) && (
          <group position={[0, height / 2 + 10, 0]} renderOrder={999}>
-           <Line points={[[0, 0, -length / 2], [0, 0, length / 2]]} color="#f97316" lineWidth={2} depthTest={false} renderOrder={999} />
-           <Line points={[[-3, 0, -length / 2], [3, 0, -length / 2]]} color="#f97316" lineWidth={2} depthTest={false} renderOrder={999} />
-           <Line points={[[-3, 0, length / 2], [3, 0, length / 2]]} color="#f97316" lineWidth={2} depthTest={false} renderOrder={999} />
-           <Text position={[0, 4, 0]} rotation={[0, Math.PI / 2, 0]} fontSize={7} color="#f97316" anchorX="center" anchorY="bottom" material-depthTest={false} material-toneMapped={false} renderOrder={1000}>{Math.round(length)} cm</Text>
+           <Line points={[[0, 0, -length / 2], [0, 0, length / 2]]} color="#f97316" lineWidth={isWallSelected ? 3 : 2} depthTest={false} renderOrder={999} />
+           <Line points={[[-3, 0, -length / 2], [3, 0, -length / 2]]} color="#f97316" lineWidth={isWallSelected ? 3 : 2} depthTest={false} renderOrder={999} />
+           <Line points={[[-3, 0, length / 2], [3, 0, length / 2]]} color="#f97316" lineWidth={isWallSelected ? 3 : 2} depthTest={false} renderOrder={999} />
+           <Text position={[0, 4, 0]} rotation={[0, Math.PI / 2, 0]} fontSize={isWallSelected ? 9 : 7} color="#f97316" anchorX="center" anchorY="bottom" material-depthTest={false} material-toneMapped={false} renderOrder={1000}>{isWallSelected ? `${Math.round(length)} cm · Esp: ${thickness} cm` : `${Math.round(length)} cm`}</Text>
          </group>
        )}
      </group>

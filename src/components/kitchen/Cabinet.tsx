@@ -917,11 +917,120 @@ export function PortableMicrowave({ width, height, depth }: { width: number; hei
   );
 }
 
+function ClosetFoldedClothes({ position, width, depth }: { position: [number, number, number], width: number, depth: number }) {
+  const colors = ['#fde047', '#fca5a5', '#ea580c', '#3b82f6', '#93c5fd', '#f8fafc', '#e2e8f0', '#1e3a8a', '#d1d5db', '#fcd34d'];
+  const seed = Math.abs(Math.floor(position[0] * 10 + position[1] * 100));
+  const itemW = Math.min(22, width - 2); 
+  const itemD = Math.min(30, depth - 2); 
+  const h = 2.5; 
+  const numStacks = Math.max(1, Math.floor((width - 2) / (itemW + 2)));
+  const startX = -((numStacks - 1) * (itemW + 2)) / 2;
+  const stacks = [];
+  for (let s = 0; s < numStacks; s++) {
+    const stackSeed = seed + s * 10;
+    const currentStackCount = 3 + (stackSeed % 4);
+    const stackX = startX + s * (itemW + 2);
+    for (let i = 0; i < currentStackCount; i++) {
+      const rotationY = (Math.sin(stackSeed + i) * 0.1); 
+      const offsetX = (Math.cos(stackSeed + i) * 0.5); 
+      stacks.push(
+        <mesh key={`stack-${s}-item-${i}`} position={[stackX + offsetX, i * h + h/2, 0]} rotation={[0, rotationY, 0]} castShadow>
+          <boxGeometry args={[itemW - (i*0.2), h, itemD - (i*0.2)]} />
+          <meshStandardMaterial color={colors[(stackSeed + i) % colors.length]} roughness={1.0} />
+        </mesh>
+      );
+    }
+  }
+  return <group position={position}>{stacks}</group>;
+}
+
+function ClosetStorageBox({ position, width, depth }: { position: [number, number, number], width: number, depth: number }) {
+  const boxW = Math.min(width * 0.8, 32);
+  const boxD = Math.min(depth * 0.8, 38);
+  const boxH = 20; 
+  const yCenter = boxH / 2;
+  const numBoxes = Math.max(1, Math.floor((width - 2) / (boxW + 4)));
+  const startX = -((numBoxes - 1) * (boxW + 4)) / 2;
+  const boxes = [];
+  for (let i = 0; i < numBoxes; i++) {
+    boxes.push(
+      <group key={`sbox-${i}`} position={[startX + i * (boxW + 4), 0, 0]}>
+        <mesh position={[0, yCenter, 0]} castShadow>
+          <boxGeometry args={[boxW, boxH, boxD]} />
+          <meshStandardMaterial color="#e5d3b3" roughness={0.9} /> 
+        </mesh>
+        <mesh position={[0, boxH + 0.5, 0]} castShadow>
+          <boxGeometry args={[boxW + 1.5, 2, boxD + 1.5]} />
+          <meshStandardMaterial color="#f0e2c8" roughness={0.8} />
+        </mesh>
+        <mesh position={[0, yCenter, boxD/2 + 0.1]}>
+           <boxGeometry args={[5, 2, 0.2]} />
+           <meshStandardMaterial color="#a39171" />
+        </mesh>
+      </group>
+    );
+  }
+  return <group position={position}>{boxes}</group>;
+}
+
+function ClosetShoePair({ position }: { position: [number, number, number] }) {
+  return (
+    <group position={position}>
+      <mesh position={[-5, 3, 0]} rotation={[Math.PI/2, 0, 0]} castShadow>
+         <capsuleGeometry args={[3, 12, 4, 16]} />
+         <meshStandardMaterial color="#ffffff" roughness={0.5} />
+      </mesh>
+      <mesh position={[5, 3, 0]} rotation={[Math.PI/2, 0, 0]} castShadow>
+         <capsuleGeometry args={[3, 12, 4, 16]} />
+         <meshStandardMaterial color="#ffffff" roughness={0.5} />
+      </mesh>
+    </group>
+  );
+}
+
+function ClosetHangingClothes({ position, color, maxW, availableH, maxD, index = 0, isLong = false }: { position: [number, number, number], color: string, maxW: number, availableH: number, maxD: number, index?: number, isLong?: boolean }) {
+  // En armarios/clósets, las perchas van perpendiculares a la barra (hombros alineados con el fondo Z, espesor fino en X)
+  const hangerDepth = Math.max(26, Math.min(38, maxD - 12));
+  const targetH = isLong ? 100 : 62;
+  const shirtH = Math.max(25, Math.min(targetH, availableH - 6)); 
+  const rotY = Math.sin(index * 23.4) * 0.03; 
+  const isOpen = index % 3 === 0; 
+  return (
+    <group position={position} rotation={[0, rotY, 0]}>
+       {/* Gancho metálico abrazando la barra ovalada que pasa a lo largo del eje X */}
+       <mesh position={[0, 0, 0]} rotation={[0, Math.PI / 2, 0]}>
+          <torusGeometry args={[1.2, 0.12, 8, 24, Math.PI * 1.4]} />
+          <meshStandardMaterial color="#d4d4d8" metalness={0.85} roughness={0.18} />
+       </mesh>
+       <mesh position={[0, -1.8, 0]}>
+          <cylinderGeometry args={[0.12, 0.12, 1.8, 8]} />
+          <meshStandardMaterial color="#d4d4d8" metalness={0.85} roughness={0.18} />
+       </mesh>
+       {/* Percha de madera orientada a lo largo del fondo Z (profundidad del clóset) */}
+       <mesh position={[0, -2.8, 0]} rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.35, 0.35, hangerDepth * 0.90, 8]} />
+          <meshStandardMaterial color="#d4a373" roughness={0.9} />
+       </mesh>
+       {/* Cuerpo de la prenda con caída natural: fina en X (6.5cm espesor) y con hombreras en Z */}
+       <mesh position={[0, -2.8 - shirtH / 2, 0]} scale={[0.18, 1, 1]} castShadow>
+          <cylinderGeometry args={[hangerDepth / 2.3, hangerDepth / 2.0, shirtH, 16]} />
+          <meshStandardMaterial color={color} roughness={0.95} />
+       </mesh>
+       {isOpen && (
+          <mesh position={[0, -2.8 - shirtH / 2, hangerDepth / 2 - 0.5]}>
+            <boxGeometry args={[0.8, shirtH * 0.85, 0.35]} />
+            <meshStandardMaterial color="#111111" opacity={0.3} transparent />
+          </mesh>
+       )}
+    </group>
+  );
+}
+
 interface CabinetProps extends CabinetType {
   index?: number;
 }
 
-export function Cabinet({ id, type, variant, width, height, depth, position, rotation, color, structureColor, doorColor, drawerFrontColor, drawerInnerColor, shelfColor, backColor, socleColor, structureMaterial, doorMaterial, drawerFrontMaterial, drawerInnerMaterial, shelfMaterial, backMaterial, socleMaterial, grainDirection, grainElements, hplBalancer, isOpen, openElements, index, shelvesCount, shelvesCountLower, shelvesCountUpper, handleConfig: propHandleConfig, leftCoverPanel, rightCoverPanel, backThickness, drawerBottomMaterial, drawerBottomThickness }: CabinetProps) {
+export function Cabinet({ id, type, variant, width, height, depth, position, rotation, color, structureColor, doorColor, drawerFrontColor, drawerInnerColor, shelfColor, backColor, socleColor, structureMaterial, doorMaterial, drawerFrontMaterial, drawerInnerMaterial, shelfMaterial, backMaterial, socleMaterial, grainDirection, grainElements, hplBalancer, isOpen, openElements, index, shelvesCount, shelvesCountLower, shelvesCountUpper, drawersCount, hasHanger, hasDoors, innerDrawers, handleConfig: propHandleConfig, leftCoverPanel, rightCoverPanel, backThickness, drawerBottomMaterial, drawerBottomThickness, closetSocleHeight, closetSocleColorMode }: CabinetProps) {
    const { activeCabinetId, setActiveCabinet, setDraggingCabinetId, setToolMode, showSocle, socleHeight, cabinets, viewMode, golaSystem, countertopConfig, qstoneCatalog, setOpenElement, handleConfig: storeHandleConfig } = useKitchenStore();
    const handleConfig = propHandleConfig || storeHandleConfig;
 
@@ -1077,8 +1186,10 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
    const golaSpan = width;
    const golaCenterX = 0;
 
+   const isCloset = type === 'closet';
    const isBaseOrTall = type === 'base' || type === 'tall' || type === 'island';
-   const legsHeight = isBaseOrTall ? (socleHeight ?? 10) : 0;
+   const effSocleH = isCloset ? (closetSocleHeight ?? 7) : (socleHeight ?? 10);
+   const legsHeight = (isBaseOrTall || isCloset) ? effSocleH : 0;
    const cabH = height - legsHeight;
    const innerW = width - (thickness * 2);
    const gap = 0.3; // 3mm de cantería
@@ -1115,7 +1226,7 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
             <>
                {leftCoverPanel?.enabled && (() => {
                   const coverThick = leftCoverPanel.thickness || thickness;
-                  const coverExtend = leftCoverPanel.extendToFloor && isBaseOrTall;
+                  const coverExtend = leftCoverPanel.extendToFloor && (isBaseOrTall || isCloset);
                   const coverH = coverExtend ? height : cabH;
                   const coverY = coverExtend ? height / 2 : legsHeight + cabH / 2;
                   const coverColor = leftCoverPanel.color || cDoors;
@@ -1136,7 +1247,7 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                })()}
                {rightCoverPanel?.enabled && (() => {
                   const coverThick = rightCoverPanel.thickness || thickness;
-                  const coverExtend = rightCoverPanel.extendToFloor && isBaseOrTall;
+                  const coverExtend = rightCoverPanel.extendToFloor && (isBaseOrTall || isCloset);
                   const coverH = coverExtend ? height : cabH;
                   const coverY = coverExtend ? height / 2 : legsHeight + cabH / 2;
                   const coverColor = rightCoverPanel.color || cDoors;
@@ -2731,6 +2842,317 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                </>
             );
          }
+
+         if (type === 'closet' || effectiveVariant?.startsWith('closet_')) {
+            const isClosetDoors = Boolean(hasDoors || effectiveVariant === 'closet_2_doors' || effectiveVariant === 'closet_inner_drawers');
+            const effDrawersCount = drawersCount !== undefined 
+               ? drawersCount 
+               : (effectiveVariant === 'closet_drawers' ? 4 : (effectiveVariant === 'closet_mixed' || effectiveVariant === 'closet_inner_drawers' ? 3 : (effectiveVariant === 'closet_2_doors' ? 2 : 0)));
+            const isInnerDrw = Boolean(innerDrawers || effectiveVariant === 'closet_inner_drawers' || (isClosetDoors && effDrawersCount > 0));
+            const effShelvesCount = shelvesCount !== undefined 
+               ? shelvesCount 
+               : (effectiveVariant === 'closet_shelves' ? 5 : (effectiveVariant === 'closet_walkin' ? 3 : (effectiveVariant === 'closet_mixed' ? 2 : 1)));
+            const hasHangerActive = hasHanger !== undefined ? hasHanger : (effectiveVariant !== 'closet_shelves');
+
+            const hasMaletero = effShelvesCount >= 1;
+            const maleteroY = legsHeight + cabH - 35;
+            const drawerH = 22;
+            const drawersTotalH = effDrawersCount > 0 ? effDrawersCount * drawerH : 0;
+            const drawerTopY = legsHeight + drawersTotalH;
+
+            // Barra de colgar
+            const rodY = hasMaletero ? maleteroY - 6 : (legsHeight + cabH - 15);
+            const rodZ = 0;
+
+            const innerDepthMm = (depth - 1.5) * 10;
+            const nominalLength = getNominalSlideLength(innerDepthMm) / 10;
+            const drawerBoxLength = nominalLength;
+
+            // Pilastras y laterales interiores para cajones ocultos tras puertas
+            const spacerGap = isInnerDrw ? 3.5 : 0; // Regleta de separación de bisagras (35 mm)
+            const innerWallThickness = isInnerDrw ? thickness : 0;
+            const totalSideReduction = spacerGap + innerWallThickness;
+            const freeInnerW = isInnerDrw ? (innerW - totalSideReduction * 2) : innerW;
+            const skw = freeInnerW - 2.6; // ancho exterior de la caja del cajón
+            const frontWidth = isInnerDrw ? (freeInnerW - 0.4) : (width - gap * 2);
+            const frontHeight = isInnerDrw ? (drawerH - 5.0) : (drawerH - gap * 2);
+
+            const internalClearanceZ = isInnerDrw ? (thickness + 1.5) : 0;
+            const drawerBoxZCenter = isInnerDrw ? (depth / 2 - internalClearanceZ - thickness - drawerBoxLength / 2) : (depth / 2 - drawerBoxLength / 2);
+
+            const isAnyDoorOpen = isElementOpen('door-0') || isElementOpen('door-1') || isElementOpen('door-left') || isElementOpen('door-right');
+
+            // Puertas batientes
+            const doorW = width > 50 ? (width - gap * 3) / 2 : (width - gap * 2);
+            const doorH = cabH - gap * 2;
+            const doorY = legsHeight + gap + doorH / 2;
+
+            return (
+               <>
+                  {/* Puertas si están activadas */}
+                  {isClosetDoors && (
+                     width > 50 ? (
+                        <>
+                           <AnimatedDoor
+                              position={[-width / 4 + gap / 2, doorY, frontZ]}
+                              doorW={doorW}
+                              doorH={doorH}
+                              thickness={thickness}
+                              isRightHinge={false}
+                              isUpper={false}
+                              colorProps={parseColor(cDoors, doorMaterial, 'door-left')}
+                              forceOpen={isElementOpen('door-left') || isElementOpen('door-0')}
+                              globalPosition={[safePos[0] - width / 4, safePos[1] + doorY, safePos[2] + frontZ]}
+                              handleConfig={handleConfig}
+                              onClickAction={() => setOpenElement(id, 'door-0', !isElementOpen('door-0'))}
+                           />
+                           <AnimatedDoor
+                              position={[width / 4 - gap / 2, doorY, frontZ]}
+                              doorW={doorW}
+                              doorH={doorH}
+                              thickness={thickness}
+                              isRightHinge={true}
+                              isUpper={false}
+                              colorProps={parseColor(cDoors, doorMaterial, 'door-right')}
+                              forceOpen={isElementOpen('door-right') || isElementOpen('door-1')}
+                              globalPosition={[safePos[0] + width / 4, safePos[1] + doorY, safePos[2] + frontZ]}
+                              handleConfig={handleConfig}
+                              onClickAction={() => setOpenElement(id, 'door-1', !isElementOpen('door-1'))}
+                           />
+                        </>
+                     ) : (
+                        <AnimatedDoor
+                           position={[0, doorY, frontZ]}
+                           doorW={doorW}
+                           doorH={doorH}
+                           thickness={thickness}
+                           isRightHinge={false}
+                           isUpper={false}
+                           colorProps={parseColor(cDoors, doorMaterial, 'door-0')}
+                           forceOpen={isElementOpen('door-0')}
+                           globalPosition={[safePos[0], safePos[1] + doorY, safePos[2] + frontZ]}
+                           handleConfig={handleConfig}
+                           onClickAction={() => setOpenElement(id, 'door-0', !isElementOpen('door-0'))}
+                        />
+                     )
+                  )}
+
+                  {/* Maletero Superior */}
+                  {hasMaletero && (
+                     <group key="closet-maletero">
+                        {renderShelfWithJoints(maleteroY, 'maletero')}
+                        {useStore.getState().showDecorations && (
+                           <ClosetStorageBox position={[0, maleteroY + thickness / 2, 0]} width={innerW} depth={depth - 4} />
+                        )}
+                     </group>
+                  )}
+
+                  {/* Barra Ovalada Cromada y Perchas con Ropa */}
+                  {hasHangerActive && (
+                     <group key="closet-rod">
+                        {/* Bridas / Soportes laterales de aluminio cromado */}
+                        <mesh position={[-innerW / 2 + 0.35, rodY, rodZ]} rotation={[0, 0, Math.PI / 2]}>
+                           <cylinderGeometry args={[1.6, 1.6, 0.7, 16]} />
+                           <meshStandardMaterial color="#cbd5e1" metalness={0.9} roughness={0.15} />
+                        </mesh>
+                        <mesh position={[innerW / 2 - 0.35, rodY, rodZ]} rotation={[0, 0, Math.PI / 2]}>
+                           <cylinderGeometry args={[1.6, 1.6, 0.7, 16]} />
+                           <meshStandardMaterial color="#cbd5e1" metalness={0.9} roughness={0.15} />
+                        </mesh>
+                        {/* Tubo ovalado cromado continuo */}
+                        <mesh position={[0, rodY, rodZ]} rotation={[0, 0, Math.PI / 2]} castShadow>
+                           <cylinderGeometry args={[0.8, 0.8, innerW - 1.4, 16]} />
+                           <meshStandardMaterial color="#f1f5f9" metalness={0.95} roughness={0.12} />
+                        </mesh>
+                        {/* Ropa colgada en perchas cuando las decoraciones están activas */}
+                        {useStore.getState().showDecorations && (() => {
+                           const hangerColors = ['#fde047', '#fca5a5', '#ea580c', '#3b82f6', '#93c5fd', '#f8fafc', '#e2e8f0', '#1e3a8a', '#d1d5db', '#fcd34d'];
+                           const marginLateral = 6.0; // Margen de seguridad estricto contra el lateral interior
+                           const safeSpan = Math.max(0, innerW - marginLateral * 2);
+
+                           // Altura disponible estricta
+                           let bottomLimitY = effDrawersCount > 0 ? drawerTopY : legsHeight;
+                           const extraShelves = effShelvesCount > (hasMaletero ? 1 : 0) ? effShelvesCount - (hasMaletero ? 1 : 0) : 0;
+                           if (extraShelves > 0) {
+                              const yStart = effDrawersCount > 0 ? drawerTopY : legsHeight;
+                              const yEnd = hasMaletero ? maleteroY : (legsHeight + cabH);
+                              const step = (yEnd - yStart) / (extraShelves + 1);
+                              const topInterShelfY = yStart + extraShelves * step;
+                              bottomLimitY = Math.max(bottomLimitY, topInterShelfY);
+                           }
+                           const availableH = Math.max(30, rodY - bottomLimitY - 5);
+
+                           if (safeSpan <= 1) {
+                              return (
+                                 <ClosetHangingClothes
+                                    key="closet-hang-0"
+                                    position={[0, rodY - 1.5, rodZ]}
+                                    color={hangerColors[0]}
+                                    maxW={innerW}
+                                    availableH={availableH}
+                                    maxD={depth}
+                                    index={0}
+                                 />
+                              );
+                           }
+
+                           const idealSpacing = 7;
+                           const count = Math.max(2, Math.min(9, Math.floor(safeSpan / idealSpacing) + 1));
+                           const step = safeSpan / (count - 1);
+                           const startX = -safeSpan / 2;
+
+                           return Array.from({ length: count }).map((_, cIdx) => (
+                              <ClosetHangingClothes
+                                 key={`closet-hang-${cIdx}`}
+                                 position={[startX + cIdx * step, rodY - 1.5, rodZ]}
+                                 color={hangerColors[cIdx % hangerColors.length]}
+                                 maxW={innerW}
+                                 availableH={availableH}
+                                 maxD={depth}
+                                 index={cIdx}
+                              />
+                           ));
+                        })()}
+                     </group>
+                  )}
+
+                  {/* Cajonera (Drawers) */}
+                  {effDrawersCount > 0 && (
+                     <group key="closet-drawers">
+                        {/* Tapa estructural divisoria sobre la cajonera */}
+                        {renderShelfWithJoints(drawerTopY, 'drawer-top-cover')}
+
+                        {/* Estructura fija de cajonera interior (Laterales interiores y regletas de separación de bisagra) */}
+                        {isInnerDrw && (
+                           <group key="closet-inner-structure">
+                              {/* Lateral Interior Izquierdo */}
+                              <Board 
+                                 position={[-innerW / 2 + spacerGap + thickness / 2, legsHeight + drawersTotalH / 2, drawerBoxZCenter]} 
+                                 args={[thickness, drawersTotalH, drawerBoxLength]} 
+                                 {...parseColor(cStructure, structureMaterial)} 
+                              />
+                              {/* Pilastra / Regleta Frontal Izquierda */}
+                              <Board 
+                                 position={[-innerW / 2 + spacerGap / 2, legsHeight + drawersTotalH / 2, depth / 2 - internalClearanceZ - thickness / 2]} 
+                                 args={[spacerGap, drawersTotalH, thickness]} 
+                                 {...parseColor(cStructure, structureMaterial)} 
+                              />
+                              {/* Lateral Interior Derecho */}
+                              <Board 
+                                 position={[innerW / 2 - spacerGap - thickness / 2, legsHeight + drawersTotalH / 2, drawerBoxZCenter]} 
+                                 args={[thickness, drawersTotalH, drawerBoxLength]} 
+                                 {...parseColor(cStructure, structureMaterial)} 
+                              />
+                              {/* Pilastra / Regleta Frontal Derecha */}
+                              <Board 
+                                 position={[innerW / 2 - spacerGap / 2, legsHeight + drawersTotalH / 2, depth / 2 - internalClearanceZ - thickness / 2]} 
+                                 args={[spacerGap, drawersTotalH, thickness]} 
+                                 {...parseColor(cStructure, structureMaterial)} 
+                              />
+                           </group>
+                        )}
+
+                        {/* Cada cajón */}
+                        {Array.from({ length: effDrawersCount }).map((_, dIdx) => {
+                           const yCenter = legsHeight + gap + (effDrawersCount - 1 - dIdx) * drawerH + drawerH / 2;
+                           const drawerBaseY = legsHeight + (effDrawersCount - 1 - dIdx) * drawerH;
+                           const yPosFront = isInnerDrw ? (drawerBaseY + 0.3 + frontHeight / 2) : yCenter;
+                           const drawerFrontZ = isInnerDrw ? (depth / 2 - internalClearanceZ - thickness / 2) : frontZ;
+                           const slideFixXLeft = isInnerDrw ? (-freeInnerW / 2 + 0.35) : (-innerW / 2 + 0.35);
+                           const slideFixXRight = isInnerDrw ? (freeInnerW / 2 - 0.35) : (innerW / 2 - 0.35);
+
+                           const boxH = isInnerDrw ? 13 : (drawerH - 5);
+                           const yBoxBase = drawerBaseY + (isInnerDrw ? 0.8 : (thickness + 0.5));
+                           const yBoxCenter = isInnerDrw ? (yBoxBase + boxH / 2) : yCenter;
+
+                           const drawerKey = `drawer-${dIdx}`;
+                           const isDoorBlocked = isClosetDoors && !isAnyDoorOpen;
+                           const isOpenThis = !isDoorBlocked && isElementOpen(drawerKey);
+
+                           return (
+                              <group key={`closet-drw-${dIdx}`}>
+                                 {/* Correderas telescópicas en laterales */}
+                                 <group position={[slideFixXLeft, yBoxCenter, drawerBoxZCenter]}>
+                                    <mesh castShadow>
+                                       <boxGeometry args={[0.4, 4.5, nominalLength]} />
+                                       <meshStandardMaterial color="#d8dde6" metalness={0.15} roughness={0.35} />
+                                    </mesh>
+                                 </group>
+                                 <group position={[slideFixXRight, yBoxCenter, drawerBoxZCenter]}>
+                                    <mesh castShadow>
+                                       <boxGeometry args={[0.4, 4.5, nominalLength]} />
+                                       <meshStandardMaterial color="#d8dde6" metalness={0.15} roughness={0.35} />
+                                    </mesh>
+                                 </group>
+
+                                 <AnimatedDrawer
+                                    openZOffset={drawerBoxLength - 4}
+                                    forceOpen={isOpenThis}
+                                    onClickAction={() => setOpenElement(id, drawerKey, !isOpenThis)}
+                                 >
+                                    {/* Frente de Cajón */}
+                                    <group position={[0, yPosFront, drawerFrontZ]}>
+                                       <Board
+                                          position={[0, 0, 0]}
+                                          args={[frontWidth, frontHeight, thickness]}
+                                          {...parseColor(cDrawers, drawerFrontMaterial, `closet-df-${dIdx}`)}
+                                          isFrontPanel={true}
+                                       />
+                                       {/* Sin tirador si es interior (apertura tipo uñero por holgura superior libre de 50mm) */}
+                                       {!isInnerDrw && showHandle && (
+                                          <group position={[0, 0, thickness]}>
+                                             <KitchenHandle3D config={handleConfig} orientation="horizontal" isDoor={false} thickness={thickness} />
+                                          </group>
+                                       )}
+                                    </group>
+
+                                    {/* Caja interior del cajón (adosada estrictamente detrás del frente) */}
+                                    <Board position={[-skw / 2 + thickness / 2, yBoxCenter, drawerBoxZCenter]} args={[thickness, boxH, drawerBoxLength]} {...parseColor(cInner, drawerInnerMaterial)} />
+                                    <Board position={[skw / 2 - thickness / 2, yBoxCenter, drawerBoxZCenter]} args={[thickness, boxH, drawerBoxLength]} {...parseColor(cInner, drawerInnerMaterial)} />
+                                    <Board position={[0, yBoxCenter, drawerBoxZCenter - drawerBoxLength / 2 + thickness / 2]} args={[skw - thickness * 2, boxH, thickness]} {...parseColor(cInner, drawerInnerMaterial)} />
+                                    <Board position={[0, yBoxCenter, drawerBoxZCenter + drawerBoxLength / 2 - thickness / 2]} args={[skw - thickness * 2, boxH, thickness]} {...parseColor(cInner, drawerInnerMaterial)} />
+                                    {/* Fondo del cajón */}
+                                    {(() => {
+                                       const botSpecs = getDrawerBottomSpecs(width, cInner, drawerInnerMaterial, thickness, drawerBottomMaterial);
+                                       const botThick = botSpecs.thicknessCm;
+                                       const botY = yBoxBase + (botSpecs.isDurolac ? 0.15 : thickness / 2);
+                                       const botProps = botSpecs.isDurolac ? { color: '#ffffff' } : parseColor(cInner, drawerInnerMaterial);
+                                       return (
+                                          <Board position={[0, botY, drawerBoxZCenter]} args={[skw - thickness * 2, botThick, drawerBoxLength - thickness * 2]} {...botProps} />
+                                       );
+                                    })()}
+                                 </AnimatedDrawer>
+                              </group>
+                           );
+                        })}
+                     </group>
+                  )}
+
+                  {/* Repisas intermedias si no hay barra o si es módulo lencero / organizador */}
+                  {effShelvesCount > (hasMaletero ? 1 : 0) && (() => {
+                     const extraShelves = effShelvesCount - (hasMaletero ? 1 : 0);
+                     const yStart = effDrawersCount > 0 ? drawerTopY : legsHeight;
+                     const yEnd = hasMaletero ? maleteroY : (legsHeight + cabH);
+                     const step = (yEnd - yStart) / (extraShelves + 1);
+                     return Array.from({ length: extraShelves }).map((_, sIdx) => {
+                        const shelfY = yStart + (sIdx + 1) * step;
+                        return (
+                           <group key={`closet-shelf-${sIdx}`}>
+                              {renderShelfWithJoints(shelfY, `c-shelf-${sIdx}`)}
+                              {useStore.getState().showDecorations && (
+                                 sIdx === 0 && !effDrawersCount ? (
+                                    <ClosetShoePair position={[0, shelfY + thickness / 2, 0]} />
+                                 ) : (
+                                    <ClosetFoldedClothes position={[0, shelfY + thickness / 2, 0]} width={innerW} depth={depth - 4} />
+                                 )
+                              )}
+                           </group>
+                        );
+                     });
+                  })()}
+               </>
+            );
+         }
          return null;
       };
 
@@ -2835,6 +3257,18 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                            key={`lat-${key}`}
                            position={[xPos, legsHeight + cabH/2, wineZ]} 
                            args={[thickness, cabH, wineDepth]} 
+                           {...parseColor(cStructure, structureMaterial, key)} 
+                        />
+                     );
+                  }
+
+                  // Si es Clóset: los laterales llegan directamente al suelo (y=0 a y=height)
+                  if (isCloset) {
+                     return (
+                        <Board 
+                           key={`lat-${key}`}
+                           position={[xPos, height / 2, 0]} 
+                           args={[thickness, height, depth]} 
                            {...parseColor(cStructure, structureMaterial, key)} 
                         />
                      );
@@ -2959,6 +3393,26 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                   </>
                );
             })()}
+
+             {/* Zócalo Integrado de Clóset: Frente y amarre de melamina entre laterales al piso */}
+             {isCloset && (
+                <group key="closet-socle-plinths">
+                   {/* Zócalo Frontal de Melamina (retranqueado 2cm respecto a frentes) */}
+                   <Board
+                      position={[0, effSocleH / 2, depth / 2 - thickness / 2 - 2.0]}
+                      args={[innerW, effSocleH, thickness]}
+                      {...(closetSocleColorMode === 'doors'
+                         ? parseColor(cDoors, doorMaterial, 'socle')
+                         : parseColor(cStructure, structureMaterial, 'socle'))}
+                   />
+                   {/* Zócalo / Amarre Trasero de Melamina */}
+                   <Board
+                      position={[0, effSocleH / 2, -depth / 2 + thickness / 2 + 2.0]}
+                      args={[innerW, effSocleH, thickness]}
+                      {...parseColor(cStructure, structureMaterial, 'socle')}
+                   />
+                </group>
+             )}
             {type === 'base' || type === 'island' ? (
                <>
                   {(() => {
@@ -3067,6 +3521,14 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                    variant === 'deco_fridge' ? 'REFRIGERADOR SBS' :
                    variant === 'deco_plant' ? 'PLANTA INTERIOR' :
                    variant === 'deco_dishwasher' ? 'LAVAVAJILLAS 12C' :
+                   variant === 'closet_hanger' ? 'CLÓSET BARRA + MALETERO' :
+                   variant === 'closet_mixed' ? 'CLÓSET MIXTO' :
+                   variant === 'closet_shelves' ? 'CLÓSET LENCERO' :
+                   variant === 'closet_drawers' ? 'CLÓSET CAJONERA' :
+                   variant === 'closet_2_doors' ? 'CLÓSET 2 PUERTAS' :
+                   variant === 'closet_walkin' ? 'WALK-IN CLOSET' :
+                   variant === 'closet_inner_drawers' ? 'CLÓSET CAJONES OCULTOS' :
+                   type === 'closet' ? 'CLÓSET MODULAR' :
                    variant?.startsWith('wall_corner_blind') ? 'AÉREO ESQUINERO' :
                    variant?.includes('wine_rack') ? 'BOTELLERO' :
                    (variant ? variant.replace(/_/g, ' ').toUpperCase() : type.toUpperCase())}

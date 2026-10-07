@@ -89,7 +89,7 @@ export function Configurator() {
             <ToggleBtn active={!!activeMod.hasHanger} onClick={() => state.updateModule(activeMod.id, { hasHanger: !activeMod.hasHanger })} label="Barra de Colgar Ropa" />
             <ToggleBtn active={activeMod.doors} onClick={() => state.updateModule(activeMod.id, { doors: !activeMod.doors })} label="Puertas Frontales" />
             {activeMod.doors && activeMod.drawers > 0 && (
-              <ToggleBtn active={!!activeMod.innerDrawers} onClick={() => state.updateModule(activeMod.id, { innerDrawers: !activeMod.innerDrawers })} label="Cajones Interiores (Ocultos)" />
+              <ToggleBtn active={activeMod.innerDrawers !== false} onClick={() => state.updateModule(activeMod.id, { innerDrawers: activeMod.innerDrawers === false ? true : false })} label="Cajones Interiores (Ocultos)" />
             )}
           </div>
         </div>

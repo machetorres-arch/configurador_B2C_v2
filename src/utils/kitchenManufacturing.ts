@@ -146,6 +146,9 @@ export function isCabinetWithDoors(cab: CabinetType): boolean {
     v === 'tall_microwave_niche' ||
     v === 'wall_1_door' ||
     v === 'wall_2_doors' ||
+    v === 'closet_2_doors' ||
+    v === 'closet_inner_drawers' ||
+    (cab.type === 'closet' && Boolean(cab.hasDoors)) ||
     (cab.type === 'island' && (v === '1_door' || v === '2_doors')) ||
     (cab.type === 'wall' && (v === '1_door' || v === '2_doors' || !cab.variant)) ||
     (cab.type === 'base' && (v === '1_door' || v === '2_doors' || !cab.variant))
@@ -192,6 +195,10 @@ export function getSplitCabinetShelvesCounts(cab: CabinetType): { lower: number;
  */
 export function getDefaultShelvesCount(cab: CabinetType): number {
   const v = cab.variant || (cab.width > 60 ? '2_doors' : '1_door');
+  if (v === 'closet_shelves') return 5;
+  if (v === 'closet_walkin') return 3;
+  if (v === 'closet_mixed') return 2;
+  if (v === 'closet_hanger' || v === 'closet_drawers' || v === 'closet_2_doors' || v === 'closet_inner_drawers' || cab.type === 'closet') return 1;
   if (v === 'tall_1_door' || v === 'tall_2_doors' || v === 'tall_split_2_doors') {
     return 4;
   }
@@ -432,7 +439,7 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
     // 1.1 Tapas Laterales Vistas (Costados Decorativos de Terminación)
     if (cab.leftCoverPanel?.enabled) {
       const coverThick = cab.leftCoverPanel.thickness || thickness;
-      const isBaseOrTall = cab.type === 'base' || cab.type === 'tall' || cab.type === 'island';
+      const isBaseOrTall = cab.type === 'base' || cab.type === 'tall' || cab.type === 'island' || cab.type === 'closet';
       const coverExtend = cab.leftCoverPanel.extendToFloor && isBaseOrTall;
       const coverH = coverExtend ? h : cabH;
       const hasFronts = !isWineRack && cab.variant !== 'open' && cab.variant !== 'tall_open' && cab.variant !== 'wall_open';
@@ -455,7 +462,7 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
 
     if (cab.rightCoverPanel?.enabled) {
       const coverThick = cab.rightCoverPanel.thickness || thickness;
-      const isBaseOrTall = cab.type === 'base' || cab.type === 'tall' || cab.type === 'island';
+      const isBaseOrTall = cab.type === 'base' || cab.type === 'tall' || cab.type === 'island' || cab.type === 'closet';
       const coverExtend = cab.rightCoverPanel.extendToFloor && isBaseOrTall;
       const coverH = coverExtend ? h : cabH;
       const hasFronts = !isWineRack && cab.variant !== 'open' && cab.variant !== 'tall_open' && cab.variant !== 'wall_open';
@@ -1473,6 +1480,206 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
             edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
             notes: 'Costados de contención nivel superior para frascos'
         });
+    } else if (cab.type === 'closet' || cab.variant?.startsWith('closet_')) {
+        const isClosetDoors = Boolean(cab.hasDoors || cab.variant === 'closet_2_doors' || cab.variant === 'closet_inner_drawers');
+        const effDrawersCount = cab.drawersCount !== undefined 
+            ? cab.drawersCount 
+            : (cab.variant === 'closet_drawers' ? 4 : (cab.variant === 'closet_mixed' || cab.variant === 'closet_inner_drawers' ? 3 : (cab.variant === 'closet_2_doors' ? 2 : 0)));
+        const isInnerDrw = Boolean(cab.innerDrawers || cab.variant === 'closet_inner_drawers' || (isClosetDoors && effDrawersCount > 0));
+        const effShelvesCount = cab.shelvesCount !== undefined 
+            ? cab.shelvesCount 
+            : (cab.variant === 'closet_shelves' ? 5 : (cab.variant === 'closet_walkin' ? 3 : (cab.variant === 'closet_mixed' ? 2 : 1)));
+        
+        // Zócalos de Melamina del Clóset (Frontal y Posterior entre laterales al piso)
+        const effSocleH = cab.closetSocleHeight ?? 7;
+        const socleMat = cab.closetSocleColorMode === 'doors' 
+            ? (cab.doorColor || state.doorColor) 
+            : (cab.structureColor || state.structureColor);
+        parts.push({
+            name: `Zócalo Frontal Clóset ${cabName}`,
+            moduleId: cab.id,
+            moduleIndex: index,
+            qty: 1,
+            length: innerW * 10,
+            width: effSocleH * 10,
+            thickness: thickness * 10,
+            material: socleMat,
+            edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
+            notes: 'Zócalo frontal clóset entre laterales al suelo (retranqueado 2cm)'
+        });
+        parts.push({
+            name: `Zócalo Posterior Clóset ${cabName}`,
+            moduleId: cab.id,
+            moduleIndex: index,
+            qty: 1,
+            length: innerW * 10,
+            width: effSocleH * 10,
+            thickness: thickness * 10,
+            material: cab.structureColor || state.structureColor,
+            edgeL1: false, edgeL2: false, edgeW1: false, edgeW2: false,
+            notes: 'Amarre inferior posterior clóset rigidizador'
+        });
+
+        // 1. Repisas / Maletero
+        if (effShelvesCount > 0) {
+            parts.push({
+                name: `Repisa / Maletero Clóset ${cabName}`,
+                moduleId: cab.id,
+                moduleIndex: index,
+                qty: effShelvesCount,
+                length: (innerW - 0.2) * 10,
+                width: (d - 2) * 10,
+                thickness: thickness * 10,
+                material: cab.shelfColor || state.structureColor,
+                edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
+                notes: `${effShelvesCount} repisa(s) de clóset / maletero`
+            });
+        }
+
+        // Tapa sobre cajonera si hay cajones
+        if (effDrawersCount > 0) {
+            parts.push({
+                name: `Tapa Divisoria Cajonera ${cabName}`,
+                moduleId: cab.id,
+                moduleIndex: index,
+                qty: 1,
+                length: (innerW - 0.2) * 10,
+                width: (d - 2) * 10,
+                thickness: thickness * 10,
+                material: cab.shelfColor || state.structureColor,
+                edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
+                notes: 'Tapa superior estructural sobre batería de cajones'
+            });
+
+            // Cajas y frentes de cajón
+            const spacerGapMm = isInnerDrw ? 35 : 0;
+            const innerWallThickMm = isInnerDrw ? (thickness * 10) : 0;
+            const totalSideRedMm = spacerGapMm + innerWallThickMm;
+            const freeInnerWMm = isInnerDrw ? (innerW * 10 - totalSideRedMm * 2) : (innerW * 10);
+
+            const internalClearanceZ = isInnerDrw ? (thickness * 10 + 15) : 0;
+            const innerDepthMm = (d * 10) - 15 - internalClearanceZ;
+            const nominalLength = getNominalSlideLength(innerDepthMm);
+            const drawerBoxLength = nominalLength - hwSpec.drawerLengthDeduction;
+            const drawerBoxOuterWidth = freeInnerWMm - hwSpec.slideClearanceTotal;
+            const drawerFrontBackLength = drawerBoxOuterWidth - (2 * thickness * 10);
+            const cInnerMat = cab.drawerInnerColor || state.structureColor;
+            const drawerH = 22;
+            const drawersTotalHMm = effDrawersCount * drawerH * 10;
+
+            // Pilastras y laterales interiores si es cajón oculto tras puertas
+            if (isInnerDrw) {
+                parts.push({
+                    name: `Lateral Int. Cajonera Clóset ${cabName}`,
+                    moduleId: cab.id,
+                    moduleIndex: index,
+                    qty: 2,
+                    length: drawersTotalHMm,
+                    width: drawerBoxLength,
+                    thickness: thickness * 10,
+                    material: cab.structureColor || state.structureColor,
+                    edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
+                    notes: 'Lateral continuo interior cajonera clóset'
+                });
+                parts.push({
+                    name: `Pilastra Frontal Clóset ${cabName}`,
+                    moduleId: cab.id,
+                    moduleIndex: index,
+                    qty: 2,
+                    length: drawersTotalHMm,
+                    width: spacerGapMm,
+                    thickness: thickness * 10,
+                    material: cab.structureColor || state.structureColor,
+                    edgeL1: true, edgeL2: true, edgeW1: false, edgeW2: false,
+                    notes: 'Regleta separadora 35mm para librar bisagra y puerta de clóset'
+                });
+            }
+
+            for (let i = 0; i < effDrawersCount; i++) {
+                // Frente de cajón
+                if (isInnerDrw) {
+                    parts.push({
+                        name: `Frente Interior Cajón ${i + 1} ${cabName}`,
+                        moduleId: cab.id,
+                        moduleIndex: index,
+                        qty: 1,
+                        length: freeInnerWMm - 4,
+                        width: (drawerH - 5.0) * 10,
+                        thickness: thickness * 10,
+                        material: cab.drawerFrontColor || frontMat,
+                        edgeL1: true, edgeL2: true, edgeW1: true, edgeW2: true,
+                        notes: 'Frente interior de clóset rebajado (Uñero sin tirador)'
+                    });
+                } else {
+                    parts.push({
+                        name: `Frente Exterior Cajón ${i + 1} ${cabName}`,
+                        moduleId: cab.id,
+                        moduleIndex: index,
+                        qty: 1,
+                        length: (w - gap * 2) * 10,
+                        width: (drawerH - gap * 2) * 10,
+                        thickness: thickness * 10,
+                        material: cab.drawerFrontColor || frontMat,
+                        edgeL1: true, edgeL2: true, edgeW1: true, edgeW2: true,
+                        notes: 'Frente exterior de cajón de clóset'
+                    });
+                }
+
+                // Costados
+                parts.push({
+                    name: `Lateral Cajón Clóset ${cabName} (${i + 1})`,
+                    moduleId: cab.id, moduleIndex: index, qty: 2,
+                    length: drawerBoxLength, width: 180, thickness: thickness * 10, material: cInnerMat,
+                    edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
+                    notes: `P/ ${hwSpec.slideName} (NL=${nominalLength}mm)`
+                });
+                // Contrafrente
+                parts.push({
+                    name: `Contrafrente Cajón Clóset ${cabName} (${i + 1})`,
+                    moduleId: cab.id, moduleIndex: index, qty: 1,
+                    length: drawerFrontBackLength, width: 180, thickness: thickness * 10, material: cInnerMat,
+                    edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
+                    notes: 'Testero frontal interior de cajón'
+                });
+                // Trasera
+                parts.push({
+                    name: `Trasera Cajón Clóset ${cabName} (${i + 1})`,
+                    moduleId: cab.id, moduleIndex: index, qty: 1,
+                    length: drawerFrontBackLength, width: 180, thickness: thickness * 10, material: cInnerMat,
+                    edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
+                    notes: `Testero posterior p/ ${hwSpec.slideName}`
+                });
+                // Fondo
+                const botSpecs = getDrawerBottomSpecs(w, cInnerMat, cab.drawerInnerMaterial || state.drawerInnerMaterial, thickness);
+                parts.push({
+                    name: `Fondo Cajón Clóset ${cabName} (${i + 1})`,
+                    moduleId: cab.id, moduleIndex: index, qty: 1,
+                    length: drawerBoxLength, width: botSpecs.isDurolac ? drawerBoxOuterWidth : drawerFrontBackLength, thickness: botSpecs.thicknessMm, material: botSpecs.materialName,
+                    edgeL1: false, edgeL2: false, edgeW1: false, edgeW2: false,
+                    notes: botSpecs.notes
+                });
+            }
+        }
+
+        // Puertas batientes de clóset
+        if (isClosetDoors) {
+            const isDouble = w > 50;
+            const doorQty = isDouble ? 2 : 1;
+            const doorWidth = isDouble ? ((w - gap * 3) / 2) * 10 : (w - gap * 2) * 10;
+            const doorH = (cabH - gap * 2) * 10;
+            parts.push({
+                name: `Puerta Clóset Batiente ${cabName}`,
+                moduleId: cab.id,
+                moduleIndex: index,
+                qty: doorQty,
+                length: doorH,
+                width: doorWidth,
+                thickness: thickness * 10,
+                material: frontMat,
+                edgeL1: true, edgeL2: true, edgeW1: true, edgeW2: true,
+                notes: isDouble ? 'Puertas batientes dobles de clóset' : 'Puerta batiente simple de clóset'
+            });
+        }
     } else if (cab.variant === '1_door' || cab.variant === 'tall_1_door') {
         parts.push({
             name: `Puerta Frontal ${cabName}`,
@@ -2117,8 +2324,11 @@ export function generateKitchenHardwareList(cabinets: CabinetType[]) {
     let biFoldPostHingesCount = 0;
     let extraCornerLLegsCount = 0;
     let ventGrillesCount = 0;
+    let closetRodsCount = 0;
+    let closetRodsLengthMm = 0;
+    let closetFlangesCount = 0;
     
-    const baseCabinets = cabinets.filter(c => c.type === 'base' || c.type === 'island' || c.type === 'tall');
+    const baseCabinets = cabinets.filter(c => c.type === 'base' || c.type === 'island' || c.type === 'tall' || c.type === 'closet');
     
     cabinets.forEach(cab => {
         if (cab.type === 'decoration' || cab.variant?.startsWith('deco_')) {
@@ -2135,7 +2345,7 @@ export function generateKitchenHardwareList(cabinets: CabinetType[]) {
         }
 
         // Fijaciones estructurales por módulo
-        const fixPoints = cab.type === 'tall' ? 36 : (cab.type === 'wall' ? 16 : 20);
+        const fixPoints = (cab.type === 'tall' || cab.type === 'closet') ? 36 : (cab.type === 'wall' ? 16 : 20);
         if (state.assemblyType === 'minifix') {
             totalStructureMinifix += fixPoints;
             totalStructureDowels += fixPoints * 2; // 2 tarugos por cada perno minifix de apoyo
@@ -2178,6 +2388,16 @@ export function generateKitchenHardwareList(cabinets: CabinetType[]) {
             biFoldInterHingesCount += 2; // Bisagras intermedias entre hojas bi-fold
             biFoldPostHingesCount += 2;  // Bisagras gran angular 170° a lateral
             extraCornerLLegsCount += 1;  // Pata central de refuerzo en rincón
+        } else if (cab.type === 'closet' || cab.variant?.startsWith('closet_')) {
+            const isClosetDoors = Boolean(cab.hasDoors || cab.variant === 'closet_2_doors' || cab.variant === 'closet_inner_drawers');
+            if (isClosetDoors) {
+                totalHinges += (cab.width > 50 ? 8 : 4);
+            }
+            if (cab.hasHanger !== false && cab.variant !== 'closet_shelves') {
+                closetRodsCount += 1;
+                closetRodsLengthMm += (cab.width - 3) * 10;
+                closetFlangesCount += 2;
+            }
         }
         
         // Cajones y Especieros Extraíbles
@@ -2188,6 +2408,11 @@ export function generateKitchenHardwareList(cabinets: CabinetType[]) {
         if (cab.variant === 'sink_u_drawer') cabDrawers = 2;
         if (cab.variant === 'tall_inner_drawers') cabDrawers = 4;
         if (cab.variant === 'spice_rack') cabDrawers = 1;
+        if (cab.type === 'closet' || cab.variant?.startsWith('closet_')) {
+            cabDrawers = cab.drawersCount !== undefined 
+                ? cab.drawersCount 
+                : (cab.variant === 'closet_drawers' ? 4 : (cab.variant === 'closet_mixed' || cab.variant === 'closet_inner_drawers' ? 3 : (cab.variant === 'closet_2_doors' ? 2 : 0)));
+        }
 
         if (cabDrawers > 0) {
             totalDrawers += cabDrawers;
@@ -2463,6 +2688,32 @@ export function generateKitchenHardwareList(cabinets: CabinetType[]) {
     if (dishwasherCount > 0) hardware.push({ Categoria: 'Equipamiento', Item: 'Lavavajillas FDV Active 12C Silver (12 Cubiertos - Libre Instalación / Bajo Cubierta)', Cantidad: dishwasherCount, Unidad: 'Unidades', Detalles: 'SAP 15598 (Alto 845mm / 820mm sin tapa, Ancho 598mm, Fondo 600mm)' });
     if (hoodConic90Count > 0) hardware.push({ Categoria: 'Equipamiento', Item: 'Campana FDV New Conic 90 (Acero Inox - 780 m3/h - 3 Velocidades)', Cantidad: hoodConic90Count, Unidad: 'Unidades', Detalles: 'SAP 16309 (Ancho 898mm, Fondo 500mm, Iluminación LED 2x2W)' });
     if (plantDecoCount > 0) hardware.push({ Categoria: 'Decoración', Item: 'Planta Decorativa Interior con Macetero y Soporte de Madera', Cantidad: plantDecoCount, Unidad: 'Unidades', Detalles: 'Ambientación 3D' });
+
+    // 6.1 BARRAS DE COLGAR CLÓSET Y ACCESORIOS
+    if (closetRodsCount > 0) {
+        const totalTubes = Math.max(1, Math.ceil(closetRodsLengthMm / 3000));
+        hardware.push({
+            Categoria: 'Quincallería',
+            Item: 'Barra de Colgar Ovalada Cromada 30x15mm (Tira 3000mm)',
+            Cantidad: totalTubes,
+            Unidad: 'Tiras (3.00 m)',
+            Detalles: `${closetRodsCount} barra(s) de clóset (${(closetRodsLengthMm / 1000).toFixed(2)} m lineales totales)`
+        });
+        hardware.push({
+            Categoria: 'Quincallería',
+            Item: 'Soportes Laterales / Bridas para Tubo Ovalado Cromado',
+            Cantidad: closetFlangesCount,
+            Unidad: 'Unidades',
+            Detalles: 'Fijación lateral a costados de clóset con tornillos 3.5x16mm'
+        });
+        hardware.push({
+            Categoria: 'Insumos',
+            Item: 'Tornillos Fijación Bridas de Clóset 3.5x16mm',
+            Cantidad: closetFlangesCount * 2,
+            Unidad: 'Unidades',
+            Detalles: '2 tornillos por brida lateral'
+        });
+    }
 
     // 7. ZÓCALO Y PERFILERÍA OPTIMIZADA A TIRAS DE 3000mm (3m)
     if (kState.showSocle && baseCabinets.length > 0) {

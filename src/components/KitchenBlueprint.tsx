@@ -2537,6 +2537,7 @@ export function KitchenBlueprint() {
                     // Etiqueta técnica según tipología
                     let label = `M.B ${Math.round(cab.width * 10)}`;
                     if (isWall) label = `M.A ${Math.round(cab.width * 10)}`;
+                    else if (cab.type === 'closet' || cab.variant?.startsWith('closet_')) label = `CLÓSET ${Math.round(cab.width * 10)}`;
                     else if (isTall) label = `TORRE ${Math.round(cab.width * 10)}`;
                     else if (isIsland) label = `ISLA ${Math.round(cab.width * 10)}`;
                     else if (cab.variant === '4_drawers' || cab.variant === '2_pot_drawers') label = `CAJ ${Math.round(cab.width * 10)}`;
@@ -2546,14 +2547,14 @@ export function KitchenBlueprint() {
                         {/* Polígono del Módulo */}
                         <polygon
                           points={pointsStr}
-                          fill={isWall ? '#ffffff' : isTall ? '#f8fafc' : '#ffffff'}
+                          fill={isWall ? '#ffffff' : (isTall || cab.type === 'closet') ? '#f8fafc' : '#ffffff'}
                           stroke={isWall ? '#64748b' : '#0f172a'}
                           strokeWidth={isWall ? '1' : '1.3'}
                           strokeDasharray={isWall ? '3,2' : undefined}
                         />
 
-                        {/* Si es Torre / Despensa: Diagonales X */}
-                        {isTall && svgCorners.length === 4 && (
+                        {/* Si es Torre / Despensa o Clóset: Diagonales normadas DIN/ISO */}
+                        {(isTall || cab.type === 'closet' || cab.variant?.startsWith('closet_')) && svgCorners.length === 4 && (
                           <g stroke="#94a3b8" strokeWidth="0.6" strokeDasharray="2,2">
                             <line x1={svgCorners[0][0]} y1={svgCorners[0][1]} x2={svgCorners[2][0]} y2={svgCorners[2][1]} />
                             <line x1={svgCorners[1][0]} y1={svgCorners[1][1]} x2={svgCorners[3][0]} y2={svgCorners[3][1]} />

@@ -24,10 +24,50 @@ import { KitchenIslandBackPanel } from './KitchenIslandBackPanel';
 import { KitchenMepScene } from './KitchenMepScene';
 import { resolvePlacement, getCabinetSpecsFromTool, getWallInwardNormal } from '../../utils/kitchenCollision';
 
+function projectPointOntoWall(px: number, pz: number, walls: any[], maxDist: number = 25) {
+  let bestProj: [number, number] | null = null;
+  let bestDist = Infinity;
+  let bestAngle = 0;
+  let matchedWallId: string | null = null;
+
+  for (const w of walls) {
+    const [x1, z1] = w.start;
+    const [x2, z2] = w.end;
+    const dx = x2 - x1;
+    const dz = z2 - z1;
+    const lenSq = dx * dx + dz * dz;
+    if (lenSq < 1) continue;
+    const u = Math.max(0, Math.min(1, ((px - x1) * dx + (pz - z1) * dz) / lenSq));
+    const projX = x1 + u * dx;
+    const projZ = z1 + u * dz;
+    const dist = Math.hypot(px - projX, pz - projZ);
+    if (dist < maxDist && dist < bestDist) {
+      bestDist = dist;
+      bestProj = [Math.round(projX * 10) / 10, Math.round(projZ * 10) / 10];
+      bestAngle = Math.atan2(dz, dx);
+      matchedWallId = w.id;
+    }
+  }
+
+  return bestProj ? { point: bestProj, angle: bestAngle, wallId: matchedWallId, dist: bestDist } : null;
+}
+
 function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
-  const { viewMode, toolMode, walls, cabinets, addWall, drawingStart, setDrawingStart, addCabinet, setToolMode, setActiveCabinet, roomConfig, activeCabinetId, addArchitecturalElement, draggingArchElementId, draggingCabinetId, setDraggingCabinetId, updateCabinet, architecturalElements, activeArchElementId, setActiveArchElement } = useKitchenStore();
+  const { viewMode, toolMode, walls, cabinets, addWall, drawingStart, setDrawingStart, addCabinet, setToolMode, setActiveCabinet, roomConfig, activeCabinetId, addArchitecturalElement, draggingArchElementId, draggingCabinetId, setDraggingCabinetId, updateCabinet, architecturalElements, activeArchElementId, setActiveArchElement, setActiveWall } = useKitchenStore();
   const [currentMousePos, setCurrentMousePos] = useState<[number, number] | null>(null);
+  const lastMousePosRef = useRef<[number, number] | null>(null);
+  const [isShiftDown, setIsShiftDown] = useState(false);
   const [ghostCabinet, setGhostCabinet] = useState<{pos: [number,number,number], rot: number, isColliding?: boolean} | null>(null);
+
+  useEffect(() => {
+    const handleShift = (e: KeyboardEvent) => setIsShiftDown(e.shiftKey);
+    window.addEventListener('keydown', handleShift);
+    window.addEventListener('keyup', handleShift);
+    return () => {
+      window.removeEventListener('keydown', handleShift);
+      window.removeEventListener('keyup', handleShift);
+    };
+  }, []);
   const { camera, raycaster, pointer, scene } = useThree();
 
   const is2D = viewMode === '2d';
@@ -282,10 +322,92 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
     const hit = raycaster.ray.intersectPlane(groundPlaneMath, intersectPoint);
     if (!hit) return;
 
-    if (toolMode === 'draw_wall' && drawingStart) {
-      const x = Math.round(intersectPoint.x / 10) * 10;
-      const z = Math.round(intersectPoint.z / 10) * 10;
-      setCurrentMousePos([x, z]);
+    if (toolMode === 'draw_wall') {
+      const rx = intersectPoint.x;
+      const rz = intersectPoint.z;
+
+      const updateMousePos = (pos: [number, number]) => {
+        if (!lastMousePosRef.current || Math.abs(lastMousePosRef.current[0] - pos[0]) > 0.1 || Math.abs(lastMousePosRef.current[1] - pos[1]) > 0.1) {
+          lastMousePosRef.current = pos;
+          setCurrentMousePos(pos);
+        }
+      };
+
+      if (!drawingStart) {
+        // Point is hovering before click: snap to nearby wall or clean 5cm grid
+        const wallSnap = projectPointOntoWall(rx, rz, effectiveWalls, 25);
+        if (wallSnap) {
+          updateMousePos(wallSnap.point);
+        } else {
+          updateMousePos([Math.round(rx / 5) * 5, Math.round(rz / 5) * 5]);
+        }
+      } else {
+        // We are currently drawing a wall from drawingStart to cursor:
+        // Calculate snap point with 90° ortho & source wall perpendicular alignment
+        const [x0, z0] = drawingStart;
+        const dx = rx - x0;
+        const dz = rz - z0;
+        const dist = Math.hypot(dx, dz);
+
+        if (dist > 5) {
+          const currentAngle = Math.atan2(dz, dx);
+          const sourceWallInfo = projectPointOntoWall(x0, z0, effectiveWalls, 35);
+
+          // Candidate angles for 90° escuadra
+          const candidateAngles: number[] = [0, Math.PI / 2, Math.PI, -Math.PI / 2];
+          if (sourceWallInfo) {
+            candidateAngles.push(
+              sourceWallInfo.angle + Math.PI / 2,
+              sourceWallInfo.angle - Math.PI / 2,
+              sourceWallInfo.angle,
+              sourceWallInfo.angle + Math.PI
+            );
+          }
+
+          let bestAngle: number | null = null;
+          let minAngleDiff = Infinity;
+          for (const cand of candidateAngles) {
+            const diff = Math.abs(Math.atan2(Math.sin(currentAngle - cand), Math.cos(currentAngle - cand)));
+            if (diff < minAngleDiff) {
+              minAngleDiff = diff;
+              bestAngle = cand;
+            }
+          }
+
+          // Angle snap tolerance ~15 degrees (or unconditional if Shift key)
+          const angleTolerance = isShiftDown ? Infinity : (15 * Math.PI) / 180;
+          let snappedPos: [number, number];
+
+          if (bestAngle !== null && minAngleDiff < angleTolerance) {
+            const isHorizontal = Math.abs(Math.sin(bestAngle)) < 0.05;
+            const isVertical = Math.abs(Math.cos(bestAngle)) < 0.05;
+
+            if (isHorizontal) {
+              snappedPos = [x0 + Math.round(dx / 5) * 5, z0];
+            } else if (isVertical) {
+              snappedPos = [x0, z0 + Math.round(dz / 5) * 5];
+            } else {
+              const snappedDist = Math.round(dist / 5) * 5;
+              snappedPos = [
+                Math.round((x0 + snappedDist * Math.cos(bestAngle)) * 10) / 10,
+                Math.round((z0 + snappedDist * Math.sin(bestAngle)) * 10) / 10,
+              ];
+            }
+          } else {
+            snappedPos = [Math.round(rx / 5) * 5, Math.round(rz / 5) * 5];
+          }
+
+          // Also check if end point snaps onto another target wall
+          const targetWallSnap = projectPointOntoWall(snappedPos[0], snappedPos[1], effectiveWalls, 18);
+          if (targetWallSnap && Math.hypot(targetWallSnap.point[0] - x0, targetWallSnap.point[1] - z0) > 10) {
+            snappedPos = targetWallSnap.point;
+          }
+
+          updateMousePos(snappedPos);
+        } else {
+          updateMousePos([Math.round(rx / 5) * 5, Math.round(rz / 5) * 5]);
+        }
+      }
     } else if (toolMode.startsWith('place_') || toolMode === 'move_active') {
       const rawX = Math.round(intersectPoint.x * 2) / 2;
       const rawZ = Math.round(intersectPoint.z * 2) / 2;
@@ -572,24 +694,32 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
     if (toolMode === 'select') {
       setActiveCabinet(null);
       setActiveArchElement(null);
+      setActiveWall(null);
       return;
     }
     e.stopPropagation();
 
     if (toolMode === 'draw_wall') {
-      const pt = currentMousePos || [e.point.x, e.point.z];
+      const pt = currentMousePos || [Math.round(e.point.x / 5) * 5, Math.round(e.point.z / 5) * 5];
       if (!drawingStart) {
         setDrawingStart(pt);
       } else {
-        addWall({
-          id: crypto.randomUUID(),
-          start: drawingStart,
-          end: pt,
-          thickness: 15,
-          height: 240
-        });
-        setDrawingStart(pt); 
+        const wallLen = Math.hypot(pt[0] - drawingStart[0], pt[1] - drawingStart[1]);
+        if (wallLen >= 15) {
+          const newWallId = crypto.randomUUID();
+          addWall({
+            id: newWallId,
+            start: drawingStart,
+            end: pt,
+            thickness: 15,
+            height: 240,
+            isInterior: true,
+          });
+          setActiveWall(newWallId);
+        }
+        setDrawingStart(null); 
       }
+      return;
     } else if (toolMode.startsWith('place_arch_')) {
       const type = toolMode === 'place_arch_door' ? 'door' : toolMode === 'place_arch_window' ? 'window' : 'pillar';
       const name = type === 'door' ? 'Puerta' : type === 'window' ? 'Ventana' : 'Pilar / Muro Corto';
@@ -748,12 +878,13 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
          setDrawingStart(null);
+         setActiveWall(null);
          setToolMode('select');
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [setDrawingStart, setToolMode]);
+  }, [setDrawingStart, setToolMode, setActiveWall]);
 
   const isLight = theme === 'light';
 
@@ -1072,13 +1203,15 @@ function WallPreview({start, end, thickness, height}: any) {
     <group position={[cx, height/2, cz]} rotation={[0, rotY, 0]}>
       <mesh position={[0, 0, 0]}>
         <boxGeometry args={[thickness, height, length]} />
-        <meshStandardMaterial color="#3b82f6" transparent opacity={0.5} />
+        <meshStandardMaterial color="#f97316" transparent opacity={0.65} roughness={0.7} />
       </mesh>
       <group position={[0, height / 2 + 10, 0]} renderOrder={999}>
-        <Line points={[[0, 0, -length / 2], [0, 0, length / 2]]} color="#3b82f6" lineWidth={2} depthTest={false} renderOrder={999} />
-        <Line points={[[-3, 0, -length / 2], [3, 0, -length / 2]]} color="#3b82f6" lineWidth={2} depthTest={false} renderOrder={999} />
-        <Line points={[[-3, 0, length / 2], [3, 0, length / 2]]} color="#3b82f6" lineWidth={2} depthTest={false} renderOrder={999} />
-        <Text position={[0, 4, 0]} rotation={[0, Math.PI / 2, 0]} fontSize={7} color="#3b82f6" anchorX="center" anchorY="bottom" material-depthTest={false} material-toneMapped={false} renderOrder={1000}>{Math.round(length)} cm</Text>
+        <Line points={[[0, 0, -length / 2], [0, 0, length / 2]]} color="#f97316" lineWidth={2.5} depthTest={false} renderOrder={999} />
+        <Line points={[[-3, 0, -length / 2], [3, 0, -length / 2]]} color="#f97316" lineWidth={2.5} depthTest={false} renderOrder={999} />
+        <Line points={[[-3, 0, length / 2], [3, 0, length / 2]]} color="#f97316" lineWidth={2.5} depthTest={false} renderOrder={999} />
+        <Text position={[0, 4, 0]} rotation={[0, Math.PI / 2, 0]} fontSize={8} color="#f97316" anchorX="center" anchorY="bottom" material-depthTest={false} material-toneMapped={false} renderOrder={1000}>
+          {`${Math.round(length)} cm`}
+        </Text>
       </group>
     </group>
   );

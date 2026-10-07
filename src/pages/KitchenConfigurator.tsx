@@ -98,7 +98,7 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
 
   const isLight = theme === 'light';
 
-  const { viewMode, setViewMode, toolMode, setToolMode, cabinets, addCabinet, activeCabinetId, updateCabinet, removeCabinet, setActiveCabinet, applyGlobalTexture, showSocle, setShowSocle, socleFinish, setSocleFinish, socleHeight, setSocleHeight, roomConfig, setRoomPlannerOpen, walls, architecturalElements, activeArchElementId, addArchitecturalElement, updateArchitecturalElement, removeArchitecturalElement, setActiveArchElement, golaSystem, setGolaSystem, countertopConfig, setCountertopConfig, qstoneCatalog, islandBackConfig, setIslandBackConfig, mepPoints, handleConfig, undo, redo, canUndo, canRedo } = useKitchenStore();
+  const { viewMode, setViewMode, toolMode, setToolMode, cabinets, addCabinet, activeCabinetId, updateCabinet, removeCabinet, setActiveCabinet, applyGlobalTexture, showSocle, setShowSocle, socleFinish, setSocleFinish, socleHeight, setSocleHeight, roomConfig, setRoomPlannerOpen, walls, architecturalElements, activeArchElementId, addArchitecturalElement, updateArchitecturalElement, removeArchitecturalElement, setActiveArchElement, activeWallId, updateWall, removeWall, setActiveWall, golaSystem, setGolaSystem, countertopConfig, setCountertopConfig, qstoneCatalog, islandBackConfig, setIslandBackConfig, mepPoints, handleConfig, undo, redo, canUndo, canRedo } = useKitchenStore();
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -167,7 +167,11 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
       position: placement.position,
       rotation: placement.rotation,
       material: currentCabinets[0]?.material || 'melamina_blanco',
-      shelfCount: specs.type === 'wall' ? 2 : (specs.type === 'tall' ? 4 : 1),
+      shelvesCount: specs.shelvesCount !== undefined ? specs.shelvesCount : (specs.type === 'wall' ? 2 : (specs.type === 'tall' ? 4 : (specs.type === 'closet' ? 2 : 1))),
+      drawersCount: specs.drawersCount,
+      hasHanger: specs.hasHanger,
+      hasDoors: specs.hasDoors,
+      innerDrawers: specs.innerDrawers,
       openAction: false,
     });
 
@@ -180,6 +184,7 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
     torres: false,
     murales: false,
     isla: false,
+    closets: false,
     arch: false,
     deco: false,
   });
@@ -203,6 +208,7 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
   const globalState = useStore();
   const currentAreaM2 = calculatePolygonArea(roomConfig?.vertices || []);
   const activeArchElement = architecturalElements.find(el => el.id === activeArchElementId);
+  const activeWall = walls.find(w => w.id === activeWallId && Boolean(w.isInterior || (!w.id.startsWith('wall_v_') && !/^wall_\d+_/.test(w.id))));
 
   const mepClashes = React.useMemo(() => {
     return detectMepClashes(mepPoints, cabinets, countertopConfig);
@@ -227,12 +233,12 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
 
   // Auto-switch right tab to 'module' when an item is selected
   useEffect(() => {
-    if (activeCabinetId || activeArchElementId) {
-      setRightTab('module');
+    if (activeCabinetId || activeArchElementId || activeWallId) {
+      setRightTab((prev) => (prev !== 'module' ? 'module' : prev));
     }
-  }, [activeCabinetId, activeArchElementId]);
+  }, [activeCabinetId, activeArchElementId, activeWallId]);
 
-  // Keyboard shortcut listener: Delete or Backspace to delete individual active cabinet or arch element
+  // Keyboard shortcut listener: Delete or Backspace to delete individual active cabinet, arch element, or wall
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const activeTag = (document.activeElement?.tagName || '').toLowerCase();
@@ -245,15 +251,19 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
       } else if ((e.key === 'Delete' || e.key === 'Backspace') && activeArchElementId) {
         e.preventDefault();
         removeArchitecturalElement(activeArchElementId);
+      } else if ((e.key === 'Delete' || e.key === 'Backspace') && activeWallId) {
+        e.preventDefault();
+        removeWall(activeWallId);
       } else if (e.key === 'Escape') {
         setActiveCabinet(null);
         setActiveArchElement(null);
+        setActiveWall(null);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeCabinetId, activeArchElementId, removeCabinet, removeArchitecturalElement, setActiveCabinet, setActiveArchElement]);
+  }, [activeCabinetId, activeArchElementId, activeWallId, removeCabinet, removeArchitecturalElement, removeWall, setActiveCabinet, setActiveArchElement, setActiveWall]);
 
   const handleTextureSelect = (url: string, mat: string, thicknessMm?: number) => {
     // Protección estricta: Piedras y cuarzos Qstone aplican ÚNICAMENTE a cubiertas
@@ -747,10 +757,38 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                       <ToolButton isLight={isLight} active={toolMode === 'place_island_wine_rack'} onClick={() => handleInsertModule('place_island_wine_rack')} icon={<Wine size={14}/>} label="Botellero Isla" />
                     </ModuleCategoryAccordion>
 
-                    {/* 5. Elementos Arquitectónicos */}
+                    {/* 5. Clósets & Roperos */}
+                    <ModuleCategoryAccordion
+                      id="closets"
+                      title="5. Clósets & Roperos"
+                      count={7}
+                      icon={<Box size={14} />}
+                      isOpen={!!moduleAccordions.closets}
+                      onToggle={() => toggleModuleAccordion('closets')}
+                      hasActiveTool={[
+                        'place_closet_hanger',
+                        'place_closet_mixed',
+                        'place_closet_shelves',
+                        'place_closet_drawers',
+                        'place_closet_2_doors',
+                        'place_closet_walkin',
+                        'place_closet_inner_drawers'
+                      ].includes(toolMode)}
+                      isLight={isLight}
+                    >
+                      <ToolButton isLight={isLight} active={toolMode === 'place_closet_hanger'} onClick={() => handleInsertModule('place_closet_hanger')} icon={<Box size={14}/>} label="1. Barra + Maletero" />
+                      <ToolButton isLight={isLight} active={toolMode === 'place_closet_mixed'} onClick={() => handleInsertModule('place_closet_mixed')} icon={<LayoutGrid size={14}/>} label="2. Mixto (Barra + Cajones)" />
+                      <ToolButton isLight={isLight} active={toolMode === 'place_closet_shelves'} onClick={() => handleInsertModule('place_closet_shelves')} icon={<Square size={14}/>} label="3. Lencero (Repisas)" />
+                      <ToolButton isLight={isLight} active={toolMode === 'place_closet_drawers'} onClick={() => handleInsertModule('place_closet_drawers')} icon={<LayoutGrid size={14}/>} label="4. Cajonera 4 Cajones" />
+                      <ToolButton isLight={isLight} active={toolMode === 'place_closet_2_doors'} onClick={() => handleInsertModule('place_closet_2_doors')} icon={<Columns size={14}/>} label="5. Clóset 2 Puertas" />
+                      <ToolButton isLight={isLight} active={toolMode === 'place_closet_walkin'} onClick={() => handleInsertModule('place_closet_walkin')} icon={<Layers size={14}/>} label="6. Walk-in Abierto" />
+                      <ToolButton isLight={isLight} active={toolMode === 'place_closet_inner_drawers'} onClick={() => handleInsertModule('place_closet_inner_drawers')} icon={<LayoutGrid size={14}/>} label="7. Cajones Ocultos (2 Ptas)" />
+                    </ModuleCategoryAccordion>
+
+                    {/* 6. Elementos Arquitectónicos */}
                     <ModuleCategoryAccordion
                       id="arch"
-                      title="5. Elementos Arquitectónicos"
+                      title="6. Elementos Arquitectónicos"
                       count={3}
                       icon={<Columns size={14} />}
                       isOpen={!!moduleAccordions.arch}
@@ -763,10 +801,10 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                       <ToolButton isLight={isLight} active={toolMode === 'place_arch_pillar'} onClick={() => { setToolMode('place_arch_pillar'); setViewMode('3d'); }} icon={<Maximize2 size={14}/>} label="Pilar / Muro Corto" />
                     </ModuleCategoryAccordion>
 
-                    {/* 6. Decoración */}
+                    {/* 7. Decoración */}
                     <ModuleCategoryAccordion
                       id="deco"
-                      title="6. Decoración"
+                      title="7. Decoración"
                       count={5}
                       icon={<Sparkles size={14} />}
                       isOpen={!!moduleAccordions.deco}
@@ -933,7 +971,7 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
         >
           <Box size={14} />
           <span>Módulo</span>
-          {activeCabinetId && (
+          {(activeCabinetId || activeArchElementId || activeWallId) && (
             <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-orange-500 ring-2 ring-white dark:ring-black animate-pulse" />
           )}
         </button>
@@ -941,6 +979,7 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
           onClick={() => {
             if (activeCabinetId) setActiveCabinet(null);
             if (activeArchElementId) setActiveArchElement(null);
+            if (activeWallId) setActiveWall(null);
             setRightTab('materials');
           }}
           className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
@@ -958,6 +997,7 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
           onClick={() => {
             if (activeCabinetId) setActiveCabinet(null);
             if (activeArchElementId) setActiveArchElement(null);
+            if (activeWallId) setActiveWall(null);
             setRightTab('engineering');
           }}
           className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
@@ -975,6 +1015,7 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
           onClick={() => {
             if (activeCabinetId) setActiveCabinet(null);
             if (activeArchElementId) setActiveArchElement(null);
+            if (activeWallId) setActiveWall(null);
             setRightTab('mep');
           }}
           className={`relative flex items-center justify-center gap-1.5 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
@@ -1000,7 +1041,136 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
       <div className="flex-1 overflow-y-auto p-5 custom-scrollbar">
         {rightTab === 'module' && (
           <div>
-            {activeArchElementId && activeArchElement ? (
+            {activeWallId && activeWall ? (
+              <div className="mb-4">
+                <h2 className={isLight ? "text-xs uppercase tracking-wider text-orange-600 font-bold mb-3 mt-4 first:mt-0" : sectionTitle}>Propiedades de Muro</h2>
+                <div className={`p-4 rounded-xl flex flex-col gap-3.5 ${
+                  isLight ? 'bg-slate-50 border border-slate-200 shadow-sm' : 'bg-white/5 border border-white/10 shadow-inner'
+                }`}>
+                  <div className={`flex justify-between items-center border-b pb-2.5 ${isLight ? 'border-slate-200' : 'border-white/10'}`}>
+                    <h3 className={`text-xs uppercase tracking-wider font-bold truncate pr-2 ${isLight ? 'text-orange-600' : 'text-orange-400'}`}>
+                      Tramo de Muro Interior
+                    </h3>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        onClick={() => setActiveWall(null)}
+                        className={`text-xs flex items-center gap-1 font-semibold cursor-pointer ${isLight ? 'text-slate-500 hover:text-slate-700' : 'text-slate-400 hover:text-slate-200'}`}
+                        title="Deseleccionar"
+                      >
+                        <span>Soltar</span>
+                      </button>
+                      <button
+                        onClick={() => removeWall(activeWall.id)}
+                        className="text-xs text-rose-500 hover:text-rose-600 flex items-center gap-1 font-semibold cursor-pointer"
+                        title="Eliminar muro (Supr)"
+                      >
+                        <Trash2 size={13} />
+                        <span>Eliminar</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Resumen de Dimensiones */}
+                  {(() => {
+                    const wallLen = Math.round(Math.hypot(activeWall.end[0] - activeWall.start[0], activeWall.end[1] - activeWall.start[1]));
+                    return (
+                      <div className={`grid grid-cols-3 gap-2 p-2.5 rounded-lg border text-center ${isLight ? 'bg-slate-100 border-slate-300' : 'bg-black/40 border-white/10'}`}>
+                        <div>
+                          <div className={`text-[10px] uppercase tracking-wider font-semibold ${isLight ? 'text-slate-700' : 'text-slate-400'}`}>Espesor</div>
+                          <div className={`font-mono text-sm font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>{activeWall.thickness} cm</div>
+                        </div>
+                        <div>
+                          <div className={`text-[10px] uppercase tracking-wider font-semibold ${isLight ? 'text-slate-700' : 'text-slate-400'}`}>Altura</div>
+                          <div className={`font-mono text-sm font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>{activeWall.height} cm</div>
+                        </div>
+                        <div>
+                          <div className={`text-[10px] uppercase tracking-wider font-semibold ${isLight ? 'text-slate-700' : 'text-slate-400'}`}>Largo</div>
+                          <div className={`font-mono text-sm font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>{wallLen} cm</div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Configuración de Espesor / Ancho */}
+                  <div className="flex flex-col gap-2 pt-1">
+                    <label className={`text-[11px] font-bold uppercase tracking-wider ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
+                      Espesor / Ancho del Muro
+                    </label>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {[10, 15, 20].map((th) => (
+                        <button
+                          key={th}
+                          type="button"
+                          onClick={() => updateWall(activeWall.id, { thickness: th })}
+                          className={`py-1.5 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
+                            activeWall.thickness === th
+                              ? 'bg-orange-500 text-black border-orange-500 shadow-sm'
+                              : isLight
+                              ? 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                              : 'bg-zinc-800 text-slate-300 border-white/10 hover:bg-zinc-700'
+                          }`}
+                        >
+                          {th} cm
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-3 mt-1">
+                      <input
+                        type="range"
+                        min="5"
+                        max="50"
+                        step="1"
+                        value={activeWall.thickness}
+                        onChange={(e) => updateWall(activeWall.id, { thickness: Number(e.target.value) })}
+                        className="flex-1 accent-orange-500 cursor-pointer"
+                      />
+                      <span className={`text-xs font-mono font-bold w-12 text-right ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                        {activeWall.thickness} cm
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Configuración de Altura */}
+                  <div className={`flex flex-col gap-2 pt-2 border-t border-dashed ${isLight ? 'border-slate-300' : 'border-white/10'}`}>
+                    <label className={`text-[11px] font-bold uppercase tracking-wider ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
+                      Altura del Muro
+                    </label>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {[220, 240, 260].map((h) => (
+                        <button
+                          key={h}
+                          type="button"
+                          onClick={() => updateWall(activeWall.id, { height: h })}
+                          className={`py-1.5 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
+                            activeWall.height === h
+                              ? 'bg-orange-500 text-black border-orange-500 shadow-sm'
+                              : isLight
+                              ? 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                              : 'bg-zinc-800 text-slate-300 border-white/10 hover:bg-zinc-700'
+                          }`}
+                        >
+                          {h} cm
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-3 mt-1">
+                      <input
+                        type="range"
+                        min="80"
+                        max="320"
+                        step="5"
+                        value={activeWall.height}
+                        onChange={(e) => updateWall(activeWall.id, { height: Number(e.target.value) })}
+                        className="flex-1 accent-orange-500 cursor-pointer"
+                      />
+                      <span className={`text-xs font-mono font-bold w-12 text-right ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                        {activeWall.height} cm
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : activeArchElementId && activeArchElement ? (
               <div className="mb-4">
                 <h2 className={isLight ? "text-xs uppercase tracking-wider text-orange-600 font-bold mb-3 mt-4 first:mt-0" : sectionTitle}>Propiedades Arquitectónicas</h2>
                 <div className={`p-4 rounded-xl flex flex-col gap-3 ${

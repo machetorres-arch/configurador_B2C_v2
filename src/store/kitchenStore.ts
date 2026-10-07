@@ -62,6 +62,13 @@ export type ToolMode =
   | 'place_island_1_door'
   | 'place_island_2_doors'
   | 'place_island_wine_rack'
+  | 'place_closet_hanger'
+  | 'place_closet_mixed'
+  | 'place_closet_shelves'
+  | 'place_closet_drawers'
+  | 'place_closet_2_doors'
+  | 'place_closet_walkin'
+  | 'place_closet_inner_drawers'
   | 'place_deco_stove'
   | 'place_deco_fridge'
   | 'place_deco_hood'
@@ -78,6 +85,7 @@ export interface WallType {
   end: [number, number];
   thickness: number;
   height: number;
+  isInterior?: boolean;
 }
 
 export interface ArchitecturalElement {
@@ -108,7 +116,7 @@ export interface CoverPanelConfig {
 
 export interface CabinetType {
   id: string;
-  type: 'base' | 'wall' | 'tall' | 'island' | 'decoration';
+  type: 'base' | 'wall' | 'tall' | 'island' | 'decoration' | 'closet';
   variant?: string;
   width: number;
   height: number;
@@ -141,9 +149,15 @@ export interface CabinetType {
   shelvesCount?: number;
   shelvesCountLower?: number;
   shelvesCountUpper?: number;
+  drawersCount?: number;
+  hasHanger?: boolean;
+  hasDoors?: boolean;
+  innerDrawers?: boolean;
   handleConfig?: KitchenHandleConfig;
   leftCoverPanel?: CoverPanelConfig;
   rightCoverPanel?: CoverPanelConfig;
+  closetSocleHeight?: number;
+  closetSocleColorMode?: 'structure' | 'doors';
 }
 
 export interface GolaIncompatibilityAlert {
@@ -175,6 +189,14 @@ export function getCabinetLabel(cab: Partial<CabinetType>, index: number): strin
     if (cab.variant === '2_pot_drawers') return 'Isla 2 Olleros';
   }
   if (cab.variant === 'wine_rack') return 'Botellero';
+  if (cab.variant === 'closet_hanger') return 'Clóset Barra + Maletero';
+  if (cab.variant === 'closet_mixed') return 'Clóset Mixto (Barra + Cajones)';
+  if (cab.variant === 'closet_shelves') return 'Clóset Lencero Repisas';
+  if (cab.variant === 'closet_drawers') return 'Clóset Cajonera';
+  if (cab.variant === 'closet_2_doors') return 'Clóset 2 Puertas Batientes';
+  if (cab.variant === 'closet_walkin') return 'Clóset Walk-in Abierto';
+  if (cab.variant === 'closet_inner_drawers') return 'Clóset Cajones Ocultos';
+  if (cab.type === 'closet') return 'Clóset Modular';
   if (cab.variant === 'tall_1_door') return 'Despensa 1 Puerta Larga';
   if (cab.variant === 'tall_split_2_doors') return 'Despensa 2 Puertas (Línea Base)';
   if (cab.variant === 'tall_oven_micro') return 'Torre Horno + Micro';
@@ -219,6 +241,7 @@ interface KitchenState {
   roomConfig: RoomConfig;
   wallColor: string;
   floorType: string;
+  activeWallId: string | null;
   architecturalElements: ArchitecturalElement[];
   activeArchElementId: string | null;
   draggingArchElementId: string | null;
@@ -232,6 +255,9 @@ interface KitchenState {
   setToolMode: (mode: ToolMode) => void;
   setHandleConfig: (config: Partial<KitchenHandleConfig>) => void;
   addWall: (wall: WallType) => void;
+  updateWall: (id: string, updates: Partial<WallType>) => void;
+  removeWall: (id: string) => void;
+  setActiveWall: (id: string | null) => void;
   setWalls: (walls: WallType[]) => void;
   addCabinet: (cabinet: CabinetType) => void;
   removeCabinet: (id: string) => void;
@@ -383,7 +409,7 @@ function resolveCabinetsWithResize(
   // If height changed and position wasn't explicitly overridden, recalculate Y so it never separates from floor
   if (updates.height !== undefined && (!updates.position || updates.position[1] === undefined)) {
     const newHeight = updates.height;
-    if (updatedTarget.type === 'base' || updatedTarget.type === 'tall' || updatedTarget.type === 'island') {
+    if (updatedTarget.type === 'base' || updatedTarget.type === 'tall' || updatedTarget.type === 'island' || updatedTarget.type === 'closet') {
       updatedTarget.position = [updatedTarget.position[0], newHeight / 2, updatedTarget.position[2]];
 
       // Sincronizar altura de gabinetes contiguos en la misma corrida continua (base o isla) para mantener la cubierta apoyada y plana
@@ -564,6 +590,7 @@ export const useKitchenStore = create<KitchenState>((set, get) => {
   roomConfig: initialRoomConfig,
   wallColor: '#E2E8F0',
   floorType: 'ceramic_white_60x60',
+  activeWallId: null,
   architecturalElements: [],
   activeArchElementId: null,
   draggingArchElementId: null,
@@ -680,6 +707,24 @@ export const useKitchenStore = create<KitchenState>((set, get) => {
       })),
     })),
   addWall: (wall) => set((state) => ({ walls: [...state.walls, wall] })),
+  updateWall: (id, updates) =>
+    set((state) => ({
+      walls: state.walls.map((w) => (w.id === id ? { ...w, ...updates } : w)),
+    })),
+  removeWall: (id) =>
+    set((state) => ({
+      walls: state.walls.filter((w) => w.id !== id),
+      activeWallId: state.activeWallId === id ? null : state.activeWallId,
+    })),
+  setActiveWall: (id) =>
+    set((state) => {
+      if (state.activeWallId === id && (!id || (!state.activeCabinetId && !state.activeArchElementId))) return state;
+      return {
+        activeWallId: id,
+        activeCabinetId: id ? null : state.activeCabinetId,
+        activeArchElementId: id ? null : state.activeArchElementId,
+      };
+    }),
   setWalls: (walls) =>
     set((state) => {
       const roomPoly = state.roomConfig?.vertices?.map((v) => [v.x, v.y] as [number, number]) || [];
@@ -725,10 +770,14 @@ export const useKitchenStore = create<KitchenState>((set, get) => {
       };
     }),
   setActiveCabinet: (id) =>
-    set((state) => ({
-      activeCabinetId: id,
-      activeArchElementId: id ? null : state.activeArchElementId,
-    })),
+    set((state) => {
+      if (state.activeCabinetId === id && (!id || (!state.activeArchElementId && !state.activeWallId))) return state;
+      return {
+        activeCabinetId: id,
+        activeArchElementId: id ? null : state.activeArchElementId,
+        activeWallId: id ? null : state.activeWallId,
+      };
+    }),
   addArchitecturalElement: (el) =>
     set((state) => {
       const history = saveSnapshot(state);
@@ -799,10 +848,14 @@ export const useKitchenStore = create<KitchenState>((set, get) => {
     draggingArchElementId: state.draggingArchElementId === id ? null : state.draggingArchElementId
   })),
   setActiveArchElement: (id) =>
-    set((state) => ({
-      activeArchElementId: id,
-      activeCabinetId: id ? null : state.activeCabinetId,
-    })),
+    set((state) => {
+      if (state.activeArchElementId === id && (!id || (!state.activeCabinetId && !state.activeWallId))) return state;
+      return {
+        activeArchElementId: id,
+        activeCabinetId: id ? null : state.activeCabinetId,
+        activeWallId: id ? null : state.activeWallId,
+      };
+    }),
   moveArchElementTransient: (id, updates) =>
     set((state) => ({
       architecturalElements: state.architecturalElements.map((el) => {
@@ -1405,6 +1458,7 @@ export const useKitchenStore = create<KitchenState>((set, get) => {
     set({
       cabinets: [],
       activeCabinetId: null,
+      activeWallId: null,
       walls: defaultWalls,
       roomConfig: defaultRoom,
       wallColor: '#E2E8F0',

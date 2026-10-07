@@ -435,6 +435,7 @@ export function constrainInsideRoomAndWalls(
 
         // Inward normal pointing into the room
         const [nX, nZ] = getWallInwardNormal(x1, z1, x2, z2, roomPoly);
+        const isInteriorWall = Boolean(w.isInterior || (w.id && !w.id.startsWith('wall_v_') && !/^wall_\d+_/.test(w.id)));
 
         // Check if any corner penetrates THIS finite wall segment
         for (const [px, pz] of box.corners) {
@@ -443,10 +444,22 @@ export function constrainInsideRoomAndWalls(
           if (s >= -2 && s <= wallLen + 2) {
             const distFromWallLine = (px - x1) * nX + (pz - z1) * nZ;
             const requiredDist = thickness / 2 + 0.1;
-            if (distFromWallLine < requiredDist) {
-              const push = requiredDist - distFromWallLine;
-              cx += push * nX;
-              cz += push * nZ;
+
+            if (isInteriorWall) {
+              // Muro interior: sólo empujar si el vértice penetra físicamente dentro del espesor del tabique
+              if (Math.abs(distFromWallLine) < requiredDist) {
+                const pushDir = distFromWallLine >= 0 ? 1 : -1;
+                const push = requiredDist - Math.abs(distFromWallLine);
+                cx += push * pushDir * nX;
+                cz += push * pushDir * nZ;
+              }
+            } else {
+              // Muro perimetral exterior: empuje hacia el interior de la habitación
+              if (distFromWallLine < requiredDist) {
+                const push = requiredDist - distFromWallLine;
+                cx += push * nX;
+                cz += push * nZ;
+              }
             }
           }
         }
@@ -542,7 +555,7 @@ export function repositionCabinetsOnRoomChange(
     roomPoly = walls.map((w: any) => [w.start[0], w.start[1]]);
   }
 
-  const wallBoundTypes = new Set(['base', 'wall', 'tall']);
+  const wallBoundTypes = new Set(['base', 'wall', 'tall', 'closet']);
 
   return cabinets.map((cab) => {
     const isWallBound =
@@ -602,6 +615,7 @@ export function repositionCabinetsOnRoomChange(
         if (
           cab.type === 'base' ||
           cab.type === 'tall' ||
+          cab.type === 'closet' ||
           cab.type === 'island' ||
           cab.variant === 'deco_stove' ||
           cab.variant === 'deco_fridge' ||
@@ -1132,6 +1146,7 @@ export function resolvePlacement({
     cabType === 'base' ||
     cabType === 'tall' ||
     cabType === 'wall' ||
+    cabType === 'closet' ||
     cabType === 'decoration' ||
     variant === 'deco_hood' ||
     variant === 'deco_stove' ||
@@ -1416,16 +1431,48 @@ export function resolvePlacement({
 }
 
 export interface CabinetToolSpecs {
-  type: 'base' | 'tall' | 'wall' | 'island' | 'decoration';
+  type: 'base' | 'tall' | 'wall' | 'island' | 'decoration' | 'closet';
   variant: string;
   name: string;
   width: number;
   height: number;
   depth: number;
   defaultY?: number;
+  shelvesCount?: number;
+  drawersCount?: number;
+  hasHanger?: boolean;
+  hasDoors?: boolean;
+  innerDrawers?: boolean;
 }
 
 export function getCabinetSpecsFromTool(toolMode: string, existingCabinets: any[] = []): CabinetToolSpecs {
+  // Clósets & Roperos
+  if (toolMode.startsWith('place_closet_')) {
+    const v = toolMode.replace('place_closet_', '');
+    if (v === 'hanger') {
+      return { type: 'closet', variant: 'closet_hanger', name: 'Clóset Barra + Maletero', width: 80, height: 220, depth: 60, shelvesCount: 1, drawersCount: 0, hasHanger: true, hasDoors: false };
+    }
+    if (v === 'mixed') {
+      return { type: 'closet', variant: 'closet_mixed', name: 'Clóset Mixto (Barra + Cajones + Repisas)', width: 80, height: 220, depth: 60, shelvesCount: 2, drawersCount: 3, hasHanger: true, hasDoors: false };
+    }
+    if (v === 'shelves') {
+      return { type: 'closet', variant: 'closet_shelves', name: 'Clóset Lencero (Repisas)', width: 60, height: 220, depth: 60, shelvesCount: 5, drawersCount: 0, hasHanger: false, hasDoors: false };
+    }
+    if (v === 'drawers') {
+      return { type: 'closet', variant: 'closet_drawers', name: 'Clóset Cajonera 4 Cajones', width: 80, height: 220, depth: 60, shelvesCount: 1, drawersCount: 4, hasHanger: true, hasDoors: false };
+    }
+    if (v === '2_doors') {
+      return { type: 'closet', variant: 'closet_2_doors', name: 'Clóset 2 Puertas Batientes', width: 80, height: 220, depth: 60, shelvesCount: 1, drawersCount: 2, hasHanger: true, hasDoors: true };
+    }
+    if (v === 'walkin') {
+      return { type: 'closet', variant: 'closet_walkin', name: 'Módulo Walk-in Abierto', width: 90, height: 220, depth: 55, shelvesCount: 3, drawersCount: 0, hasHanger: true, hasDoors: false };
+    }
+    if (v === 'inner_drawers') {
+      return { type: 'closet', variant: 'closet_inner_drawers', name: 'Clóset 2 Ptas + Cajones Ocultos', width: 80, height: 220, depth: 60, shelvesCount: 1, drawersCount: 3, innerDrawers: true, hasHanger: true, hasDoors: true };
+    }
+    return { type: 'closet', variant: 'closet_mixed', name: 'Clóset Modular', width: 80, height: 220, depth: 60, shelvesCount: 2, drawersCount: 2, hasHanger: true, hasDoors: false };
+  }
+
   // Bases
   if (toolMode.startsWith('place_base_')) {
     const v = toolMode.replace('place_base_', '');
@@ -1620,53 +1667,58 @@ export function findSmartWallPlacement(
     return { position: result.position, rotation: result.rotation };
   }
 
-  // Si es mueble AÉREO y ya existen aéreos, intentar acoplar lateralmente al último aéreo
-  if (specs.type === 'wall') {
-    const existingWalls = currentCabinets.filter((c) => c.type === 'wall');
-    if (existingWalls.length > 0) {
-      const lastWallCab = existingWalls[existingWalls.length - 1];
-      const rot = lastWallCab.rotation || 0;
-      const cos = Math.cos(rot);
-      const sin = Math.sin(rot);
-      const rightDist = (lastWallCab.width + specs.width) / 2;
+  // Si ya existen muebles del mismo tipo o familia (closet, wall, tall, base), intentar acoplar lateralmente al último mueble adosado
+  const wallBoundMatches = currentCabinets.filter((c) => {
+    if (specs.type === 'closet') return c.type === 'closet';
+    if (specs.type === 'wall') return c.type === 'wall';
+    if (specs.type === 'tall') return c.type === 'tall';
+    if (specs.type === 'base') return c.type === 'base';
+    return false;
+  });
 
-      // Intentar a la derecha
-      const candRight: [number, number, number] = [
-        lastWallCab.position[0] + rightDist * cos,
-        defaultY,
-        lastWallCab.position[2] + rightDist * sin,
-      ];
-      if (
-        isCandidateValid(
-          { position: candRight, width: specs.width, depth: specs.depth, height: specs.height, rotation: rot, type: specs.type },
-          currentCabinets,
-          effectiveWalls,
-          null,
-          roomPoly,
-          architecturalElements
-        )
-      ) {
-        return { position: candRight, rotation: rot };
-      }
+  if (wallBoundMatches.length > 0) {
+    const lastCab = wallBoundMatches[wallBoundMatches.length - 1];
+    const rot = lastCab.rotation || 0;
+    const cos = Math.cos(rot);
+    const sin = Math.sin(rot);
+    const rightDist = (lastCab.width + specs.width) / 2 + 0.1;
 
-      // Intentar a la izquierda
-      const candLeft: [number, number, number] = [
-        lastWallCab.position[0] - rightDist * cos,
-        defaultY,
-        lastWallCab.position[2] - rightDist * sin,
-      ];
-      if (
-        isCandidateValid(
-          { position: candLeft, width: specs.width, depth: specs.depth, height: specs.height, rotation: rot, type: specs.type },
-          currentCabinets,
-          effectiveWalls,
-          null,
-          roomPoly,
-          architecturalElements
-        )
-      ) {
-        return { position: candLeft, rotation: rot };
-      }
+    // Intentar a la derecha
+    const candRight: [number, number, number] = [
+      lastCab.position[0] + rightDist * cos,
+      defaultY,
+      lastCab.position[2] + rightDist * sin,
+    ];
+    if (
+      isCandidateValid(
+        { position: candRight, width: specs.width, depth: specs.depth, height: specs.height, rotation: rot, type: specs.type },
+        currentCabinets,
+        effectiveWalls,
+        null,
+        roomPoly,
+        architecturalElements
+      )
+    ) {
+      return { position: candRight, rotation: rot };
+    }
+
+    // Intentar a la izquierda
+    const candLeft: [number, number, number] = [
+      lastCab.position[0] - rightDist * cos,
+      defaultY,
+      lastCab.position[2] - rightDist * sin,
+    ];
+    if (
+      isCandidateValid(
+        { position: candLeft, width: specs.width, depth: specs.depth, height: specs.height, rotation: rot, type: specs.type },
+        currentCabinets,
+        effectiveWalls,
+        null,
+        roomPoly,
+        architecturalElements
+      )
+    ) {
+      return { position: candLeft, rotation: rot };
     }
   }
 
@@ -1675,13 +1727,14 @@ export function findSmartWallPlacement(
     const [x1, z1] = w.start;
     const [x2, z2] = w.end;
     const wallLen = Math.hypot(x2 - x1, z2 - z1);
-    if (wallLen < specs.width + 1) continue;
+    const wallThickness = w.thickness || 20;
+    const cornerMargin = wallThickness / 2 + 1; // Holgura para librar tabiques perpendiculares en esquinas
+    if (wallLen < specs.width + cornerMargin * 2) continue;
 
     const uX = (x2 - x1) / wallLen;
     const uZ = (z2 - z1) / wallLen;
     const [nX, nZ] = getWallInwardNormal(x1, z1, x2, z2, roomPoly);
     const wallRot = Math.atan2(nX, nZ);
-    const wallThickness = w.thickness || 20;
     const flushDist = wallThickness / 2 + specs.depth / 2;
 
     const rawIntervals: [number, number][] = [];
@@ -1754,25 +1807,25 @@ export function findSmartWallPlacement(
       }
     }
 
-    // Extraer vanos libres
+    // Extraer vanos libres respetando las esquinas y encuentros perpendiculares
     const freeGaps: [number, number][] = [];
-    let currentEdge = 0.5;
+    let currentEdge = cornerMargin;
     for (const [oStart, oEnd] of mergedIntervals) {
       if (oStart > currentEdge + 0.1) {
-        freeGaps.push([currentEdge, Math.min(wallLen - 0.5, oStart)]);
+        freeGaps.push([currentEdge, Math.min(wallLen - cornerMargin, oStart)]);
       }
       currentEdge = Math.max(currentEdge, oEnd);
     }
-    if (currentEdge < wallLen - 0.5 - 0.1) {
-      freeGaps.push([currentEdge, wallLen - 0.5]);
+    if (currentEdge < wallLen - cornerMargin - 0.1) {
+      freeGaps.push([currentEdge, wallLen - cornerMargin]);
     }
 
     // Filtrar vanos válidos
     const validGaps = freeGaps.filter(([gStart, gEnd]) => (gEnd - gStart) >= specs.width - 0.05);
 
-    if (validGaps.length > 0) {
+    for (const [gStart, gEnd] of validGaps) {
       // Para muebles aéreos, si hay muebles base en este muro, alinear con el inicio de los muebles base
-      let preferredS = validGaps[0][0] + specs.width / 2;
+      let preferredS = gStart + specs.width / 2;
       if (specs.type === 'wall') {
         const basesOnWall = currentCabinets.filter((c) => c.type === 'base');
         let minBaseS = Infinity;
@@ -1782,13 +1835,8 @@ export function findSmartWallPlacement(
           if (leftB < minBaseS) minBaseS = leftB;
         }
 
-        if (minBaseS < Infinity) {
-          for (const [gStart, gEnd] of validGaps) {
-            if (minBaseS >= gStart - 0.1 && minBaseS + specs.width <= gEnd + 0.1) {
-              preferredS = Math.max(gStart + specs.width / 2, Math.min(gEnd - specs.width / 2, minBaseS + specs.width / 2));
-              break;
-            }
-          }
+        if (minBaseS < Infinity && minBaseS >= gStart - 0.1 && minBaseS + specs.width <= gEnd + 0.1) {
+          preferredS = Math.max(gStart + specs.width / 2, Math.min(gEnd - specs.width / 2, minBaseS + specs.width / 2));
         }
       }
 
@@ -1811,13 +1859,47 @@ export function findSmartWallPlacement(
     }
   }
 
-  // Fallback con resolvePlacement
-  const firstWall = effectiveWalls[0];
-  const [wx1, wz1] = firstWall.start;
-  const [wx2, wz2] = firstWall.end;
+  // Fallback garantizado contra muros: buscar posiciones válidas a lo largo de cada muro efectivo
+  for (const w of effectiveWalls) {
+    const [wx1, wz1] = w.start;
+    const [wx2, wz2] = w.end;
+    const wallLen = Math.hypot(wx2 - wx1, wz2 - wz1);
+    const wallThickness = w.thickness || 20;
+    const [nX, nZ] = getWallInwardNormal(wx1, wz1, wx2, wz2, roomPoly);
+    const wallRot = Math.atan2(nX, nZ);
+    const flushDist = wallThickness / 2 + specs.depth / 2;
+    const uX = (wx2 - wx1) / wallLen;
+    const uZ = (wz2 - wz1) / wallLen;
+    const cornerMargin = wallThickness / 2 + 1;
+
+    const minS = cornerMargin + specs.width / 2;
+    const maxS = wallLen - cornerMargin - specs.width / 2;
+    if (maxS >= minS) {
+      for (let s = minS; s <= maxS + 0.1; s += 15) {
+        const candX = wx1 + s * uX + flushDist * nX;
+        const candZ = wz1 + s * uZ + flushDist * nZ;
+        const candPos: [number, number, number] = [candX, defaultY, candZ];
+        if (
+          isCandidateValid(
+            { position: candPos, width: specs.width, depth: specs.depth, height: specs.height, rotation: wallRot, type: specs.type },
+            currentCabinets,
+            effectiveWalls,
+            null,
+            roomPoly,
+            architecturalElements
+          )
+        ) {
+          return { position: candPos, rotation: wallRot };
+        }
+      }
+    }
+  }
+
+  // Si todas las paredes estuviesen 100% copadas, buscar posición libre con resolvePlacement
+  const firstWall = effectiveWalls[0] || { start: [-100, -100], end: [100, -100] };
   const fallbackResult = resolvePlacement({
-    mouseX: (wx1 + wx2) / 2,
-    mouseZ: (wz1 + wz2) / 2,
+    mouseX: (firstWall.start[0] + firstWall.end[0]) / 2,
+    mouseZ: (firstWall.start[1] + firstWall.end[1]) / 2,
     cabWidth: specs.width,
     cabHeight: specs.height,
     cabDepth: specs.depth,
@@ -1830,6 +1912,5 @@ export function findSmartWallPlacement(
     roomVertices,
     architecturalElements,
   });
-
   return { position: fallbackResult.position, rotation: fallbackResult.rotation };
 }
