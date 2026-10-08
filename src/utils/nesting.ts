@@ -78,192 +78,406 @@ export function optimizeNesting(parts: NestingPart[], boardW = 2500, boardH = 18
 
   if (baseItems.length === 0) return [];
 
-  // Split Rules for Pure Industrial Guillotine Cutting (Beam saw / Panel saw / Encuadradora)
-  type SplitRule = 'ShorterAxis' | 'LongerAxis' | 'HorizontalFirst' | 'VerticalFirst' | 'MinArea';
+  // =========================================================================
+  // MOTOR DE CORTE CON DISCO (GUILLOTINA PURA INDUSTRIAL EN FAJAS)
+  // Cumplimiento estricto para Escuadradoras, Seccionadoras y Paneleras (Celco/Striebig)
+  // Cada corte es 100% pasante de borde a borde (Cero escalones, Cero cortes ciegos/L)
+  // =========================================================================
 
-  // Helper to run a Guillotine Simulation with a specific sort order and split rule
-  const runGuillotineSimulation = (items: ItemToPlace[], splitRule: SplitRule, preferStrips: 'horizontal' | 'vertical' = 'vertical'): BoardResult[] => {
+  const usableW = boardW - 2 * margin;
+  const usableH = boardH - 2 * margin;
+
+  // Empaquetador de fajas continuas dentro de una sección rectangular
+  const packSectionWithStrips = (
+    secX: number,
+    secY: number,
+    secW: number,
+    secH: number,
+    orientation: 'horizontal' | 'vertical',
+    unplaced: ItemToPlace[],
+    placedParts: PlacedPart[]
+  ): number => {
+    let placedArea = 0;
+
+    if (orientation === 'horizontal') {
+      let curY = secY;
+
+      while (curY < secY + secH && unplaced.length > 0) {
+        const maxAvailH = (secY + secH) - curY;
+
+        // Determinar altura de la faja (stripH): la pieza más alta que cabe en maxAvailH
+        let bestH = 0;
+        let candIdx = -1;
+        let candRot = false;
+
+        for (let i = 0; i < unplaced.length; i++) {
+          const it = unplaced[i];
+          if (it.h <= maxAvailH && it.w <= secW && it.h > bestH) {
+            bestH = it.h;
+            candIdx = i;
+            candRot = false;
+          }
+          if (it.allowRotation && it.w <= maxAvailH && it.h <= secW && it.w > bestH) {
+            bestH = it.w;
+            candIdx = i;
+            candRot = true;
+          }
+        }
+
+        if (candIdx === -1) break; // No cabe ninguna otra faja en la altura restante
+
+        const stripH = bestH;
+        let curX = secX;
+
+        // Llenar la faja horizontal de izquierda a derecha (cortes de tronzado verticales)
+        while (curX < secX + secW && unplaced.length > 0) {
+          const remW = (secX + secW) - curX;
+          let pickIdx = -1;
+          let pickRot = false;
+          let bestScore = -Infinity;
+
+          for (let i = 0; i < unplaced.length; i++) {
+            const it = unplaced[i];
+
+            // 1. Orientación normal
+            if (it.w <= remW && it.h <= stripH) {
+              const hMatch = it.h / stripH;
+              const isExact = Math.abs(it.h - stripH) < 1;
+              const score = (isExact ? 25000 : 0) + (hMatch * 1000) + it.w;
+              if (score > bestScore) {
+                bestScore = score;
+                pickIdx = i;
+                pickRot = false;
+              }
+            }
+
+            // 2. Orientación rotada (respetando veta)
+            if (it.allowRotation && it.h <= remW && it.w <= stripH) {
+              const hMatch = it.w / stripH;
+              const isExact = Math.abs(it.w - stripH) < 1;
+              const score = (isExact ? 25000 : 0) + (hMatch * 1000) + it.h;
+              if (score > bestScore) {
+                bestScore = score;
+                pickIdx = i;
+                pickRot = true;
+              }
+            }
+          }
+
+          if (pickIdx === -1) break; // Faja llena en X
+
+          const item = unplaced.splice(pickIdx, 1)[0];
+          const pw = pickRot ? item.h : item.w;
+          const ph = pickRot ? item.w : item.h;
+
+          placedParts.push({
+            id: item.id,
+            name: item.name,
+            x: curX,
+            y: curY,
+            w: pw,
+            h: ph,
+            rotated: pickRot,
+            edgeTop: pickRot ? item.eW1 : item.eL1,
+            edgeBottom: pickRot ? item.eW2 : item.eL2,
+            edgeLeft: pickRot ? item.eL1 : item.eW1,
+            edgeRight: pickRot ? item.eL2 : item.eW2
+          });
+          placedArea += pw * ph;
+
+          // Sub-empaquetado 3-etapas dentro del bloque tronzado [curX, curX + pw] x [curY, curY + stripH]
+          let colRemH = stripH - ph - kerf;
+          let stackY = curY + ph + kerf;
+
+          while (colRemH >= 50 && unplaced.length > 0) {
+            let stIdx = -1;
+            let stRot = false;
+            let stScore = -Infinity;
+
+            for (let i = 0; i < unplaced.length; i++) {
+              const it = unplaced[i];
+              // Sub-corte guillotina pasante dentro del bloque: ancho idéntico o submúltiplo
+              if (it.w <= pw && it.h <= colRemH) {
+                const exactW = Math.abs(it.w - pw) < 1 ? 15000 : 0;
+                const s = exactW + (it.h / colRemH) * 500;
+                if (s > stScore) {
+                  stScore = s;
+                  stIdx = i;
+                  stRot = false;
+                }
+              }
+              if (it.allowRotation && it.h <= pw && it.w <= colRemH) {
+                const exactW = Math.abs(it.h - pw) < 1 ? 15000 : 0;
+                const s = exactW + (it.w / colRemH) * 500;
+                if (s > stScore) {
+                  stScore = s;
+                  stIdx = i;
+                  stRot = true;
+                }
+              }
+            }
+
+            if (stIdx === -1) break;
+
+            const stItem = unplaced.splice(stIdx, 1)[0];
+            const spw = stRot ? stItem.h : stItem.w;
+            const sph = stRot ? stItem.w : stItem.h;
+
+            placedParts.push({
+              id: stItem.id,
+              name: stItem.name,
+              x: curX,
+              y: stackY,
+              w: spw,
+              h: sph,
+              rotated: stRot,
+              edgeTop: stRot ? stItem.eW1 : stItem.eL1,
+              edgeBottom: stRot ? stItem.eW2 : stItem.eL2,
+              edgeLeft: stRot ? stItem.eL1 : stItem.eW1,
+              edgeRight: stRot ? stItem.eL2 : stItem.eW2
+            });
+            placedArea += spw * sph;
+            stackY += sph + kerf;
+            colRemH -= (sph + kerf);
+          }
+
+          curX += pw + kerf;
+        }
+
+        curY += stripH + kerf;
+      }
+    } else {
+      // Fajas Verticales (Columnas)
+      let curX = secX;
+
+      while (curX < secX + secW && unplaced.length > 0) {
+        const maxAvailW = (secX + secW) - curX;
+
+        let bestW = 0;
+        let candIdx = -1;
+        let candRot = false;
+
+        for (let i = 0; i < unplaced.length; i++) {
+          const it = unplaced[i];
+          if (it.w <= maxAvailW && it.h <= secH && it.w > bestW) {
+            bestW = it.w;
+            candIdx = i;
+            candRot = false;
+          }
+          if (it.allowRotation && it.h <= maxAvailW && it.w <= secH && it.h > bestW) {
+            bestW = it.h;
+            candIdx = i;
+            candRot = true;
+          }
+        }
+
+        if (candIdx === -1) break;
+
+        const stripW = bestW;
+        let curY = secY;
+
+        while (curY < secY + secH && unplaced.length > 0) {
+          const remH = (secY + secH) - curY;
+          let pickIdx = -1;
+          let pickRot = false;
+          let bestScore = -Infinity;
+
+          for (let i = 0; i < unplaced.length; i++) {
+            const it = unplaced[i];
+
+            if (it.h <= remH && it.w <= stripW) {
+              const wMatch = it.w / stripW;
+              const isExact = Math.abs(it.w - stripW) < 1;
+              const score = (isExact ? 25000 : 0) + (wMatch * 1000) + it.h;
+              if (score > bestScore) {
+                bestScore = score;
+                pickIdx = i;
+                pickRot = false;
+              }
+            }
+
+            if (it.allowRotation && it.w <= remH && it.h <= stripW) {
+              const wMatch = it.h / stripW;
+              const isExact = Math.abs(it.h - stripW) < 1;
+              const score = (isExact ? 25000 : 0) + (wMatch * 1000) + it.w;
+              if (score > bestScore) {
+                bestScore = score;
+                pickIdx = i;
+                pickRot = true;
+              }
+            }
+          }
+
+          if (pickIdx === -1) break;
+
+          const item = unplaced.splice(pickIdx, 1)[0];
+          const pw = pickRot ? item.h : item.w;
+          const ph = pickRot ? item.w : item.h;
+
+          placedParts.push({
+            id: item.id,
+            name: item.name,
+            x: curX,
+            y: curY,
+            w: pw,
+            h: ph,
+            rotated: pickRot,
+            edgeTop: pickRot ? item.eW1 : item.eL1,
+            edgeBottom: pickRot ? item.eW2 : item.eL2,
+            edgeLeft: pickRot ? item.eL1 : item.eW1,
+            edgeRight: pickRot ? item.eL2 : item.eW2
+          });
+          placedArea += pw * ph;
+
+          // Sub-empaquetado a lo largo de X dentro de la fila tronzada
+          let rowRemW = stripW - pw - kerf;
+          let stackX = curX + pw + kerf;
+
+          while (rowRemW >= 50 && unplaced.length > 0) {
+            let stIdx = -1;
+            let stRot = false;
+            let stScore = -Infinity;
+
+            for (let i = 0; i < unplaced.length; i++) {
+              const it = unplaced[i];
+              if (it.h <= ph && it.w <= rowRemW) {
+                const exactH = Math.abs(it.h - ph) < 1 ? 15000 : 0;
+                const s = exactH + (it.w / rowRemW) * 500;
+                if (s > stScore) {
+                  stScore = s;
+                  stIdx = i;
+                  stRot = false;
+                }
+              }
+              if (it.allowRotation && it.w <= ph && it.h <= rowRemW) {
+                const exactH = Math.abs(it.w - ph) < 1 ? 15000 : 0;
+                const s = exactH + (it.h / rowRemW) * 500;
+                if (s > stScore) {
+                  stScore = s;
+                  stIdx = i;
+                  stRot = true;
+                }
+              }
+            }
+
+            if (stIdx === -1) break;
+
+            const stItem = unplaced.splice(stIdx, 1)[0];
+            const spw = stRot ? stItem.h : stItem.w;
+            const sph = stRot ? stItem.w : stItem.h;
+
+            placedParts.push({
+              id: stItem.id,
+              name: stItem.name,
+              x: stackX,
+              y: curY,
+              w: spw,
+              h: sph,
+              rotated: stRot,
+              edgeTop: stRot ? stItem.eW1 : stItem.eL1,
+              edgeBottom: stRot ? stItem.eW2 : stItem.eL2,
+              edgeLeft: stRot ? stItem.eL1 : stItem.eW1,
+              edgeRight: stRot ? stItem.eL2 : stItem.eW2
+            });
+            placedArea += spw * sph;
+            stackX += spw + kerf;
+            rowRemW -= (spw + kerf);
+          }
+
+          curY += ph + kerf;
+        }
+
+        curX += stripW + kerf;
+      }
+    }
+
+    return placedArea;
+  };
+
+  // Simulación completa de tableros garantizando 100% corte guillotina con disco
+  const runGuillotineSimulation = (
+    items: ItemToPlace[],
+    orientation: 'horizontal' | 'vertical',
+    useHeadCut = false
+  ): BoardResult[] => {
+    const unplaced = [...items];
     const boards: BoardResult[] = [];
 
-    const createBoard = (id: number, color: string): BoardResult => ({
-      id,
-      color,
-      w: boardW,
-      h: boardH,
-      placedParts: [],
-      freeRects: [{ x: margin, y: margin, w: boardW - 2 * margin, h: boardH - 2 * margin }],
-      usedArea: 0,
-      totalArea: boardW * boardH,
-      wastePercentage: 100
-    });
+    while (unplaced.length > 0) {
+      const placedParts: PlacedPart[] = [];
+      let usedArea = 0;
 
-    // Pure Guillotine Split function: Divides a rectangle into exactly 2 disjoint sub-rectangles
-    const splitGuillotineRect = (freeRects: Rect[], frIndex: number, pw: number, ph: number) => {
-      const fr = freeRects[frIndex];
-      freeRects.splice(frIndex, 1);
-
-      const remW = fr.w - pw - kerf;
-      const remH = fr.h - ph - kerf;
-
-      // Determine cut orientation based on industrial panel saw cutting rules
-      let cutHorizontally = false;
-
-      if (remW <= 0 && remH <= 0) {
-        return; // Exact fit, no remnant rects created
-      } else if (remW <= 0) {
-        cutHorizontally = true;
-      } else if (remH <= 0) {
-        cutHorizontally = false;
-      } else {
-        switch (splitRule) {
-          case 'HorizontalFirst':
-            cutHorizontally = true;
-            break;
-          case 'VerticalFirst':
-            cutHorizontally = false;
-            break;
-          case 'ShorterAxis':
-            // Cut along the shorter dimension of fr to preserve longer continuous strips
-            cutHorizontally = fr.w < fr.h;
-            break;
-          case 'LongerAxis':
-            cutHorizontally = fr.w >= fr.h;
-            break;
-          case 'MinArea':
-          default:
-            // Prefer keeping the larger remnant area continuous
-            cutHorizontally = (pw * remH) > (remW * ph);
-            break;
-        }
-      }
-
-      if (cutHorizontally) {
-        // Horizontal Guillotine Cut across fr.w:
-        // Top-Right rect (same strip height ph):
-        if (remW > 0 && ph > 0) {
-          freeRects.push({ x: fr.x + pw + kerf, y: fr.y, w: remW, h: ph });
-        }
-        // Bottom rect (full strip width fr.w across):
-        if (remH > 0 && fr.w > 0) {
-          freeRects.push({ x: fr.x, y: fr.y + ph + kerf, w: fr.w, h: remH });
-        }
-      } else {
-        // Vertical Guillotine Cut across fr.h:
-        // Bottom-Left rect (same strip width pw):
-        if (remH > 0 && pw > 0) {
-          freeRects.push({ x: fr.x, y: fr.y + ph + kerf, w: pw, h: remH });
-        }
-        // Right rect (full strip height fr.h across):
-        if (remW > 0 && fr.h > 0) {
-          freeRects.push({ x: fr.x + pw + kerf, y: fr.y, w: remW, h: fr.h });
-        }
-      }
-    };
-
-    // Place an item into the best fitting Guillotine Free Rectangle
-    const tryPlaceItem = (board: BoardResult, item: ItemToPlace): boolean => {
-      let bestScore = Infinity;
-      let bestRectIndex = -1;
-      let bestRotated = false;
-
-      for (let i = 0; i < board.freeRects.length; i++) {
-        const fr = board.freeRects[i];
-
-        // 1. Normal Orientation
-        if (item.w <= fr.w && item.h <= fr.h) {
-          // Exact strip fit bonus
-          const isExactWidth = Math.abs(fr.w - item.w) < 1;
-          const isExactHeight = Math.abs(fr.h - item.h) < 1;
-          const shortSideFit = Math.min(fr.w - item.w, fr.h - item.h);
-          const areaFit = (fr.w * fr.h) - (item.w * item.h);
-          
-          let score = shortSideFit * 1000 + areaFit;
-          if (isExactHeight || isExactWidth) score -= 5000000; // Prioritize continuing existing guillotine strip
-
-          if (score < bestScore) {
-            bestScore = score;
-            bestRectIndex = i;
-            bestRotated = false;
-          }
+      // Evaluar corte de cabeza si existen piezas largas (e.g. torres >= 1600mm)
+      let headCutPerformed = false;
+      if (useHeadCut) {
+        let maxDim = 0;
+        for (const it of unplaced) {
+          const m = Math.max(it.w, it.h);
+          if (m > maxDim) maxDim = m;
         }
 
-        // 2. Rotated Orientation (if grain allows)
-        if (item.allowRotation && item.h <= fr.w && item.w <= fr.h) {
-          const isExactWidth = Math.abs(fr.w - item.h) < 1;
-          const isExactHeight = Math.abs(fr.h - item.w) < 1;
-          const shortSideFit = Math.min(fr.w - item.h, fr.h - item.w);
-          const areaFit = (fr.w * fr.h) - (item.h * item.w);
-          
-          let score = shortSideFit * 1000 + areaFit;
-          if (isExactHeight || isExactWidth) score -= 5000000;
+        if (maxDim >= 1600 && maxDim <= usableW) {
+          const headW = maxDim;
+          const remW = usableW - headW - kerf;
 
-          if (score < bestScore) {
-            bestScore = score;
-            bestRectIndex = i;
-            bestRotated = true;
+          if (remW >= 200) {
+            headCutPerformed = true;
+            usedArea += packSectionWithStrips(margin, margin, headW, usableH, 'horizontal', unplaced, placedParts);
+            usedArea += packSectionWithStrips(margin + headW + kerf, margin, remW, usableH, 'horizontal', unplaced, placedParts);
           }
         }
       }
 
-      if (bestRectIndex !== -1) {
-        const fr = board.freeRects[bestRectIndex];
-        const pw = bestRotated ? item.h : item.w;
-        const ph = bestRotated ? item.w : item.h;
+      if (!headCutPerformed) {
+        usedArea += packSectionWithStrips(margin, margin, usableW, usableH, orientation, unplaced, placedParts);
+      }
 
-        let eT = false, eB = false, eL = false, eR = false;
-        if (bestRotated) {
-          eT = item.eW1; eB = item.eW2; eL = item.eL1; eR = item.eL2;
-        } else {
-          eT = item.eL1; eB = item.eL2; eL = item.eW1; eR = item.eW2;
-        }
-
-        board.placedParts.push({
-          id: item.id,
-          name: item.name,
-          x: fr.x,
-          y: fr.y,
-          w: pw,
-          h: ph,
-          rotated: bestRotated,
-          edgeTop: eT,
-          edgeBottom: eB,
-          edgeLeft: eL,
-          edgeRight: eR
+      if (placedParts.length === 0 && unplaced.length > 0) {
+        const fallback = unplaced.shift()!;
+        placedParts.push({
+          id: fallback.id,
+          name: fallback.name,
+          x: margin,
+          y: margin,
+          w: Math.min(fallback.w, usableW),
+          h: Math.min(fallback.h, usableH),
+          rotated: false,
+          edgeTop: fallback.eL1,
+          edgeBottom: fallback.eL2,
+          edgeLeft: fallback.eW1,
+          edgeRight: fallback.eW2
         });
-
-        // Perform Guillotine Split
-        splitGuillotineRect(board.freeRects, bestRectIndex, pw, ph);
-
-        board.usedArea += (pw * ph);
-        board.wastePercentage = 100 - ((board.usedArea / board.totalArea) * 100);
-        return true;
+        usedArea += Math.min(fallback.w, usableW) * Math.min(fallback.h, usableH);
       }
 
-      return false;
-    };
-
-    // Process all items
-    for (const item of items) {
-      let placed = false;
-      for (const board of boards) {
-        if (tryPlaceItem(board, item)) {
-          placed = true;
-          break;
-        }
-      }
-
-      if (!placed) {
-        const newBoard = createBoard(boards.length + 1, parts[0]?.color || '#ffffff');
-        tryPlaceItem(newBoard, item);
-        boards.push(newBoard);
-      }
+      boards.push({
+        id: boards.length + 1,
+        color: parts[0]?.color || '#ffffff',
+        w: boardW,
+        h: boardH,
+        placedParts,
+        freeRects: [],
+        usedArea,
+        totalArea: boardW * boardH,
+        wastePercentage: 100 - ((usedArea / (boardW * boardH)) * 100)
+      });
     }
 
     return boards;
   };
 
-  // 2. Multi-Heuristic Tournament: Test multiple industrial panel-saw sorting & guillotine strategies
+  // 2. Torneo Multi-Heurístico de Estrategias Guillotina Puras de Disco
   const candidateSorts: { name: string; sortFn: (a: ItemToPlace, b: ItemToPlace) => number }[] = [
+    {
+      name: 'StripCluster',
+      // Agrupa piezas por dimensiones comunes (laterales, frentes, repisas) y luego por área
+      sortFn: (a, b) => {
+        const minA = Math.min(a.w, a.h);
+        const minB = Math.min(b.w, b.h);
+        if (Math.abs(minB - minA) > 15) return minB - minA;
+        return (b.w * b.h) - (a.w * a.h);
+      }
+    },
     {
       name: 'AreaDesc',
       sortFn: (a, b) => (b.w * b.h) - (a.w * a.h) || Math.max(b.w, b.h) - Math.max(a.w, a.h)
@@ -273,37 +487,31 @@ export function optimizeNesting(parts: NestingPart[], boardW = 2500, boardH = 18
       sortFn: (a, b) => Math.max(b.w, b.h) - Math.max(a.w, a.h) || (b.w * b.h) - (a.w * a.h)
     },
     {
-      name: 'StripWidthCluster',
-      // Cluster parts with identical strip widths (e.g. 564mm, 490mm, 120mm, 100mm)
-      sortFn: (a, b) => {
-        const minA = Math.min(a.w, a.h);
-        const minB = Math.min(b.w, b.h);
-        if (minB !== minA) return minB - minA;
-        return (b.w * b.h) - (a.w * a.h);
-      }
-    },
-    {
-      name: 'HeightDescThenWidth',
+      name: 'HeightDesc',
       sortFn: (a, b) => b.h - a.h || b.w - a.w
     },
     {
-      name: 'WidthDescThenHeight',
+      name: 'WidthDesc',
       sortFn: (a, b) => b.w - a.w || b.h - a.h
     }
   ];
-
-  const candidateSplitRules: SplitRule[] = ['ShorterAxis', 'HorizontalFirst', 'VerticalFirst', 'MinArea'];
 
   let bestBoards: BoardResult[] | null = null;
   let minBoardsCount = Infinity;
   let minWaste = Infinity;
 
-  // Run tournament across industrial guillotine strategies
+  // Evaluar exclusivamente estrategias 100% compatibles con disco (Fajas Horizontales, Fajas Verticales y Corte de Cabeza)
   for (const sortStrategy of candidateSorts) {
     const sortedItems = [...baseItems].sort(sortStrategy.sortFn);
 
-    for (const splitRule of candidateSplitRules) {
-      const result = runGuillotineSimulation(sortedItems, splitRule);
+    const configs: { orientation: 'horizontal' | 'vertical'; headCut: boolean }[] = [
+      { orientation: 'horizontal', headCut: false },
+      { orientation: 'vertical', headCut: false },
+      { orientation: 'horizontal', headCut: true }
+    ];
+
+    for (const cfg of configs) {
+      const result = runGuillotineSimulation(sortedItems, cfg.orientation, cfg.headCut);
       const totalWaste = result.reduce((acc, b) => acc + b.wastePercentage, 0) / (result.length || 1);
 
       if (

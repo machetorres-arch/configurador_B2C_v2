@@ -1814,6 +1814,7 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                               position={[0, shelfY, 0]}
                               args={[innerW, thickness, depth - 1]}
                               {...parseColor(cShelves, shelfMaterial, `term-sh-${sIdx}`)}
+                              isShelf={true}
                            />
                            {/* Decoración estética de nichos abiertos (libros y vajilla según foto de referencia) */}
                            {showDeco && (() => {

@@ -14,12 +14,13 @@ interface BoardProps {
   transparent?: boolean;
   opacity?: number;
   isFrontPanel?: boolean; // NUEVO: Identificador de veta continua
+  isShelf?: boolean; // Repisa: cara superior (+Y) siempre es la cara vista HPL
   grainDirection?: 'vertical' | 'horizontal';
   hplBalancerOverride?: boolean;
   globalPosition?: [number, number, number];
 }
 
-export function Board({ position, args, color, textureUrl, materialType, transparent, opacity, isFrontPanel, grainDirection, hplBalancerOverride, globalPosition }: BoardProps) {
+export function Board({ position, args, color, textureUrl, materialType, transparent, opacity, isFrontPanel, isShelf, grainDirection, hplBalancerOverride, globalPosition }: BoardProps) {
   const [texture, setTexture] = useState<THREE.Texture | null>(null);
   
   // Obtenemos módulos para saber el ancho total del mueble y anclar la textura globalmente (World-Space)
@@ -158,9 +159,10 @@ export function Board({ position, args, color, textureUrl, materialType, transpa
       // Side wall (thickness along X)
       trascaraFace = position[0] < 0 ? 0 : 1; // Left side inner is +X (0), right side inner is -X (1)
     } else if (args[1] < args[0] && args[1] < args[2]) {
-      // Horizontal panel (thickness along Y)
-      // Height is usually ~200. Center is ~100.
-      trascaraFace = position[1] > 100 ? 3 : 2; // Top panel inner is -Y (3), bottom panel inner is +Y (2)
+      // Horizontal panel / repisa (espesor en Y):
+      // La cara superior (+Y, índice 2) es siempre la cara vista decorativa útil donde se apoyan objetos.
+      // La trascara (papel balanceador 0.9mm) se ubica en la cara inferior (-Y, índice 3), nunca en la cara superior.
+      trascaraFace = 3;
     } else if (args[2] < args[0] && args[2] < args[1]) {
       // Front/Back panel (thickness along Z)
       trascaraFace = position[2] > 0 ? 5 : 4; // Front door inner is -Z (5), back panel inner is +Z (4)
@@ -169,6 +171,9 @@ export function Board({ position, args, color, textureUrl, materialType, transpa
     // Override for doors/fronts if they use isFrontPanel
     if (isFrontPanel) {
       trascaraFace = 5;
+    }
+    if (isShelf) {
+      trascaraFace = 3;
     }
   }
 
