@@ -164,137 +164,231 @@ export function calculateSocleSystem(
       return projA - projB;
     });
 
-    const maxDepth = Math.max(...component.map((c) => c.depth));
-    const frontOffsetZ = maxDepth / 2 - 2;
-
-    // Build Continuous Strips (Commercial length = 300 cm / 3000 mm)
-    // Seamless continuous strip across all cabinets in the run without intermediate cuts
-    const strips: CabinetType[][] = [];
-    let currentStrip: CabinetType[] = [];
-    let currentStripWidth = 0;
-
-    for (let i = 0; i < component.length; i++) {
-      const c = component[i];
-      if (currentStrip.length > 0 && currentStripWidth + c.width > 300) {
-        strips.push(currentStrip);
-        currentStrip = [c];
-        currentStripWidth = c.width;
-      } else {
-        currentStrip.push(c);
-        currentStripWidth += c.width;
-      }
-    }
-    if (currentStrip.length > 0) {
-      strips.push(currentStrip);
-    }
-
-    // Generate 3D pieces for each continuous commercial strip (up to 3000mm each)
-    for (let s = 0; s < strips.length; s++) {
-      const stripCabs = strips[s];
-      const stripTotalWidth = stripCabs.reduce((acc, c) => acc + c.width, 0);
-
-      const firstInStrip = stripCabs[0];
-      const lastInStrip = stripCabs[stripCabs.length - 1];
-
-      // Physical start (left) and end (right) of this continuous strip
-      const pStart: [number, number] = [
-        firstInStrip.position[0] - (firstInStrip.width / 2) * uX[0],
-        firstInStrip.position[2] - (firstInStrip.width / 2) * uX[1],
-      ];
-      const pEnd: [number, number] = [
-        lastInStrip.position[0] + (lastInStrip.width / 2) * uX[0],
-        lastInStrip.position[2] + (lastInStrip.width / 2) * uX[1],
-      ];
-
-      const stripCenterX = (pStart[0] + pEnd[0]) / 2 + frontOffsetZ * uZ[0];
-      const stripCenterZ = (pStart[1] + pEnd[1]) / 2 + frontOffsetZ * uZ[1];
-
-      pieces.push({
-        id: `socle-piece-${stripCabs.map((c) => c.id).join('-')}`,
-        length: stripTotalWidth,
-        center: [stripCenterX, socleY, stripCenterZ],
-        rotation: baseRot,
-      });
-
-      // If the run exceeds 3000mm, insert a 180° Straight H-Joint profile between strips
-      if (s < strips.length - 1) {
-        const jointX = pEnd[0] + frontOffsetZ * uZ[0];
-        const jointZ = pEnd[1] + frontOffsetZ * uZ[1];
-        straightJoints.push({
-          id: `socle-joint-${lastInStrip.id}`,
-          position: [jointX, socleY, jointZ],
-          rotation: baseRot,
-        });
-      }
-    }
-
-    // Evaluate exposed flanks on the left and right ends of the run
     const leftmostCab = component[0];
     const leftX = leftmostCab.position[0] - (leftmostCab.width / 2) * uX[0];
     const leftZ = leftmostCab.position[2] - (leftmostCab.width / 2) * uX[1];
-
-    // Check if the leftmost flank is near a wall or another cabinet
-    const isLeftNearWall = isPointNearWall(leftX, leftZ, 12);
-    const hasPerpLeftNeighbor = floorCabinets.some((other) => {
-      if (component.some((c) => c.id === other.id)) return false;
-      const oGeo = getCabGeo(other);
-      return dist([leftX, leftZ], [oGeo.cx, oGeo.cz]) < (other.depth + 10);
-    });
-
-    if (!isLeftNearWall && !hasPerpLeftNeighbor) {
-      // Left lateral return & 90° corner
-      const latLeftX = leftX + 0.6 * uX[0] - 1.0 * uZ[0];
-      const latLeftZ = leftZ + 0.6 * uX[1] - 1.0 * uZ[1];
-      laterals.push({
-        id: `socle-lat-left-${leftmostCab.id}`,
-        position: [latLeftX, socleY, latLeftZ],
-        rotation: baseRot,
-        depth: leftmostCab.depth - 4,
-        isRight: false,
-      });
-
-      const cornLeftX = leftX + 0.6 * uX[0] + frontOffsetZ * uZ[0];
-      const cornLeftZ = leftZ + 0.6 * uX[1] + frontOffsetZ * uZ[1];
-      corners.push({
-        id: `socle-corn-left-${leftmostCab.id}`,
-        position: [cornLeftX, socleY, cornLeftZ],
-        rotation: baseRot,
-        isRight: false,
-      });
-    }
 
     const rightmostCab = component[component.length - 1];
     const rightX = rightmostCab.position[0] + (rightmostCab.width / 2) * uX[0];
     const rightZ = rightmostCab.position[2] + (rightmostCab.width / 2) * uX[1];
 
-    // Check if the rightmost flank is near a wall or another cabinet
-    const isRightNearWall = isPointNearWall(rightX, rightZ, 12);
-    const hasPerpRightNeighbor = floorCabinets.some((other) => {
-      if (component.some((c) => c.id === other.id)) return false;
-      const oGeo = getCabGeo(other);
-      return dist([rightX, rightZ], [oGeo.cx, oGeo.cz]) < (other.depth + 10);
+    // Detect adjoining terminal shelf modules (Torre Terminal Repisas Abiertas) on flanks
+    const rightTerminal = floorCabinets.find((c) => {
+      if (c.variant !== 'tall_terminal_shelves' || visited.has(c.id)) return false;
+      const cDist = dist([rightX, rightZ], [c.position[0], c.position[2]]);
+      return cDist < (c.depth / 2 + 15);
     });
 
-    if (!isRightNearWall && !hasPerpRightNeighbor) {
-      // Right lateral return & 90° corner
-      const latRightX = rightX - 0.6 * uX[0] - 1.0 * uZ[0];
-      const latRightZ = rightZ - 0.6 * uX[1] - 1.0 * uZ[1];
-      laterals.push({
-        id: `socle-lat-right-${rightmostCab.id}`,
-        position: [latRightX, socleY, latRightZ],
+    const leftTerminal = floorCabinets.find((c) => {
+      if (c.variant !== 'tall_terminal_shelves' || visited.has(c.id)) return false;
+      const cDist = dist([leftX, leftZ], [c.position[0], c.position[2]]);
+      return cDist < (c.depth / 2 + 15);
+    });
+
+    if (rightTerminal) visited.add(rightTerminal.id);
+    if (leftTerminal) visited.add(leftTerminal.id);
+
+    const maxDepth = Math.max(...component.map((c) => c.depth));
+    const frontOffsetZ = maxDepth / 2 - 2;
+
+    // Physical start (left) and end (right) of this continuous front run
+    const runStartX = leftTerminal ? (leftX - leftTerminal.depth * uX[0]) : leftX;
+    const runStartZ = leftTerminal ? (leftZ - leftTerminal.depth * uX[1]) : leftZ;
+    const runEndX = rightTerminal ? (rightX + rightTerminal.depth * uX[0]) : rightX;
+    const runEndZ = rightTerminal ? (rightZ + rightTerminal.depth * uX[1]) : rightZ;
+
+    const totalRunWidth = dist([runStartX, runStartZ], [runEndX, runEndZ]);
+
+    // Build Continuous Commercial Strips (Commercial length = 300 cm / 3000 mm)
+    // Seamless continuous strip across all cabinets (and terminal shelves) in the run
+    let currentStartX = runStartX;
+    let currentStartZ = runStartZ;
+    let remainingWidth = totalRunWidth;
+    let stripIndex = 0;
+
+    while (remainingWidth > 0.01) {
+      const segLen = Math.min(300, remainingWidth);
+      const nextEndX = currentStartX + segLen * uX[0];
+      const nextEndZ = currentStartZ + segLen * uX[1];
+
+      const stripCenterX = (currentStartX + nextEndX) / 2 + frontOffsetZ * uZ[0];
+      const stripCenterZ = (currentStartZ + nextEndZ) / 2 + frontOffsetZ * uZ[1];
+
+      pieces.push({
+        id: `socle-piece-${component.map((c) => c.id).join('-')}-${stripIndex}`,
+        length: segLen,
+        center: [stripCenterX, socleY, stripCenterZ],
         rotation: baseRot,
-        depth: rightmostCab.depth - 4,
-        isRight: true,
       });
 
-      const cornRightX = rightX - 0.6 * uX[0] + frontOffsetZ * uZ[0];
-      const cornRightZ = rightZ - 0.6 * uX[1] + frontOffsetZ * uZ[1];
+      remainingWidth -= segLen;
+
+      // If the run exceeds 3000mm, insert a 180° Straight H-Joint profile between strips
+      if (remainingWidth > 0.01) {
+        const jointX = nextEndX + frontOffsetZ * uZ[0];
+        const jointZ = nextEndZ + frontOffsetZ * uZ[1];
+        straightJoints.push({
+          id: `socle-joint-${component[0].id}-${stripIndex}`,
+          position: [jointX, socleY, jointZ],
+          rotation: baseRot,
+        });
+      }
+
+      currentStartX = nextEndX;
+      currentStartZ = nextEndZ;
+      stripIndex++;
+    }
+
+    // Evaluate Left Flank & Terminal Shelves returns
+    if (leftTerminal) {
+      const cornLeftX = runStartX + 0.6 * uX[0] + frontOffsetZ * uZ[0];
+      const cornLeftZ = runStartZ + 0.6 * uX[1] + frontOffsetZ * uZ[1];
       corners.push({
-        id: `socle-corn-right-${rightmostCab.id}`,
+        id: `socle-corn-left-${leftTerminal.id}`,
+        position: [cornLeftX, socleY, cornLeftZ],
+        rotation: baseRot,
+        isRight: false,
+      });
+
+      const latDepth = leftTerminal.width - 4;
+      const latCenterZOffset = frontOffsetZ - latDepth / 2;
+      const latLeftX = runStartX + 0.6 * uX[0] + latCenterZOffset * uZ[0];
+      const latLeftZ = runStartZ + 0.6 * uX[1] + latCenterZOffset * uZ[1];
+      laterals.push({
+        id: `socle-lat-left-${leftTerminal.id}`,
+        position: [latLeftX, socleY, latLeftZ],
+        rotation: baseRot,
+        depth: latDepth,
+        isRight: false,
+      });
+
+      const rearZOffset = frontOffsetZ - latDepth;
+      const rearCornerX = runStartX + rearZOffset * uZ[0];
+      const rearCornerZ = runStartZ + rearZOffset * uZ[1];
+      if (!isPointNearWall(rearCornerX, rearCornerZ, 12)) {
+        corners.push({
+          id: `socle-corn-rear-left-${leftTerminal.id}`,
+          position: [runStartX + 0.6 * uX[0] + rearZOffset * uZ[0], socleY, runStartZ + 0.6 * uX[1] + rearZOffset * uZ[1]],
+          rotation: baseRot,
+          isRight: false,
+        });
+        pieces.push({
+          id: `socle-rear-left-${leftTerminal.id}`,
+          length: leftTerminal.depth,
+          center: [
+            (runStartX + leftX) / 2 + rearZOffset * uZ[0],
+            socleY,
+            (runStartZ + leftZ) / 2 + rearZOffset * uZ[1],
+          ],
+          rotation: baseRot,
+        });
+      }
+    } else {
+      const isLeftNearWall = isPointNearWall(leftX, leftZ, 12);
+      const hasPerpLeftNeighbor = floorCabinets.some((other) => {
+        if (component.some((c) => c.id === other.id)) return false;
+        const oGeo = getCabGeo(other);
+        const dx = (leftX - oGeo.cx) * oGeo.uX[0] + (leftZ - oGeo.cz) * oGeo.uX[1];
+        const dz = (leftX - oGeo.cx) * oGeo.uZ[0] + (leftZ - oGeo.cz) * oGeo.uZ[1];
+        return Math.abs(dx) <= other.width / 2 + 5 && Math.abs(dz) <= other.depth / 2 + 5;
+      });
+
+      if (!isLeftNearWall && !hasPerpLeftNeighbor) {
+        const latLeftX = leftX + 0.6 * uX[0] - 1.0 * uZ[0];
+        const latLeftZ = leftZ + 0.6 * uX[1] - 1.0 * uZ[1];
+        laterals.push({
+          id: `socle-lat-left-${leftmostCab.id}`,
+          position: [latLeftX, socleY, latLeftZ],
+          rotation: baseRot,
+          depth: leftmostCab.depth - 4,
+          isRight: false,
+        });
+
+        const cornLeftX = leftX + 0.6 * uX[0] + frontOffsetZ * uZ[0];
+        const cornLeftZ = leftZ + 0.6 * uX[1] + frontOffsetZ * uZ[1];
+        corners.push({
+          id: `socle-corn-left-${leftmostCab.id}`,
+          position: [cornLeftX, socleY, cornLeftZ],
+          rotation: baseRot,
+          isRight: false,
+        });
+      }
+    }
+
+    // Evaluate Right Flank & Terminal Shelves returns
+    if (rightTerminal) {
+      const cornRightX = runEndX - 0.6 * uX[0] + frontOffsetZ * uZ[0];
+      const cornRightZ = runEndZ - 0.6 * uX[1] + frontOffsetZ * uZ[1];
+      corners.push({
+        id: `socle-corn-right-${rightTerminal.id}`,
         position: [cornRightX, socleY, cornRightZ],
         rotation: baseRot,
         isRight: true,
       });
+
+      const latDepth = rightTerminal.width - 4;
+      const latCenterZOffset = frontOffsetZ - latDepth / 2;
+      const latRightX = runEndX - 0.6 * uX[0] + latCenterZOffset * uZ[0];
+      const latRightZ = runEndZ - 0.6 * uX[1] + latCenterZOffset * uZ[1];
+      laterals.push({
+        id: `socle-lat-right-${rightTerminal.id}`,
+        position: [latRightX, socleY, latRightZ],
+        rotation: baseRot,
+        depth: latDepth,
+        isRight: true,
+      });
+
+      const rearZOffset = frontOffsetZ - latDepth;
+      const rearCornerX = runEndX + rearZOffset * uZ[0];
+      const rearCornerZ = runEndZ + rearZOffset * uZ[1];
+      if (!isPointNearWall(rearCornerX, rearCornerZ, 12)) {
+        corners.push({
+          id: `socle-corn-rear-right-${rightTerminal.id}`,
+          position: [runEndX - 0.6 * uX[0] + rearZOffset * uZ[0], socleY, runEndZ - 0.6 * uX[1] + rearZOffset * uZ[1]],
+          rotation: baseRot,
+          isRight: true,
+        });
+        pieces.push({
+          id: `socle-rear-right-${rightTerminal.id}`,
+          length: rightTerminal.depth,
+          center: [
+            (runEndX + rightX) / 2 + rearZOffset * uZ[0],
+            socleY,
+            (runEndZ + rightZ) / 2 + rearZOffset * uZ[1],
+          ],
+          rotation: baseRot,
+        });
+      }
+    } else {
+      const isRightNearWall = isPointNearWall(rightX, rightZ, 12);
+      const hasPerpRightNeighbor = floorCabinets.some((other) => {
+        if (component.some((c) => c.id === other.id)) return false;
+        const oGeo = getCabGeo(other);
+        const dx = (rightX - oGeo.cx) * oGeo.uX[0] + (rightZ - oGeo.cz) * oGeo.uX[1];
+        const dz = (rightX - oGeo.cx) * oGeo.uZ[0] + (rightZ - oGeo.cz) * oGeo.uZ[1];
+        return Math.abs(dx) <= other.width / 2 + 5 && Math.abs(dz) <= other.depth / 2 + 5;
+      });
+
+      if (!isRightNearWall && !hasPerpRightNeighbor) {
+        const latRightX = rightX - 0.6 * uX[0] - 1.0 * uZ[0];
+        const latRightZ = rightZ - 0.6 * uX[1] - 1.0 * uZ[1];
+        laterals.push({
+          id: `socle-lat-right-${rightmostCab.id}`,
+          position: [latRightX, socleY, latRightZ],
+          rotation: baseRot,
+          depth: rightmostCab.depth - 4,
+          isRight: true,
+        });
+
+        const cornRightX = rightX - 0.6 * uX[0] + frontOffsetZ * uZ[0];
+        const cornRightZ = rightZ - 0.6 * uX[1] + frontOffsetZ * uZ[1];
+        corners.push({
+          id: `socle-corn-right-${rightmostCab.id}`,
+          position: [cornRightX, socleY, cornRightZ],
+          rotation: baseRot,
+          isRight: true,
+        });
+      }
     }
   }
 

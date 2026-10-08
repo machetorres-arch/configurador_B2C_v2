@@ -53,7 +53,7 @@ function projectPointOntoWall(px: number, pz: number, walls: any[], maxDist: num
 }
 
 function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
-  const { viewMode, toolMode, walls, cabinets, addWall, drawingStart, setDrawingStart, addCabinet, setToolMode, setActiveCabinet, roomConfig, activeCabinetId, addArchitecturalElement, draggingArchElementId, draggingCabinetId, setDraggingCabinetId, updateCabinet, architecturalElements, activeArchElementId, setActiveArchElement, setActiveWall } = useKitchenStore();
+  const { viewMode, toolMode, walls, cabinets, addWall, drawingStart, setDrawingStart, addCabinet, setToolMode, setActiveCabinet, roomConfig, activeCabinetId, addArchitecturalElement, draggingArchElementId, draggingCabinetId, setDraggingCabinetId, updateCabinet, architecturalElements, activeArchElementId, setActiveArchElement, setActiveWall, activeWallId, draggingWallId, setDraggingWallId, updateWall } = useKitchenStore();
   const [currentMousePos, setCurrentMousePos] = useState<[number, number] | null>(null);
   const lastMousePosRef = useRef<[number, number] | null>(null);
   const [isShiftDown, setIsShiftDown] = useState(false);
@@ -91,6 +91,86 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
     return [];
   }, [walls, roomConfig]);
 
+  // Clamping y alineación no-rebote contra muros perimetrales exteriores con contacto a ras
+  const clampWallAgainstPerimeters = React.useCallback((
+    start: [number, number],
+    end: [number, number],
+    thickness: number
+  ): { start: [number, number]; end: [number, number] } => {
+    const perimeterWalls = effectiveWalls.filter(
+      (w) => !w.isInterior && (w.id.startsWith('wall_v_') || /^wall_\d+_/.test(w.id))
+    );
+    const halfThick = thickness / 2;
+    const poly = roomConfig?.vertices?.map((v) => [v.x, v.y] as [number, number]) || [];
+
+    const dx = end[0] - start[0];
+    const dz = end[1] - start[1];
+    const wLen = Math.hypot(dx, dz);
+    if (wLen < 1) return { start, end };
+
+    const uX = dx / wLen;
+    const uZ = dz / wLen;
+    const nX = -uZ;
+    const nZ = uX;
+
+    let clampedStart: [number, number] = [start[0], start[1]];
+    let clampedEnd: [number, number] = [end[0], end[1]];
+
+    for (const pw of perimeterWalls) {
+      const [px1, pz1] = pw.start;
+      const [px2, pz2] = pw.end;
+      const pwLen = Math.hypot(px2 - px1, pz2 - pz1);
+      if (pwLen < 1) continue;
+      const pwUx = (px2 - px1) / pwLen;
+      const pwUz = (pz2 - pz1) / pwLen;
+      const [pwnX, pwnZ] = getWallInwardNormal(px1, pz1, px2, pz2, poly);
+      const pwThick = pw.thickness || 20;
+      const reqClearance = pwThick / 2;
+
+      const testCorners: [number, number][] = [
+        [clampedStart[0] + nX * halfThick, clampedStart[1] + nZ * halfThick],
+        [clampedStart[0] - nX * halfThick, clampedStart[1] - nZ * halfThick],
+        [clampedEnd[0] + nX * halfThick, clampedEnd[1] + nZ * halfThick],
+        [clampedEnd[0] - nX * halfThick, clampedEnd[1] - nZ * halfThick],
+      ];
+
+      let maxPenetration = 0;
+      let minDistToInnerFace = Infinity;
+
+      for (const [tcX, tcZ] of testCorners) {
+        const s = (tcX - px1) * pwUx + (tcZ - pz1) * pwUz;
+        if (s >= -10 && s <= pwLen + 10) {
+          const normDist = (tcX - px1) * pwnX + (tcZ - pz1) * pwnZ;
+          if (normDist < reqClearance) {
+            const pen = reqClearance - normDist;
+            if (pen > maxPenetration) {
+              maxPenetration = pen;
+            }
+          } else {
+            const distToFace = normDist - reqClearance;
+            if (distToFace < minDistToInnerFace) {
+              minDistToInnerFace = distToFace;
+            }
+          }
+        }
+      }
+
+      if (maxPenetration > 0) {
+        clampedStart[0] += maxPenetration * pwnX;
+        clampedStart[1] += maxPenetration * pwnZ;
+        clampedEnd[0] += maxPenetration * pwnX;
+        clampedEnd[1] += maxPenetration * pwnZ;
+      } else if (minDistToInnerFace >= 0 && minDistToInnerFace <= 3.0) {
+        clampedStart[0] -= minDistToInnerFace * pwnX;
+        clampedStart[1] -= minDistToInnerFace * pwnZ;
+        clampedEnd[0] -= minDistToInnerFace * pwnX;
+        clampedEnd[1] -= minDistToInnerFace * pwnZ;
+      }
+    }
+
+    return { start: clampedStart, end: clampedEnd };
+  }, [effectiveWalls, roomConfig]);
+
   // Al activar la herramienta "Mover", situar de inmediato el ghost y la flecha sobre el mueble activo
   useEffect(() => {
     if (toolMode === 'move_active') {
@@ -124,11 +204,13 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
             isColliding: false,
           });
         }
+      } else if (activeWallId) {
+        setGhostCabinet(null);
       }
     } else if (!toolMode.startsWith('place_')) {
       setGhostCabinet(null);
     }
-  }, [toolMode, activeCabinetId, activeArchElementId]);
+  }, [toolMode, activeCabinetId, activeArchElementId, activeWallId]);
 
   const dragInfoRef = useRef<{ id: string; startPointerX: number; startOffset: number } | null>(null);
   const cabinetDragRef = useRef<{
@@ -139,6 +221,14 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
     startRot: number;
     hasMovedPastThreshold: boolean;
   } | null>(null);
+  const wallDragRef = useRef<{
+    id: string;
+    startPointer: { x: number; y: number };
+    startFloorHit: [number, number];
+    startWallStart: [number, number];
+    startWallEnd: [number, number];
+    hasMovedPastThreshold: boolean;
+  } | null>(null);
 
   useEffect(() => {
     const handleGlobalPointerUp = () => {
@@ -147,6 +237,10 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
         state.setDraggingCabinetId(null);
       }
       cabinetDragRef.current = null;
+      if (state.draggingWallId) {
+        state.setDraggingWallId(null);
+      }
+      wallDragRef.current = null;
       if (state.draggingArchElementId) {
         const dragId = state.draggingArchElementId;
         const el = state.architecturalElements.find((a) => a.id === dragId);
@@ -315,6 +409,95 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
     } else {
        if (dragInfoRef.current) {
           dragInfoRef.current = null;
+       }
+    }
+
+    const draggingWallId = useKitchenStore.getState().draggingWallId;
+    if (draggingWallId) {
+       raycaster.setFromCamera(pointer, camera);
+       const hit = raycaster.ray.intersectPlane(groundPlaneMath, intersectPoint);
+       if (hit) {
+          const state = useKitchenStore.getState();
+          const currentWalls = state.walls;
+          const targetWall = currentWalls.find((w) => w.id === draggingWallId);
+          if (targetWall) {
+             if (!wallDragRef.current || wallDragRef.current.id !== draggingWallId) {
+                wallDragRef.current = {
+                   id: draggingWallId,
+                   startPointer: { x: pointer.x, y: pointer.y },
+                   startFloorHit: [intersectPoint.x, intersectPoint.z],
+                   startWallStart: [targetWall.start[0], targetWall.start[1]],
+                   startWallEnd: [targetWall.end[0], targetWall.end[1]],
+                   hasMovedPastThreshold: false,
+                };
+             }
+
+             const drag = wallDragRef.current;
+             const pointerDist = Math.hypot(pointer.x - drag.startPointer.x, pointer.y - drag.startPointer.y);
+             if (!drag.hasMovedPastThreshold) {
+                if (pointerDist > 0.012) {
+                   drag.hasMovedPastThreshold = true;
+                } else {
+                   return;
+                }
+             }
+
+             const rawDeltaX = intersectPoint.x - drag.startFloorHit[0];
+             const rawDeltaZ = intersectPoint.z - drag.startFloorHit[1];
+
+             let newStart: [number, number] = [drag.startWallStart[0] + rawDeltaX, drag.startWallStart[1] + rawDeltaZ];
+             let newEnd: [number, number] = [drag.startWallEnd[0] + rawDeltaX, drag.startWallEnd[1] + rawDeltaZ];
+
+             const wallThick = targetWall.thickness || 15;
+             const { start: clampedStart, end: clampedEnd } = clampWallAgainstPerimeters(
+                newStart,
+                newEnd,
+                wallThick
+             );
+
+             const finalStart: [number, number] = [
+                Math.round(clampedStart[0] * 2) / 2,
+                Math.round(clampedStart[1] * 2) / 2,
+             ];
+             const finalEnd: [number, number] = [
+                Math.round(clampedEnd[0] * 2) / 2,
+                Math.round(clampedEnd[1] * 2) / 2,
+             ];
+
+             if (
+                finalStart[0] !== targetWall.start[0] ||
+                finalStart[1] !== targetWall.start[1] ||
+                finalEnd[0] !== targetWall.end[0] ||
+                finalEnd[1] !== targetWall.end[1]
+             ) {
+                const shiftX = finalStart[0] - targetWall.start[0];
+                const shiftZ = finalStart[1] - targetWall.start[1];
+
+                state.updateWall(draggingWallId, {
+                   start: finalStart,
+                   end: finalEnd,
+                });
+
+                // Desplazar solidariamente los vanos (puertas/ventanas) alojados en este muro
+                const archElements = state.architecturalElements;
+                for (const el of archElements) {
+                   if (el.wallId === draggingWallId) {
+                      state.updateArchitecturalElement(el.id, {
+                         position: [
+                            el.position[0] + shiftX,
+                            el.position[1],
+                            el.position[2] + shiftZ,
+                         ],
+                      });
+                   }
+                }
+             }
+          }
+       }
+       return;
+    } else {
+       if (wallDragRef.current) {
+          wallDragRef.current = null;
        }
     }
 
@@ -533,6 +716,62 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
       }
 
       if (toolMode === 'move_active') {
+         const currentActiveWallId = useKitchenStore.getState().activeWallId;
+         const isCurrentlyDragging = Boolean(useKitchenStore.getState().draggingWallId);
+         if (currentActiveWallId && !isCurrentlyDragging) {
+            const targetWall = walls.find(w => w.id === currentActiveWallId);
+            if (targetWall) {
+               const wDx = targetWall.end[0] - targetWall.start[0];
+               const wDz = targetWall.end[1] - targetWall.start[1];
+               const halfDx = wDx / 2;
+               const halfDz = wDz / 2;
+               let newStart: [number, number] = [rawX - halfDx, rawZ - halfDz];
+               let newEnd: [number, number] = [rawX + halfDx, rawZ + halfDz];
+               const wallThick = targetWall.thickness || 15;
+
+               const { start: clampedStart, end: clampedEnd } = clampWallAgainstPerimeters(
+                  newStart,
+                  newEnd,
+                  wallThick
+               );
+
+               const finalStart: [number, number] = [
+                  Math.round(clampedStart[0] * 2) / 2,
+                  Math.round(clampedStart[1] * 2) / 2,
+               ];
+               const finalEnd: [number, number] = [
+                  Math.round(clampedEnd[0] * 2) / 2,
+                  Math.round(clampedEnd[1] * 2) / 2,
+               ];
+
+               if (
+                  finalStart[0] !== targetWall.start[0] ||
+                  finalStart[1] !== targetWall.start[1] ||
+                  finalEnd[0] !== targetWall.end[0] ||
+                  finalEnd[1] !== targetWall.end[1]
+               ) {
+                  const shiftX = finalStart[0] - targetWall.start[0];
+                  const shiftZ = finalStart[1] - targetWall.start[1];
+                  useKitchenStore.getState().updateWall(currentActiveWallId, {
+                     start: finalStart,
+                     end: finalEnd,
+                  });
+                  const archElements = useKitchenStore.getState().architecturalElements;
+                  for (const el of archElements) {
+                     if (el.wallId === currentActiveWallId) {
+                        useKitchenStore.getState().updateArchitecturalElement(el.id, {
+                           position: [
+                              el.position[0] + shiftX,
+                              el.position[1],
+                              el.position[2] + shiftZ,
+                           ],
+                        });
+                     }
+                  }
+               }
+            }
+            return;
+         }
 
          const activeCab = cabinets.find(c => c.id === activeCabId) || null;
          if (activeCab) {
@@ -776,8 +1015,12 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
         rotation: bestRot,
       });
       setToolMode('select');
-    } else if (toolMode === 'move_active' && ghostCabinet && ghostCabinet.pos) {
-        if (ghostCabinet.isColliding) return;
+    } else if (toolMode === 'move_active') {
+        if (useKitchenStore.getState().activeWallId) {
+          setToolMode('select');
+          return;
+        }
+        if (!ghostCabinet || !ghostCabinet.pos || ghostCabinet.isColliding) return;
         const activeCabId = useKitchenStore.getState().activeCabinetId;
         const activeArchId = useKitchenStore.getState().activeArchElementId;
         if (activeCabId) {
@@ -915,14 +1158,24 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
         <PerspectiveCamera makeDefault position={[460, 390, 560]} fov={45} near={1} far={3000} />
       )}
       
-      <OrbitControls 
-        enableRotate={!is2D && !draggingArchElementId && !draggingCabinetId} 
-        enableZoom={!draggingArchElementId && !draggingCabinetId}
-        enablePan={!draggingArchElementId && !draggingCabinetId}
-        minPolarAngle={0} 
-        maxPolarAngle={is2D ? 0 : Math.PI / 2 - 0.05} 
-        target={[0, 30, 0]}
-      />
+      {(() => {
+        const isInteracting = Boolean(
+          draggingArchElementId ||
+          draggingCabinetId ||
+          draggingWallId ||
+          (activeWallId && toolMode === 'move_active')
+        );
+        return (
+          <OrbitControls 
+            enableRotate={!is2D && !isInteracting} 
+            enableZoom={!isInteracting}
+            enablePan={!isInteracting}
+            minPolarAngle={0} 
+            maxPolarAngle={is2D ? 0 : Math.PI / 2 - 0.05} 
+            target={[0, 30, 0]}
+          />
+        );
+      })()}
 
       <group name="kitchenGroup">
         {/* Ground Plane (fondo exterior separado verticalmente para evitar z-fighting) */}

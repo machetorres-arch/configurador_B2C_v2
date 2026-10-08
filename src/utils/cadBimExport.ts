@@ -68,7 +68,9 @@ export function extractKitchen3dElements(
   const socleH = kState?.showSocle ? (kState?.socleHeight ?? 10) : 10;
 
   realCabinets.forEach((cab, index) => {
-    const tagPrefix = cab.type === 'wall' ? 'A' : cab.type === 'tall' ? 'T' : cab.type === 'island' ? 'I' : 'B';
+    const isWall = cab.type === 'wall';
+    const isCloset = cab.type === 'closet' || cab.variant?.startsWith('closet_');
+    const tagPrefix = cab.type === 'wall' ? 'A' : cab.type === 'tall' ? 'T' : cab.type === 'island' ? 'I' : isCloset ? 'CL' : 'B';
     const identTag = `${tagPrefix}-${index + 1}`;
     const cabPos = cab.position || [0, 0, 0];
     const cabRot = Number(cab.rotation) || 0;
@@ -77,8 +79,7 @@ export function extractKitchen3dElements(
     const height = Number(cab.height) || 85;
     const depth = Number(cab.depth) || 58;
 
-    const isWall = cab.type === 'wall';
-    const isBaseOrTall = cab.type === 'base' || cab.type === 'tall' || cab.type === 'island';
+    const isBaseOrTall = cab.type === 'base' || cab.type === 'tall' || cab.type === 'island' || isCloset;
     const legsH = isBaseOrTall ? socleH : 0;
     const cabH = height - legsH;
     const gap = 0.3; // Cantería estándar de 3mm
@@ -230,8 +231,8 @@ export function extractKitchen3dElements(
     );
 
     // Techo / Amarres
-    if (isWall || cab.type === 'tall') {
-      // Techo completo para aéreos y torres
+    if (isWall || cab.type === 'tall' || isCloset) {
+      // Techo completo para aéreos, torres y clósets
       addLocalBox(
         'Techo_Gabinete',
         'carcass',
@@ -297,7 +298,7 @@ export function extractKitchen3dElements(
         addLocalBox(`Tornillo_Piso_Der_${sIdx + 1}`, 'hardware', 'Herraje_Tornillo_Spax', colorScrew, width / 2 - 0.1, legsH + th / 2, sz, 0.4, 0.4, 3.5);
       });
       // Tornillos fijando amarres o techo
-      if (!isWall && cab.type !== 'tall') {
+      if (!isWall && cab.type !== 'tall' && !isCloset) {
         addLocalBox('Tornillo_Amarre_Tras_Izq', 'hardware', 'Herraje_Tornillo_Spax', colorScrew, -width / 2 + 0.1, legsH + cabH - th / 2, -depth / 2 + 5, 0.4, 0.4, 3.5);
         addLocalBox('Tornillo_Amarre_Tras_Der', 'hardware', 'Herraje_Tornillo_Spax', colorScrew, width / 2 - 0.1, legsH + cabH - th / 2, -depth / 2 + 5, 0.4, 0.4, 3.5);
         addLocalBox('Tornillo_Amarre_Front_Izq', 'hardware', 'Herraje_Tornillo_Spax', colorScrew, -width / 2 + 0.1, legsH + cabH - th / 2, depth / 2 - 5, 0.4, 0.4, 3.5);
@@ -696,6 +697,191 @@ export function extractKitchen3dElements(
       addDetailedHandle3D('Desp1Pta', width / 2 - 4.5, legsH + cabH / 2, frontZ + th / 2, true);
       addDoorHinges('Desp1Pta', doorY, doorH, false);
 
+    } else if (v === 'tall_inner_drawers') {
+      const doorW = width - gap * 2;
+      const doorH = cabH - gap * 2;
+      const doorY = legsH + gap + doorH / 2;
+      addLocalBox('Despensa_Puerta_Larga', 'door', 'Melamina_Frente', colorDoors, 0, doorY, frontZ, doorW, doorH, th);
+      addDetailedHandle3D('Desp1Pta', width / 2 - 4.5, legsH + cabH / 2, frontZ + th / 2, true);
+      addDoorHinges('Desp1Pta', doorY, doorH, false);
+
+      // 4 gavetas interiores
+      const innerW = width - 2 * th;
+      const drawerInnerH = 14;
+      for (let idx = 0; idx < 4; idx++) {
+        const yCenter = legsH + 86 - idx * 24;
+        addLocalBox(`Gaveta_Interior_Frente_${idx + 1}`, 'drawer', 'Melamina_Cajon', colorDrawers, 0, yCenter, frontZ - 3.5, innerW - 2.6, drawerInnerH, th);
+        addDrawerInteriorBox(`Gaveta_Interior_${idx + 1}`, yCenter, drawerInnerH);
+      }
+
+    } else if (isCloset) {
+      const isClosetDoors = Boolean(cab.hasDoors || v === 'closet_2_doors' || v === 'closet_inner_drawers');
+      const effDrawersCount = cab.drawersCount !== undefined
+        ? cab.drawersCount
+        : (v === 'closet_drawers' ? 4 : (v === 'closet_mixed' || v === 'closet_inner_drawers' ? 3 : (v === 'closet_2_doors' ? 2 : 0)));
+      const isInnerDrw = Boolean(cab.innerDrawers || v === 'closet_inner_drawers' || (isClosetDoors && effDrawersCount > 0));
+      const effShelvesCount = cab.shelvesCount !== undefined
+        ? cab.shelvesCount
+        : (v === 'closet_shelves' ? 5 : (v === 'closet_walkin' ? 3 : (v === 'closet_mixed' ? 2 : 1)));
+      const hasHangerActive = cab.hasHanger !== undefined ? cab.hasHanger : (v !== 'closet_shelves');
+
+      const hasMaletero = effShelvesCount >= 1;
+      const maleteroY = legsH + cabH - 35;
+      const drawerH = 22;
+      const drawersTotalH = effDrawersCount > 0 ? effDrawersCount * drawerH : 0;
+      const drawerTopY = legsH + drawersTotalH;
+
+      // Barra de colgar
+      const rodY = hasMaletero ? maleteroY - 6 : (legsH + cabH - 15);
+      const rodZ = 0;
+
+      const innerW = width - 2 * th;
+      const innerDepthMm = (depth - 1.5) * 10;
+      let nominalLengthMm = 500;
+      if (innerDepthMm >= 550) nominalLengthMm = 500;
+      else if (innerDepthMm >= 500) nominalLengthMm = 450;
+      else if (innerDepthMm >= 450) nominalLengthMm = 400;
+      else if (innerDepthMm >= 400) nominalLengthMm = 350;
+      else nominalLengthMm = 300;
+      const nominalLength = nominalLengthMm / 10;
+      const drawerBoxLength = nominalLength;
+
+      // Pilastras y laterales interiores para cajones ocultos tras puertas
+      const spacerGap = isInnerDrw ? 3.5 : 0;
+      const innerWallThickness = isInnerDrw ? th : 0;
+      const totalSideReduction = spacerGap + innerWallThickness;
+      const freeInnerW = isInnerDrw ? (innerW - totalSideReduction * 2) : innerW;
+      const skw = freeInnerW - 2.6;
+      const frontWidth = isInnerDrw ? (freeInnerW - 0.4) : (width - gap * 2);
+      const frontHeight = isInnerDrw ? (drawerH - 5.0) : (drawerH - gap * 2);
+
+      const internalClearanceZ = isInnerDrw ? (th + 1.5) : 0;
+      const drawerBoxZCenter = isInnerDrw ? (depth / 2 - internalClearanceZ - th - drawerBoxLength / 2) : (depth / 2 - drawerBoxLength / 2);
+
+      // 1. PUERTAS BATIENTES EXTERIORES
+      if (isClosetDoors) {
+        const doorH = cabH - gap * 2;
+        const doorY = legsH + gap + doorH / 2;
+
+        if (width > 50) {
+          // 2 puertas batientes
+          const doorW = (width - gap * 3) / 2;
+          const leftDoorX = -width / 4;
+          const rightDoorX = width / 4;
+
+          addLocalBox('Closet_Puerta_Izquierda', 'door', 'Melamina_Frente', colorDoors, leftDoorX, doorY, frontZ, doorW, doorH, th);
+          addLocalBox('Closet_Puerta_Derecha', 'door', 'Melamina_Frente', colorDoors, rightDoorX, doorY, frontZ, doorW, doorH, th);
+
+          // Bisagras de cazoleta a ambos laterales
+          addDoorHinges('ClosetPtaIzq', doorY, doorH, false);
+          addDoorHinges('ClosetPtaDer', doorY, doorH, true);
+
+          // Tiradores ergonómicos verticales centrados a la altura de trabajo
+          const handleY = doorY;
+          const hxLeft = leftDoorX + doorW / 2 - 4.5;
+          const hxRight = rightDoorX - doorW / 2 + 4.5;
+
+          addDetailedHandle3D('ClosetPtaIzq', hxLeft, handleY, frontZ + th / 2, true);
+          addDetailedHandle3D('ClosetPtaDer', hxRight, handleY, frontZ + th / 2, true);
+        } else {
+          // 1 puerta batiente
+          const doorW = width - gap * 2;
+          addLocalBox('Closet_Puerta_Principal', 'door', 'Melamina_Frente', colorDoors, 0, doorY, frontZ, doorW, doorH, th);
+          addDoorHinges('ClosetPta', doorY, doorH, false);
+          const handleY = doorY;
+          addDetailedHandle3D('ClosetPta', width / 2 - 4.5, handleY, frontZ + th / 2, true);
+        }
+      }
+
+      // 2. MALETERO SUPERIOR
+      if (hasMaletero) {
+        addLocalBox('Maletero_Superior', 'shelf', 'Melamina_Repisas', colorShelves, 0, maleteroY + th / 2, 0, innerW, th, depth - 2);
+      }
+
+      // 3. BARRA OVALADA DE COLGAR (CROMADA) + BRIDAS LATERALES
+      if (hasHangerActive) {
+        // Brida soporte lateral izquierda
+        addLocalBox('Brida_Soporte_Barra_Izq', 'hardware', 'Herraje_Barra_Closet', '#cbd5e1', -innerW / 2 + 0.35, rodY, rodZ, 0.7, 3.2, 1.6);
+        // Brida soporte lateral derecha
+        addLocalBox('Brida_Soporte_Barra_Der', 'hardware', 'Herraje_Barra_Closet', '#cbd5e1', innerW / 2 - 0.35, rodY, rodZ, 0.7, 3.2, 1.6);
+        // Tubo de barra ovalada cromada (3DFACE solid)
+        addLocalBox('Barra_Colgar_Ovalada_Cromada', 'hardware', 'Herraje_Barra_Closet', '#f1f5f9', 0, rodY, rodZ, innerW - 1.4, 3.0, 1.5);
+      }
+
+      // 4. CAJONERA Y GAVETAS
+      if (effDrawersCount > 0) {
+        // Tapa divisoria estructural sobre la cajonera
+        addLocalBox('Tapa_Divisoria_Cajonera', 'shelf', 'Melamina_Repisas', colorShelves, 0, drawerTopY + th / 2, 0, innerW, th, depth - 2);
+
+        // Estructura interior de separación si los cajones van tras puertas (regletas y laterales)
+        if (isInnerDrw) {
+          // Lateral interior izquierdo
+          addLocalBox('Cajonera_Lateral_Interior_Izq', 'carcass', 'Melamina_Estructura', colorStructure, -innerW / 2 + spacerGap + th / 2, legsH + drawersTotalH / 2, drawerBoxZCenter, th, drawersTotalH, drawerBoxLength);
+          // Lateral interior derecho
+          addLocalBox('Cajonera_Lateral_Interior_Der', 'carcass', 'Melamina_Estructura', colorStructure, innerW / 2 - spacerGap - th / 2, legsH + drawersTotalH / 2, drawerBoxZCenter, th, drawersTotalH, drawerBoxLength);
+          // Pilastra frontal izquierda
+          addLocalBox('Cajonera_Pilastra_Frontal_Izq', 'carcass', 'Melamina_Estructura', colorStructure, -innerW / 2 + spacerGap / 2, legsH + drawersTotalH / 2, depth / 2 - internalClearanceZ - th / 2, spacerGap, drawersTotalH, th);
+          // Pilastra frontal derecha
+          addLocalBox('Cajonera_Pilastra_Frontal_Der', 'carcass', 'Melamina_Estructura', colorStructure, innerW / 2 - spacerGap / 2, legsH + drawersTotalH / 2, depth / 2 - internalClearanceZ - th / 2, spacerGap, drawersTotalH, th);
+        }
+
+        // Cada cajón
+        for (let dIdx = 0; dIdx < effDrawersCount; dIdx++) {
+          const yCenter = legsH + gap + (effDrawersCount - 1 - dIdx) * drawerH + drawerH / 2;
+          const drawerBaseY = legsH + (effDrawersCount - 1 - dIdx) * drawerH;
+          const yPosFront = isInnerDrw ? (drawerBaseY + 0.3 + frontHeight / 2) : yCenter;
+          const drawerFrontZ = isInnerDrw ? (depth / 2 - internalClearanceZ - th / 2) : frontZ;
+
+          // Frente de cajón
+          addLocalBox(`Closet_Cajon_Frente_${dIdx + 1}`, 'drawer', 'Melamina_Cajon', colorDrawers, 0, yPosFront, drawerFrontZ, frontWidth, frontHeight, th);
+
+          // Si es cajón exterior (sin puertas en frente) y lleva tirador
+          if (!isInnerDrw && !isClosetDoors) {
+            addDetailedHandle3D(`ClosetCaj_${dIdx + 1}`, 0, yPosFront, drawerFrontZ + th / 2, false);
+          }
+
+          // Interior despiezado del cajón (costados, contrafrente, trasera, fondo)
+          const boxH = isInnerDrw ? 13 : (drawerH - 5);
+          const yBoxBase = drawerBaseY + (isInnerDrw ? 0.8 : (th + 0.5));
+          const yBoxCenter = isInnerDrw ? (yBoxBase + boxH / 2) : yCenter;
+
+          const sideXLeft = isInnerDrw ? (-freeInnerW / 2 + 0.35) : (-innerW / 2 + 0.35);
+          const sideXRight = isInnerDrw ? (freeInnerW / 2 - 0.35) : (innerW / 2 - 0.35);
+          const slideZCenter = drawerBoxZCenter;
+
+          const colorDrawerBox = '#e2d9c8';
+          const colorBottom = '#ffffff';
+          const colorSlide = '#94a3b8';
+
+          // Costado Izquierdo cajón
+          addLocalBox(`Closet_Caj_${dIdx + 1}_Costado_Izq`, 'drawer_box', 'Melamina_Cajon_Interior', colorDrawerBox, -skw / 2 + th / 2, yBoxCenter, drawerBoxZCenter, th, boxH, drawerBoxLength);
+          // Costado Derecho cajón
+          addLocalBox(`Closet_Caj_${dIdx + 1}_Costado_Der`, 'drawer_box', 'Melamina_Cajon_Interior', colorDrawerBox, skw / 2 - th / 2, yBoxCenter, drawerBoxZCenter, th, boxH, drawerBoxLength);
+          // Trasera cajón
+          addLocalBox(`Closet_Caj_${dIdx + 1}_Trasera`, 'drawer_box', 'Melamina_Cajon_Interior', colorDrawerBox, 0, yBoxCenter + 0.6, drawerBoxZCenter - drawerBoxLength / 2 + th / 2, skw - th * 2, boxH - 1.2, th);
+          // Contrafrente cajón
+          addLocalBox(`Closet_Caj_${dIdx + 1}_Contrafrente`, 'drawer_box', 'Melamina_Cajon_Interior', colorDrawerBox, 0, yBoxCenter + 0.6, drawerBoxZCenter + drawerBoxLength / 2 - th / 2, skw - th * 2, boxH - 1.2, th);
+          // Fondo Durolac
+          addLocalBox(`Closet_Caj_${dIdx + 1}_Fondo`, 'drawer_box', 'Durolac_Fondo_Cajon', colorBottom, 0, yBoxBase + 0.15, drawerBoxZCenter, skw - th * 2, 0.3, drawerBoxLength - th * 2);
+
+          // Correderas telescópicas
+          addLocalBox(`Closet_Caj_${dIdx + 1}_Corredera_Izq`, 'hardware', 'Herraje_Corredera_Telescopica', colorSlide, sideXLeft, yBoxCenter, slideZCenter, 0.4, 4.5, nominalLength);
+          addLocalBox(`Closet_Caj_${dIdx + 1}_Corredera_Der`, 'hardware', 'Herraje_Corredera_Telescopica', colorSlide, sideXRight, yBoxCenter, slideZCenter, 0.4, 4.5, nominalLength);
+        }
+      }
+
+      // 5. REPISAS INTERMEDIAS ADICIONALES
+      if (effShelvesCount > (hasMaletero ? 1 : 0)) {
+        const extraShelves = effShelvesCount - (hasMaletero ? 1 : 0);
+        const yStart = effDrawersCount > 0 ? drawerTopY : legsH;
+        const yEnd = hasMaletero ? maleteroY : (legsH + cabH);
+        const step = (yEnd - yStart) / (extraShelves + 1);
+        for (let sIdx = 0; sIdx < extraShelves; sIdx++) {
+          const shelfY = yStart + (sIdx + 1) * step;
+          addLocalBox(`Closet_Repisa_Intermedia_${sIdx + 1}`, 'shelf', 'Melamina_Repisas', colorShelves, 0, shelfY + th / 2, 0, innerW, th, depth - 2);
+        }
+      }
+
     } else if (v === 'tall_split_2_doors' || v === 'tall_2_doors' || cab.type === 'tall') {
       const splitH = 70;
       const lowerDoorH = splitH - gap * 2;
@@ -714,6 +900,26 @@ export function extractKitchen3dElements(
       addDetailedHandle3D('DespSup', width / 2 - 4.5, legsH + splitH + 12, frontZ + th / 2, true);
       addDoorHinges('DespSup', yUpper, upperDoorH, false);
 
+    } else if (v === 'tall_terminal_shelves' || v === 'tall_open' || v === 'open' || v === 'wall_open') {
+      const shelfCount = cab.shelvesCount ?? 5;
+      const availableH = cabH - th * 2;
+      const shelfStep = availableH / (shelfCount + 1);
+      for (let s = 1; s <= shelfCount; s++) {
+        const yShelf = legsH + th + s * shelfStep;
+        addLocalBox(
+          `Repisa_Abierta_${s}`,
+          'shelf',
+          'Melamina_Repisas',
+          colorShelves,
+          0,
+          yShelf,
+          0,
+          width - 2 * th,
+          th,
+          depth - 2
+        );
+      }
+
     } else {
       const doorW = width - gap * 2;
       const doorH = cabH - gap * 2;
@@ -726,7 +932,7 @@ export function extractKitchen3dElements(
     // ----------------------------------------------------
     // 4. REPISAS INTERIORES
     // ----------------------------------------------------
-    if (isCabinetWithDoors(cab)) {
+    if (isCabinetWithDoors(cab) && !isCloset) {
       const shelfElevs = getResolvedCabinetShelfElevations(cab, th);
       shelfElevs.forEach((elev, sIdx) => {
         addLocalBox(
@@ -749,7 +955,7 @@ export function extractKitchen3dElements(
   // 4. ZÓCALO CONTINUO Y RETORNOS LATERALES AL MURO
   // ----------------------------------------------------
   if (options.includeSocle !== false && (kState?.showSocle !== false)) {
-    const validFloorCabinets = realCabinets.filter(c => c.type === 'base' || c.type === 'tall' || c.type === 'island');
+    const validFloorCabinets = realCabinets.filter(c => c.type === 'base' || c.type === 'tall' || c.type === 'island' || c.type === 'closet' || c.variant?.startsWith('closet_'));
     if (validFloorCabinets.length > 0 && socleH > 0) {
       const socleSys = calculateSocleSystem(
         validFloorCabinets,

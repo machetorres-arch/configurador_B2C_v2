@@ -55,8 +55,10 @@ export function KitchenSpatialDimensions() {
   const toolMode = useKitchenStore((s) => s.toolMode);
   const countertopConfig = useKitchenStore((s) => s.countertopConfig);
   const qstoneCatalog = useKitchenStore((s) => s.qstoneCatalog);
+  const activeWallId = useKitchenStore((s) => s.activeWallId);
+  const draggingWallId = useKitchenStore((s) => s.draggingWallId);
 
-  const isEnabled = showDimensions && (dimensionLevel >= 6 || dimensionLevel === 1) && !toolMode.startsWith('place_') && toolMode !== 'draw_wall';
+  const isEnabled = (showDimensions && (dimensionLevel >= 6 || dimensionLevel === 1) && !toolMode.startsWith('place_') && toolMode !== 'draw_wall') || Boolean(activeWallId || draggingWallId);
 
   // 1. Gather all room wall segments (centerlines in X-Z with thickness)
   const wallSegments = useMemo(() => {
@@ -530,10 +532,196 @@ export function KitchenSpatialDimensions() {
     return results;
   }, [cabinets, countertopConfig, qstoneCatalog]);
 
+  // 6. Medidas de cotas para Muros Interiores hacia muros perimetrales y muebles
+  const interiorWallDimensions = useMemo(() => {
+    const results: Array<{
+      id: string;
+      start: [number, number, number];
+      end: [number, number, number];
+      label: string;
+    }> = [];
+
+    if (!walls || walls.length === 0) return results;
+
+    const interiorWalls = walls.filter((w) =>
+      Boolean(w.isInterior || (!w.id.startsWith('wall_v_') && !/^wall_\d+_/.test(w.id)))
+    );
+    if (interiorWalls.length === 0) return results;
+
+    // Medir para el muro activo o para todos si está activado mostrar cotas
+    const targetWalls = activeWallId
+      ? interiorWalls.filter((w) => w.id === activeWallId)
+      : showDimensions
+      ? interiorWalls
+      : [];
+
+    if (targetWalls.length === 0) return results;
+
+    const getCabinetBoxCorners = (cab: CabinetType) => {
+      const rot = cab.rotation || 0;
+      const cos = Math.cos(rot);
+      const sin = Math.sin(rot);
+      const hw = cab.width / 2;
+      const hd = cab.depth / 2;
+      const [cx, , cz] = cab.position;
+      return [
+        [cx - hw * cos + hd * sin, cz - hw * sin - hd * cos],
+        [cx + hw * cos + hd * sin, cz + hw * sin - hd * cos],
+        [cx + hw * cos - hd * sin, cz + hw * sin + hd * cos],
+        [cx - hw * cos - hd * sin, cz - hw * sin + hd * cos],
+      ] as Array<[number, number]>;
+    };
+
+    for (const iw of targetWalls) {
+      const [x1, z1] = iw.start;
+      const [x2, z2] = iw.end;
+      const wDx = x2 - x1;
+      const wDz = z2 - z1;
+      const wallLen = Math.hypot(wDx, wDz);
+      if (wallLen < 1) continue;
+
+      const uX = wDx / wallLen;
+      const uZ = wDz / wallLen;
+      const nX = -uZ;
+      const nZ = uX;
+      const wallThick = iw.thickness || 15;
+      const halfThick = wallThick / 2;
+      const midX = (x1 + x2) / 2;
+      const midZ = (z1 + z2) / 2;
+
+      const directions: Array<[number, number]> = [
+        [nX, nZ],
+        [-nX, -nZ],
+      ];
+
+      for (const dir of directions) {
+        let bestWallHit: { distance: number; point: [number, number]; targetThick: number } | null = null;
+        const origin: [number, number] = [midX + dir[0] * halfThick, midZ + dir[1] * halfThick];
+
+        for (const seg of wallSegments) {
+          if (
+            (Math.hypot(seg.start[0] - x1, seg.start[1] - z1) < 1 && Math.hypot(seg.end[0] - x2, seg.end[1] - z2) < 1) ||
+            (Math.hypot(seg.start[0] - x2, seg.start[1] - z2) < 1 && Math.hypot(seg.end[0] - x1, seg.end[1] - z1) < 1)
+          ) {
+            continue;
+          }
+
+          const hit = raySegmentIntersection(origin, dir, seg.start, seg.end);
+          if (hit) {
+            if (!bestWallHit || hit.distance < bestWallHit.distance) {
+              bestWallHit = { ...hit, targetThick: seg.thickness };
+            }
+          }
+        }
+
+        if (bestWallHit) {
+          const clearance = Math.max(0, bestWallHit.distance - bestWallHit.targetThick / 2);
+          if (clearance >= 2 && clearance <= 500) {
+            const hitFace: [number, number] = [
+              origin[0] + clearance * dir[0],
+              origin[1] + clearance * dir[1],
+            ];
+            results.push({
+              id: `iw-wall-${iw.id}-${dir[0].toFixed(2)}-${dir[1].toFixed(2)}`,
+              start: [origin[0], 60, origin[1]],
+              end: [hitFace[0], 60, hitFace[1]],
+              label: `${clearance.toFixed(1)} cm a Muro`,
+            });
+          }
+        }
+
+        // Medir también contra muebles vecinos en esa dirección
+        let bestCabDist = Infinity;
+        let bestCabPt: [number, number] | null = null;
+
+        for (const cab of cabinets) {
+          const corners = getCabinetBoxCorners(cab);
+          for (let i = 0; i < 4; i++) {
+            const c1 = corners[i];
+            const c2 = corners[(i + 1) % 4];
+            const hit = raySegmentIntersection(origin, dir, c1, c2);
+            if (hit && hit.distance < bestCabDist) {
+              bestCabDist = hit.distance;
+              bestCabPt = hit.point;
+            }
+          }
+        }
+
+        if (
+          bestCabPt &&
+          bestCabDist >= 2 &&
+          bestCabDist <= 350 &&
+          (!bestWallHit || bestCabDist < bestWallHit.distance - bestWallHit.targetThick / 2 - 5)
+        ) {
+          results.push({
+            id: `iw-cab-${iw.id}-${dir[0].toFixed(2)}-${dir[1].toFixed(2)}`,
+            start: [origin[0], 60, origin[1]],
+            end: [bestCabPt[0], 60, bestCabPt[1]],
+            label: `${bestCabDist.toFixed(1)} cm a Módulo`,
+          });
+        }
+      }
+
+      // Medir también desde extremos libres del tabique
+      const endOrigins: Array<{ pt: [number, number]; dir: [number, number]; name: string }> = [
+        { pt: [x1, z1], dir: [-uX, -uZ], name: 'start' },
+        { pt: [x2, z2], dir: [uX, uZ], name: 'end' },
+      ];
+
+      for (const eo of endOrigins) {
+        let bestEndHit: { distance: number; point: [number, number]; targetThick: number } | null = null;
+        for (const seg of wallSegments) {
+          if (
+            (Math.hypot(seg.start[0] - x1, seg.start[1] - z1) < 1 && Math.hypot(seg.end[0] - x2, seg.end[1] - z2) < 1) ||
+            (Math.hypot(seg.start[0] - x2, seg.start[1] - z2) < 1 && Math.hypot(seg.end[0] - x1, seg.end[1] - z1) < 1)
+          ) {
+            continue;
+          }
+          const hit = raySegmentIntersection(eo.pt, eo.dir, seg.start, seg.end);
+          if (hit) {
+            if (!bestEndHit || hit.distance < bestEndHit.distance) {
+              bestEndHit = { ...hit, targetThick: seg.thickness };
+            }
+          }
+        }
+
+        if (bestEndHit) {
+          const clearance = Math.max(0, bestEndHit.distance - bestEndHit.targetThick / 2);
+          if (clearance >= 2 && clearance <= 350) {
+            const hitPt: [number, number] = [
+              eo.pt[0] + clearance * eo.dir[0],
+              eo.pt[1] + clearance * eo.dir[1],
+            ];
+            results.push({
+              id: `iw-end-${iw.id}-${eo.name}`,
+              start: [eo.pt[0], 60, eo.pt[1]],
+              end: [hitPt[0], 60, hitPt[1]],
+              label: `${clearance.toFixed(1)} cm`,
+            });
+          }
+        }
+      }
+    }
+
+    return results;
+  }, [walls, activeWallId, showDimensions, wallSegments, cabinets]);
+
   if (!isEnabled) return null;
 
   return (
     <group name="kitchenSpatialDimensionsGroup" renderOrder={999}>
+      {/* 0. Cotas de Distancia a Muros Interiores */}
+      {interiorWallDimensions.map((dim) => (
+        <DimensionCota
+          key={dim.id}
+          start={dim.start}
+          end={dim.end}
+          label={dim.label}
+          color="#f97316" // Orange CAD for interior wall clearance
+          fontSize={5.6}
+          lineWidth={2.2}
+        />
+      ))}
       {/* 1. Medidas a muros desde extremos de corridas */}
       {wallDimensions.map((dim) => (
         <DimensionCota

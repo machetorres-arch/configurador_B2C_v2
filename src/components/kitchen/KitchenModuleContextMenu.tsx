@@ -868,19 +868,23 @@ export function KitchenModuleContextMenu({
             {/* Ancho Slider */}
             <div className="flex flex-col gap-1">
               <div className="flex justify-between items-center text-xs">
-                <span className={`font-semibold ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>Ancho</span>
+                <span className={`font-semibold ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
+                  {activeCabinet.variant === 'tall_terminal_shelves' ? 'Ancho (Largo Lateral / Cubre Muro)' : 'Ancho'}
+                </span>
                 <span className="font-mono font-bold text-orange-500">{activeCabinet.width} cm</span>
               </div>
               <input 
                 type="range"
                 min={
                   activeCabinet.variant === "spice_rack" ? 15 : 
+                  activeCabinet.variant === 'tall_terminal_shelves' ? 40 :
                   activeCabinet.variant?.includes('wine_rack') ? 15 :
                   activeCabinet.variant?.startsWith('wall_corner_blind') ? 60 :
                   (activeCabinet.variant?.startsWith('corner_blind') ? 80 : 30)
                 }
                 max={
                   activeCabinet.variant === "spice_rack" ? 30 :
+                  activeCabinet.variant === 'tall_terminal_shelves' ? 120 :
                   activeCabinet.variant?.includes('wine_rack') ? 65 :
                   activeCabinet.variant?.startsWith('wall_corner_blind') ? 100 :
                   (activeCabinet.variant?.startsWith('corner_blind') ? 130 : 120)
@@ -912,13 +916,15 @@ export function KitchenModuleContextMenu({
             {/* Profundidad Slider */}
             <div className="flex flex-col gap-1">
               <div className="flex justify-between items-center text-xs">
-                <span className={`font-semibold ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>Profundidad</span>
+                <span className={`font-semibold ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
+                  {activeCabinet.variant === 'tall_terminal_shelves' ? 'Profundidad de Repisas (Saliente)' : 'Profundidad'}
+                </span>
                 <span className="font-mono font-bold text-orange-500">{activeCabinet.depth} cm</span>
               </div>
               <input 
                 type="range"
-                min={activeCabinet.type === 'closet' ? 40 : (activeCabinet.type === 'island' ? 30 : 25)}
-                max={activeCabinet.type === 'closet' ? 80 : (activeCabinet.type === 'island' ? 120 : 80)}
+                min={activeCabinet.variant === 'tall_terminal_shelves' ? 15 : (activeCabinet.type === 'closet' ? 40 : (activeCabinet.type === 'island' ? 30 : 25))}
+                max={activeCabinet.variant === 'tall_terminal_shelves' ? 50 : (activeCabinet.type === 'closet' ? 80 : (activeCabinet.type === 'island' ? 120 : 80))}
                 step={5}
                 value={activeCabinet.depth}
                 onChange={(e) => updateCabinet(activeCabinet.id, { depth: Number(e.target.value) })}
@@ -926,6 +932,21 @@ export function KitchenModuleContextMenu({
               />
             </div>
           </div>
+
+          {/* INFO ESPECÍFICA TORRE TERMINAL REPISAS */}
+          {activeCabinet.variant === 'tall_terminal_shelves' && (
+            <div className={`p-2.5 rounded-xl border text-xs ${isLight ? 'bg-amber-50 border-amber-200 text-amber-950' : 'bg-amber-950/20 border-amber-500/30 text-amber-200'}`}>
+              <div className="font-bold mb-1 flex items-center justify-between">
+                <span>Torre Terminal Repisas Abiertas:</span>
+                <span className="text-amber-500 font-extrabold">{activeCabinet.width} × {activeCabinet.depth} cm</span>
+              </div>
+              <div className="text-[11px] opacity-90 leading-relaxed">
+                • <strong>Ancho:</strong> 40 - 120 cm (ensánchalo para cubrir y tapar el saliente del muro posterior).<br/>
+                • <strong>Profundidad:</strong> 15 - 50 cm (fondo útil de las repisas a la vista).<br/>
+                • Se adosa magnéticamente a 0 mm al lateral de cualquier despensa.
+              </div>
+            </div>
+          )}
 
           {/* INFO ESPECÍFICA ESPECIERO */}
           {activeCabinet.variant === 'spice_rack' && (

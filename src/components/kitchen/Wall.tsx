@@ -23,6 +23,7 @@ export function Wall({ id, start, end, thickness, height, isInterior }: WallType
    const setDraggingArchElementId = useKitchenStore((s) => s.setDraggingArchElementId);
    const activeWallId = useKitchenStore((s) => s.activeWallId);
    const setActiveWall = useKitchenStore((s) => s.setActiveWall);
+   const setDraggingWallId = useKitchenStore((s) => s.setDraggingWallId);
    const toolMode = useKitchenStore((s) => s.toolMode);
 
    // Solo los muros creados por el usuario (interiores) son interactivos y seleccionables.
@@ -200,16 +201,25 @@ export function Wall({ id, start, end, thickness, height, isInterior }: WallType
          onPointerDown={(e) => {
            if (e.button === 0) {
              pointerDownPosRef.current = { x: e.clientX, y: e.clientY };
+             if (isInteriorWall && id && (toolMode === 'select' || toolMode === 'move_active')) {
+               e.stopPropagation();
+               setActiveWall(id);
+               setDraggingWallId(id);
+             }
            }
          }}
          onPointerUp={(e) => {
-           if (e.button !== 0 || !pointerDownPosRef.current) return;
+           if (e.button !== 0) return;
+           const currentDragging = useKitchenStore.getState().draggingWallId;
+           if (currentDragging === id) {
+             setDraggingWallId(null);
+           }
+           if (!pointerDownPosRef.current) return;
            const dx = e.clientX - pointerDownPosRef.current.x;
            const dy = e.clientY - pointerDownPosRef.current.y;
            const dist = Math.hypot(dx, dy);
            pointerDownPosRef.current = null;
 
-           // Si el puntero se movió más de 5 píxeles, fue un arrastre de rotación / órbita 3D: IGNORAR
            if (dist > 5) return;
 
            // Solo los muros interiores creados pueden seleccionarse

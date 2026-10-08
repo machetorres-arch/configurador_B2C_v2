@@ -692,11 +692,11 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                     <ModuleCategoryAccordion
                       id="torres"
                       title="2. Torres & Despensas"
-                      count={9}
+                      count={10}
                       icon={<LayoutGrid size={14} />}
                       isOpen={!!moduleAccordions.torres}
                       onToggle={() => toggleModuleAccordion('torres')}
-                      hasActiveTool={['place_tall_1_door', 'place_tall_split_2_doors', 'place_tall_oven_micro', 'place_tall_oven_vent', 'place_tall_inner_drawers', 'place_tall_microwave_niche', 'place_tall_open', 'place_tall_wine_rack', 'place_tall_2_doors'].includes(toolMode)}
+                      hasActiveTool={['place_tall_1_door', 'place_tall_split_2_doors', 'place_tall_oven_micro', 'place_tall_oven_vent', 'place_tall_inner_drawers', 'place_tall_microwave_niche', 'place_tall_open', 'place_tall_wine_rack', 'place_tall_2_doors', 'place_tall_terminal_shelves'].includes(toolMode)}
                       isLight={isLight}
                     >
                       <ToolButton isLight={isLight} active={toolMode === 'place_tall_1_door'} onClick={() => handleInsertModule('place_tall_1_door')} icon={<LayoutGrid size={14}/>} label="1 Pta Larga (Repisas)" />
@@ -706,6 +706,7 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                       <ToolButton isLight={isLight} active={toolMode === 'place_tall_inner_drawers'} onClick={() => handleInsertModule('place_tall_inner_drawers')} icon={<LayoutGrid size={14}/>} label="Despensa Cajones Interiores" />
                       <ToolButton isLight={isLight} active={toolMode === 'place_tall_microwave_niche'} onClick={() => handleInsertModule('place_tall_microwave_niche')} icon={<LayoutGrid size={14}/>} label="Nicho Micro Portátil" />
                       <ToolButton isLight={isLight} active={toolMode === 'place_tall_open'} onClick={() => handleInsertModule('place_tall_open')} icon={<LayoutGrid size={14}/>} label="Repisas a la Vista" />
+                      <ToolButton isLight={isLight} active={toolMode === 'place_tall_terminal_shelves'} onClick={() => handleInsertModule('place_tall_terminal_shelves')} icon={<LayoutGrid size={14}/>} label="Torre Repisas Terminales" />
                       <ToolButton isLight={isLight} active={toolMode === 'place_tall_wine_rack'} onClick={() => handleInsertModule('place_tall_wine_rack')} icon={<Wine size={14}/>} label="Botellero Despensa" />
                       <ToolButton isLight={isLight} active={toolMode === 'place_tall_2_doors'} onClick={() => handleInsertModule('place_tall_2_doors')} icon={<LayoutGrid size={14}/>} label="Despensa 2 Puertas" />
                     </ModuleCategoryAccordion>
@@ -1053,7 +1054,28 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                     </h3>
                     <div className="flex items-center gap-2 shrink-0">
                       <button
-                        onClick={() => setActiveWall(null)}
+                        onClick={() => {
+                          if (toolMode === 'move_active') {
+                            setToolMode('select');
+                          } else {
+                            setToolMode('move_active');
+                          }
+                        }}
+                        className={`text-xs flex items-center gap-1 font-semibold cursor-pointer transition-colors ${
+                          toolMode === 'move_active'
+                            ? 'text-amber-400 bg-amber-500/20 px-2 py-0.5 rounded shadow-sm'
+                            : 'text-amber-500 hover:text-amber-600'
+                        }`}
+                        title={toolMode === 'move_active' ? 'Finalizar movimiento (Fijar)' : 'Mover muro libremente (Área fija)'}
+                      >
+                        <Move3D size={13} />
+                        <span>{toolMode === 'move_active' ? 'Moviendo (Fijar)' : 'Mover'}</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (toolMode === 'move_active') setToolMode('select');
+                          setActiveWall(null);
+                        }}
                         className={`text-xs flex items-center gap-1 font-semibold cursor-pointer ${isLight ? 'text-slate-500 hover:text-slate-700' : 'text-slate-400 hover:text-slate-200'}`}
                         title="Deseleccionar"
                       >
@@ -1069,6 +1091,22 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                       </button>
                     </div>
                   </div>
+
+                  {/* Aviso de Área Fija durante movimiento */}
+                  {toolMode === 'move_active' && (
+                    <div className="text-[11px] text-amber-500 font-semibold bg-amber-500/10 border border-amber-500/20 px-2.5 py-1.5 rounded-lg flex items-center justify-between">
+                      <span className="flex items-center gap-1.5">
+                        <Move3D size={12} className="animate-pulse shrink-0" />
+                        <span>Área fija: haz clic en el plano o arrastra para ubicar el muro.</span>
+                      </span>
+                      <button
+                        onClick={() => setToolMode('select')}
+                        className="px-2 py-0.5 bg-amber-500 hover:bg-amber-600 text-black text-[10px] font-bold rounded cursor-pointer transition-colors"
+                      >
+                        Fijar
+                      </button>
+                    </div>
+                  )}
 
                   {/* Resumen de Dimensiones */}
                   {(() => {
@@ -1086,6 +1124,134 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                         <div>
                           <div className={`text-[10px] uppercase tracking-wider font-semibold ${isLight ? 'text-slate-700' : 'text-slate-400'}`}>Largo</div>
                           <div className={`font-mono text-sm font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>{wallLen} cm</div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Posicionamiento y Distancia a Muros Vecinos */}
+                  {(() => {
+                    const [x1, z1] = activeWall.start;
+                    const [x2, z2] = activeWall.end;
+                    const wDx = x2 - x1;
+                    const wDz = z2 - z1;
+                    const wallLen = Math.hypot(wDx, wDz);
+                    if (wallLen < 1) return null;
+                    const uX = wDx / wallLen;
+                    const uZ = wDz / wallLen;
+                    const nX = -uZ;
+                    const nZ = uX;
+                    const midX = (x1 + x2) / 2;
+                    const midZ = (z1 + z2) / 2;
+                    const halfThick = (activeWall.thickness || 15) / 2;
+
+                    let closestDist = Infinity;
+                    let closestDir = 1;
+
+                    for (const otherW of walls) {
+                      if (otherW.id === activeWall.id) continue;
+                      const [ox1, oz1] = otherW.start;
+                      const [ox2, oz2] = otherW.end;
+                      const oDx = ox2 - ox1;
+                      const oDz = oz2 - oz1;
+                      const oLen = Math.hypot(oDx, oDz);
+                      if (oLen < 1) continue;
+
+                      const ouX = oDx / oLen;
+                      const ouZ = oDz / oLen;
+                      const dotPar = Math.abs(uX * ouX + uZ * ouZ);
+                      if (dotPar > 0.8) {
+                        const otherMidX = (ox1 + ox2) / 2;
+                        const otherMidZ = (oz1 + oz2) / 2;
+                        const perpDist = (otherMidX - midX) * nX + (otherMidZ - midZ) * nZ;
+                        const otherThick = (otherW.thickness || 20) / 2;
+                        const clear = Math.abs(perpDist) - halfThick - otherThick;
+                        if (clear > 0 && clear < closestDist) {
+                          closestDist = clear;
+                          closestDir = perpDist >= 0 ? 1 : -1;
+                        }
+                      }
+                    }
+
+                    const shiftPerp = (deltaCm: number) => {
+                      updateWall(activeWall.id, {
+                        start: [Math.round((x1 + deltaCm * nX) * 2) / 2, Math.round((z1 + deltaCm * nZ) * 2) / 2],
+                        end: [Math.round((x2 + deltaCm * nX) * 2) / 2, Math.round((z2 + deltaCm * nZ) * 2) / 2],
+                      });
+                    };
+
+                    const applyExactDistance = (targetCm: number) => {
+                      if (closestDist === Infinity || isNaN(targetCm) || targetCm <= 0) return;
+                      const delta = (targetCm - closestDist) * (-closestDir);
+                      shiftPerp(delta);
+                    };
+
+                    const measuredDistance = closestDist < Infinity ? Math.round(closestDist * 10) / 10 : null;
+
+                    return (
+                      <div className={`flex flex-col gap-2 p-3 rounded-xl border ${
+                        isLight ? 'bg-orange-50/50 border-orange-200' : 'bg-orange-950/20 border-orange-500/20'
+                      }`}>
+                        <div className="flex items-center justify-between">
+                          <label className={`text-[11px] font-bold uppercase tracking-wider ${isLight ? 'text-orange-900' : 'text-orange-300'}`}>
+                            Distancia a Muro Paralelo
+                          </label>
+                          {measuredDistance !== null && (
+                            <span className="font-mono text-xs font-bold text-orange-600 bg-orange-100 dark:bg-orange-900/40 px-2 py-0.5 rounded">
+                              {measuredDistance} cm
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Input numérico directo para fijar medida exacta (ej. 122 cm) */}
+                        <div className="flex items-center gap-2 mt-1">
+                          <input
+                            type="number"
+                            placeholder="Ej: 122"
+                            defaultValue={measuredDistance || ''}
+                            key={`dist-input-${measuredDistance}`}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                const val = Number((e.target as HTMLInputElement).value);
+                                if (!isNaN(val) && val > 0) applyExactDistance(val);
+                              }
+                            }}
+                            className={`flex-1 px-2.5 py-1.5 text-xs font-mono font-bold rounded-lg border outline-none ${
+                              isLight ? 'bg-white border-slate-300 text-slate-900 focus:border-orange-500' : 'bg-black/50 border-white/20 text-white focus:border-orange-500'
+                            }`}
+                          />
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              const input = (e.currentTarget.previousElementSibling as HTMLInputElement);
+                              if (input) {
+                                const val = Number(input.value);
+                                if (!isNaN(val) && val > 0) applyExactDistance(val);
+                              }
+                            }}
+                            className="px-3 py-1.5 text-xs font-bold bg-orange-500 hover:bg-orange-600 text-black rounded-lg transition-colors cursor-pointer"
+                          >
+                            Fijar cm
+                          </button>
+                        </div>
+
+                        {/* Botones de ajuste fino */}
+                        <div className="flex items-center justify-between gap-1.5 pt-1">
+                          <span className={`text-[10px] font-semibold ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>Desplazar:</span>
+                          <div className="flex items-center gap-1">
+                            {[-10, -5, -1, 1, 5, 10].map((step) => (
+                              <button
+                                key={step}
+                                type="button"
+                                onClick={() => shiftPerp(step)}
+                                className={`px-1.5 py-1 text-[11px] font-mono font-bold rounded border transition-all cursor-pointer ${
+                                  isLight ? 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100' : 'bg-zinc-800 border-white/10 text-slate-300 hover:bg-zinc-700'
+                                }`}
+                              >
+                                {step > 0 ? `+${step}` : step}
+                              </button>
+                            ))}
+                          </div>
                         </div>
                       </div>
                     );

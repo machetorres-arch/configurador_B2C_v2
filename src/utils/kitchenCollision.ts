@@ -437,6 +437,15 @@ export function constrainInsideRoomAndWalls(
         const [nX, nZ] = getWallInwardNormal(x1, z1, x2, z2, roomPoly);
         const isInteriorWall = Boolean(w.isInterior || (w.id && !w.id.startsWith('wall_v_') && !/^wall_\d+_/.test(w.id)));
 
+        if (isInteriorWall) {
+          const wallBox = getWallBox2D(w);
+          const col = checkOBBCollision(box, wallBox, 0.1);
+          if (col.colliding && col.mtvAxis && col.overlap > 0.1) {
+            cx += col.mtvAxis[0] * (col.overlap + 0.1);
+            cz += col.mtvAxis[1] * (col.overlap + 0.1);
+          }
+        }
+
         // Check if any corner penetrates THIS finite wall segment
         for (const [px, pz] of box.corners) {
           const s = (px - x1) * uX + (pz - z1) * uZ;
@@ -586,19 +595,30 @@ export function repositionCabinetsOnRoomChange(
         const uZ = dz / wallLen;
 
         const [nX, nZ] = getWallInwardNormal(x1, z1, x2, z2, roomPoly);
+        const isInteriorWall = Boolean(w.isInterior || (w.id && !w.id.startsWith('wall_v_') && !/^wall_\d+_/.test(w.id)));
+        const candidateDirs = isInteriorWall ? [1, -1] : [1];
 
         const s = (cab.position[0] - x1) * uX + (cab.position[2] - z1) * uZ;
         const sClamped = Math.max(cab.width / 2 + 0.5, Math.min(wallLen - cab.width / 2 - 0.5, s));
         const projX = x1 + sClamped * uX;
         const projZ = z1 + sClamped * uZ;
-        const dist = Math.hypot(cab.position[0] - projX, cab.position[2] - projZ);
+        const wallThickness = w.thickness || roomConfig?.wallThickness || 20;
+        const flushDist = wallThickness / 2 + cab.depth / 2;
 
-        if (dist < bestDist) {
-          bestDist = dist;
-          bestWall = w;
-          bestS = sClamped;
-          bestNormal = [nX, nZ];
-          bestWallLen = wallLen;
+        for (const dir of candidateDirs) {
+          const curNX = nX * dir;
+          const curNZ = nZ * dir;
+          const candX = projX + flushDist * curNX;
+          const candZ = projZ + flushDist * curNZ;
+          const dist = Math.hypot(cab.position[0] - candX, cab.position[2] - candZ);
+
+          if (dist < bestDist) {
+            bestDist = dist;
+            bestWall = w;
+            bestS = sClamped;
+            bestNormal = [curNX, curNZ];
+            bestWallLen = wallLen;
+          }
         }
       }
 
@@ -684,8 +704,11 @@ export function isCandidateValid(
   // 1. Validar colisión contra otros muebles
   for (const cab of existingCabinets) {
     if (ignoreId && cab.id === ignoreId) continue;
+    const isContactWithPantry =
+      ((candidate as any).variant === 'tall_terminal_shelves' && ((cab as any).type === 'tall' || (cab as any).type === 'base')) ||
+      (((cab as any).variant === 'tall_terminal_shelves') && ((candidate as any).type === 'tall' || (candidate as any).type === 'base'));
     const otherBox = getCabinetBox2D(cab);
-    const result = checkOBBCollision(candBox, otherBox, 0.8);
+    const result = checkOBBCollision(candBox, otherBox, isContactWithPantry ? 2.5 : 0.8);
     if (result.colliding) {
       return false;
     }
@@ -934,53 +957,96 @@ export function resolvePlacement({
     const sin = Math.sin(rot);
     const uX: [number, number] = [cos, sin];
 
-    const rightDist = (cab.width + cabWidth) / 2;
-    const leftDist = -(cab.width + cabWidth) / 2;
+    // 1.1 Snapping paralelo clásico flanco a flanco (excepto para Torre Terminal Repisas, que es estrictamente perpendicular)
+    if (variant !== 'tall_terminal_shelves') {
+      const rightDist = (cab.width + cabWidth) / 2;
+      const leftDist = -(cab.width + cabWidth) / 2;
 
-    const candidateRight: [number, number, number] = [
-      cab.position[0] + rightDist * uX[0],
-      defaultY,
-      cab.position[2] + rightDist * uX[1],
-    ];
+      const candidateRight: [number, number, number] = [
+        cab.position[0] + rightDist * uX[0],
+        defaultY,
+        cab.position[2] + rightDist * uX[1],
+      ];
 
-    const candidateLeft: [number, number, number] = [
-      cab.position[0] + leftDist * uX[0],
-      defaultY,
-      cab.position[2] + leftDist * uX[1],
-    ];
+      const candidateLeft: [number, number, number] = [
+        cab.position[0] + leftDist * uX[0],
+        defaultY,
+        cab.position[2] + leftDist * uX[1],
+      ];
 
-    const distR = Math.hypot(mouseX - candidateRight[0], mouseZ - candidateRight[2]);
-    if (distR < snapThreshold) {
-      // Validate that candidate does not breach walls or pillars
-      const constrained = constrainInsideRoomAndWalls(candidateRight, rot, cabWidth, cabDepth, cabHeight, walls, roomPoly, architecturalElements);
-      const isCandValid = isCandidateValid({
-        position: constrained,
-        width: cabWidth,
-        depth: cabDepth,
-        height: cabHeight,
-        rotation: rot,
-        type: cabType,
-      }, otherCabinets, walls, ignoreId, roomPoly, architecturalElements);
+      const distR = Math.hypot(mouseX - candidateRight[0], mouseZ - candidateRight[2]);
+      if (distR < snapThreshold) {
+        // Validate that candidate does not breach walls or pillars
+        const constrained = constrainInsideRoomAndWalls(candidateRight, rot, cabWidth, cabDepth, cabHeight, walls, roomPoly, architecturalElements);
+        const isCandValid = isCandidateValid({
+          position: constrained,
+          width: cabWidth,
+          depth: cabDepth,
+          height: cabHeight,
+          rotation: rot,
+          type: cabType,
+        }, otherCabinets, walls, ignoreId, roomPoly, architecturalElements);
 
-      if (isCandValid && (!bestSnap || distR < bestSnap.dist)) {
-        bestSnap = { pos: constrained, rot, dist: distR };
+        if (isCandValid && (!bestSnap || distR < bestSnap.dist)) {
+          bestSnap = { pos: constrained, rot, dist: distR };
+        }
+      }
+
+      const distL = Math.hypot(mouseX - candidateLeft[0], mouseZ - candidateLeft[2]);
+      if (distL < snapThreshold) {
+        const constrained = constrainInsideRoomAndWalls(candidateLeft, rot, cabWidth, cabDepth, cabHeight, walls, roomPoly, architecturalElements);
+        const isCandValid = isCandidateValid({
+          position: constrained,
+          width: cabWidth,
+          depth: cabDepth,
+          height: cabHeight,
+          rotation: rot,
+          type: cabType,
+        }, otherCabinets, walls, ignoreId, roomPoly, architecturalElements);
+
+        if (isCandValid && (!bestSnap || distL < bestSnap.dist)) {
+          bestSnap = { pos: constrained, rot, dist: distL };
+        }
       }
     }
 
-    const distL = Math.hypot(mouseX - candidateLeft[0], mouseZ - candidateLeft[2]);
-    if (distL < snapThreshold) {
-      const constrained = constrainInsideRoomAndWalls(candidateLeft, rot, cabWidth, cabDepth, cabHeight, walls, roomPoly, architecturalElements);
-      const isCandValid = isCandidateValid({
-        position: constrained,
-        width: cabWidth,
-        depth: cabDepth,
-        height: cabHeight,
-        rotation: rot,
-        type: cabType,
-      }, otherCabinets, walls, ignoreId, roomPoly, architecturalElements);
+    // Acople perpendicular a tope (0mm) para Torre Terminal Repisas Abiertas pegada al lateral de una torre
+    if (variant === 'tall_terminal_shelves' && (cab.type === 'tall' || cab.type === 'base') && cab.variant !== 'tall_terminal_shelves') {
+      const u_pX = cos;
+      const u_pZ = -sin;
+      const n_pX = sin;
+      const n_pZ = cos;
+      // Enrase perfecto a plomo con la cara exterior de la puerta de la despensa
+      const doorThickness = (cab.variant !== 'open' && cab.variant !== 'tall_open') ? ((cab as any).thickness || 1.8) : 0;
+      const zOffset = (cab.depth - cabWidth) / 2 + doorThickness;
+      const lateralDist = (cab.width + cabDepth) / 2;
 
-      if (isCandValid && (!bestSnap || distL < bestSnap.dist)) {
-        bestSnap = { pos: constrained, rot, dist: distL };
+      // Lateral Izquierdo de la despensa: la torre terminal mira hacia la izquierda (repisas al exterior), trasera pegada al lateral
+      const rotOrthoLeft = (rot - Math.PI / 2 + Math.PI * 2) % (Math.PI * 2);
+      const candLeft: [number, number, number] = [
+        cab.position[0] - lateralDist * u_pX + zOffset * n_pX,
+        defaultY,
+        cab.position[2] - lateralDist * u_pZ + zOffset * n_pZ,
+      ];
+      const distL = Math.hypot(mouseX - candLeft[0], mouseZ - candLeft[2]);
+      if (distL < snapThreshold * 2.2) {
+        if (!bestSnap || distL < bestSnap.dist) {
+          bestSnap = { pos: candLeft, rot: rotOrthoLeft, dist: distL };
+        }
+      }
+
+      // Lateral Derecho de la despensa: la torre terminal mira hacia la derecha (repisas al exterior), trasera pegada al lateral
+      const rotOrthoRight = (rot + Math.PI / 2) % (Math.PI * 2);
+      const candRight: [number, number, number] = [
+        cab.position[0] + lateralDist * u_pX + zOffset * n_pX,
+        defaultY,
+        cab.position[2] + lateralDist * u_pZ + zOffset * n_pZ,
+      ];
+      const distR = Math.hypot(mouseX - candRight[0], mouseZ - candRight[2]);
+      if (distR < snapThreshold * 2.2) {
+        if (!bestSnap || distR < bestSnap.dist) {
+          bestSnap = { pos: candRight, rot: rotOrthoRight, dist: distR };
+        }
       }
     }
 
@@ -1074,54 +1140,61 @@ export function resolvePlacement({
         const uX = (x2 - x1) / wallLen;
         const uZ = (z2 - z1) / wallLen;
         const [nX, nZ] = getWallInwardNormal(x1, z1, x2, z2, roomPoly);
+        const isInteriorWall = Boolean(w.isInterior || (w.id && !w.id.startsWith('wall_v_') && !/^wall_\d+_/.test(w.id)));
+        const candidateDirs = isInteriorWall ? [1, -1] : [1];
 
-        let pMin = Infinity;
-        let pMax = -Infinity;
-        let nMin = Infinity;
-        let nMax = -Infinity;
-        for (const c of pBox.corners) {
-          const sP = (c[0] - x1) * uX + (c[1] - z1) * uZ;
-          if (sP < pMin) pMin = sP;
-          if (sP > pMax) pMax = sP;
-          const nP = (c[0] - x1) * nX + (c[1] - z1) * nZ;
-          if (nP < nMin) nMin = nP;
-          if (nP > nMax) nMax = nP;
-        }
+        for (const dir of candidateDirs) {
+          const curNormX = nX * dir;
+          const curNormZ = nZ * dir;
 
-        const wallThick = w.thickness || 20;
-        const flushDist = wallThick / 2 + cabDepth / 2;
-        const wallRot = Math.atan2(nX, nZ);
+          let pMin = Infinity;
+          let pMax = -Infinity;
+          let nMin = Infinity;
+          let nMax = -Infinity;
+          for (const c of pBox.corners) {
+            const sP = (c[0] - x1) * uX + (c[1] - z1) * uZ;
+            if (sP < pMin) pMin = sP;
+            if (sP > pMax) pMax = sP;
+            const nP = (c[0] - x1) * curNormX + (c[1] - z1) * curNormZ;
+            if (nP < nMin) nMin = nP;
+            if (nP > nMax) nMax = nP;
+          }
 
-        if (nMax > 0.5 && nMin < flushDist + cabDepth / 2 + 10) {
-          const halfW = cabWidth / 2;
-          const candidateSList = [pMax + halfW, pMin - halfW];
+          const wallThick = w.thickness || 20;
+          const flushDist = wallThick / 2 + cabDepth / 2;
+          const wallRot = Math.atan2(curNormX, curNormZ);
 
-          for (const candS of candidateSList) {
-            if (candS >= halfW + 0.5 && candS <= wallLen - halfW - 0.5) {
-              const candX = x1 + candS * uX + flushDist * nX;
-              const candZ = z1 + candS * uZ + flushDist * nZ;
-              const dist = Math.hypot(mouseX - candX, mouseZ - candZ);
+          if (nMax > 0.5 && nMin < flushDist + cabDepth / 2 + 10) {
+            const halfW = cabWidth / 2;
+            const candidateSList = [pMax + halfW, pMin - halfW];
 
-              if (dist < snapThreshold) {
-                const candidatePos: [number, number, number] = [candX, defaultY, candZ];
-                const isCandValid = isCandidateValid(
-                  {
-                    position: candidatePos,
-                    width: cabWidth,
-                    depth: cabDepth,
-                    height: cabHeight,
-                    rotation: wallRot,
-                    type: cabType,
-                  },
-                  otherCabinets,
-                  effectiveWalls,
-                  ignoreId,
-                  roomPoly,
-                  architecturalElements
-                );
+            for (const candS of candidateSList) {
+              if (candS >= halfW + 0.5 && candS <= wallLen - halfW - 0.5) {
+                const candX = x1 + candS * uX + flushDist * curNormX;
+                const candZ = z1 + candS * uZ + flushDist * curNormZ;
+                const dist = Math.hypot(mouseX - candX, mouseZ - candZ);
 
-                if (isCandValid && (!bestSnap || dist < bestSnap.dist)) {
-                  bestSnap = { pos: candidatePos, rot: wallRot, dist };
+                if (dist < snapThreshold) {
+                  const candidatePos: [number, number, number] = [candX, defaultY, candZ];
+                  const isCandValid = isCandidateValid(
+                    {
+                      position: candidatePos,
+                      width: cabWidth,
+                      depth: cabDepth,
+                      height: cabHeight,
+                      rotation: wallRot,
+                      type: cabType,
+                    },
+                    otherCabinets,
+                    effectiveWalls,
+                    ignoreId,
+                    roomPoly,
+                    architecturalElements
+                  );
+
+                  if (isCandValid && (!bestSnap || dist < bestSnap.dist)) {
+                    bestSnap = { pos: candidatePos, rot: wallRot, dist };
+                  }
                 }
               }
             }
@@ -1169,181 +1242,195 @@ export function resolvePlacement({
 
       // Inward normal pointing into the room
       const [nX, nZ] = getWallInwardNormal(x1, z1, x2, z2, roomPoly);
+      const isInteriorWall = Boolean(w.isInterior || (w.id && !w.id.startsWith('wall_v_') && !/^wall_\d+_/.test(w.id)));
+      const candidateDirs = isInteriorWall ? [1, -1] : [1];
 
-      // Proyectar ratón sobre el muro
-      const s = (mouseX - x1) * uX + (mouseZ - z1) * uZ;
-      const sClamped = Math.max(cabWidth / 2 + 0.5, Math.min(wallLen - cabWidth / 2 - 0.5, s));
-      const wallThickness = w.thickness || 20;
-      const isWallMountedDeco = variant === 'deco_hood' || variant === 'deco_stove' || variant === 'deco_fridge' || variant === 'deco_dishwasher';
-      const flushDist = (cabType === 'decoration' && !isWallMountedDeco && variant !== 'deco_plant') ? 0 : (variant === 'deco_plant' ? 0 : wallThickness / 2 + cabDepth / 2);
+      for (const dir of candidateDirs) {
+        const curNormX = nX * dir;
+        const curNormZ = nZ * dir;
 
-      // La posición de enganche siempre queda exactamente en la cara interior del tabique
-      let snapPosX = x1 + sClamped * uX + flushDist * nX;
-      let snapPosZ = z1 + sClamped * uZ + flushDist * nZ;
-      
-      // La rotación asegura que la trasera (-Z) esté contra la pared y el frente (+Z) hacia la habitación
-      const wallRot = Math.atan2(nX, nZ);
+        // Proyectar ratón sobre el muro
+        const s = (mouseX - x1) * uX + (mouseZ - z1) * uZ;
+        const sClamped = Math.max(cabWidth / 2 + 0.5, Math.min(wallLen - cabWidth / 2 - 0.5, s));
+        const wallThickness = w.thickness || 20;
+        const isWallMountedDeco = variant === 'deco_hood' || variant === 'deco_stove' || variant === 'deco_fridge' || variant === 'deco_dishwasher';
+        const flushDist = (cabType === 'decoration' && !isWallMountedDeco && variant !== 'deco_plant') ? 0 : (variant === 'deco_plant' ? 0 : wallThickness / 2 + cabDepth / 2);
 
-      // --- COMPROBACIÓN Y RESOLUCIÓN DE COLISIÓN RIGUROSA A LO LARGO DEL MURO (1D INTERVAL FREE GAP) ---
-      // 1. Recolectar todos los muebles y pilares que comparten este tramo de muro y solapan verticalmente en altura
-      const rawIntervals: [number, number][] = [];
-      const candYMin = defaultY - cabHeight / 2;
-      const candYMax = defaultY + cabHeight / 2;
+        // La posición de enganche siempre queda exactamente en la cara correspondiente del tabique
+        let snapPosX = x1 + sClamped * uX + flushDist * curNormX;
+        let snapPosZ = z1 + sClamped * uZ + flushDist * curNormZ;
+        
+        // La rotación asegura que la trasera (-Z) esté contra la pared y el frente (+Z) hacia la habitación
+        const wallRot = Math.atan2(curNormX, curNormZ);
 
-      for (const otherCab of otherCabinets) {
-        // Verificar si se solapan verticalmente (Y)
-        const otherYMin = otherCab.position[1] - otherCab.height / 2;
-        const otherYMax = otherCab.position[1] + otherCab.height / 2;
-        if (Math.min(otherYMax, candYMax) - Math.max(otherYMin, candYMin) <= 2) {
-          continue; // No chocan en altura (ej. aéreo sobre mueble base)
-        }
+        // --- COMPROBACIÓN Y RESOLUCIÓN DE COLISIÓN RIGUROSA A LO LARGO DEL MURO (1D INTERVAL FREE GAP) ---
+        // 1. Recolectar todos los muebles y pilares que comparten este tramo de muro y solapan verticalmente en altura
+        const rawIntervals: [number, number][] = [];
+        const candYMin = defaultY - cabHeight / 2;
+        const candYMax = defaultY + cabHeight / 2;
 
-        // Comprobar si el otro mueble está cerca de la línea del muro proyectando sus esquinas
-        const otherBox = getCabinetBox2D(otherCab);
-        let pMin = Infinity;
-        let pMax = -Infinity;
-        let nMin = Infinity;
-        let nMax = -Infinity;
-
-        for (const c of otherBox.corners) {
-          const sProj = (c[0] - x1) * uX + (c[1] - z1) * uZ;
-          if (sProj < pMin) pMin = sProj;
-          if (sProj > pMax) pMax = sProj;
-          const normProj = (c[0] - x1) * nX + (c[1] - z1) * nZ;
-          if (normProj < nMin) nMin = normProj;
-          if (normProj > nMax) nMax = normProj;
-        }
-
-        // Si el mueble intersecta la franja frontal del muro
-        if (nMax > 0.5 && nMin < flushDist + cabDepth / 2 + 10) {
-          rawIntervals.push([Math.max(0, pMin), Math.min(wallLen, pMax)]);
-        }
-      }
-
-      // Incorporar pilares arquitectónicos como obstáculos físicos en el muro
-      for (const pBox of pillarBoxes) {
-        let pMin = Infinity;
-        let pMax = -Infinity;
-        let nMin = Infinity;
-        let nMax = -Infinity;
-
-        for (const c of pBox.corners) {
-          const sProj = (c[0] - x1) * uX + (c[1] - z1) * uZ;
-          if (sProj < pMin) pMin = sProj;
-          if (sProj > pMax) pMax = sProj;
-          const normProj = (c[0] - x1) * nX + (c[1] - z1) * nZ;
-          if (normProj < nMin) nMin = normProj;
-          if (normProj > nMax) nMax = normProj;
-        }
-
-        if (nMax > 0.5 && nMin < flushDist + cabDepth / 2 + 10) {
-          rawIntervals.push([Math.max(0, pMin), Math.min(wallLen, pMax)]);
-        }
-      }
-
-      // 2. Fusionar intervalos solapados o contiguos a lo largo del muro
-      rawIntervals.sort((a, b) => a[0] - b[0]);
-      const mergedIntervals: [number, number][] = [];
-      for (const iv of rawIntervals) {
-        if (mergedIntervals.length === 0) {
-          mergedIntervals.push([iv[0], iv[1]]);
-        } else {
-          const prev = mergedIntervals[mergedIntervals.length - 1];
-          if (iv[0] <= prev[1] + 0.1) {
-            prev[1] = Math.max(prev[1], iv[1]);
-          } else {
-            mergedIntervals.push([iv[0], iv[1]]);
-          }
-        }
-      }
-
-      // 3. Extraer vanos libres continuos (Free Gaps) en el muro
-      const freeGaps: [number, number][] = [];
-      let currentEdge = 0.5;
-      for (const [oStart, oEnd] of mergedIntervals) {
-        if (oStart > currentEdge + 0.1) {
-          freeGaps.push([currentEdge, Math.min(wallLen - 0.5, oStart)]);
-        }
-        currentEdge = Math.max(currentEdge, oEnd);
-      }
-      if (currentEdge < wallLen - 0.5 - 0.1) {
-        freeGaps.push([currentEdge, wallLen - 0.5]);
-      }
-
-      // 4. Filtrar vanos donde quepa físicamente el ancho del módulo (capacidad >= cabWidth)
-      const validGaps = freeGaps.filter(([gStart, gEnd]) => (gEnd - gStart) >= cabWidth - 0.05);
-
-      let resolvedS = sClamped;
-      let hasValidWallSlot = false;
-
-      if (validGaps.length > 0) {
-        hasValidWallSlot = true;
-        let bestGapDist = Infinity;
-        let bestGapS = sClamped;
-
-        for (const [gStart, gEnd] of validGaps) {
-          const minCenter = gStart + cabWidth / 2;
-          const maxCenter = gEnd - cabWidth / 2;
-          const clampedInGap = Math.max(minCenter, Math.min(maxCenter, s));
-          const dist = Math.abs(s - clampedInGap);
-          if (dist < bestGapDist) {
-            bestGapDist = dist;
-            bestGapS = clampedInGap;
-          }
-        }
-        resolvedS = bestGapS;
-      } else {
-        // En caso de muro saturado sin vanos disponibles para este módulo
-        hasValidWallSlot = false;
-        resolvedS = sClamped;
-      }
-
-      snapPosX = x1 + resolvedS * uX + flushDist * nX;
-      snapPosZ = z1 + resolvedS * uZ + flushDist * nZ;
-
-      let snapCandidatePos: [number, number, number] = [snapPosX, defaultY, snapPosZ];
-      snapCandidatePos = constrainInsideRoomAndWalls(snapCandidatePos, wallRot, cabWidth, cabDepth, cabHeight, effectiveWalls, roomPoly, architecturalElements);
-
-      // Comprobar colisión volumétrica precisa OBB
-      const finalCandBox = getCabinetBox2D({
-        position: snapCandidatePos,
-        width: cabWidth,
-        depth: cabDepth,
-        height: cabHeight,
-        rotation: wallRot,
-        type: cabType,
-      });
-
-      let isStillColliding = !hasValidWallSlot;
-      if (!isStillColliding) {
         for (const otherCab of otherCabinets) {
+          // Verificar si se solapan verticalmente (Y)
+          const otherYMin = otherCab.position[1] - otherCab.height / 2;
+          const otherYMax = otherCab.position[1] + otherCab.height / 2;
+          if (Math.min(otherYMax, candYMax) - Math.max(otherYMin, candYMin) <= 2) {
+            continue; // No chocan en altura (ej. aéreo sobre mueble base)
+          }
+
+          // Comprobar si el otro mueble está cerca de la línea del muro proyectando sus esquinas
           const otherBox = getCabinetBox2D(otherCab);
-          if (checkOBBCollision(finalCandBox, otherBox, 0.4).colliding) {
-            isStillColliding = true;
-            break;
+          let pMin = Infinity;
+          let pMax = -Infinity;
+          let nMin = Infinity;
+          let nMax = -Infinity;
+
+          for (const c of otherBox.corners) {
+            const sProj = (c[0] - x1) * uX + (c[1] - z1) * uZ;
+            if (sProj < pMin) pMin = sProj;
+            if (sProj > pMax) pMax = sProj;
+            const normProj = (c[0] - x1) * curNormX + (c[1] - z1) * curNormZ;
+            if (normProj < nMin) nMin = normProj;
+            if (normProj > nMax) nMax = normProj;
+          }
+
+          // Si el mueble intersecta la franja frontal de esta cara del muro
+          if (nMax > 0.5 && nMin < flushDist + cabDepth / 2 + 10) {
+            rawIntervals.push([Math.max(0, pMin), Math.min(wallLen, pMax)]);
           }
         }
-      }
 
-      if (!isStillColliding) {
+        // Incorporar pilares arquitectónicos como obstáculos físicos en el muro
         for (const pBox of pillarBoxes) {
-          if (checkOBBCollision(finalCandBox, pBox, 0.4).colliding) {
-            isStillColliding = true;
-            break;
+          let pMin = Infinity;
+          let pMax = -Infinity;
+          let nMin = Infinity;
+          let nMax = -Infinity;
+
+          for (const c of pBox.corners) {
+            const sProj = (c[0] - x1) * uX + (c[1] - z1) * uZ;
+            if (sProj < pMin) pMin = sProj;
+            if (sProj > pMax) pMax = sProj;
+            const normProj = (c[0] - x1) * curNormX + (c[1] - z1) * curNormZ;
+            if (normProj < nMin) nMin = normProj;
+            if (normProj > nMax) nMax = normProj;
+          }
+
+          if (nMax > 0.5 && nMin < flushDist + cabDepth / 2 + 10) {
+            rawIntervals.push([Math.max(0, pMin), Math.min(wallLen, pMax)]);
           }
         }
-      }
 
-      const distToSnap = Math.hypot(mouseX - snapCandidatePos[0], mouseZ - snapCandidatePos[2]);
+        // 2. Fusionar intervalos solapados o contiguos a lo largo del muro
+        rawIntervals.sort((a, b) => a[0] - b[0]);
+        const mergedIntervals: [number, number][] = [];
+        for (const iv of rawIntervals) {
+          if (mergedIntervals.length === 0) {
+            mergedIntervals.push([iv[0], iv[1]]);
+          } else {
+            const prev = mergedIntervals[mergedIntervals.length - 1];
+            if (iv[0] <= prev[1] + 0.1) {
+              prev[1] = Math.max(prev[1], iv[1]);
+            } else {
+              mergedIntervals.push([iv[0], iv[1]]);
+            }
+          }
+        }
 
-      if (distToSnap < wallSnapThreshold) {
-        if (!bestWallSnap || (!isStillColliding && bestWallSnap.isColliding) || (distToSnap < bestWallSnap.dist && isStillColliding === bestWallSnap.isColliding)) {
-          bestWallSnap = {
-            pos: snapCandidatePos,
-            rot: wallRot,
-            dist: distToSnap,
-            isColliding: isStillColliding,
-          };
+        // 3. Extraer vanos libres continuos (Free Gaps) en el muro
+        const freeGaps: [number, number][] = [];
+        let currentEdge = 0.5;
+        for (const [oStart, oEnd] of mergedIntervals) {
+          if (oStart > currentEdge + 0.1) {
+            freeGaps.push([currentEdge, Math.min(wallLen - 0.5, oStart)]);
+          }
+          currentEdge = Math.max(currentEdge, oEnd);
+        }
+        if (currentEdge < wallLen - 0.5 - 0.1) {
+          freeGaps.push([currentEdge, wallLen - 0.5]);
+        }
+
+        // 4. Filtrar vanos donde quepa físicamente el ancho del módulo (capacidad >= cabWidth)
+        const validGaps = freeGaps.filter(([gStart, gEnd]) => (gEnd - gStart) >= cabWidth - 0.05);
+
+        let resolvedS = sClamped;
+        let hasValidWallSlot = false;
+
+        if (validGaps.length > 0) {
+          hasValidWallSlot = true;
+          let bestGapDist = Infinity;
+          let bestGapS = sClamped;
+
+          for (const [gStart, gEnd] of validGaps) {
+            const minCenter = gStart + cabWidth / 2;
+            const maxCenter = gEnd - cabWidth / 2;
+            const clampedInGap = Math.max(minCenter, Math.min(maxCenter, s));
+            const dist = Math.abs(s - clampedInGap);
+            if (dist < bestGapDist) {
+              bestGapDist = dist;
+              bestGapS = clampedInGap;
+            }
+          }
+          resolvedS = bestGapS;
+        } else {
+          // En caso de muro saturado sin vanos disponibles para este módulo
+          hasValidWallSlot = false;
+          resolvedS = sClamped;
+        }
+
+        snapPosX = x1 + resolvedS * uX + flushDist * curNormX;
+        snapPosZ = z1 + resolvedS * uZ + flushDist * curNormZ;
+
+        let snapCandidatePos: [number, number, number] = [snapPosX, defaultY, snapPosZ];
+        snapCandidatePos = constrainInsideRoomAndWalls(snapCandidatePos, wallRot, cabWidth, cabDepth, cabHeight, effectiveWalls, roomPoly, architecturalElements);
+
+        // Comprobar colisión volumétrica precisa OBB
+        const finalCandBox = getCabinetBox2D({
+          position: snapCandidatePos,
+          width: cabWidth,
+          depth: cabDepth,
+          height: cabHeight,
+          rotation: wallRot,
+          type: cabType,
+        });
+
+        let isStillColliding = !hasValidWallSlot;
+        if (!isStillColliding) {
+          for (const otherCab of otherCabinets) {
+            const otherBox = getCabinetBox2D(otherCab);
+            if (checkOBBCollision(finalCandBox, otherBox, 0.4).colliding) {
+              isStillColliding = true;
+              break;
+            }
+          }
+        }
+
+        if (!isStillColliding) {
+          for (const pBox of pillarBoxes) {
+            if (checkOBBCollision(finalCandBox, pBox, 0.4).colliding) {
+              isStillColliding = true;
+              break;
+            }
+          }
+        }
+
+        if (!isStillColliding && isInteriorWall) {
+          const wallBox = getWallBox2D(w);
+          if (checkOBBCollision(finalCandBox, wallBox, 0.4).colliding) {
+            isStillColliding = true;
+          }
+        }
+
+        const distToSnap = Math.hypot(mouseX - snapCandidatePos[0], mouseZ - snapCandidatePos[2]);
+
+        if (distToSnap < wallSnapThreshold) {
+          if (!bestWallSnap || (!isStillColliding && bestWallSnap.isColliding) || (distToSnap < bestWallSnap.dist && isStillColliding === bestWallSnap.isColliding)) {
+            bestWallSnap = {
+              pos: snapCandidatePos,
+              rot: wallRot,
+              dist: distToSnap,
+              isColliding: isStillColliding,
+            };
+          }
         }
       }
     }
@@ -1388,8 +1475,12 @@ export function resolvePlacement({
         continue;
       }
 
+      const isContactPantry =
+        (variant === 'tall_terminal_shelves' && (otherCab.type === 'tall' || otherCab.type === 'base')) ||
+        (otherCab.variant === 'tall_terminal_shelves' && (cabType === 'tall' || cabType === 'base'));
+
       const otherBox = getCabinetBox2D(otherCab);
-      const col = checkOBBCollision(candBox, otherBox, 0.2);
+      const col = checkOBBCollision(candBox, otherBox, isContactPantry ? 2.5 : 0.2);
       if (col.colliding && col.mtvAxis && col.overlap > 0.05) {
         hadCollision = true;
         candidatePos[0] += col.mtvAxis[0] * (col.overlap + 0.1);
@@ -1415,8 +1506,11 @@ export function resolvePlacement({
 
   let isColliding = false;
   for (const otherCab of otherCabinets) {
+    const isContactPantry =
+      (variant === 'tall_terminal_shelves' && (otherCab.type === 'tall' || otherCab.type === 'base')) ||
+      (otherCab.variant === 'tall_terminal_shelves' && (cabType === 'tall' || cabType === 'base'));
     const otherBox = getCabinetBox2D(otherCab);
-    if (checkOBBCollision(finalCandBox, otherBox, 0.4).colliding) {
+    if (checkOBBCollision(finalCandBox, otherBox, isContactPantry ? 2.5 : 0.4).colliding) {
       isColliding = true;
       break;
     }
@@ -1505,6 +1599,7 @@ export function getCabinetSpecsFromTool(toolMode: string, existingCabinets: any[
     else if (raw === 'tall_inner_drawers') { w = 60; name = 'Torre Cajones Interiores'; }
     else if (raw === 'tall_microwave_niche') { w = 60; name = 'Torre Nicho Microondas'; }
     else if (raw === 'tall_open') { w = 60; name = 'Torre Repisas a la Vista'; }
+    else if (raw === 'tall_terminal_shelves') { return { type: 'tall', variant: raw, name: 'Torre Terminal Repisas Abiertas', width: 60, height: 215, depth: 25 }; }
     else if (raw === 'tall_wine_rack') { w = 30; name = 'Torre Botellero'; }
     else if (raw === 'tall_2_doors') { w = 80; name = 'Torre Despensa 2 Puertas'; }
     return { type: 'tall', variant: raw, name, width: w, height: 215, depth: 60 };
@@ -1665,6 +1760,71 @@ export function findSmartWallPlacement(
       architecturalElements,
     });
     return { position: result.position, rotation: result.rotation };
+  }
+
+  // Posicionamiento inteligente automático para Torre Terminal Repisas Abiertas
+  if (specs.variant === 'tall_terminal_shelves') {
+    const tallCabinets = currentCabinets.filter((c) => c.type === 'tall' && c.variant !== 'tall_terminal_shelves');
+    if (tallCabinets.length > 0) {
+      const targetCab = tallCabinets[tallCabinets.length - 1];
+      const rot = targetCab.rotation || 0;
+      const cos = Math.cos(rot);
+      const sin = Math.sin(rot);
+      const u_pX = cos;
+      const u_pZ = -sin;
+      const n_pX = sin;
+      const n_pZ = cos;
+
+      // Alineación a plomo con el frente de la puerta de la despensa:
+      // Si la torre es más ancha que el fondo de la despensa (para tapar el muro),
+      // zOffset desplaza el centro hacia atrás manteniendo el frente coplanar con la puerta.
+      const doorThickness = (targetCab.variant !== 'open' && targetCab.variant !== 'tall_open') ? ((targetCab as any).thickness || 1.8) : 0;
+      const zOffset = (targetCab.depth - specs.width) / 2 + doorThickness;
+      const lateralDist = (targetCab.width + specs.depth) / 2;
+
+      // 1. Lateral Derecho de la despensa: la torre mira hacia la derecha (repisas al exterior), trasera pegada al lateral
+      const rotRight = (rot + Math.PI / 2) % (Math.PI * 2);
+      const candRight: [number, number, number] = [
+        targetCab.position[0] + lateralDist * u_pX + zOffset * n_pX,
+        defaultY,
+        targetCab.position[2] + lateralDist * u_pZ + zOffset * n_pZ,
+      ];
+      if (
+        isCandidateValid(
+          { position: candRight, width: specs.width, depth: specs.depth, height: specs.height, rotation: rotRight, type: specs.type, variant: specs.variant } as any,
+          currentCabinets,
+          effectiveWalls,
+          targetCab.id,
+          roomPoly,
+          architecturalElements
+        )
+      ) {
+        return { position: candRight, rotation: rotRight };
+      }
+
+      // 2. Lateral Izquierdo de la despensa: la torre mira hacia la izquierda (repisas al exterior), trasera pegada al lateral
+      const rotLeft = (rot - Math.PI / 2 + Math.PI * 2) % (Math.PI * 2);
+      const candLeft: [number, number, number] = [
+        targetCab.position[0] - lateralDist * u_pX + zOffset * n_pX,
+        defaultY,
+        targetCab.position[2] - lateralDist * u_pZ + zOffset * n_pZ,
+      ];
+      if (
+        isCandidateValid(
+          { position: candLeft, width: specs.width, depth: specs.depth, height: specs.height, rotation: rotLeft, type: specs.type, variant: specs.variant } as any,
+          currentCabinets,
+          effectiveWalls,
+          targetCab.id,
+          roomPoly,
+          architecturalElements
+        )
+      ) {
+        return { position: candLeft, rotation: rotLeft };
+      }
+
+      // Fallback pegado a la derecha
+      return { position: candRight, rotation: rotRight };
+    }
   }
 
   // Si ya existen muebles del mismo tipo o familia (closet, wall, tall, base), intentar acoplar lateralmente al último mueble adosado

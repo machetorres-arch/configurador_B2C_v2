@@ -1498,6 +1498,29 @@ export function KitchenBlueprint() {
                     </g>
                   );
                 })()
+              ) : (cab.variant === 'tall_terminal_shelves' || cab.variant === 'tall_open') ? (
+                (() => {
+                  const shelfCount = cab.shelvesCount ?? 5;
+                  const step = bodyH / (shelfCount + 1);
+                  return (
+                    <g>
+                      {Array.from({ length: shelfCount }).map((_, sIdx) => {
+                        const yS = (sIdx + 1) * step;
+                        return (
+                          <g key={`term-shelf-${sIdx}`}>
+                            <line x1={0} y1={yS} x2={cabW} y2={yS} stroke="#0f172a" strokeWidth={strokeElev * 1.2} />
+                            <text x={cabW / 2} y={yS - 6} fontSize={Math.max(10, fSizeElev * 0.32)} fill="#0284c7" fontWeight="bold" textAnchor="middle" fontFamily="monospace">
+                              Repisa {sIdx + 1}
+                            </text>
+                          </g>
+                        );
+                      })}
+                      <text x={cabW / 2} y={bodyH - 12} fontSize={Math.max(11, fSizeElev * 0.36)} fill="#d97706" fontWeight="900" textAnchor="middle" fontFamily="monospace">
+                        NICHOS ABIERTOS
+                      </text>
+                    </g>
+                  );
+                })()
               ) : (cab.variant === 'tall_1_door' || (cab.variant && (cab.variant.includes('1_door') || cab.variant.includes('larga')))) ? (
                 <g>
                   {/* Despensa 1 Puerta Larga completa */}

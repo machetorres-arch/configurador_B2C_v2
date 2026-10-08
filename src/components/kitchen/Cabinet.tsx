@@ -1798,6 +1798,58 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
             );
          }
 
+         if (effectiveVariant === 'tall_terminal_shelves') {
+            const shelfCount = shelvesCount ?? 5;
+            const availableH = cabH - thickness * 2;
+            const shelfStep = availableH / (shelfCount + 1);
+            const showDeco = useStore.getState().showDecorations;
+
+            return (
+               <group key="tall-terminal-shelves">
+                  {Array.from({ length: shelfCount }).map((_, sIdx) => {
+                     const shelfY = legsHeight + thickness + (sIdx + 1) * shelfStep;
+                     return (
+                        <React.Fragment key={`term-sh-${sIdx}`}>
+                           <Board
+                              position={[0, shelfY, 0]}
+                              args={[innerW, thickness, depth - 1]}
+                              {...parseColor(cShelves, shelfMaterial, `term-sh-${sIdx}`)}
+                           />
+                           {/* Decoración estética de nichos abiertos (libros y vajilla según foto de referencia) */}
+                           {showDeco && (() => {
+                              const bookBaseY = shelfY + thickness / 2;
+                              if (sIdx % 2 === 0) {
+                                 // Libros verticales en nichos 0, 2, 4
+                                 const bookColors = ['#f8fafc', '#334155', '#e2e8f0', '#b45309', '#0f766e'];
+                                 return (
+                                    <group position={[0, bookBaseY + 8, 0]}>
+                                       {[-innerW * 0.22, 0, innerW * 0.22].map((bx, bIdx) => (
+                                          <mesh key={`book-${sIdx}-${bIdx}`} position={[bx, 0, (bIdx - 1) * 3]}>
+                                             <boxGeometry args={[Math.max(1.8, innerW * 0.26), 16, Math.min(depth * 0.45, 22)]} />
+                                             <meshStandardMaterial color={bookColors[(sIdx + bIdx) % bookColors.length]} roughness={0.4} />
+                                          </mesh>
+                                       ))}
+                                    </group>
+                                 );
+                              } else {
+                                 // Objeto de diseño / taza cerámica en nichos 1, 3
+                                 return (
+                                    <group position={[0, bookBaseY + 5, 0]}>
+                                       <mesh castShadow>
+                                          <cylinderGeometry args={[Math.min(innerW * 0.32, 4.5), Math.min(innerW * 0.28, 3.8), 9, 20]} />
+                                          <meshStandardMaterial color={sIdx === 1 ? '#d97706' : '#0284c7'} roughness={0.25} metalness={0.1} />
+                                       </mesh>
+                                    </group>
+                                 );
+                              }
+                           })()}
+                        </React.Fragment>
+                     );
+                  })}
+               </group>
+            );
+         }
+
          if (effectiveVariant === 'tall_open' || (type === 'tall' && (effectiveVariant === 'open' || !effectiveVariant))) {
             return (
                <>
@@ -3215,28 +3267,74 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                <>
             {isBaseOrTall && (
                <>
-                  <mesh position={[-width/2 + 3, legsHeight/2, depth/2 - 5]} castShadow>
-                     <cylinderGeometry args={[1.5, 1.5, legsHeight]} />
-                     <meshStandardMaterial color="#111" roughness={0.8} />
-                  </mesh>
-                  <mesh position={[width/2 - 3, legsHeight/2, depth/2 - 5]} castShadow>
-                     <cylinderGeometry args={[1.5, 1.5, legsHeight]} />
-                     <meshStandardMaterial color="#111" roughness={0.8} />
-                  </mesh>
-                  <mesh position={[-width/2 + 3, legsHeight/2, -depth/2 + 5]} castShadow>
-                     <cylinderGeometry args={[1.5, 1.5, legsHeight]} />
-                     <meshStandardMaterial color="#111" roughness={0.8} />
-                  </mesh>
-                  <mesh position={[width/2 - 3, legsHeight/2, -depth/2 + 5]} castShadow>
-                     <cylinderGeometry args={[1.5, 1.5, legsHeight]} />
-                     <meshStandardMaterial color="#111" roughness={0.8} />
-                  </mesh>
-                  {/* Pata central si el ancho es mayor a 60cm */}
-                  {width > 60 && (
-                     <mesh position={[0, legsHeight/2, 0]} castShadow>
-                        <cylinderGeometry args={[1.5, 1.5, legsHeight]} />
-                        <meshStandardMaterial color="#111" roughness={0.8} />
-                     </mesh>
+                  {effectiveVariant === 'tall_terminal_shelves' ? (
+                     (() => {
+                        // Patas calibradas para Torre Terminal Repisas Abiertas:
+                        // En este módulo ortogonal, el frente hacia la cocina es +X (alineado a puerta).
+                        // Se aplican retranqueos calibrados (6.8cm en frente/trasera y 4.5cm en laterales)
+                        // para que queden perfectamente alineadas detrás de la línea del zócalo sin sobresalir.
+                        const xFront = width / 2 - 6.8;
+                        const xRear = -width / 2 + 6.8;
+                        const zOuter = depth / 2 - 4.5;
+                        const zInner = -depth / 2 + 4.5;
+                        return (
+                           <>
+                              {/* Patas delanteras (alineadas detrás del zócalo frontal) */}
+                              <mesh position={[xFront, legsHeight / 2, zOuter]} castShadow>
+                                 <cylinderGeometry args={[1.5, 1.5, legsHeight]} />
+                                 <meshStandardMaterial color="#111" roughness={0.8} />
+                              </mesh>
+                              <mesh position={[xFront, legsHeight / 2, zInner]} castShadow>
+                                 <cylinderGeometry args={[1.5, 1.5, legsHeight]} />
+                                 <meshStandardMaterial color="#111" roughness={0.8} />
+                              </mesh>
+
+                              {/* Patas traseras */}
+                              <mesh position={[xRear, legsHeight / 2, zOuter]} castShadow>
+                                 <cylinderGeometry args={[1.5, 1.5, legsHeight]} />
+                                 <meshStandardMaterial color="#111" roughness={0.8} />
+                              </mesh>
+                              <mesh position={[xRear, legsHeight / 2, zInner]} castShadow>
+                                 <cylinderGeometry args={[1.5, 1.5, legsHeight]} />
+                                 <meshStandardMaterial color="#111" roughness={0.8} />
+                              </mesh>
+
+                              {/* Pata central si el ancho excede 60cm */}
+                              {width > 60 && (
+                                 <mesh position={[0, legsHeight / 2, 0]} castShadow>
+                                    <cylinderGeometry args={[1.5, 1.5, legsHeight]} />
+                                    <meshStandardMaterial color="#111" roughness={0.8} />
+                                 </mesh>
+                              )}
+                           </>
+                        );
+                     })()
+                  ) : (
+                     <>
+                        <mesh position={[-width/2 + 3, legsHeight/2, depth/2 - 5]} castShadow>
+                           <cylinderGeometry args={[1.5, 1.5, legsHeight]} />
+                           <meshStandardMaterial color="#111" roughness={0.8} />
+                        </mesh>
+                        <mesh position={[width/2 - 3, legsHeight/2, depth/2 - 5]} castShadow>
+                           <cylinderGeometry args={[1.5, 1.5, legsHeight]} />
+                           <meshStandardMaterial color="#111" roughness={0.8} />
+                        </mesh>
+                        <mesh position={[-width/2 + 3, legsHeight/2, -depth/2 + 5]} castShadow>
+                           <cylinderGeometry args={[1.5, 1.5, legsHeight]} />
+                           <meshStandardMaterial color="#111" roughness={0.8} />
+                        </mesh>
+                        <mesh position={[width/2 - 3, legsHeight/2, -depth/2 + 5]} castShadow>
+                           <cylinderGeometry args={[1.5, 1.5, legsHeight]} />
+                           <meshStandardMaterial color="#111" roughness={0.8} />
+                        </mesh>
+                        {/* Pata central si el ancho es mayor a 60cm */}
+                        {width > 60 && (
+                           <mesh position={[0, legsHeight/2, 0]} castShadow>
+                              <cylinderGeometry args={[1.5, 1.5, legsHeight]} />
+                              <meshStandardMaterial color="#111" roughness={0.8} />
+                           </mesh>
+                        )}
+                     </>
                   )}
                </>
             )}

@@ -805,6 +805,20 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
                 notes: `${upperCount} repisa(s) en puerta superior (sobre nicho)`
             });
         }
+    } else if (cab.variant === 'tall_terminal_shelves') {
+        const shelfCount = cab.shelvesCount ?? 5;
+        parts.push({
+            name: `Repisas Abiertas Vistas ${cabName}`,
+            moduleId: cab.id,
+            moduleIndex: index,
+            qty: shelfCount,
+            length: (innerW - 0.2) * 10,
+            width: (d - 1) * 10,
+            thickness: thickness * 10,
+            material: cab.shelfColor || cab.structureColor || state.structureColor,
+            edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
+            notes: `${shelfCount} repisas vistas para columna terminal de despensas`
+        });
     } else if (cab.variant === 'tall_open' || (cab.type === 'tall' && cab.variant === 'open')) {
         parts.push({
             name: `Repisas a la Vista ${cabName}`,
@@ -2060,7 +2074,7 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
                 notes: botSpecs.notes
             });
         }
-    } else if (cab.variant !== 'wall_open' && cab.variant !== 'tall_open' && cab.variant !== 'open' && !cab.variant?.includes('wine_rack') && !cab.variant?.startsWith('wall_corner_blind')) {
+    } else if (cab.variant !== 'wall_open' && cab.variant !== 'tall_open' && cab.variant !== 'tall_terminal_shelves' && cab.variant !== 'open' && !cab.variant?.includes('wine_rack') && !cab.variant?.startsWith('wall_corner_blind')) {
         // Fallback estándar para puertas batientes en cualquier variante base, mural o torre
         const isGola = (kState.golaSystem === 'aluminum' || kState.golaSystem === 'black') && (cab.type === 'base' || cab.type === 'island');
         const isDouble = w > 60;
@@ -2786,7 +2800,7 @@ export function generateKitchenHardwareList(cabinets: CabinetType[]) {
     const handlesMap: Record<string, { item: string; details: string; count: number; screwCount: number }> = {};
 
     const getCabinetHandlesCount = (cab: CabinetType): number => {
-        if (cab.type === 'decoration' || cab.variant?.startsWith('deco_') || cab.variant === 'open' || cab.variant === 'wall_open' || cab.variant === 'tall_open' || cab.variant?.includes('wine_rack')) {
+        if (cab.type === 'decoration' || cab.variant?.startsWith('deco_') || cab.variant === 'open' || cab.variant === 'wall_open' || cab.variant === 'tall_open' || cab.variant === 'tall_terminal_shelves' || cab.variant?.includes('wine_rack')) {
             return 0;
         }
         const v = cab.variant || (cab.width > 60 ? '2_doors' : '1_door');

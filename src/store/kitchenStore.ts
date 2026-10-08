@@ -56,6 +56,7 @@ export type ToolMode =
   | 'place_tall_2_doors'
   | 'place_tall_wine_rack'
   | 'place_tall_inner_drawers'
+  | 'place_tall_terminal_shelves'
   | 'place_island' 
   | 'place_island_4_drawers'
   | 'place_island_2_drawers_1_pot'
@@ -204,6 +205,7 @@ export function getCabinetLabel(cab: Partial<CabinetType>, index: number): strin
   if (cab.variant === 'tall_inner_drawers') return 'Despensa Cajones Interiores';
   if (cab.variant === 'tall_microwave_niche') return 'Torre Nicho Micro';
   if (cab.variant === 'tall_open') return 'Despensa Abierta';
+  if (cab.variant === 'tall_terminal_shelves') return 'Torre Terminal Repisas';
   if (cab.variant === 'tall_2_doors') return 'Despensa 2 Puertas';
   if (cab.variant === 'wall_1_door') return 'Aéreo 1 Puerta';
   if (cab.variant === 'wall_2_doors') return 'Aéreo 2 Puertas';
@@ -246,6 +248,7 @@ interface KitchenState {
   activeArchElementId: string | null;
   draggingArchElementId: string | null;
   draggingCabinetId: string | null;
+  draggingWallId: string | null;
   countertopConfig: CountertopConfig;
   islandBackConfig: IslandBackConfig;
   qstoneCatalog: QstoneProductItem[];
@@ -269,6 +272,7 @@ interface KitchenState {
   setActiveArchElement: (id: string | null) => void;
   setDraggingArchElementId: (id: string | null) => void;
   setDraggingCabinetId: (id: string | null) => void;
+  setDraggingWallId: (id: string | null) => void;
   setDrawingStart: (pos: [number, number] | null) => void;
   setShowSocle: (val: boolean) => void;
   setSocleFinish: (finish: 'aluminum' | 'black') => void;
@@ -496,6 +500,40 @@ function resolveCabinetsWithResize(
     currR = findRightNeighbor(currR, cabinets);
   }
 
+  if (target.variant === 'tall_terminal_shelves') {
+    // Para la Torre Terminal de Repisas adosada a una despensa:
+    // Su ancho (W) se extiende a lo largo de la profundidad de la despensa.
+    // Al ensancharlo (para tapar el muro posterior), el frente (+n_p) debe permanecer
+    // perfectamente enrasado con las puertas delanteras de la cocina, y el mueble
+    // debe crecer hacia atrás (hacia el muro).
+    const pantry = cabinets.find(
+      (c) =>
+        (c.type === 'tall' || c.type === 'base') &&
+        c.variant !== 'tall_terminal_shelves' &&
+        Math.hypot(c.position[0] - target.position[0], c.position[2] - target.position[2]) <
+          (c.width + target.depth) / 2 + 15
+    );
+    if (pantry) {
+      const pRot = pantry.rotation || 0;
+      // Normal hacia el frente de la despensa (+n_pantry)
+      const n_pX = Math.sin(pRot);
+      const n_pZ = Math.cos(pRot);
+      // Para mantener el frente inmóvil y expandir hacia atrás (contra n_pantry):
+      updatedTarget.position = [
+        updatedTarget.position[0] - (deltaW / 2) * n_pX,
+        updatedTarget.position[1],
+        updatedTarget.position[2] - (deltaW / 2) * n_pZ,
+      ];
+    } else {
+      updatedTarget.position = [
+        updatedTarget.position[0] - (deltaW / 2) * u[0],
+        updatedTarget.position[1],
+        updatedTarget.position[2] - (deltaW / 2) * u[1],
+      ];
+    }
+    return nextCabinets;
+  }
+
   if (leftChain.length > 0 && rightChain.length === 0) {
     // Anchored on left edge, expands cleanly to the right
     updatedTarget.position = [
@@ -531,6 +569,7 @@ function resolveCabinetsWithResize(
     // Isolated cabinet: adjust if it collides with another cabinet on the same tier
     for (const other of nextCabinets) {
       if (other.id === targetId) continue;
+      if (updatedTarget.variant === 'tall_terminal_shelves' || other.variant === 'tall_terminal_shelves') continue;
       if (!hasVerticalOverlap(updatedTarget, other)) continue;
       const dx = other.position[0] - updatedTarget.position[0];
       const dz = other.position[2] - updatedTarget.position[2];
@@ -595,6 +634,7 @@ export const useKitchenStore = create<KitchenState>((set, get) => {
   activeArchElementId: null,
   draggingArchElementId: null,
   draggingCabinetId: null,
+  draggingWallId: null,
   countertopConfig: DEFAULT_COUNTERTOP_CONFIG,
   islandBackConfig: DEFAULT_ISLAND_BACK_CONFIG,
   qstoneCatalog: DEFAULT_QSTONE_CATALOG,
@@ -869,6 +909,7 @@ export const useKitchenStore = create<KitchenState>((set, get) => {
       draggingArchElementId: id,
     })),
   setDraggingCabinetId: (id) => set({ draggingCabinetId: id }),
+  setDraggingWallId: (id) => set({ draggingWallId: id }),
   setDrawingStart: (pos) => set({ drawingStart: pos }),
   setShowSocle: (val) => set((state) => ({ history: saveSnapshot(state), showSocle: val })),
   setSocleFinish: (finish) => set((state) => ({ history: saveSnapshot(state), socleFinish: finish })),
@@ -956,6 +997,8 @@ export const useKitchenStore = create<KitchenState>((set, get) => {
             const uX = dx / wallLen;
             const uZ = dz / wallLen;
             const [nX, nZ] = getWallInwardNormal(x1, z1, x2, z2, roomPoly);
+            const isInteriorWall = Boolean(w.isInterior || (w.id && !w.id.startsWith('wall_v_') && !/^wall_\d+_/.test(w.id)));
+            const candidateDirs = isInteriorWall ? [1, -1] : [1];
 
             const s = (c.position[0] - x1) * uX + (c.position[2] - z1) * uZ;
             const sClamped = Math.max(c.width / 2 + 0.5, Math.min(wallLen - c.width / 2 - 0.5, s));
@@ -963,15 +1006,20 @@ export const useKitchenStore = create<KitchenState>((set, get) => {
             const projZ = z1 + sClamped * uZ;
             const dist = Math.hypot(c.position[0] - projX, c.position[2] - projZ);
 
-            const dot = nX * cabSin + nZ * cabCos;
-            const penalty = dot > 0.4 ? 0 : 50;
+            for (const dir of candidateDirs) {
+              const curNX = nX * dir;
+              const curNZ = nZ * dir;
 
-            if (dist + penalty < bestDist) {
-              bestDist = dist + penalty;
-              bestWall = w;
-              bestS = sClamped;
-              bestNormal = [nX, nZ];
-              bestWallLen = wallLen;
+              const dot = curNX * cabSin + curNZ * cabCos;
+              const penalty = dot > 0.4 ? 0 : 50;
+
+              if (dist + penalty < bestDist) {
+                bestDist = dist + penalty;
+                bestWall = w;
+                bestS = sClamped;
+                bestNormal = [curNX, curNZ];
+                bestWallLen = wallLen;
+              }
             }
           }
 
