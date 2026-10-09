@@ -454,14 +454,12 @@ export function AnimatedLiftUpDoor({
   innerDepth?: number;
   handleConfig?: import('../../types/handle').KitchenHandleConfig;
 }) {
-  const groupRef = useRef<THREE.Group>(null);
-
-  useFrame((state, delta) => {
-    if (groupRef.current) {
-      const targetRotation = forceOpen ? -Math.PI * 0.45 : 0;
-      groupRef.current.rotation.x = THREE.MathUtils.lerp(groupRef.current.rotation.x, targetRotation, delta * 4);
-    }
-  });
+  const doorGroupRef = useRef<THREE.Group>(null);
+  const leftPistonRef = useRef<THREE.Group>(null);
+  const rightPistonRef = useRef<THREE.Group>(null);
+  const leftRodRef = useRef<THREE.Mesh>(null);
+  const rightRodRef = useRef<THREE.Mesh>(null);
+  const currentRotRef = useRef<number>(0);
 
   const topHingeY = doorH / 2;
   const { handleConfig: storeHandleConfig, golaSystem } = useKitchenStore();
@@ -470,58 +468,169 @@ export function AnimatedLiftUpDoor({
   const isGolaBlocked = golaSystem !== 'none';
   const showHandle = !isGolaBlocked && handleConfig && handleConfig.model !== 'none';
 
+  // Parámetros cinemáticos del sistema de elevación (pistones neumáticos / compás)
+  const cabAnchorY = -Math.min(doorH * 0.62, Math.max(12, doorH - 5));
+  const cabAnchorZ = -Math.min(Math.max(innerDepth * 0.38, 8), 14);
+  const doorAnchorY0 = -Math.min(doorH * 0.38, Math.max(10, doorH - 12));
+  const doorAnchorZ0 = 0; // Cara interior de la puerta
+
+  const initialDy = doorAnchorY0 - cabAnchorY;
+  const initialDz = doorAnchorZ0 - cabAnchorZ;
+  const initialDist = Math.hypot(initialDy, initialDz);
+  const initialRotX = -Math.atan2(initialDy, initialDz);
+  const barrelLen = Math.max(5.5, initialDist * 0.56);
+  const initialRodLen = Math.max(0.4, initialDist - barrelLen);
+
+  const xSideLeft = -doorW / 2 + 1.2;
+  const xSideRight = doorW / 2 - 1.2;
+
+  useFrame((state, delta) => {
+    const targetRotation = forceOpen ? -Math.PI * 0.45 : 0;
+    currentRotRef.current = THREE.MathUtils.lerp(currentRotRef.current, targetRotation, delta * 4);
+    const curRot = currentRotRef.current;
+
+    if (doorGroupRef.current) {
+      doorGroupRef.current.rotation.x = curRot;
+    }
+
+    // Cinemática local pura en el plano Y-Z (inmune a coordenadas de mundo)
+    const doorAnchorY = doorAnchorY0 * Math.cos(curRot) - doorAnchorZ0 * Math.sin(curRot);
+    const doorAnchorZ = doorAnchorY0 * Math.sin(curRot) + doorAnchorZ0 * Math.cos(curRot);
+
+    const dy = doorAnchorY - cabAnchorY;
+    const dz = doorAnchorZ - cabAnchorZ;
+    const currentLen = Math.hypot(dy, dz);
+    const rodLen = Math.max(0.4, currentLen - barrelLen);
+    const rotX = -Math.atan2(dy, dz);
+
+    if (leftPistonRef.current) {
+      leftPistonRef.current.position.set(xSideLeft, cabAnchorY, cabAnchorZ);
+      leftPistonRef.current.rotation.set(rotX, 0, 0);
+    }
+    if (leftRodRef.current) {
+      leftRodRef.current.position.set(0, 0, barrelLen + rodLen / 2);
+      leftRodRef.current.scale.set(1, rodLen, 1);
+    }
+
+    if (rightPistonRef.current) {
+      rightPistonRef.current.position.set(xSideRight, cabAnchorY, cabAnchorZ);
+      rightPistonRef.current.rotation.set(rotX, 0, 0);
+    }
+    if (rightRodRef.current) {
+      rightRodRef.current.position.set(0, 0, barrelLen + rodLen / 2);
+      rightRodRef.current.scale.set(1, rodLen, 1);
+    }
+  });
+
   return (
-    <group
-      position={[position[0], position[1] + topHingeY, position[2] - thickness / 2]}
-      ref={groupRef}
-      onClick={(e) => {
-        if (onClickAction) {
-          e.stopPropagation();
-          onClickAction();
-        }
-      }}
-    >
-      {/* Front Door Board */}
-      <Board
-        position={[0, -topHingeY, thickness / 2]}
-        args={[doorW, doorH, thickness]}
-        {...colorProps}
-        isFrontPanel={true}
-        globalPosition={globalPosition}
-      />
+    <group position={[position[0], position[1] + topHingeY, position[2] - thickness / 2]}>
+      {/* 1. Grupo Móvil de la Puerta (Pivota sobre el eje superior) */}
+      <group
+        ref={doorGroupRef}
+        onClick={(e) => {
+          if (onClickAction) {
+            e.stopPropagation();
+            onClickAction();
+          }
+        }}
+      >
+        {/* Tablero Frontal de la Puerta */}
+        <Board
+          position={[0, -topHingeY, thickness / 2]}
+          args={[doorW, doorH, thickness]}
+          {...colorProps}
+          isFrontPanel={true}
+          globalPosition={globalPosition}
+        />
 
-      {/* Tirador 3D */}
-      {showHandle && (
-        <group position={[0, -doorH + (isPestana ? 0 : 4.0), thickness]}>
-          <KitchenHandle3D
-            config={handleConfig}
-            orientation="horizontal"
-            isDoor={true}
-            isUpper={true}
-            thickness={thickness}
-          />
-        </group>
-      )}
+        {/* Tirador 3D en cara exterior */}
+        {showHandle && (
+          <group position={[0, -doorH + (isPestana ? 0 : 4.0), thickness]}>
+            <KitchenHandle3D
+              config={handleConfig}
+              orientation="horizontal"
+              isDoor={true}
+              isUpper={true}
+              thickness={thickness}
+            />
+          </group>
+        )}
 
-      {/* Bisagras Superiores / Herrajes Elevadores Aventos / Pistones a Gas */}
-      {[-doorW / 2 + 5, doorW / 2 - 5].map((x, idx) => (
-        <group key={`top-hinge-${idx}`} position={[x, 0, 0]}>
-          {/* Base de fijación superior */}
-          <mesh position={[0, -0.6, -1.2]}>
-            <boxGeometry args={[1.8, 1.2, 1.6]} />
-            <meshStandardMaterial color="#64748b" metalness={0.8} roughness={0.3} />
-          </mesh>
-          {/* Brazo elevador cilíndrico / pistón */}
-          <mesh position={[0, -doorH * 0.35, -0.6]} rotation={[0.4, 0, 0]}>
-            <cylinderGeometry args={[0.35, 0.35, doorH * 0.55, 12]} />
-            <meshStandardMaterial color="#cbd5e1" metalness={0.9} roughness={0.2} />
-          </mesh>
-          <mesh position={[0, -doorH * 0.2, -0.4]} rotation={[0.4, 0, 0]}>
-            <cylinderGeometry args={[0.22, 0.22, doorH * 0.35, 12]} />
-            <meshStandardMaterial color="#1e293b" metalness={0.5} roughness={0.5} />
+        {/* Cazoletas de bisagras superiores (Euro 35mm) embutidas en cara interior */}
+        {[-doorW / 2 + 7, doorW / 2 - 7].map((hx, idx) => (
+          <group key={`door-cup-${idx}`} position={[hx, -1.8, 0.1]} rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[1.75, 1.75, 0.3, 16]} />
+            <meshStandardMaterial color="#cbd5e1" metalness={0.7} roughness={0.3} />
+          </group>
+        ))}
+
+        {/* Soportes / Platinas de fijación del pistón en contracara interior de la puerta (Z <= 0) */}
+        {[xSideLeft, xSideRight].map((sx, idx) => (
+          <group key={`door-bracket-${idx}`} position={[sx, doorAnchorY0, 0]}>
+            <mesh position={[0, 0, -0.1]}>
+              <boxGeometry args={[1.2, 2.4, 0.2]} />
+              <meshStandardMaterial color="#94a3b8" metalness={0.8} roughness={0.3} />
+            </mesh>
+            <mesh position={[0, 0, -0.25]}>
+              <sphereGeometry args={[0.3, 12, 12]} />
+              <meshStandardMaterial color="#64748b" metalness={0.9} roughness={0.2} />
+            </mesh>
+          </group>
+        ))}
+      </group>
+
+      {/* 2. Elementos Fijos al Gabinete (Permanecen dentro del módulo) */}
+      {/* Placas base de bisagras superiores en el techo del mueble */}
+      {[-doorW / 2 + 7, doorW / 2 - 7].map((hx, idx) => (
+        <group key={`top-base-${idx}`} position={[hx, 0.1, -1.2]}>
+          <mesh>
+            <boxGeometry args={[1.6, 0.4, 2.2]} />
+            <meshStandardMaterial color="#94a3b8" metalness={0.8} roughness={0.3} />
           </mesh>
         </group>
       ))}
+
+      {/* Platinas de anclaje de pistones en los costados interiores del mueble */}
+      {[
+        { x: xSideLeft, offsetDir: -1 },
+        { x: xSideRight, offsetDir: 1 }
+      ].map((item, idx) => (
+        <group key={`cab-bracket-${idx}`} position={[item.x, cabAnchorY, cabAnchorZ]}>
+          <mesh position={[item.offsetDir * -0.2, 0, 0]}>
+            <boxGeometry args={[0.25, 2.8, 2.0]} />
+            <meshStandardMaterial color="#94a3b8" metalness={0.8} roughness={0.3} />
+          </mesh>
+          <mesh position={[0, 0, 0]}>
+            <sphereGeometry args={[0.35, 12, 12]} />
+            <meshStandardMaterial color="#64748b" metalness={0.9} roughness={0.2} />
+          </mesh>
+        </group>
+      ))}
+
+      {/* 3. Pistones a Gas Articulados (Cinemática Dinámica Telescópica) */}
+      {/* Pistón Izquierdo */}
+      <group ref={leftPistonRef} position={[xSideLeft, cabAnchorY, cabAnchorZ]} rotation={[initialRotX, 0, 0]}>
+        <mesh position={[0, 0, barrelLen / 2]} rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.38, 0.38, barrelLen, 14]} />
+          <meshStandardMaterial color="#475569" metalness={0.75} roughness={0.25} />
+        </mesh>
+        <mesh ref={leftRodRef} position={[0, 0, barrelLen + initialRodLen / 2]} scale={[1, initialRodLen, 1]} rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.2, 0.2, 1, 14]} />
+          <meshStandardMaterial color="#f1f5f9" metalness={0.95} roughness={0.1} />
+        </mesh>
+      </group>
+
+      {/* Pistón Derecho */}
+      <group ref={rightPistonRef} position={[xSideRight, cabAnchorY, cabAnchorZ]} rotation={[initialRotX, 0, 0]}>
+        <mesh position={[0, 0, barrelLen / 2]} rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.38, 0.38, barrelLen, 14]} />
+          <meshStandardMaterial color="#475569" metalness={0.75} roughness={0.25} />
+        </mesh>
+        <mesh ref={rightRodRef} position={[0, 0, barrelLen + initialRodLen / 2]} scale={[1, initialRodLen, 1]} rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.2, 0.2, 1, 14]} />
+          <meshStandardMaterial color="#f1f5f9" metalness={0.95} roughness={0.1} />
+        </mesh>
+      </group>
     </group>
   );
 }

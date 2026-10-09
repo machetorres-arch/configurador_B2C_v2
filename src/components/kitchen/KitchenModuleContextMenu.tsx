@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useKitchenStore, CabinetType } from '../../store/kitchenStore';
 import { useStore, PartType } from '../../store';
 import { useAdminStore } from '../../store/adminStore';
@@ -92,6 +92,101 @@ const DEFAULT_TEXTURES = [
   { id: 'def_abet_2824', name: 'Abet Fiore Pop 2824', url: '/textures/abet-fiore-pop-2824.svg' },
   { id: 'def_wood_grain', name: 'Veta Madera Clara', url: '/textures/light-wood-grain.svg' }
 ];
+
+interface DimensionMmControlProps {
+  label: string;
+  valueCm: number;
+  minCm: number;
+  maxCm: number;
+  stepMm?: number;
+  onChangeCm: (valCm: number) => void;
+  isLight: boolean;
+}
+
+function DimensionMmControl({
+  label,
+  valueCm,
+  minCm,
+  maxCm,
+  stepMm = 1,
+  onChangeCm,
+  isLight
+}: DimensionMmControlProps) {
+  const valueMm = Math.round((valueCm || 0) * 10);
+  const minMm = Math.round(minCm * 10);
+  const maxMm = Math.round(maxCm * 10);
+  const [localText, setLocalText] = useState(String(valueMm));
+  const isFocused = useRef(false);
+
+  useEffect(() => {
+    if (!isFocused.current) {
+      setLocalText(String(Math.round((valueCm || 0) * 10)));
+    }
+  }, [valueCm]);
+
+  const commitValue = (valStr: string) => {
+    const parsed = parseFloat(valStr);
+    if (!isNaN(parsed) && parsed > 0) {
+      const clampedMm = Math.max(minMm, Math.min(maxMm, Math.round(parsed)));
+      onChangeCm(clampedMm / 10);
+      setLocalText(String(clampedMm));
+    } else {
+      setLocalText(String(Math.round((valueCm || 0) * 10)));
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex justify-between items-center text-xs">
+        <span className={`font-semibold ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
+          {label}
+        </span>
+        <div className="flex items-center gap-1.5">
+          <input
+            type="number"
+            value={localText}
+            onFocus={() => { isFocused.current = true; }}
+            onBlur={(e) => {
+              isFocused.current = false;
+              commitValue(e.target.value);
+            }}
+            onChange={(e) => {
+              setLocalText(e.target.value);
+              const parsed = parseFloat(e.target.value);
+              if (!isNaN(parsed) && parsed >= minMm && parsed <= maxMm) {
+                onChangeCm(parsed / 10);
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                (e.target as HTMLInputElement).blur();
+              }
+            }}
+            className={`w-20 px-2 py-0.5 text-right font-mono font-bold text-xs rounded border outline-none transition-all ${
+              isLight
+                ? 'bg-white border-slate-300 text-orange-600 focus:border-orange-500 shadow-xs'
+                : 'bg-black/50 border-white/15 text-orange-400 focus:border-orange-500'
+            }`}
+          />
+          <span className="font-mono font-bold text-xs text-orange-500">mm</span>
+        </div>
+      </div>
+      <input
+        type="range"
+        min={minMm}
+        max={maxMm}
+        step={stepMm}
+        value={valueMm}
+        onChange={(e) => {
+          const newMm = Number(e.target.value);
+          onChangeCm(newMm / 10);
+          setLocalText(String(newMm));
+        }}
+        className="w-full cursor-pointer accent-orange-500"
+      />
+    </div>
+  );
+}
 
 export function KitchenModuleContextMenu({ 
   isLight: propIsLight,
@@ -383,6 +478,33 @@ export function KitchenModuleContextMenu({
     }
 
     switch (targetZone) {
+      case 'all':
+        updateCabinet(activeCabinetId, {
+          structureColor: url,
+          structureMaterial: mat as any,
+          doorColor: url,
+          doorMaterial: mat as any,
+          drawerFrontColor: url,
+          drawerFrontMaterial: mat as any,
+          drawerInnerColor: url,
+          drawerInnerMaterial: mat as any,
+          shelfColor: url,
+          shelfMaterial: mat as any,
+          backColor: url,
+          backMaterial: mat as any,
+          ...(specificThickness ? { backThickness: specificThickness } : {}),
+          leftCoverPanel: activeCabinet.leftCoverPanel?.enabled ? {
+            ...activeCabinet.leftCoverPanel,
+            color: url,
+            material: mat as any
+          } : undefined,
+          rightCoverPanel: activeCabinet.rightCoverPanel?.enabled ? {
+            ...activeCabinet.rightCoverPanel,
+            color: url,
+            material: mat as any
+          } : undefined
+        });
+        break;
       case 'structure':
         updateCabinet(activeCabinetId, { structureColor: url, structureMaterial: mat as any });
         break;
@@ -757,7 +879,7 @@ export function KitchenModuleContextMenu({
           icon={SlidersHorizontal}
           badge={
             <span className="font-mono text-orange-500 font-extrabold">
-              {activeCabinet.width} × {activeCabinet.height} × {activeCabinet.depth} cm
+              {Math.round(activeCabinet.width * 10)} × {Math.round(activeCabinet.height * 10)} × {Math.round(activeCabinet.depth * 10)} mm
             </span>
           }
           isOpen={openSections.dimensions}
@@ -863,74 +985,52 @@ export function KitchenModuleContextMenu({
             </div>
           )}
 
-          {/* DIMENSIONES DEL MÓDULO (SLIDERS) */}
+          {/* DIMENSIONES DEL MÓDULO (PRECISIÓN MM Y TECLADO) */}
           <div className="flex flex-col gap-2.5">
-            {/* Ancho Slider */}
-            <div className="flex flex-col gap-1">
-              <div className="flex justify-between items-center text-xs">
-                <span className={`font-semibold ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
-                  {activeCabinet.variant === 'tall_terminal_shelves' ? 'Ancho (Largo Lateral / Cubre Muro)' : 'Ancho'}
-                </span>
-                <span className="font-mono font-bold text-orange-500">{activeCabinet.width} cm</span>
-              </div>
-              <input 
-                type="range"
-                min={
-                  activeCabinet.variant === "spice_rack" ? 15 : 
-                  activeCabinet.variant === 'tall_terminal_shelves' ? 40 :
-                  activeCabinet.variant?.includes('wine_rack') ? 15 :
-                  activeCabinet.variant?.startsWith('wall_corner_blind') ? 60 :
-                  (activeCabinet.variant?.startsWith('corner_blind') ? 80 : 30)
-                }
-                max={
-                  activeCabinet.variant === "spice_rack" ? 30 :
-                  activeCabinet.variant === 'tall_terminal_shelves' ? 120 :
-                  activeCabinet.variant?.includes('wine_rack') ? 65 :
-                  activeCabinet.variant?.startsWith('wall_corner_blind') ? 100 :
-                  (activeCabinet.variant?.startsWith('corner_blind') ? 130 : 120)
-                }
-                step={5}
-                value={activeCabinet.width}
-                onChange={(e) => updateCabinet(activeCabinet.id, { width: Number(e.target.value) })}
-                className="w-full cursor-pointer accent-orange-500"
-              />
-            </div>
+            {/* Ancho */}
+            <DimensionMmControl
+              isLight={isLight}
+              label={activeCabinet.variant === 'tall_terminal_shelves' ? 'Ancho (Largo Lateral / Cubre Muro)' : 'Ancho'}
+              valueCm={activeCabinet.width}
+              minCm={
+                activeCabinet.variant === "spice_rack" ? 15 : 
+                activeCabinet.variant === 'tall_terminal_shelves' ? 40 :
+                activeCabinet.variant?.includes('wine_rack') ? 15 :
+                activeCabinet.variant?.startsWith('wall_corner_blind') ? 60 :
+                (activeCabinet.variant?.startsWith('corner_blind') ? 80 : 30)
+              }
+              maxCm={
+                activeCabinet.variant === "spice_rack" ? 30 :
+                activeCabinet.variant === 'tall_terminal_shelves' ? 120 :
+                activeCabinet.variant?.includes('wine_rack') ? 65 :
+                activeCabinet.variant?.startsWith('wall_corner_blind') ? 100 :
+                (activeCabinet.variant?.startsWith('corner_blind') ? 130 : 120)
+              }
+              stepMm={1}
+              onChangeCm={(val) => updateCabinet(activeCabinet.id, { width: val })}
+            />
 
-            {/* Alto Slider */}
-            <div className="flex flex-col gap-1">
-              <div className="flex justify-between items-center text-xs">
-                <span className={`font-semibold ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>Alto Total</span>
-                <span className="font-mono font-bold text-orange-500">{activeCabinet.height} cm</span>
-              </div>
-              <input 
-                type="range"
-                min={activeCabinet.type === 'closet' || activeCabinet.type === 'tall' ? 140 : (activeCabinet.type === 'base' ? 70 : 30)}
-                max={activeCabinet.type === 'closet' ? 260 : (activeCabinet.type === 'tall' ? 240 : (activeCabinet.type === 'wall' ? 120 : 100))}
-                step={5}
-                value={activeCabinet.height}
-                onChange={(e) => updateCabinet(activeCabinet.id, { height: Number(e.target.value) })}
-                className="w-full cursor-pointer accent-orange-500"
-              />
-            </div>
+            {/* Alto Total */}
+            <DimensionMmControl
+              isLight={isLight}
+              label="Alto Total"
+              valueCm={activeCabinet.height}
+              minCm={activeCabinet.type === 'closet' || activeCabinet.type === 'tall' ? 140 : (activeCabinet.type === 'base' ? 70 : 30)}
+              maxCm={activeCabinet.type === 'closet' ? 260 : (activeCabinet.type === 'tall' ? 240 : (activeCabinet.type === 'wall' ? 120 : 100))}
+              stepMm={1}
+              onChangeCm={(val) => updateCabinet(activeCabinet.id, { height: val })}
+            />
 
-            {/* Profundidad Slider */}
-            <div className="flex flex-col gap-1">
-              <div className="flex justify-between items-center text-xs">
-                <span className={`font-semibold ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
-                  {activeCabinet.variant === 'tall_terminal_shelves' ? 'Profundidad de Repisas (Saliente)' : 'Profundidad'}
-                </span>
-                <span className="font-mono font-bold text-orange-500">{activeCabinet.depth} cm</span>
-              </div>
-              <input 
-                type="range"
-                min={activeCabinet.variant === 'tall_terminal_shelves' ? 15 : (activeCabinet.type === 'closet' ? 40 : (activeCabinet.type === 'island' ? 30 : 25))}
-                max={activeCabinet.variant === 'tall_terminal_shelves' ? 50 : (activeCabinet.type === 'closet' ? 80 : (activeCabinet.type === 'island' ? 120 : 80))}
-                step={5}
-                value={activeCabinet.depth}
-                onChange={(e) => updateCabinet(activeCabinet.id, { depth: Number(e.target.value) })}
-                className="w-full cursor-pointer accent-orange-500"
-              />
-            </div>
+            {/* Profundidad */}
+            <DimensionMmControl
+              isLight={isLight}
+              label={activeCabinet.variant === 'tall_terminal_shelves' ? 'Profundidad de Repisas (Saliente)' : 'Profundidad'}
+              valueCm={activeCabinet.depth}
+              minCm={activeCabinet.variant === 'tall_terminal_shelves' ? 15 : (activeCabinet.type === 'closet' ? 40 : (activeCabinet.type === 'island' ? 30 : 25))}
+              maxCm={activeCabinet.variant === 'tall_terminal_shelves' ? 50 : (activeCabinet.type === 'closet' ? 80 : (activeCabinet.type === 'island' ? 120 : 80))}
+              stepMm={1}
+              onChangeCm={(val) => updateCabinet(activeCabinet.id, { depth: val })}
+            />
           </div>
 
           {/* INFO ESPECÍFICA TORRE TERMINAL REPISAS */}
@@ -2225,6 +2325,7 @@ export function KitchenModuleContextMenu({
               </div>
               <div className="grid grid-cols-2 gap-2">
                 {[
+                  { id: 'all', label: 'Todo el Mueble' },
                   { id: 'doors', label: 'Puertas' },
                   { id: 'drawerFronts', label: 'Frentes Cajón' },
                   { id: 'coverPanels', label: 'Tapas Laterales' },
@@ -2232,7 +2333,6 @@ export function KitchenModuleContextMenu({
                   { id: 'drawerInner', label: 'Cajas Cajón' },
                   { id: 'shelves', label: 'Repisas' },
                   { id: 'back', label: 'Trasera / Fondo' },
-                  { id: 'socle', label: 'Zócalo' }
                 ].map(part => {
                   const isSelected = targetZone === part.id;
                   return (

@@ -172,30 +172,34 @@ export async function exportBlueprintDomToPdf(
     }
 
     // Direct save using jsPDF cross-browser file-saver
+    let savedSuccessfully = false;
     try {
       doc.save(filename);
+      savedSuccessfully = true;
     } catch (saveErr) {
-      console.warn('doc.save failed, relying on blob link:', saveErr);
+      console.warn('doc.save failed, falling back to blob link:', saveErr);
     }
 
     const pdfBlob = doc.output('blob');
     const blobUrl = URL.createObjectURL(pdfBlob);
 
-    // Also trigger programmatic download link
-    try {
-      const downloadLink = document.createElement('a');
-      downloadLink.href = blobUrl;
-      downloadLink.download = filename;
-      downloadLink.style.display = 'none';
-      document.body.appendChild(downloadLink);
-      downloadLink.click();
-      setTimeout(() => {
-        if (downloadLink.parentNode) {
-          document.body.removeChild(downloadLink);
-        }
-      }, 500);
-    } catch (e) {
-      console.warn('Programmatic download click failed, user can use direct link modal:', e);
+    // Fallback download link only if doc.save failed
+    if (!savedSuccessfully) {
+      try {
+        const downloadLink = document.createElement('a');
+        downloadLink.href = blobUrl;
+        downloadLink.download = filename;
+        downloadLink.style.display = 'none';
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        setTimeout(() => {
+          if (downloadLink.parentNode) {
+            document.body.removeChild(downloadLink);
+          }
+        }, 500);
+      } catch (e) {
+        console.warn('Programmatic fallback download click failed:', e);
+      }
     }
 
     return blobUrl;

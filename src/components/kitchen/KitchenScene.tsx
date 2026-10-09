@@ -68,9 +68,61 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
       window.removeEventListener('keyup', handleShift);
     };
   }, []);
-  const { camera, raycaster, pointer, scene } = useThree();
+  const { camera, raycaster, pointer, scene, size } = useThree();
 
   const is2D = viewMode === '2d';
+  const controls2dRef = useRef<any>(null);
+  const controls3dRef = useRef<any>(null);
+
+  const roomBounds = React.useMemo(() => {
+    const vertices = roomConfig?.vertices && roomConfig.vertices.length >= 3
+      ? roomConfig.vertices
+      : [
+          { id: 'v1', x: -250, y: -200 },
+          { id: 'v2', x: 250, y: -200 },
+          { id: 'v3', x: 250, y: 200 },
+          { id: 'v4', x: -250, y: 200 },
+        ];
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    vertices.forEach((v) => {
+      if (v.x < minX) minX = v.x;
+      if (v.x > maxX) maxX = v.x;
+      if (v.y < minY) minY = v.y;
+      if (v.y > maxY) maxY = v.y;
+    });
+    const centerX = (minX + maxX) / 2;
+    const centerZ = (minY + maxY) / 2;
+    const width = maxX - minX;
+    const height = maxY - minY;
+    return { minX, maxX, minY, maxY, centerX, centerZ, width, height };
+  }, [roomConfig?.vertices]);
+
+  const ideal2DZoom = React.useMemo(() => {
+    const contentW = (roomBounds.width || 500) + 180;
+    const contentH = (roomBounds.height || 400) + 190;
+    const w = size.width || 1200;
+    const h = size.height || 800;
+    const fitFactor = 0.82;
+    const zX = (w / contentW) * fitFactor;
+    const zY = (h / contentH) * fitFactor;
+    return Math.max(0.4, Math.min(2.5, Math.min(zX, zY)));
+  }, [roomBounds.width, roomBounds.height, size.width, size.height]);
+
+  useEffect(() => {
+    if (is2D && camera) {
+      camera.position.set(roomBounds.centerX, 1000, roomBounds.centerZ);
+      camera.up.set(0, 0, -1);
+      camera.lookAt(roomBounds.centerX, 0, roomBounds.centerZ);
+      if ((camera as any).isOrthographicCamera) {
+        (camera as THREE.OrthographicCamera).zoom = ideal2DZoom;
+      }
+      camera.updateProjectionMatrix();
+      if (controls2dRef.current) {
+        controls2dRef.current.target.set(roomBounds.centerX, 0, roomBounds.centerZ);
+        controls2dRef.current.update();
+      }
+    }
+  }, [is2D, roomBounds.centerX, roomBounds.centerZ, ideal2DZoom, camera]);
   const groundPlaneMath = React.useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), []);
   const intersectPoint = React.useMemo(() => new THREE.Vector3(), []);
 
@@ -1153,9 +1205,24 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
       <hemisphereLight args={[isLight ? '#f8fafc' : '#e0f2fe', isLight ? '#94a3b8' : '#334155', 0.55]} />
 
       {is2D ? (
-        <OrthographicCamera makeDefault position={[0, 1000, 0]} rotation={[-Math.PI/2, 0, 0]} zoom={2.5} near={1} far={3000} />
+        <OrthographicCamera 
+          key="camera-2d"
+          makeDefault 
+          position={[roomBounds.centerX, 1000, roomBounds.centerZ]} 
+          up={[0, 0, -1]} 
+          zoom={ideal2DZoom} 
+          near={1} 
+          far={3000} 
+        />
       ) : (
-        <PerspectiveCamera makeDefault position={[460, 390, 560]} fov={45} near={1} far={3000} />
+        <PerspectiveCamera 
+          key="camera-3d"
+          makeDefault 
+          position={[460, 390, 560]} 
+          fov={45} 
+          near={1} 
+          far={3000} 
+        />
       )}
       
       {(() => {
@@ -1165,13 +1232,25 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
           draggingWallId ||
           (activeWallId && toolMode === 'move_active')
         );
-        return (
+        return is2D ? (
           <OrbitControls 
-            enableRotate={!is2D && !isInteracting} 
+            key="controls-2d"
+            ref={controls2dRef}
+            enableRotate={false}
+            enableZoom={!isInteracting}
+            enablePan={!isInteracting}
+            screenSpacePanning={true}
+            target={[roomBounds.centerX, 0, roomBounds.centerZ]}
+          />
+        ) : (
+          <OrbitControls 
+            key="controls-3d"
+            ref={controls3dRef}
+            enableRotate={!isInteracting} 
             enableZoom={!isInteracting}
             enablePan={!isInteracting}
             minPolarAngle={0} 
-            maxPolarAngle={is2D ? 0 : Math.PI / 2 - 0.05} 
+            maxPolarAngle={Math.PI / 2 - 0.05} 
             target={[0, 30, 0]}
           />
         );

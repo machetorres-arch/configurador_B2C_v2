@@ -718,7 +718,7 @@ export function KitchenSpatialDimensions() {
           end={dim.end}
           label={dim.label}
           color="#f97316" // Orange CAD for interior wall clearance
-          fontSize={5.6}
+          fontSize={10.5}
           lineWidth={2.2}
         />
       ))}

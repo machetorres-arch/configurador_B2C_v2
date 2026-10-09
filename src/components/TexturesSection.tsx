@@ -226,7 +226,6 @@ export const TexturesSection = ({
             { id: 'drawerInner' as PartType, label: 'Cajas Cajón' },
             { id: 'shelves' as PartType, label: 'Repisas' },
             { id: 'back' as PartType, label: 'Trasera / Fondo' },
-            { id: 'socle' as PartType, label: 'Zócalo' },
           ].map(part => (
             <button 
               key={part.id}
