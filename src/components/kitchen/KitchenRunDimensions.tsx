@@ -220,20 +220,26 @@ export function KitchenRunDimensions() {
 
             {/* Text Label: Medida Total (TOTAL XX cm) */}
             <group position={[0, topY + 4.5, frontZ]}>
-              <Text
-                fontSize={8.5}
-                color="#f97316"
-                anchorX="center"
-                anchorY="bottom"
-                outlineWidth={0.6}
-                outlineColor="#000000"
-                fontWeight="bold"
-                material-depthTest={false}
-                material-toneMapped={false}
-                renderOrder={1001}
-              >
-                {`${Number(totalWidth.toFixed(1))} cm (TOTAL)`}
-              </Text>
+              <Billboard follow={true}>
+                <mesh position={[0, 0, -0.05]} renderOrder={1000}>
+                  <planeGeometry args={[Math.max(36, `${Number(totalWidth.toFixed(1))} cm (TOTAL)`.length * 4.2), 12]} />
+                  <meshBasicMaterial color="#090d16" transparent opacity={0.92} depthTest={false} />
+                </mesh>
+                <Text
+                  fontSize={8.5}
+                  color="#f97316"
+                  anchorX="center"
+                  anchorY="middle"
+                  outlineWidth={0.6}
+                  outlineColor="#000000"
+                  fontWeight="bold"
+                  material-depthTest={false}
+                  material-toneMapped={false}
+                  renderOrder={1001}
+                >
+                  {`${Number(totalWidth.toFixed(1))} cm (TOTAL)`}
+                </Text>
+              </Billboard>
             </group>
 
             {/* Piso / Rótulo de Corrida Total */}

@@ -3687,26 +3687,42 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                <Line points={[[-width / 2, 0, 0], [width / 2, 0, 0]]} color="#f97316" lineWidth={2} depthTest={false} renderOrder={999} />
                <Line points={[[-width / 2, -2.5, 0], [-width / 2, 2.5, 0]]} color="#f97316" lineWidth={2} depthTest={false} renderOrder={999} />
                <Line points={[[width / 2, -2.5, 0], [width / 2, 2.5, 0]]} color="#f97316" lineWidth={2} depthTest={false} renderOrder={999} />
-               <Text position={[0, 4, 0]} fontSize={7} color="#f97316" anchorX="center" anchorY="bottom" material-depthTest={false} material-toneMapped={false} renderOrder={1000}>{Number(width.toFixed(1))} cm</Text>
+               <Billboard follow={true}>
+                 <mesh position={[0, 4, -0.05]} renderOrder={999}>
+                   <planeGeometry args={[Math.max(22, `${Number(width.toFixed(1))} cm`.length * 4.2), 11]} />
+                   <meshBasicMaterial color="#090d16" transparent opacity={0.92} depthTest={false} />
+                 </mesh>
+                 <Text position={[0, 4, 0]} fontSize={7} color="#f97316" anchorX="center" anchorY="middle" fontWeight="bold" outlineWidth={0.5} outlineColor="#000000" material-depthTest={false} material-toneMapped={false} renderOrder={1000}>{Number(width.toFixed(1))} cm</Text>
+               </Billboard>
             </group>
-
             {/* Alto Total (Left Tier) - Solo en extremo libre izquierdo o cuando está seleccionado */}
             {showHeightDimension && (
                <group position={[-width / 2 - 10, 0, depth / 2]}>
                   <Line points={[[0, -height / 2, 0], [0, height / 2, 0]]} color="#f97316" lineWidth={2} depthTest={false} renderOrder={999} />
                   <Line points={[[-2.5, -height / 2, 0], [2.5, -height / 2, 0]]} color="#f97316" lineWidth={2} depthTest={false} renderOrder={999} />
                   <Line points={[[-2.5, height / 2, 0], [2.5, height / 2, 0]]} color="#f97316" lineWidth={2} depthTest={false} renderOrder={999} />
-                  <Text position={[-4, 0, 0]} rotation={[0, 0, Math.PI/2]} fontSize={7} color="#f97316" anchorX="center" anchorY="bottom" material-depthTest={false} material-toneMapped={false} renderOrder={1000}>{Number(height.toFixed(1))} cm</Text>
+                  <Billboard follow={true}>
+                    <mesh position={[-4, 0, -0.05]} renderOrder={999}>
+                      <planeGeometry args={[Math.max(22, `${Number(height.toFixed(1))} cm`.length * 4.2), 11]} />
+                      <meshBasicMaterial color="#090d16" transparent opacity={0.92} depthTest={false} />
+                    </mesh>
+                    <Text position={[-4, 0, 0]} fontSize={7} color="#f97316" anchorX="center" anchorY="middle" fontWeight="bold" outlineWidth={0.5} outlineColor="#000000" material-depthTest={false} material-toneMapped={false} renderOrder={1000}>{Number(height.toFixed(1))} cm</Text>
+                  </Billboard>
                </group>
             )}
-
             {/* Profundidad Total (Right Tier) - Solo en extremo libre derecho o cuando está seleccionado */}
             {showDepthDimension && (
                <group position={[width / 2 + 10, -height / 2 + 2, 0]}>
                   <Line points={[[0, 0, -depth / 2], [0, 0, depth / 2]]} color="#f97316" lineWidth={2} depthTest={false} renderOrder={999} />
                   <Line points={[[-2.5, 0, -depth / 2], [2.5, 0, -depth / 2]]} color="#f97316" lineWidth={2} depthTest={false} renderOrder={999} />
                   <Line points={[[-2.5, 0, depth / 2], [2.5, 0, depth / 2]]} color="#f97316" lineWidth={2} depthTest={false} renderOrder={999} />
-                  <Text position={[3, 4, 0]} rotation={[0, Math.PI / 2, 0]} fontSize={7} color="#f97316" anchorX="center" anchorY="bottom" material-depthTest={false} material-toneMapped={false} renderOrder={1000}>{Number(depth.toFixed(1))} cm</Text>
+                  <Billboard follow={true}>
+                    <mesh position={[3, 4, -0.05]} renderOrder={999}>
+                      <planeGeometry args={[Math.max(22, `${Number(depth.toFixed(1))} cm`.length * 4.2), 11]} />
+                      <meshBasicMaterial color="#090d16" transparent opacity={0.92} depthTest={false} />
+                    </mesh>
+                    <Text position={[3, 4, 0]} fontSize={7} color="#f97316" anchorX="center" anchorY="middle" fontWeight="bold" outlineWidth={0.5} outlineColor="#000000" material-depthTest={false} material-toneMapped={false} renderOrder={1000}>{Number(depth.toFixed(1))} cm</Text>
+                  </Billboard>
                </group>
             )}
 
@@ -3752,7 +3768,13 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                   <Line points={[[-width / 2, 0, 0], [width / 2, 0, 0]]} color="#3b82f6" lineWidth={1.5} depthTest={false} renderOrder={999} />
                   <Line points={[[-width / 2, -1.5, 0], [-width / 2, 1.5, 0]]} color="#3b82f6" lineWidth={1.5} depthTest={false} renderOrder={999} />
                   <Line points={[[width / 2, -1.5, 0], [width / 2, 1.5, 0]]} color="#3b82f6" lineWidth={1.5} depthTest={false} renderOrder={999} />
-                  <Text position={[0, 2, 0]} fontSize={5} color="#3b82f6" anchorX="center" anchorY="bottom" material-depthTest={false} material-toneMapped={false} renderOrder={1000}>{Number(width.toFixed(1))} cm</Text>
+                  <Billboard follow={true}>
+                    <mesh position={[0, 2, -0.05]} renderOrder={999}>
+                      <planeGeometry args={[Math.max(18, `${Number(width.toFixed(1))} cm`.length * 3.8), 9]} />
+                      <meshBasicMaterial color="#090d16" transparent opacity={0.92} depthTest={false} />
+                    </mesh>
+                    <Text position={[0, 2, 0]} fontSize={5} color="#3b82f6" anchorX="center" anchorY="middle" fontWeight="bold" outlineWidth={0.4} outlineColor="#000000" material-depthTest={false} material-toneMapped={false} renderOrder={1000}>{Number(width.toFixed(1))} cm</Text>
+                  </Billboard>
                </group>
             )}
 

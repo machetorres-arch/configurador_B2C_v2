@@ -21,7 +21,7 @@ import { calculatePolygonArea } from '../utils/roomGeometry';
 import { KitchenMepPanel } from '../components/kitchen/KitchenMepPanel';
 import { detectMepClashes } from '../utils/mepClashDetection';
 import { resolvePlacement, getCabinetSpecsFromTool, findSmartWallPlacement } from '../utils/kitchenCollision';
-import { ArrowLeft, Box, Square, Move3D, PenTool, LayoutGrid, Trash2, RotateCw, Undo2, Redo2, Flame, Refrigerator, Flower2, Utensils, Info, Sparkles, Maximize2, Layers, Palette, ListOrdered, Save, Columns, Sliders, Sun, Moon, Wine, Wrench, DollarSign, ChevronDown, ChevronRight, Globe } from 'lucide-react';
+import { ArrowLeft, Box, Square, Move3D, PenTool, LayoutGrid, Trash2, RotateCw, Undo2, Redo2, Flame, Refrigerator, Flower2, Utensils, Info, Sparkles, Maximize2, Layers, Palette, ListOrdered, Save, Columns, Sliders, Sun, Moon, Wine, Wrench, DollarSign, ChevronDown, ChevronRight, Globe, Ruler } from 'lucide-react';
 import { HandlesSection } from '../components/kitchen/HandlesSection';
 import { HANDLE_CATALOG } from '../types/handle';
 
@@ -480,6 +480,22 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
             </button>
           </div>
 
+          {/* Botón Acceso Rápido Cotas */}
+          <button
+            onClick={globalState.toggleDimensions}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
+              globalState.showDimensions
+                ? 'bg-orange-500 text-black border-orange-600 shadow-[0_0_12px_rgba(249,115,22,0.35)]'
+                : isLight
+                  ? 'bg-white hover:bg-slate-100 border-slate-300 text-slate-700 shadow-sm'
+                  : 'bg-white/5 hover:bg-white/10 border-white/10 text-slate-300'
+            }`}
+            title={globalState.showDimensions ? 'Ocultar Cotas y Medidas' : 'Mostrar Cotas y Medidas (Módulos, Corridas y Muros)'}
+          >
+            <Ruler size={14} className={globalState.showDimensions ? 'text-black' : 'text-orange-500'} />
+            <span>{globalState.showDimensions ? 'Cotas: ON' : 'Cotas'}</span>
+          </button>
+
           {/* Botones Deshacer y Rehacer (Undo / Redo) */}
           <div className="flex items-center gap-1.5">
             <button
@@ -937,6 +953,48 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
          </div>
          <div className={`flex-1 min-w-0 relative transition-colors ${isLight ? 'bg-[#e2e8f0]' : 'bg-[#111]'}`}>
             <KitchenScene theme={theme} />
+
+            {/* Widget flotante de estado y control de Cotas en el Canvas */}
+            <div className="absolute top-4 right-4 z-10 flex items-center gap-2">
+              <button
+                onClick={globalState.toggleDimensions}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-xl backdrop-blur-md border text-xs font-bold uppercase tracking-wider transition-all shadow-lg cursor-pointer ${
+                  globalState.showDimensions
+                    ? 'bg-orange-500/90 text-black border-orange-400 shadow-[0_0_15px_rgba(249,115,22,0.35)]'
+                    : isLight
+                      ? 'bg-white/90 border-slate-300 text-slate-700 hover:bg-white hover:text-slate-900'
+                      : 'bg-zinc-900/80 border-white/10 text-slate-300 hover:bg-zinc-800 hover:text-white'
+                }`}
+                title="Alternar visibilidad de cotas técnicas (módulos, muros y distancias)"
+              >
+                <Ruler size={14} className={globalState.showDimensions ? 'text-black' : 'text-orange-500'} />
+                <span>{globalState.showDimensions ? `Cotas (Nivel ${globalState.dimensionLevel})` : 'Cotas: OFF'}</span>
+              </button>
+
+              {globalState.showDimensions && (
+                <div className={`flex items-center gap-1 p-1 rounded-xl backdrop-blur-md border shadow-lg ${
+                  isLight ? 'bg-white/95 border-slate-300' : 'bg-zinc-900/90 border-white/10'
+                }`}>
+                  {[1, 2, 3, 4, 5, 6].map((lvl) => (
+                    <button
+                      key={lvl}
+                      onClick={() => globalState.setDimensionLevel(lvl)}
+                      className={`w-6 h-6 rounded-lg text-[10px] font-mono font-bold transition-all cursor-pointer ${
+                        globalState.dimensionLevel === lvl
+                          ? 'bg-orange-500 text-black shadow-xs font-black'
+                          : isLight
+                            ? 'text-slate-600 hover:bg-slate-200'
+                            : 'text-zinc-400 hover:bg-white/10 hover:text-white'
+                      }`}
+                      title={`${lvl}. ${DIMENSION_LEVEL_DATA[lvl]?.title || ''} - ${DIMENSION_LEVEL_DATA[lvl]?.desc || ''}`}
+                    >
+                      {lvl}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {toolMode === 'draw_wall' && (
               <div className={`absolute bottom-6 left-1/2 -translate-x-1/2 backdrop-blur-md px-6 py-3 rounded-full border text-xs font-semibold pointer-events-none uppercase tracking-wider ${
                 isLight ? 'bg-white/90 border-slate-300 text-slate-800 shadow-lg' : 'bg-black/80 border-white/10 text-slate-300'

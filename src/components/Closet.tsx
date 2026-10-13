@@ -4,7 +4,7 @@ import { useFrame } from '@react-three/fiber';
 import { useStore } from '../store';
 import { Board } from './Board';
 import { getNominalSlideLength, getDrawerBottomSpecs } from '../utils/manufacturing';
-import { Text, Line, Cylinder, useCursor, Edges } from '@react-three/drei';
+import { Text, Line, Cylinder, useCursor, Edges, Billboard } from '@react-three/drei';
 
 function AssemblyJoint({
   position, 
@@ -975,21 +975,39 @@ export function Closet() {
             <Line points={[[-totalWidth / 2, 0, 0], [totalWidth / 2, 0, 0]]} color="#f97316" lineWidth={2} depthTest={false} renderOrder={999} />
             <Line points={[[-totalWidth / 2, -3, 0], [-totalWidth / 2, 3, 0]]} color="#f97316" lineWidth={2} depthTest={false} renderOrder={999} />
             <Line points={[[totalWidth / 2, -3, 0], [totalWidth / 2, 3, 0]]} color="#f97316" lineWidth={2} depthTest={false} renderOrder={999} />
-            <Text position={[0, 5, 0]} fontSize={8} color="#f97316" anchorX="center" anchorY="bottom" material-depthTest={false} material-toneMapped={false} renderOrder={1000}>{Number(totalWidth.toFixed(1))} cm</Text>
+            <Billboard follow={true}>
+              <mesh position={[0, 5, -0.05]} renderOrder={999}>
+                <planeGeometry args={[Math.max(22, `${Number(totalWidth.toFixed(1))} cm`.length * 4.2), 11]} />
+                <meshBasicMaterial color="#090d16" transparent opacity={0.92} depthTest={false} />
+              </mesh>
+              <Text position={[0, 5, 0]} fontSize={8} color="#f97316" anchorX="center" anchorY="middle" fontWeight="bold" outlineWidth={0.5} outlineColor="#000000" material-depthTest={false} material-toneMapped={false} renderOrder={1000}>{Number(totalWidth.toFixed(1))} cm</Text>
+            </Billboard>
           </group>
           {/* Height Dimension */}
           <group position={[-totalWidth / 2 - 15, baseOffset + height / 2, depth / 2]}>
             <Line points={[[0, -height / 2, 0], [0, height / 2, 0]]} color="#f97316" lineWidth={2} depthTest={false} renderOrder={999} />
             <Line points={[[-3, -height / 2, 0], [3, -height / 2, 0]]} color="#f97316" lineWidth={2} depthTest={false} renderOrder={999} />
             <Line points={[[-3, height / 2, 0], [3, height / 2, 0]]} color="#f97316" lineWidth={2} depthTest={false} renderOrder={999} />
-            <Text position={[-5, 0, 0]} rotation={[0, 0, Math.PI/2]} fontSize={8} color="#f97316" anchorX="center" anchorY="bottom" material-depthTest={false} material-toneMapped={false} renderOrder={1000}>{Number(height.toFixed(1))} cm</Text>
+            <Billboard follow={true}>
+              <mesh position={[-5, 0, -0.05]} renderOrder={999}>
+                <planeGeometry args={[Math.max(22, `${Number(height.toFixed(1))} cm`.length * 4.2), 11]} />
+                <meshBasicMaterial color="#090d16" transparent opacity={0.92} depthTest={false} />
+              </mesh>
+              <Text position={[-5, 0, 0]} fontSize={8} color="#f97316" anchorX="center" anchorY="middle" fontWeight="bold" outlineWidth={0.5} outlineColor="#000000" material-depthTest={false} material-toneMapped={false} renderOrder={1000}>{Number(height.toFixed(1))} cm</Text>
+            </Billboard>
           </group>
           {/* Depth Dimension */}
           <group position={[totalWidth / 2 + 15, Math.max(baseOffset, 2), 0]}>
             <Line points={[[0, 0, -depth / 2], [0, 0, depth / 2]]} color="#f97316" lineWidth={2} depthTest={false} renderOrder={999} />
             <Line points={[[-3, 0, -depth / 2], [3, 0, -depth / 2]]} color="#f97316" lineWidth={2} depthTest={false} renderOrder={999} />
             <Line points={[[-3, 0, depth / 2], [3, 0, depth / 2]]} color="#f97316" lineWidth={2} depthTest={false} renderOrder={999} />
-            <Text position={[3, 4, 0]} rotation={[0, Math.PI / 2, 0]} fontSize={8} color="#f97316" anchorX="center" anchorY="bottom" material-depthTest={false} material-toneMapped={false} renderOrder={1000}>{Number(depth.toFixed(1))} cm</Text>
+            <Billboard follow={true}>
+              <mesh position={[3, 4, -0.05]} renderOrder={999}>
+                <planeGeometry args={[Math.max(22, `${Number(depth.toFixed(1))} cm`.length * 4.2), 11]} />
+                <meshBasicMaterial color="#090d16" transparent opacity={0.92} depthTest={false} />
+              </mesh>
+              <Text position={[3, 4, 0]} fontSize={8} color="#f97316" anchorX="center" anchorY="middle" fontWeight="bold" outlineWidth={0.5} outlineColor="#000000" material-depthTest={false} material-toneMapped={false} renderOrder={1000}>{Number(depth.toFixed(1))} cm</Text>
+            </Billboard>
           </group>
         </group>
       )}

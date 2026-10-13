@@ -51,18 +51,18 @@ export function DimensionCota({
   const getTickPoints = (center: [number, number, number]): [[number, number, number], [number, number, number]] => {
     if (tDir === 'x') {
       return [
-        [center[0] - tickSize, center[1], center[2]],
-        [center[0] + tickSize, center[1], center[2]]
+        [center[0] - tickSize, center[1] + tickSize * 0.7, center[2]],
+        [center[0] + tickSize, center[1] - tickSize * 0.7, center[2]]
       ];
     } else if (tDir === 'z') {
       return [
-        [center[0], center[1], center[2] - tickSize],
-        [center[0], center[1], center[2] + tickSize]
+        [center[0] + tickSize * 0.7, center[1], center[2] - tickSize],
+        [center[0] - tickSize * 0.7, center[1], center[2] + tickSize]
       ];
     } else {
       return [
-        [center[0], center[1] - tickSize, center[2]],
-        [center[0], center[1] + tickSize, center[2]]
+        [center[0] - tickSize * 0.7, center[1] - tickSize, center[2] - tickSize * 0.7],
+        [center[0] + tickSize * 0.7, center[1] + tickSize, center[2] + tickSize * 0.7]
       ];
     }
   };

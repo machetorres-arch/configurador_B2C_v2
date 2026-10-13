@@ -3,7 +3,7 @@ import { useKitchenStore, CabinetType } from '../../store/kitchenStore';
 import { useStore, PartType } from '../../store';
 import { useAdminStore } from '../../store/adminStore';
 import { isCabinetWithDoors, getDefaultShelvesCount, isCabinetWithSplitDoors, getSplitCabinetShelvesCounts, isWhiteMelamine } from '../../utils/kitchenManufacturing';
-import { SlidersHorizontal, X, RefreshCw, ArrowUpDown, ArrowLeftRight, RotateCw, Move3D, DoorOpen, DoorClosed, Layers, Trash2, Palette, Sparkles, Box, Info, Check, ShieldAlert, Sliders, ChevronDown, ChevronRight } from 'lucide-react';
+import { SlidersHorizontal, X, RefreshCw, ArrowUpDown, ArrowLeftRight, RotateCw, Move3D, DoorOpen, DoorClosed, Layers, Trash2, Palette, Sparkles, Box, Info, Check, ShieldAlert, Sliders, ChevronDown, ChevronRight, Ruler } from 'lucide-react';
 import { HANDLE_CATALOG, FINISH_LABELS, FINISH_HEX, HandleModelId, HandleFinish, KitchenHandleConfig } from '../../types/handle';
 import { IslandBackPanelConfigSection } from './IslandBackPanelConfigSection';
 import { DottedDepthSlider } from './DottedDepthSlider';
@@ -807,6 +807,18 @@ export function KitchenModuleContextMenu({
           <div className="flex items-center gap-1 shrink-0">
             <button 
               type="button"
+              onClick={globalStore.toggleDimensions}
+              title={globalStore.showDimensions ? "Ocultar Cotas y Medidas" : "Mostrar Cotas y Medidas"}
+              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                globalStore.showDimensions
+                  ? 'bg-orange-500 text-black shadow-xs font-bold'
+                  : isLight ? 'text-slate-600 hover:text-orange-600 hover:bg-slate-200/80' : 'text-zinc-400 hover:text-orange-400 hover:bg-white/10'
+              }`}
+            >
+              <Ruler size={14} />
+            </button>
+            <button 
+              type="button"
               onClick={() => {
                 const currentRot = activeCabinet.rotation || 0;
                 const nextRot = (currentRot + Math.PI / 2) % (Math.PI * 2);
@@ -886,38 +898,6 @@ export function KitchenModuleContextMenu({
           onToggle={() => toggleSection('dimensions')}
           isLight={isLight}
         >
-          {activeCabinet.type === 'wall' && (
-            <div className={`flex flex-col gap-2 p-2.5 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-black/30 border-white/5'}`}>
-              <label className={`text-[10px] uppercase tracking-wider font-bold ${isLight ? "text-slate-700" : "text-slate-300"}`}>
-                Variante de Mueble Aéreo
-              </label>
-              <div className="grid grid-cols-2 gap-1.5">
-                {[
-                  { id: 'wall_1_door', label: '1 Puerta' },
-                  { id: 'wall_2_doors', label: '2 Puertas' },
-                  { id: 'wall_lift_up', label: 'Pta Elevable' },
-                  { id: 'wall_lift_up_double', label: 'Doble Elevable' },
-                  { id: 'wall_microwave_niche', label: 'Nicho Micro' },
-                  { id: 'wall_open', label: 'Repisas Vistas' },
-                ].map(t => (
-                  <button
-                    key={t.id}
-                    type="button"
-                    onClick={() => updateCabinet(activeCabinet.id, { variant: t.id })}
-                    className={`py-1.5 px-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
-                      (activeCabinet.variant === t.id || (!activeCabinet.variant && t.id === 'wall_1_door'))
-                        ? 'bg-orange-500 text-black shadow-xs font-extrabold'
-                        : isLight
-                          ? 'bg-white text-slate-700 border border-slate-200 hover:border-orange-500'
-                          : 'bg-white/5 text-slate-300 border border-white/10 hover:border-orange-500/50'
-                    }`}
-                  >
-                    {t.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
 
           {(activeCabinet.variant?.startsWith('corner_blind') || activeCabinet.variant === 'corner_blind' || activeCabinet.variant?.startsWith('wall_corner_blind')) && (
             <div className={`flex flex-col gap-2 p-2.5 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-black/30 border-white/5'}`}>

@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { WallType, useKitchenStore } from '../../store/kitchenStore';
 import { useStore } from '../../store';
-import { Edges, Line, Text } from '@react-three/drei';
+import { Edges, Line, Text, Billboard } from '@react-three/drei';
 import { getWallInwardNormal } from '../../utils/kitchenCollision';
 import { ArchitecturalDoor } from './ArchitecturalDoor';
 import { ArchitecturalWindow } from './ArchitecturalWindow';
@@ -352,7 +352,15 @@ export function Wall({ id, start, end, thickness, height, isInterior }: WallType
            <Line points={[[0, 0, -length / 2], [0, 0, length / 2]]} color="#f97316" lineWidth={isWallSelected ? 3 : 2} depthTest={false} renderOrder={999} />
            <Line points={[[-3, 0, -length / 2], [3, 0, -length / 2]]} color="#f97316" lineWidth={isWallSelected ? 3 : 2} depthTest={false} renderOrder={999} />
            <Line points={[[-3, 0, length / 2], [3, 0, length / 2]]} color="#f97316" lineWidth={isWallSelected ? 3 : 2} depthTest={false} renderOrder={999} />
-           <Text position={[0, 4, 0]} rotation={[0, Math.PI / 2, 0]} fontSize={isWallSelected ? 9 : 7} color="#f97316" anchorX="center" anchorY="bottom" material-depthTest={false} material-toneMapped={false} renderOrder={1000}>{isWallSelected ? `${Math.round(length)} cm · Esp: ${thickness} cm` : `${Math.round(length)} cm`}</Text>
+           <Billboard follow={true}>
+             <mesh position={[0, 4, -0.05]} renderOrder={999}>
+               <planeGeometry args={[isWallSelected ? 48 : 34, 12]} />
+               <meshBasicMaterial color="#090d16" transparent opacity={0.92} depthTest={false} />
+             </mesh>
+             <Text position={[0, 4, 0]} fontSize={isWallSelected ? 8.5 : 7} color="#f97316" anchorX="center" anchorY="middle" fontWeight="bold" outlineWidth={0.5} outlineColor="#000000" material-depthTest={false} material-toneMapped={false} renderOrder={1000}>
+               {isWallSelected ? `${Math.round(length)} cm · Esp: ${thickness} cm` : `${Math.round(length)} cm`}
+             </Text>
+           </Billboard>
          </group>
        )}
      </group>

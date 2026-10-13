@@ -58,7 +58,7 @@ export function KitchenSpatialDimensions() {
   const activeWallId = useKitchenStore((s) => s.activeWallId);
   const draggingWallId = useKitchenStore((s) => s.draggingWallId);
 
-  const isEnabled = (showDimensions && (dimensionLevel >= 6 || dimensionLevel === 1) && !toolMode.startsWith('place_') && toolMode !== 'draw_wall') || Boolean(activeWallId || draggingWallId);
+  const isEnabled = (showDimensions && dimensionLevel >= 1 && !toolMode.startsWith('place_') && toolMode !== 'draw_wall') || Boolean(activeWallId || draggingWallId);
 
   // 1. Gather all room wall segments (centerlines in X-Z with thickness)
   const wallSegments = useMemo(() => {
