@@ -101,7 +101,7 @@ export function ChairSidebar() {
   const legsColorList: ChairLegsColor[] = ['blanco', 'verde_manzana', 'terracota', 'azul_petroleo'];
 
   return (
-    <aside className="w-80 md:w-96 bg-[#111318] border-l border-zinc-800 flex flex-col h-full text-slate-200 select-none shadow-2xl z-30">
+    <aside className="w-full lg:w-96 bg-[#111318] border-t lg:border-t-0 lg:border-l border-zinc-800 flex flex-col flex-1 lg:flex-none min-h-0 h-auto lg:h-full text-slate-200 select-none shadow-2xl z-30">
       {/* Sidebar Header */}
       <div className="p-4 border-b border-zinc-800/80 bg-[#161922] flex items-center justify-between">
         <div>

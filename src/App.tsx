@@ -54,29 +54,20 @@ class ErrorBoundary extends Component<Props, State> {
 }
 
 export default function App() {
-  const [route, setRoute] = useState<'home' | 'closet' | 'kitchen' | 'special' | 'hpl-bathroom' | 'office' | 'chair'>('home');
+  const [route, setRoute] = useState<'home' | 'kitchen'>('home');
   const checkSession = useSupabaseAuthStore((state) => state.checkSession);
 
   useEffect(() => {
     checkSession();
   }, [checkSession]);
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('ar') === 'true' || params.get('config')) {
-      setRoute('closet');
-    }
-  }, []);
-
   return (
     <ErrorBoundary>
-      {route === 'home' && <Home onNavigate={setRoute} />}
-      {route === 'closet' && <ClosetConfigurator onNavigate={() => setRoute('home')} />}
-      {route === 'kitchen' && <KitchenConfigurator onNavigate={() => setRoute('home')} />}
-      {route === 'special' && <SpecialFurnitureConfigurator onNavigate={() => setRoute('home')} />}
-      {route === 'hpl-bathroom' && <HplBathroomConfigurator onNavigate={() => setRoute('home')} />}
-      {route === 'office' && <OfficeConfigurator onNavigate={() => setRoute('home')} />}
-      {route === 'chair' && <ChairConfigurator onNavigate={() => setRoute('home')} />}
+      {route === 'home' ? (
+        <Home onNavigate={() => setRoute('kitchen')} />
+      ) : (
+        <KitchenConfigurator onNavigate={() => setRoute('home')} />
+      )}
     </ErrorBoundary>
   );
 }

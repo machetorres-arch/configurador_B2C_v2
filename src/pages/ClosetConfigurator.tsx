@@ -109,13 +109,13 @@ export function ClosetConfigurator({ onNavigate }: { onNavigate: () => void }) {
   return (
     <div className="flex flex-col h-screen w-screen bg-[#0A0A0A] text-slate-200 font-sans overflow-hidden">
       <Blueprint />
-      <nav className="flex items-center justify-between px-8 py-4 border-b border-white/10 bg-black/40 backdrop-blur-md z-20 relative print:hidden">
+      <nav className="flex items-center justify-between px-4 sm:px-8 py-2.5 sm:py-4 border-b border-white/10 bg-black/40 backdrop-blur-md z-20 relative print:hidden flex-wrap gap-2">
         <div className="flex items-center gap-3">
           <button onClick={onNavigate} className="mr-2 p-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors border border-white/10" title="Volver al Inicio"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg></button>
           <span className="font-bellota text-2xl font-bold lowercase text-orange-500 tracking-tight select-none">arquify</span>
           <span className="text-xs text-slate-500 uppercase tracking-widest border-l border-white/10 pl-3 hidden sm:inline">Clóset Modular</span>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           {/* Botones Deshacer y Rehacer (Undo / Redo) */}
           <div className="flex items-center gap-1.5">
             <button
@@ -149,17 +149,17 @@ export function ClosetConfigurator({ onNavigate }: { onNavigate: () => void }) {
 
           <button 
             onClick={handleShowQR}
-            className="px-3.5 py-1.5 bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 rounded-lg text-xs font-semibold uppercase tracking-wider transition-colors border border-orange-500/50"
+            className="px-2.5 sm:px-3.5 py-1.5 bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 rounded-lg text-xs font-semibold uppercase tracking-wider transition-colors border border-orange-500/50"
           >
-            Ver en AR (Móvil)
+            <span className="hidden sm:inline">Ver en </span>AR
           </button>
           <button
             onClick={() => setIsSaveModalOpen(true)}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-orange-600 hover:bg-orange-500 text-white rounded-lg transition-all text-xs font-bold uppercase tracking-wider shadow-md shadow-orange-600/20 cursor-pointer"
+            className="flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 bg-orange-600 hover:bg-orange-500 text-white rounded-lg transition-all text-xs font-bold uppercase tracking-wider shadow-md shadow-orange-600/20 cursor-pointer"
             title="Guardar diseño actual en el Backoffice"
           >
             <Save size={14} />
-            <span>Guardar Proyecto</span>
+            <span className="hidden sm:inline">Guardar</span>
           </button>
         </div>
       </nav>
@@ -184,9 +184,9 @@ export function ClosetConfigurator({ onNavigate }: { onNavigate: () => void }) {
         </div>
       )}
 
-      <main className="flex flex-1 overflow-hidden relative">
+      <main className="flex flex-col lg:flex-row flex-1 overflow-hidden relative">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,#1a1a1a_0%,#000000_100%)] pointer-events-none"></div>
-        <div className="relative flex-1 flex flex-col">
+        <div className="relative w-full lg:flex-1 h-[45vh] sm:h-[48vh] lg:h-full shrink-0 flex flex-col">
           <Scene />
           <ModuleContextMenu />
         </div>

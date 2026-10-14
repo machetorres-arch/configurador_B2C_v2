@@ -1,0 +1,6 @@
+{
+  "summary": "Propuesta de arquitectura y diseño responsive para el configurador de cocinas y vistas frontend en dispositivos móviles (smartphones) y tablets. Define la distribución en pantalla dividida (visor 3D en mitad superior y menús/opciones en mitad inferior) para móviles, barra superior adaptable con menú secundario, paneles colapsables y blindaje estricto de motores de cálculo (BOM, nesting, PDF/Excel y stores).",
+  "updatedAt": "2026-10-14T12:08:33.724383708Z",
+  "requestFeedback": true,
+  "userFacing": true
+}

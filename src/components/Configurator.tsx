@@ -45,7 +45,7 @@ export function Configurator() {
   const activeMod = state.modules.find(m => m.id === state.activeModuleId);
 
   return (
-    <aside className="relative z-20 w-[360px] bg-black/60 backdrop-blur-xl border-l border-white/10 h-full overflow-y-auto p-6 flex flex-col custom-scrollbar pointer-events-auto">
+    <aside className="relative z-20 w-full lg:w-[360px] bg-black/60 backdrop-blur-xl border-t lg:border-t-0 lg:border-l border-white/10 flex-1 lg:flex-none min-h-0 h-auto lg:h-full overflow-y-auto p-4 sm:p-6 flex flex-col custom-scrollbar pointer-events-auto">
       
       <h2 className={sectionTitle}>Composición Modular</h2>
       <div className="flex flex-wrap gap-2 mb-4 items-center">

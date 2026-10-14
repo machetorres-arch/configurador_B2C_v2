@@ -107,9 +107,9 @@ export function ChairConfigurator({ onNavigate }: { onNavigate: () => void }) {
       </header>
 
       {/* Body: Main Viewport + Sidebar */}
-      <div className="flex-1 flex overflow-hidden relative">
+      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden relative">
         {/* Main Canvas / Blueprint View */}
-        <main className="flex-1 relative h-full w-full overflow-hidden">
+        <main className="w-full lg:flex-1 relative h-[45vh] sm:h-[48vh] lg:h-full shrink-0 overflow-hidden">
           {viewMode === '3d' ? <Chair3DViewer /> : <ChairBlueprint2D />}
         </main>
 

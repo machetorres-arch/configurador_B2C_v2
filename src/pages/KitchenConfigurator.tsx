@@ -21,7 +21,7 @@ import { calculatePolygonArea } from '../utils/roomGeometry';
 import { KitchenMepPanel } from '../components/kitchen/KitchenMepPanel';
 import { detectMepClashes } from '../utils/mepClashDetection';
 import { resolvePlacement, getCabinetSpecsFromTool, findSmartWallPlacement } from '../utils/kitchenCollision';
-import { ArrowLeft, Box, Square, Move3D, PenTool, LayoutGrid, Trash2, RotateCw, Undo2, Redo2, Flame, Refrigerator, Flower2, Utensils, Info, Sparkles, Maximize2, Layers, Palette, ListOrdered, Save, Columns, Sliders, Sun, Moon, Wine, Wrench, DollarSign, ChevronDown, ChevronRight, Globe, Ruler } from 'lucide-react';
+import { ArrowLeft, Box, Square, Move3D, PenTool, LayoutGrid, Trash2, RotateCw, Undo2, Redo2, Flame, Refrigerator, Flower2, Utensils, Info, Sparkles, Maximize2, Layers, Palette, ListOrdered, Save, Columns, Sliders, Sun, Moon, Wine, Wrench, DollarSign, ChevronDown, ChevronRight, Globe, Ruler, Menu, X, MoreVertical } from 'lucide-react';
 import { HandlesSection } from '../components/kitchen/HandlesSection';
 import { HANDLE_CATALOG } from '../types/handle';
 
@@ -204,6 +204,8 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
   const [isExportingLabels, setIsExportingLabels] = useState(false);
   const [leftTab, setLeftTab] = useState<'modules' | 'placed'>('modules');
   const [rightTab, setRightTab] = useState<'module' | 'materials' | 'engineering' | 'mep'>('module');
+  const [activeMobileTab, setActiveMobileTab] = useState<'catalog' | 'module' | 'materials' | 'engineering' | 'mep' | 'scene'>('catalog');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showIndividualMaterial, setShowIndividualMaterial] = useState(false);
   const globalState = useStore();
   const currentAreaM2 = calculatePolygonArea(roomConfig?.vertices || []);
@@ -231,10 +233,11 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
     useStore.setState({ showDimensions: false });
   }, []);
 
-  // Auto-switch right tab to 'module' when an item is selected
+  // Auto-switch right tab to 'module' and mobile tab when an item is selected
   useEffect(() => {
     if (activeCabinetId || activeArchElementId || activeWallId) {
       setRightTab((prev) => (prev !== 'module' ? 'module' : prev));
+      setActiveMobileTab('module');
     }
   }, [activeCabinetId, activeArchElementId, activeWallId]);
 
@@ -426,29 +429,108 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
       {/* Modal de Confirmación para Reiniciar y Partir de Cero */}
       <ResetConfirmModal isOpen={isResetModalOpen} onClose={() => setIsResetModalOpen(false)} />
 
-      <nav className={`flex items-center justify-between px-6 py-3.5 border-b backdrop-blur-md z-20 transition-colors ${
+      <nav className={`flex items-center justify-between px-3 sm:px-6 py-2 sm:py-3.5 border-b backdrop-blur-md z-30 transition-colors shrink-0 ${
         isLight ? 'border-slate-200 bg-white/90 shadow-sm' : 'border-white/10 bg-black/60'
       }`}>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 sm:gap-4">
           <button 
             onClick={onNavigate} 
-            className={`p-2 rounded-lg transition-colors border ${
+            className={`p-1.5 sm:p-2 rounded-lg transition-colors border cursor-pointer ${
               isLight ? 'bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-700' : 'bg-white/5 hover:bg-white/10 border-white/10 text-slate-300'
             }`} 
             title="Volver al Inicio"
           >
-            <ArrowLeft size={18} />
+            <ArrowLeft size={16} />
           </button>
-          <div className="flex items-center gap-3">
-            <span className="font-bellota text-2xl font-bold lowercase text-orange-500 tracking-tight select-none">arquify</span>
-            <span className={`text-xs uppercase tracking-widest border-l pl-3 hidden sm:inline ${
+          <div className="flex items-center gap-2 sm:gap-3">
+            <span className="font-bellota text-xl sm:text-2xl font-bold lowercase text-orange-500 tracking-tight select-none">arquify</span>
+            <span className={`text-[10px] sm:text-xs uppercase tracking-widest border-l pl-2 sm:pl-3 hidden md:inline ${
               isLight ? 'text-slate-400 border-slate-200' : 'text-slate-500 border-white/10'
             }`}>Cocinas</span>
           </div>
         </div>
 
-        {/* Acceso directo a Área de Cocina, Vistas y Reinicio */}
-        <div className="flex items-center gap-3">
+        {/* Acciones para Móvil / Tablet (< lg) */}
+        <div className="flex lg:hidden items-center gap-1.5 sm:gap-2">
+          {/* Toggle 2D / 3D */}
+          <div className={`flex p-0.5 rounded-lg border ${isLight ? 'bg-slate-100 border-slate-200' : 'bg-black/50 border-white/10'}`}>
+            <button
+              onClick={() => setViewMode('2d')}
+              className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider transition-colors cursor-pointer ${viewMode === '2d' ? 'bg-orange-500 text-black' : isLight ? 'text-slate-600' : 'text-slate-400'}`}
+            >
+              2D
+            </button>
+            <button
+              onClick={() => setViewMode('3d')}
+              className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider transition-colors cursor-pointer ${viewMode === '3d' ? 'bg-orange-500 text-black' : isLight ? 'text-slate-600' : 'text-slate-400'}`}
+            >
+              3D
+            </button>
+          </div>
+
+          {/* Botón Acceso Rápido Cotas */}
+          <button
+            onClick={globalState.toggleDimensions}
+            className={`flex items-center gap-1 px-2 py-1 rounded-lg border text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
+              globalState.showDimensions
+                ? 'bg-orange-500 text-black border-orange-600'
+                : isLight
+                  ? 'bg-white border-slate-300 text-slate-700'
+                  : 'bg-white/5 border-white/10 text-slate-300'
+            }`}
+            title="Alternar Cotas"
+          >
+            <Ruler size={13} className={globalState.showDimensions ? 'text-black' : 'text-orange-500'} />
+            <span className="hidden xs:inline">Cotas</span>
+          </button>
+
+          {/* Undo / Redo */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={undo}
+              disabled={!canUndo()}
+              className={`p-1.5 rounded-lg border transition-all ${
+                canUndo()
+                  ? isLight ? 'bg-orange-50 border-orange-300 text-orange-600 cursor-pointer' : 'bg-orange-500/15 border-orange-500/60 text-orange-400 cursor-pointer'
+                  : 'opacity-30 cursor-not-allowed border-transparent text-slate-500'
+              }`}
+              title="Deshacer"
+            >
+              <Undo2 size={13} />
+            </button>
+            <button
+              onClick={redo}
+              disabled={!canRedo()}
+              className={`p-1.5 rounded-lg border transition-all ${
+                canRedo()
+                  ? isLight ? 'bg-orange-50 border-orange-300 text-orange-600 cursor-pointer' : 'bg-orange-500/15 border-orange-500/60 text-orange-400 cursor-pointer'
+                  : 'opacity-30 cursor-not-allowed border-transparent text-slate-500'
+              }`}
+              title="Rehacer"
+            >
+              <Redo2 size={13} />
+            </button>
+          </div>
+
+          {/* Botón Menú Secundario "Más" */}
+          <button
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
+              isMobileMenuOpen
+                ? 'bg-orange-500 text-black border-orange-600 shadow-sm'
+                : isLight
+                  ? 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-800'
+                  : 'bg-white/10 hover:bg-white/15 border-white/10 text-white'
+            }`}
+            title="Menú y opciones del proyecto"
+          >
+            {isMobileMenuOpen ? <X size={14} /> : <MoreVertical size={14} />}
+            <span className="hidden sm:inline">Menú</span>
+          </button>
+        </div>
+
+        {/* Acceso directo a Área de Cocina, Vistas y Reinicio (Desktop >= lg) */}
+        <div className="hidden lg:flex items-center gap-3">
           <button
             onClick={() => {
               if (activeCabinetId) setActiveCabinet(null);
@@ -594,9 +676,96 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
           </button>
         </div>
       </nav>
-      <main className="flex flex-1 overflow-hidden relative">
-         <div className={`w-72 shrink-0 border-r flex flex-col z-10 transition-colors shadow-2xl ${isLight ? 'bg-white border-slate-200 shadow-slate-200' : 'bg-zinc-900 border-white/10'}`}>
-            <div className={`p-4 border-b ${isLight ? 'border-slate-200' : 'border-white/10'}`}>
+
+      {/* Drawer / Popover de Acciones Secundarias en Móvil */}
+      {isMobileMenuOpen && (
+        <div 
+          onClick={() => setIsMobileMenuOpen(false)}
+          className="lg:hidden fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex flex-col justify-end p-3 animate-in fade-in duration-150"
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className={`w-full rounded-2xl border p-4 shadow-2xl flex flex-col gap-2 max-h-[85vh] overflow-y-auto ${
+              isLight ? 'bg-white border-slate-200 text-slate-900' : 'bg-zinc-900 border-white/10 text-white'
+            }`}
+          >
+            <div className="flex items-center justify-between border-b pb-2 mb-1">
+              <span className="text-xs uppercase font-extrabold tracking-wider text-orange-500">Acciones del Proyecto</span>
+              <button onClick={() => setIsMobileMenuOpen(false)} className="p-1 rounded-md text-slate-400 hover:text-white cursor-pointer">
+                <X size={18} />
+              </button>
+            </div>
+
+            <button
+              onClick={() => { setIsMobileMenuOpen(false); setRoomPlannerOpen(true); }}
+              className="flex items-center gap-3 p-3 rounded-xl border border-orange-500/20 bg-orange-500/10 text-orange-400 text-xs font-bold uppercase tracking-wider cursor-pointer"
+            >
+              <Maximize2 size={16} />
+              <span>Área de Cocina ({currentAreaM2.toFixed(2)} m²)</span>
+            </button>
+
+            <button
+              onClick={() => { setIsMobileMenuOpen(false); setIsCountertopModalOpen(true); }}
+              className="flex items-center gap-3 p-3 rounded-xl border border-amber-500/20 bg-amber-500/10 text-amber-400 text-xs font-bold uppercase tracking-wider cursor-pointer"
+            >
+              <Sparkles size={16} />
+              <span>Cubiertas Qstone {countertopConfig.enabled ? '(Activada)' : ''}</span>
+            </button>
+
+            <button
+              onClick={() => { setIsMobileMenuOpen(false); globalState.setIsPrinting(true); }}
+              className="flex items-center gap-3 p-3 rounded-xl bg-gradient-to-r from-orange-600 to-amber-600 text-white text-xs font-bold uppercase tracking-wider shadow-md cursor-pointer"
+            >
+              <FileText size={16} />
+              <span>Planos y Despiece de Fabricación</span>
+            </button>
+
+            <button
+              onClick={() => { setIsMobileMenuOpen(false); setIsB2BQuoteOpen(true); }}
+              className="flex items-center gap-3 p-3 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-300 text-xs font-bold uppercase tracking-wider cursor-pointer"
+            >
+              <DollarSign size={16} />
+              <span>Cotización Comercial B2B</span>
+            </button>
+
+            <button
+              onClick={() => { setIsMobileMenuOpen(false); setIsBimModalOpen(true); }}
+              className="flex items-center gap-3 p-3 rounded-xl border border-indigo-500/30 bg-indigo-500/10 text-indigo-300 text-xs font-bold uppercase tracking-wider cursor-pointer"
+            >
+              <Box size={16} />
+              <span>Exportar 3D / BIM (.OBJ, .IFC, .DXF)</span>
+            </button>
+
+            <button
+              onClick={() => { setIsMobileMenuOpen(false); setIsSaveModalOpen(true); }}
+              className="flex items-center gap-3 p-3 rounded-xl bg-orange-600 text-white text-xs font-bold uppercase tracking-wider cursor-pointer"
+            >
+              <Save size={16} />
+              <span>Guardar Proyecto</span>
+            </button>
+
+            <button
+              onClick={() => { toggleTheme(); }}
+              className="flex items-center gap-3 p-3 rounded-xl border border-slate-700 bg-white/5 text-slate-300 text-xs font-bold uppercase tracking-wider cursor-pointer"
+            >
+              {theme === 'dark' ? <Sun size={16} className="text-amber-400" /> : <Moon size={16} className="text-slate-400" />}
+              <span>{theme === 'dark' ? 'Cambiar a Modo Claro' : 'Cambiar a Modo Oscuro'}</span>
+            </button>
+
+            <button
+              onClick={() => { setIsMobileMenuOpen(false); setIsResetModalOpen(true); }}
+              className="flex items-center gap-3 p-3 rounded-xl border border-red-500/30 bg-red-500/10 text-red-400 text-xs font-bold uppercase tracking-wider cursor-pointer"
+            >
+              <RotateCcw size={16} />
+              <span>Partir de Cero (Borrar Todo)</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      <main className="flex flex-col lg:flex-row flex-1 overflow-hidden relative">
+         <div className={`${(activeMobileTab === 'catalog' || activeMobileTab === 'scene') ? 'flex' : 'hidden lg:flex'} flex-col z-10 transition-colors shadow-2xl order-3 lg:order-1 flex-1 lg:flex-none w-full lg:w-72 min-h-0 h-auto lg:h-full border-t lg:border-t-0 lg:border-r ${isLight ? 'bg-white border-slate-200 shadow-slate-200' : 'bg-zinc-900 border-white/10'}`}>
+            <div className={`p-4 border-b hidden lg:block ${isLight ? 'border-slate-200' : 'border-white/10'}`}>
                <h3 className={`text-[10px] uppercase tracking-widest font-bold mb-3 ${isLight ? 'text-slate-500' : 'text-slate-500'}`}>Herramientas</h3>
                <div className="flex flex-col gap-2">
                   <button
@@ -648,8 +817,15 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                </div>
             </div>
 
-            {/* Pestañas Catálogo Módulos / En Escena */}
-            <div className={`grid grid-cols-2 border-b p-2 gap-1.5 transition-colors ${isLight ? 'border-slate-200 bg-slate-50' : 'border-white/10 bg-black/50'}`}>
+            {/* En móvil: Acceso a Dibujar Tramo Muro directo cuando se está en pestaña Catálogo */}
+            {activeMobileTab === 'catalog' && (
+              <div className="lg:hidden p-3 border-b border-white/10 bg-white/5">
+                <ToolButton isLight={isLight} active={toolMode === 'draw_wall'} onClick={() => { if (activeCabinetId) setActiveCabinet(null); if (activeArchElementId) setActiveArchElement(null); setToolMode('draw_wall'); setViewMode('2d'); }} icon={<PenTool size={16}/>} label="Dibujar Tramo Muro (2D)" />
+              </div>
+            )}
+
+            {/* Pestañas Catálogo Módulos / En Escena (Desktop >= lg) */}
+            <div className={`hidden lg:grid grid-cols-2 border-b p-2 gap-1.5 transition-colors ${isLight ? 'border-slate-200 bg-slate-50' : 'border-white/10 bg-black/50'}`}>
               <button
                 onClick={() => setLeftTab('modules')}
                 className={`flex items-center justify-center gap-1.5 py-2 px-1 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
@@ -950,15 +1126,46 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                  </div>
                )}
             </div>
+
+            {/* Acceso Rápido a Planos y Fabricación en Móvil para Catálogo / Escena */}
+            <div className={`p-2.5 border-t shrink-0 flex lg:hidden items-center justify-between gap-2 transition-colors ${
+              isLight ? 'border-slate-200 bg-slate-50' : 'border-white/10 bg-black/70'
+            }`}>
+              <button
+                onClick={() => setRoomPlannerOpen(true)}
+                className="flex-1 py-2 px-2 bg-yellow-400 hover:bg-yellow-500 text-black font-extrabold text-[11px] uppercase tracking-wider rounded-lg flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+              >
+                <Layers size={13} />
+                <span>Área</span>
+              </button>
+              <button
+                onClick={() => setIsCountertopModalOpen(true)}
+                className={`flex-1 py-2 px-2 border font-bold text-[11px] uppercase tracking-wider rounded-lg flex items-center justify-center gap-1.5 shadow-sm cursor-pointer ${
+                  countertopConfig.enabled
+                    ? 'bg-amber-500/20 border-amber-500 text-amber-400'
+                    : isLight ? 'bg-white border-slate-300 text-slate-800' : 'bg-white/5 border-white/10 text-slate-300'
+                }`}
+              >
+                <Sparkles size={13} className="text-amber-400" />
+                <span>Qstone</span>
+              </button>
+              <button
+                onClick={() => globalState.setIsPrinting(true)}
+                className="flex-[1.3] py-2 px-2 bg-gradient-to-r from-orange-600 to-amber-600 text-white font-bold text-[11px] uppercase tracking-wider rounded-lg flex items-center justify-center gap-1.5 shadow-md cursor-pointer"
+              >
+                <FileText size={13} />
+                <span>Planos</span>
+              </button>
+            </div>
          </div>
-         <div className={`flex-1 min-w-0 relative transition-colors ${isLight ? 'bg-[#e2e8f0]' : 'bg-[#111]'}`}>
+          <div className={`w-full lg:flex-1 h-[45vh] sm:h-[48vh] lg:h-full shrink-0 min-w-0 relative transition-colors order-1 lg:order-2 ${isLight ? 'bg-[#e2e8f0]' : 'bg-[#111]'}`}>
             <KitchenScene theme={theme} />
 
             {/* Widget flotante de estado y control de Cotas en el Canvas */}
-            <div className="absolute top-4 right-4 z-10 flex items-center gap-2">
+            <div className="absolute top-3 right-3 sm:top-4 sm:right-4 z-10 flex items-center gap-1.5 sm:gap-2">
               <button
                 onClick={globalState.toggleDimensions}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-xl backdrop-blur-md border text-xs font-bold uppercase tracking-wider transition-all shadow-lg cursor-pointer ${
+                className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl backdrop-blur-md border text-xs font-bold uppercase tracking-wider transition-all shadow-lg cursor-pointer ${
                   globalState.showDimensions
                     ? 'bg-orange-500/90 text-black border-orange-400 shadow-[0_0_15px_rgba(249,115,22,0.35)]'
                     : isLight
@@ -968,7 +1175,7 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                 title="Alternar visibilidad de cotas técnicas (módulos, muros y distancias)"
               >
                 <Ruler size={14} className={globalState.showDimensions ? 'text-black' : 'text-orange-500'} />
-                <span>{globalState.showDimensions ? `Cotas (Nivel ${globalState.dimensionLevel})` : 'Cotas: OFF'}</span>
+                <span>{globalState.showDimensions ? `Cotas (Niv ${globalState.dimensionLevel})` : 'Cotas: OFF'}</span>
               </button>
 
               {globalState.showDimensions && (
@@ -996,26 +1203,129 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
             </div>
 
             {toolMode === 'draw_wall' && (
-              <div className={`absolute bottom-6 left-1/2 -translate-x-1/2 backdrop-blur-md px-6 py-3 rounded-full border text-xs font-semibold pointer-events-none uppercase tracking-wider ${
+              <div className={`absolute bottom-3 sm:bottom-6 left-1/2 -translate-x-1/2 backdrop-blur-md px-4 sm:px-6 py-2 sm:py-3 rounded-full border text-[10px] sm:text-xs font-semibold pointer-events-none uppercase tracking-wider max-w-[90%] text-center ${
                 isLight ? 'bg-white/90 border-slate-300 text-slate-800 shadow-lg' : 'bg-black/80 border-white/10 text-slate-300'
               }`}>
                 Haz clic en la grilla para iniciar un muro. Pulsa ESC para cancelar.
               </div>
             )}
             {(toolMode.startsWith('place_') || toolMode === 'move_active') && (
-              <div className={`absolute bottom-6 left-1/2 -translate-x-1/2 backdrop-blur-md px-6 py-3 rounded-full border text-xs font-semibold pointer-events-none uppercase tracking-wider ${
+              <div className={`absolute bottom-3 sm:bottom-6 left-1/2 -translate-x-1/2 backdrop-blur-md px-4 sm:px-6 py-2 sm:py-3 rounded-full border text-[10px] sm:text-xs font-semibold pointer-events-none uppercase tracking-wider max-w-[90%] text-center ${
                 isLight ? 'bg-orange-100/90 border-orange-300 text-orange-950 shadow-lg' : 'bg-orange-500/20 border-orange-500/50 text-blue-200'
               }`}>
-                {toolMode.startsWith('place_island') ? 'Mueve sobre el piso (imantación automática a islas y cuadrícula). Clic para fijar.' : 'Mueve el cursor sobre un muro para imantar. Clic para posicionar.'}
+                {toolMode.startsWith('place_island') ? 'Mueve sobre el piso (imantación automática). Clic para fijar.' : 'Mueve sobre un muro para imantar. Clic para posicionar.'}
               </div>
             )}
          </div>
+
+         {/* Barra Horizontal de Pestañas Móvil (< lg) - Conecta la mitad superior 3D con la mitad inferior */}
+         <div className={`order-2 flex lg:hidden items-center gap-1 p-1.5 overflow-x-auto no-scrollbar border-y shrink-0 z-20 transition-colors ${
+           isLight ? 'border-slate-200 bg-slate-50' : 'border-white/10 bg-black/80'
+         }`}>
+           <button
+             onClick={() => {
+               setActiveMobileTab('catalog');
+               setLeftTab('modules');
+             }}
+             className={`flex items-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-bold uppercase tracking-wider whitespace-nowrap shrink-0 transition-all cursor-pointer ${
+               activeMobileTab === 'catalog'
+                 ? 'bg-orange-500 text-black shadow-sm'
+                 : isLight ? 'text-slate-600 hover:text-slate-900' : 'text-slate-400 hover:text-white'
+             }`}
+           >
+             <Box size={14} />
+             <span>Catálogo</span>
+           </button>
+
+           <button
+             onClick={() => {
+               setActiveMobileTab('module');
+               setRightTab('module');
+             }}
+             className={`relative flex items-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-bold uppercase tracking-wider whitespace-nowrap shrink-0 transition-all cursor-pointer ${
+               activeMobileTab === 'module'
+                 ? 'bg-orange-500 text-black shadow-sm'
+                 : isLight ? 'text-slate-600 hover:text-slate-900' : 'text-slate-400 hover:text-white'
+             }`}
+           >
+             <Sliders size={14} />
+             <span>Propiedades</span>
+             {(activeCabinetId || activeArchElementId || activeWallId) && (
+               <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse ml-0.5" />
+             )}
+           </button>
+
+           <button
+             onClick={() => {
+               setActiveMobileTab('materials');
+               setRightTab('materials');
+             }}
+             className={`flex items-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-bold uppercase tracking-wider whitespace-nowrap shrink-0 transition-all cursor-pointer ${
+               activeMobileTab === 'materials'
+                 ? 'bg-orange-500 text-black shadow-sm'
+                 : isLight ? 'text-slate-600 hover:text-slate-900' : 'text-slate-400 hover:text-white'
+             }`}
+           >
+             <Palette size={14} />
+             <span>Acabados</span>
+           </button>
+
+           <button
+             onClick={() => {
+               setActiveMobileTab('engineering');
+               setRightTab('engineering');
+             }}
+             className={`flex items-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-bold uppercase tracking-wider whitespace-nowrap shrink-0 transition-all cursor-pointer ${
+               activeMobileTab === 'engineering'
+                 ? 'bg-orange-500 text-black shadow-sm'
+                 : isLight ? 'text-slate-600 hover:text-slate-900' : 'text-slate-400 hover:text-white'
+             }`}
+           >
+             <Wrench size={14} />
+             <span>Herrajes</span>
+           </button>
+
+           <button
+             onClick={() => {
+               setActiveMobileTab('mep');
+               setRightTab('mep');
+             }}
+             className={`relative flex items-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-bold uppercase tracking-wider whitespace-nowrap shrink-0 transition-all cursor-pointer ${
+               activeMobileTab === 'mep'
+                 ? 'bg-cyan-600 text-white shadow-sm'
+                 : isLight ? 'text-slate-600 hover:text-slate-900' : 'text-slate-400 hover:text-white'
+             }`}
+           >
+             <Wrench size={14} />
+             <span>MEP</span>
+             {mepClashes.length > 0 && (
+               <span className="ml-1 px-1.5 py-0.2 bg-rose-600 text-white rounded-full text-[9px] font-black">
+                 {mepClashes.length}
+               </span>
+             )}
+           </button>
+
+           <button
+             onClick={() => {
+               setActiveMobileTab('scene');
+               setLeftTab('placed');
+             }}
+             className={`flex items-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-bold uppercase tracking-wider whitespace-nowrap shrink-0 transition-all cursor-pointer ${
+               activeMobileTab === 'scene'
+                 ? 'bg-orange-500 text-black shadow-sm'
+                 : isLight ? 'text-slate-600 hover:text-slate-900' : 'text-slate-400 hover:text-white'
+             }`}
+           >
+             <ListOrdered size={14} />
+             <span>Escena ({cabinets.length})</span>
+           </button>
+         </div>
       
-    <aside className={`relative z-20 w-96 shrink-0 backdrop-blur-xl border-l h-full flex flex-col pointer-events-auto transition-colors shadow-2xl ${
+    <aside className={`${(activeMobileTab !== 'catalog' && activeMobileTab !== 'scene') ? 'flex' : 'hidden lg:flex'} flex-col relative z-20 order-3 lg:order-3 flex-1 lg:flex-none w-full lg:w-96 min-h-0 backdrop-blur-xl border-t lg:border-t-0 lg:border-l h-auto lg:h-full pointer-events-auto transition-colors shadow-2xl ${
       isLight ? 'bg-white/95 border-slate-200 shadow-slate-200 text-slate-800' : 'bg-black/70 border-white/10 text-slate-200'
     }`}>
-      {/* Selector de Pestañas Superior */}
-      <div className={`grid grid-cols-4 border-b p-1.5 gap-1 shrink-0 transition-colors ${
+      {/* Selector de Pestañas Superior (Desktop >= lg) */}
+      <div className={`hidden lg:grid grid-cols-4 border-b p-1.5 gap-1 shrink-0 transition-colors ${
         isLight ? 'border-slate-200 bg-slate-50' : 'border-white/10 bg-black/60'
       }`}>
         <button
@@ -2405,17 +2715,26 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
       </div>
 
       {/* Acceso Unificado a Planos y Documentación Técnica de Fabricación */}
-      <div className={`p-3.5 border-t shrink-0 backdrop-blur-md transition-colors ${
+      <div className={`p-2.5 sm:p-3.5 border-t shrink-0 backdrop-blur-md transition-colors ${
         isLight ? 'border-slate-200 bg-slate-50/95 shadow-lg' : 'border-white/10 bg-black/90'
       }`}>
-        <button 
-          onClick={() => globalState.setIsPrinting(true)} 
-          className="flex items-center justify-center gap-2.5 w-full py-3 px-4 bg-gradient-to-r from-orange-600 via-amber-600 to-orange-500 hover:from-orange-500 hover:to-amber-500 text-white rounded-xl transition-all text-xs uppercase tracking-wider font-bold shadow-lg shadow-orange-600/25 active:scale-[0.98] cursor-pointer"
-          title="Abrir planos interactivos 2D/A3, despiece de corte, cotizaciones, etiquetas QR y archivos DXF para CNC"
-        >
-          <FileText size={16} />
-          <span>Planos y Despiece de Fabricación</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={() => globalState.setIsPrinting(true)} 
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 sm:py-3 px-3 sm:px-4 bg-gradient-to-r from-orange-600 via-amber-600 to-orange-500 hover:from-orange-500 hover:to-amber-500 text-white rounded-xl transition-all text-xs uppercase tracking-wider font-bold shadow-lg shadow-orange-600/25 active:scale-[0.98] cursor-pointer"
+            title="Abrir planos interactivos 2D/A3, despiece de corte, cotizaciones, etiquetas QR y archivos DXF para CNC"
+          >
+            <FileText size={15} />
+            <span>Planos y Despiece</span>
+          </button>
+          <button
+            onClick={() => setRoomPlannerOpen(true)}
+            className="lg:hidden p-2.5 bg-yellow-400 hover:bg-yellow-500 text-black font-extrabold text-xs uppercase tracking-wider rounded-xl flex items-center justify-center cursor-pointer shrink-0 shadow-sm"
+            title="Área de Cocina y Muros"
+          >
+            <Layers size={16} />
+          </button>
+        </div>
       </div>
 
     </aside>

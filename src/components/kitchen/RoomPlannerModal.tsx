@@ -284,29 +284,29 @@ export function RoomPlannerModal() {
   ];
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 md:p-8 animate-fadeIn">
-      <div className="w-full max-w-7xl h-[90vh] bg-[#FFFFFF] text-slate-900 rounded-xl shadow-2xl overflow-hidden flex flex-col border border-white/20">
+    <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 md:p-8 animate-fadeIn">
+      <div className="w-full max-w-7xl h-[96dvh] sm:h-[90vh] bg-[#FFFFFF] text-slate-900 rounded-xl shadow-2xl overflow-hidden flex flex-col border border-white/20">
         
         {/* ========================================================================= */}
         {/* CABECERA TÉCNICA (Estilo Imagen 1 - Franja Amarilla / Acento Profesional) */}
         {/* ========================================================================= */}
-        <header className="bg-[#FACC15] text-black px-6 py-3.5 flex items-center justify-between shadow-md shrink-0">
-          <div className="flex items-center gap-3">
+        <header className="bg-[#FACC15] text-black px-3 sm:px-6 py-2.5 sm:py-3.5 flex items-center justify-between shadow-md shrink-0">
+          <div className="flex items-center gap-2 sm:gap-3">
             {step === 'edit_dimensions' && (
               <button
                 onClick={() => setStep('select_type')}
-                className="p-1.5 hover:bg-black/10 rounded-md transition-colors flex items-center gap-1 text-xs font-bold uppercase tracking-wider"
+                className="p-1 hover:bg-black/10 rounded-md transition-colors flex items-center gap-1 text-xs font-bold uppercase tracking-wider cursor-pointer"
                 title="Volver a seleccionar tipo de área"
               >
                 <ArrowLeft size={16} />
-                <span>Tipos</span>
+                <span className="hidden sm:inline">Tipos</span>
               </button>
             )}
             <div className="h-5 w-px bg-black/20 mx-1"></div>
-            <h1 className="text-lg md:text-xl font-extrabold tracking-tight uppercase flex items-center gap-2">
+            <h1 className="text-sm sm:text-lg md:text-xl font-extrabold tracking-tight uppercase flex items-center gap-1.5 sm:gap-2">
               <span>Área de cocina</span>
-              <span className="text-xs bg-black text-white px-2 py-0.5 rounded font-mono font-normal">
-                {step === 'select_type' ? 'Paso 1: Geometría' : 'Paso 2: Cotas y Ángulos'}
+              <span className="text-[10px] sm:text-xs bg-black text-white px-1.5 sm:px-2 py-0.5 rounded font-mono font-normal">
+                {step === 'select_type' ? 'Paso 1' : 'Paso 2'}
               </span>
             </h1>
           </div>
@@ -400,8 +400,8 @@ export function RoomPlannerModal() {
           /* ========================================================================= */
           <div className="flex-1 flex flex-col md:flex-row overflow-hidden bg-[#F4F4F5]">
             
-            {/* PANEL LATERAL IZQUIERDO: Inputs Paramétricos (Pared cm | Ángulo °) */}
-            <aside className="w-full md:w-80 lg:w-96 bg-[#E4E4E7] border-r border-slate-300 p-6 flex flex-col overflow-y-auto custom-scrollbar shrink-0 shadow-inner">
+            {/* PANEL LATERAL: Inputs Paramétricos (Pared cm | Ángulo °) */}
+            <aside className="w-full md:w-80 lg:w-96 order-2 md:order-1 max-h-[42vh] md:max-h-none bg-[#E4E4E7] border-t md:border-t-0 md:border-r border-slate-300 p-4 sm:p-6 flex flex-col overflow-y-auto custom-scrollbar shrink-0 shadow-inner">
               
               {/* Encabezado de Columnas */}
               <div className="grid grid-cols-12 gap-2 pb-2 border-b border-slate-300 mb-3 text-[11px] uppercase tracking-wider font-extrabold text-slate-600">
@@ -552,7 +552,7 @@ export function RoomPlannerModal() {
             </aside>
 
             {/* CANVAS INTERACTIVO 2D CENTRAL (Cotas Azules, Muros, Nodos Verdes y Área Central) */}
-            <main className="flex-1 relative flex items-center justify-center p-4 overflow-hidden">
+            <main className="flex-1 order-1 md:order-2 min-h-[220px] md:min-h-0 relative flex items-center justify-center p-2 sm:p-4 overflow-hidden">
               <RoomPlannerCanvas
                 vertices={vertices}
                 wallThickness={wallThickness}

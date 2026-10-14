@@ -53,7 +53,7 @@ export function SpecialFurnitureConfigurator({ onNavigate }: { onNavigate: () =>
   return (
     <div className="flex flex-col h-screen w-screen bg-[#0A0A0A] text-slate-200 font-sans overflow-hidden">
       {/* Top Navbar */}
-      <nav className="flex items-center justify-between px-6 py-3 border-b border-white/10 bg-black/40 backdrop-blur-md z-20 shrink-0">
+      <nav className="flex items-center justify-between px-4 sm:px-6 py-2.5 sm:py-3 border-b border-white/10 bg-black/40 backdrop-blur-md z-20 shrink-0 flex-wrap gap-2">
         <div className="flex items-center gap-3">
           <button
             onClick={onNavigate}
@@ -125,9 +125,9 @@ export function SpecialFurnitureConfigurator({ onNavigate }: { onNavigate: () =>
       </nav>
 
       {/* Main Container */}
-      <div className="flex flex-1 overflow-hidden relative">
+      <div className="flex flex-col lg:flex-row flex-1 overflow-hidden relative">
         {/* Left/Center Viewport */}
-        <div className="flex-1 h-full relative">
+        <div className="w-full lg:flex-1 h-[45vh] sm:h-[48vh] lg:h-full relative shrink-0">
           {viewMode === '3d' && <SpecialScene />}
           {viewMode === 'blueprint' && <SpecialBlueprint />}
           {viewMode === 'bom' && (
@@ -254,7 +254,7 @@ export function SpecialFurnitureConfigurator({ onNavigate }: { onNavigate: () =>
         </div>
 
         {/* Right Sidebar Configurator Panel */}
-        <div className="w-80 md:w-96 bg-zinc-950 border-l border-white/10 p-6 overflow-y-auto flex flex-col gap-6 shrink-0 z-10 shadow-2xl">
+        <div className="w-full lg:w-96 bg-zinc-950 border-t lg:border-t-0 lg:border-l border-white/10 p-4 sm:p-6 overflow-y-auto flex-1 lg:flex-none flex flex-col gap-6 shrink-0 z-10 shadow-2xl min-h-0 h-auto lg:h-full">
           {/* Header */}
           <div className="border-b border-white/10 pb-4">
             <h2 className="text-lg font-bold uppercase tracking-wider text-white">Configurar Aparador</h2>

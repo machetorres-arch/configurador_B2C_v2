@@ -255,14 +255,14 @@ export function CountertopConfigModal({ isOpen, onClose, isLight: isLightProp }:
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-      <div className={`w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] border transition-colors ${
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-2 sm:p-4 animate-in fade-in duration-200">
+      <div className={`w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[96dvh] sm:max-h-[90vh] border transition-colors ${
         isLight
           ? 'bg-white border-slate-200 text-slate-900 shadow-slate-900/10'
           : 'bg-slate-900 border-slate-700 text-white'
       }`}>
         {/* Header */}
-        <div className={`px-6 py-4 border-b flex items-center justify-between transition-colors ${
+        <div className={`px-3.5 sm:px-6 py-3 sm:py-4 border-b flex items-center justify-between gap-2 transition-colors ${
           isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/40 border-slate-800'
         }`}>
           <div className="flex items-center gap-3">
