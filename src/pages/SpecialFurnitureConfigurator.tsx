@@ -284,7 +284,7 @@ export function SpecialFurnitureConfigurator({ onNavigate }: { onNavigate: () =>
               <input
                 type="range"
                 min={60}
-                max={140}
+                max={120}
                 step={5}
                 value={state.width}
                 onChange={(e) => state.setWidth(Number(e.target.value))}
@@ -292,7 +292,7 @@ export function SpecialFurnitureConfigurator({ onNavigate }: { onNavigate: () =>
               />
               <div className="flex justify-between text-[10px] text-slate-500 font-mono">
                 <span>60 cm</span>
-                <span>140 cm</span>
+                <span>120 cm (máx 60cm/puerta)</span>
               </div>
             </div>
 

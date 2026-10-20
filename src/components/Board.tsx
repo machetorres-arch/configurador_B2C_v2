@@ -130,24 +130,28 @@ export function Board({ position, args, color, textureUrl, materialType, transpa
   const storeHplBalancer = useStore((state) => state.hplBalancer);
   const hplBalancer = hplBalancerOverride !== undefined ? hplBalancerOverride : storeHplBalancer;
   
+  const resolvedColor = !texture && (finalColor === '#ffffff' || finalColor === '#f8fafc') 
+    ? '#edf2f7' 
+    : (texture ? '#ffffff' : finalColor);
+
   // Create array of 6 materials
   const baseMatProps = {
-    color: texture ? '#ffffff' : finalColor,
+    color: resolvedColor,
     map: texture,
     side: DoubleSide,
     transparent: isTransp,
     opacity: currentOpacity,
-    roughness: 0.8,
+    roughness: 0.85,
     depthWrite: !isTransp,
   };
 
   const whiteMatProps = {
-    color: '#ffffff',
+    color: '#edf2f7',
     map: null,
     side: DoubleSide,
     transparent: isTransp,
     opacity: currentOpacity,
-    roughness: 0.8,
+    roughness: 0.85,
     depthWrite: !isTransp,
   };
 
@@ -198,7 +202,11 @@ export function Board({ position, args, color, textureUrl, materialType, transpa
           />
         );
       })}
-      {isTransparentGlobal && <Edges scale={1} threshold={15} color="#555555" />}
+      {isTransparentGlobal ? (
+        <Edges scale={1} threshold={15} color="#555555" />
+      ) : (
+        <Edges scale={1} threshold={15} color="#18181b" />
+      )}
     </mesh>
   );
 }

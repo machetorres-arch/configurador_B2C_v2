@@ -58,15 +58,16 @@ export function ModuleContextMenu() {
     handleOverride('openElements', newOpenElements);
   };
 
-  const doorCount = activeModule.doors ? (activeModule.width > 60 ? 2 : 1) : 0;
+  const doorCount = activeModule.doors ? Math.max(1, Math.ceil(activeModule.width / 60)) : 0;
   const hasPieces = doorCount > 0 || activeModule.drawers > 0;
 
   const getInteractiveElements = () => {
     const elements: { id: string; label: string }[] = [];
     if (activeModule.doors) {
       if (doorCount > 1) {
-        elements.push({ id: 'door-1', label: 'Puerta Derecha' });
-        elements.push({ id: 'door-0', label: 'Puerta Izquierda' });
+        for (let i = 0; i < doorCount; i++) {
+          elements.push({ id: `door-${i}`, label: `Puerta ${i + 1} (${Number(((activeModule.width - (doorCount * 0.3)) / doorCount).toFixed(0))}cm)` });
+        }
       } else {
         elements.push({ id: 'door-0', label: 'Puerta Única' });
       }

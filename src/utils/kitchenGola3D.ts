@@ -10,63 +10,67 @@ const golaJGeomCache = new Map<number, THREE.BufferGeometry>();
 const golaCGeomCache = new Map<number, THREE.BufferGeometry>();
 
 /**
- * Sección transversal oficial del Perfil Gola Tipo J Provelcar x175 (en cm):
- * Plano 2D: X = profundidad hacia el interior del mueble (0 a 2.6cm), Y = altura relativa a la cara superior del mueble (0 a -5.7cm).
+ * Sección transversal oficial del Perfil Gola Tipo J en disposición VERTICAL de instalación real (según foto oficial image_3a9acff1.png):
+ * Plano 2D: X = profundidad hacia el interior del mueble (0.4 a 2.95 cm), Y = altura relativa al borde superior (0 a -5.20 cm).
+ * - Columna vertical posterior de ~50 mm (apoyo en el fondo del destaje CNC).
+ * - Nervaduras traseras de clipaje/anclaje hacia el interior del mueble.
+ * - Ceja superior bajo cubierta.
+ * - Curva cóncava ergonómica inferior hacia adelante.
+ * - Pestaña horizontal inferior con labio de remate hacia abajo sobre el frente del mueble.
  */
 export function createProvelcarX175Shape(): THREE.Shape {
   const shape = new THREE.Shape();
-  const t = 0.15; // Espesor pared de aluminio extruido: 1.5mm
 
-  // 1. Pestaña superior horizontal de fijación bajo cubierta:
-  // Desde el borde frontal (1mm retranqueado) hasta el fondo del rebaje mecanizado en el lateral (26mm)
-  shape.moveTo(0.1, 0);
-  shape.lineTo(2.6, 0);
+  // 1. Ceja superior bajo cubierta (apoyo en X=2.30 a 2.60 en Y=0)
+  shape.moveTo(2.30, 0);
+  shape.lineTo(2.60, 0);
 
-  // 2. Columna vertical posterior (apoya contra la pared trasera del destaje CNC):
-  shape.lineTo(2.6, -3.8);
+  // 2. Cara posterior de la columna vertical (apoya contra el fondo del destaje)
+  // Baja hasta la primera nervadura de clip
+  shape.lineTo(2.60, -1.30);
+  // Nervadura trasera superior
+  shape.lineTo(2.95, -1.30);
+  shape.lineTo(2.95, -1.55);
+  shape.lineTo(2.60, -1.55);
 
-  // 3. Curva ergonómica J (seno cóncavo para entrada de dedos):
-  // Desciende suavemente hacia el punto más bajo del canal
+  // Tramo vertical intermedio
+  shape.lineTo(2.60, -3.20);
+  // Nervadura trasera inferior
+  shape.lineTo(2.95, -3.20);
+  shape.lineTo(2.95, -3.45);
+  shape.lineTo(2.60, -3.45);
+
+  // Baja hasta el inicio de la curva inferior
+  shape.lineTo(2.60, -4.30);
+
+  // 3. Curva ergonómica inferior hacia adelante (seno cóncavo)
   shape.bezierCurveTo(
-    2.6, -4.8,
-    2.0, -5.5,
-    1.3, -5.5
+    2.60, -4.85,
+    2.20, -5.00,
+    1.60, -5.00
   );
 
-  // Sube y avanza hacia la pestaña frontal que abraza el remate de la puerta
+  // Tramo horizontal inferior hacia la pestaña frontal
+  shape.lineTo(0.55, -5.00);
+
+  // 4. Labio/gancho frontal hacia abajo
+  shape.lineTo(0.55, -5.20);
+  shape.lineTo(0.40, -5.20);
+  shape.lineTo(0.40, -4.85); // Espesor t=0.15cm hacia arriba
+
+  // Cara superior del ala frontal horizontal
+  shape.lineTo(1.60, -4.85);
+
+  // Curva interior cóncava
   shape.bezierCurveTo(
-    0.7, -5.5,
-    0.35, -4.6,
-    0.35, -3.3
+    2.05, -4.85,
+    2.45, -4.70,
+    2.45, -4.30
   );
 
-  // 4. Labio superior frontal con borde redondeado / suave al tacto:
-  shape.bezierCurveTo(
-    0.35, -3.15,
-    0.5, -3.15,
-    0.5, -3.3
-  );
-
-  // 5. Contorno interior (offset de espesor t = 1.5mm):
-  shape.lineTo(0.5, -3.6);
-
-  // Curva interior cóncava:
-  shape.bezierCurveTo(
-    0.5, -4.4,
-    0.8, -5.35,
-    1.3, -5.35
-  );
-  shape.bezierCurveTo(
-    1.9, -5.35,
-    2.45, -4.7,
-    2.45, -3.8
-  );
-
-  // Cara interior de la columna vertical posterior:
-  shape.lineTo(2.45, -t);
-
-  // Cara inferior de la pestaña superior:
-  shape.lineTo(0.1, -t);
+  // Cara frontal interior de la columna vertical (sube hasta Y=0)
+  shape.lineTo(2.45, -0.15);
+  shape.lineTo(2.30, -0.15);
 
   shape.closePath();
   return shape;

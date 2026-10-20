@@ -23,6 +23,20 @@ export interface ManufacturingData {
   modules: ClosetModule[];
 }
 
+/**
+ * Criterio Técnico Industrial de Bisagras de Cazoleta 35mm según altura:
+ * - Hasta 900 mm: 2 bisagras por hoja
+ * - 901 mm a 1500 mm: 3 bisagras por hoja
+ * - 1501 mm a 2000 mm: 4 bisagras por hoja
+ * - 2001 mm a 2500 mm: 5 bisagras por hoja
+ */
+export function getHingesCountByHeight(doorHeightMm: number): number {
+  if (doorHeightMm <= 900) return 2;
+  if (doorHeightMm <= 1500) return 3;
+  if (doorHeightMm <= 2000) return 4;
+  return 5;
+}
+
 // Parámetros técnicos de herrajes según marca
 const HARDWARE_SPECS = {
   Provelcar: {
@@ -406,11 +420,12 @@ export function generatePartsList(data: ManufacturingData): Part[] {
       });
     }
 
-    // 6. Puertas (Doors)
+    // 6. Puertas (Doors - Máx 600mm por hoja)
     if (mod.doors) {
       const isInnerDrawer = mod.innerDrawers;
-      const doorCount = mod.width > 60 ? 2 : 1;
-      const doorW = (mod.width - (doorCount > 1 ? 2 : 4)) / doorCount;
+      const doorCount = Math.max(1, Math.ceil(mod.width / 60));
+      const totalGap = (doorCount - 1) * 0.3 + 0.3;
+      const doorW = (mod.width - totalGap) / doorCount;
       const totalDrawersHeight = (mod.drawers > 0 && !isInnerDrawer) ? mod.drawers * 27 : 0; 
       const doorHeight = height - totalDrawersHeight - (showTopWall ? thickness : 0);
 
@@ -420,11 +435,11 @@ export function generatePartsList(data: ManufacturingData): Part[] {
         moduleIndex: index,
         qty: doorCount,
         length: doorHeight * 10 - 3,
-        width: doorW * 10,
+        width: Number((doorW * 10).toFixed(1)),
         thickness: thickness * 10,
         material: 'Melamina Frente',
         edgeL1: true, edgeL2: true, edgeW1: true, edgeW2: true,
-        notes: 'Tapacanto perimetral',
+        notes: doorHeight * 10 > 2000 ? 'Tapacanto perimetral (Requiere enderezador/tensor)' : 'Tapacanto perimetral',
         grainDirection: mod.overrides?.grainDirection || 'vertical'
       });
     }
@@ -505,12 +520,18 @@ export function generateHardwareList(data: ManufacturingData) {
   const hardware: any[] = [];
   let totalDrawers = 0;
   let totalDoors = 0;
+  let totalHinges = 0;
   let totalHangers = 0;
 
   data.modules.forEach(mod => {
     totalDrawers += mod.drawers;
     if (mod.doors) {
-      const doorCount = mod.width > 60 ? 2 : 1;
+      const isInnerDrawer = mod.innerDrawers;
+      const doorCount = Math.max(1, Math.ceil(mod.width / 60));
+      const totalDrawersHeight = (mod.drawers > 0 && !isInnerDrawer) ? mod.drawers * 27 : 0; 
+      const doorHeightMm = (data.height - totalDrawersHeight - (data.showTopWall ? data.thickness : 0)) * 10;
+      const hingesPerDoor = getHingesCountByHeight(doorHeightMm);
+      totalHinges += doorCount * hingesPerDoor;
       totalDoors += doorCount;
     }
     if (mod.hasHanger) totalHangers++;
@@ -531,14 +552,12 @@ export function generateHardwareList(data: ManufacturingData) {
   }
 
   if (totalDoors > 0) {
-    // Cálculo de bisagras (altura define bisagras por puerta)
-    const hingesPerDoor = data.height > 200 ? 4 : data.height > 150 ? 3 : 2;
     hardware.push({
       Especialidad: 'Quincallería',
       Item: 'Bisagra Cazoleta 35mm (Cierre Suave)',
-      Cantidad: totalDoors * hingesPerDoor,
+      Cantidad: totalHinges,
       Unidad: 'Unidades',
-      Ubicación: 'Puertas',
+      Ubicación: `Puertas (${totalDoors} hojas batientes, según criterio de altura)`,
     });
   }
 

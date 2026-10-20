@@ -114,7 +114,7 @@ export const useSpecialFurnitureStore = create<SpecialFurnitureState>((set) => (
   assemblyType: 'minifix',
   hardwareBrand: 'Hafele',
   
-  setWidth: (width) => set({ width: Math.max(60, Math.min(150, width)) }),
+  setWidth: (width) => set({ width: Math.max(60, Math.min(120, width)) }),
   setHeight: (height) => set({ height: Math.max(120, Math.min(230, height)) }),
   setDepth: (depth) => set({ depth: Math.max(35, Math.min(65, depth)) }),
   setThickness: (thickness) => set({ thickness }),

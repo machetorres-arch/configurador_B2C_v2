@@ -274,8 +274,11 @@ export function generateSpecialPartsList(state: SpecialFurnitureState): SpecialP
 }
 
 export function generateSpecialHardwareList(state: SpecialFurnitureState): SpecialHardwareItem[] {
-  const { hardwareBrand, assemblyType } = state;
+  const { hardwareBrand, assemblyType, height, legHeight } = state;
   const brandName = hardwareBrand || 'Hafele';
+  const doorHeightMm = Math.round((height - legHeight - 0.4) * 10);
+  const hingesPerDoor = doorHeightMm <= 900 ? 2 : doorHeightMm <= 1500 ? 3 : doorHeightMm <= 2000 ? 4 : 5;
+  const totalHinges = 2 * hingesPerDoor;
 
   return [
     {
@@ -300,10 +303,10 @@ export function generateSpecialHardwareList(state: SpecialFurnitureState): Speci
       id: 'h_bisagras',
       name: `Bisagras Cazoleta para Marco Madera Cierre Suave (${brandName})`,
       sku: 'HINGE-WOD-35SS',
-      qty: 4,
+      qty: totalHinges,
       unit: 'un',
       category: 'Apertura y Movimiento',
-      description: 'Bisagra de 110° con pistón hidráulico integrado, regulación tridimensional 3D'
+      description: `Bisagra de 110° con pistón hidráulico (${hingesPerDoor} bisagras/hoja para puerta H=${doorHeightMm}mm), regulación tridimensional 3D`
     },
     {
       id: 'h_correderas',

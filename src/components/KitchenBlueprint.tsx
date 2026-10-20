@@ -1530,13 +1530,28 @@ export function KitchenBlueprint() {
               ) : isTall ? (
                 // Despensa 2 Puertas Partidas (Corte a 70cm)
                 (() => {
-                  const ySplit = Math.max(0, bodyH - 700);
+                  const isGola = kState.golaSystem !== 'none';
+                  const baseH = 700;
+                  const golaDrop = isGola ? 35 : 0;
+                  const ySplit = Math.max(0, bodyH - baseH);
+                  const yLowerDoorTop = ySplit + golaDrop;
                   return (
                     <g stroke="#0f172a" strokeWidth="0.7">
-                      <line x1={0} y1={ySplit} x2={cabW} y2={ySplit} strokeWidth={strokeElev} />
-                      <path d={`M 0 ${(ySplit + bodyH) / 2} L ${cabW} ${ySplit} L ${cabW} ${bodyH} Z`} fill="none" stroke="#c026d3" strokeWidth={strokeElev * 0.8} strokeDasharray="4,4" />
+                      {isGola && (
+                        <rect
+                          x={0}
+                          y={ySplit}
+                          width={cabW}
+                          height={35}
+                          fill={kState.golaSystem === 'black' ? '#18181b' : '#cbd5e1'}
+                          stroke="#0f172a"
+                          strokeWidth={strokeElev * 0.8}
+                        />
+                      )}
+                      <line x1={0} y1={yLowerDoorTop} x2={cabW} y2={yLowerDoorTop} strokeWidth={strokeElev} />
+                      <path d={`M 0 ${(yLowerDoorTop + bodyH) / 2} L ${cabW} ${yLowerDoorTop} L ${cabW} ${bodyH} Z`} fill="none" stroke="#c026d3" strokeWidth={strokeElev * 0.8} strokeDasharray="4,4" />
                       <path d={`M 0 ${ySplit / 2} L ${cabW} 0 L ${cabW} ${ySplit} Z`} fill="none" stroke="#c026d3" strokeWidth={strokeElev * 0.8} strokeDasharray="4,4" />
-                      <text x={cabW / 2} y={(ySplit + bodyH) / 2 + 5} fontSize={Math.max(13, fSizeElev * 0.38)} fill="#c026d3" fontWeight="bold" textAnchor="middle" fontFamily="monospace">Puerta Inferior</text>
+                      <text x={cabW / 2} y={(yLowerDoorTop + bodyH) / 2 + 5} fontSize={Math.max(13, fSizeElev * 0.38)} fill="#c026d3" fontWeight="bold" textAnchor="middle" fontFamily="monospace">Puerta Inferior</text>
                       <text x={cabW / 2} y={ySplit / 2 + 5} fontSize={Math.max(13, fSizeElev * 0.38)} fill="#c026d3" fontWeight="bold" textAnchor="middle" fontFamily="monospace">Puerta Superior</text>
                     </g>
                   );
@@ -1628,44 +1643,51 @@ export function KitchenBlueprint() {
             {/* ======================================================== */}
             {(() => {
               const latX = cabW + viewGap;
+              const isWineRack = cab.variant?.includes('wine_rack') || cab.variant === 'base_wine_rack' || cab.variant === 'wall_wine_rack' || cab.variant === 'tall_wine_rack' || cab.variant === 'island_wine_rack';
+              const isOpen = cab.variant === 'open' || cab.variant === 'tall_open' || cab.variant === 'wall_open';
+              const hasFronts = !isWineRack && !isOpen;
+              const frontThickMm = (state.thickness || 1.8) * 10;
+              const bodyDMm = hasFronts ? Math.round(cabD - frontThickMm) : cabD;
+
               return (
                 <g>
-                  <rect x={latX} y={0} width={cabD} height={bodyH} fill="#ffffff" stroke="#0f172a" strokeWidth={strokeElev * 1.5} />
+                  {/* Casco del mueble (Lateral de cuerpo) */}
+                  <rect x={latX} y={0} width={bodyDMm} height={bodyH} fill="#ffffff" stroke="#0f172a" strokeWidth={strokeElev * 1.5} />
                   <rect x={latX + 15} y={0} width={4} height={bodyH} fill="#9333ea" />
                   <text x={latX + 17} y={bodyH / 2} fontSize={Math.max(14, fSizeElev * 0.45)} fill="#9333ea" fontWeight="bold" transform={`rotate(-90 ${latX + 17} ${bodyH / 2})`} textAnchor="middle">DUROLAC</text>
 
                   {/* Destaje CNC y Perfil Gola L Superior en Lateral */}
                   {isBaseGola && (
                     <g>
-                      <rect x={latX + cabD - 26} y={0} width={26} height={58} fill="#fef3c7" stroke="#d97706" strokeWidth={strokeElev} strokeDasharray="3,2" />
+                      <rect x={latX + bodyDMm - 26} y={0} width={26} height={58} fill="#fef3c7" stroke="#d97706" strokeWidth={strokeElev} strokeDasharray="3,2" />
                       <path 
-                        d={`M ${latX + cabD - 1} 0 L ${latX + cabD - 26} 0 L ${latX + cabD - 26} 38 Q ${latX + cabD - 26} 55 ${latX + cabD - 13} 55 Q ${latX + cabD - 3.5} 55 ${latX + cabD - 3.5} 33 L ${latX + cabD - 5} 33 Q ${latX + cabD - 5} 53.5 ${latX + cabD - 13} 53.5 Q ${latX + cabD - 24.5} 53.5 ${latX + cabD - 24.5} 38 L ${latX + cabD - 24.5} 1.5 L ${latX + cabD - 1} 1.5 Z`} 
+                        d={`M ${latX + bodyDMm - 1} 0 L ${latX + bodyDMm - 26} 0 L ${latX + bodyDMm - 26} 38 Q ${latX + bodyDMm - 26} 55 ${latX + bodyDMm - 13} 55 Q ${latX + bodyDMm - 3.5} 55 ${latX + bodyDMm - 3.5} 33 L ${latX + bodyDMm - 5} 33 Q ${latX + bodyDMm - 5} 53.5 ${latX + bodyDMm - 13} 53.5 Q ${latX + bodyDMm - 24.5} 53.5 ${latX + bodyDMm - 24.5} 38 L ${latX + bodyDMm - 24.5} 1.5 L ${latX + bodyDMm - 1} 1.5 Z`} 
                         fill={golaColorHex} 
                         stroke="#0f172a" 
                         strokeWidth={strokeElev * 0.8} 
                       />
-                      <line x1={latX + cabD - 26} y1={68} x2={latX + cabD} y2={68} stroke="#d97706" strokeWidth={strokeElev * 0.8} />
-                      <text x={latX + cabD - 13} y={80} fontSize={Math.max(13, fSizeElev * 0.38)} fill="#d97706" fontWeight="bold" textAnchor="middle" fontFamily="monospace">26</text>
+                      <line x1={latX + bodyDMm - 26} y1={68} x2={latX + bodyDMm} y2={68} stroke="#d97706" strokeWidth={strokeElev * 0.8} />
+                      <text x={latX + bodyDMm - 13} y={80} fontSize={Math.max(13, fSizeElev * 0.38)} fill="#d97706" fontWeight="bold" textAnchor="middle" fontFamily="monospace">26</text>
                       
-                      <line x1={latX + cabD - 36} y1={0} x2={latX + cabD - 36} y2={58} stroke="#d97706" strokeWidth={strokeElev * 0.8} />
-                      <text x={latX + cabD - 40} y={34} fontSize={Math.max(13, fSizeElev * 0.38)} fill="#d97706" fontWeight="bold" textAnchor="end" fontFamily="monospace">58</text>
-                      <text x={latX + cabD - 13} y={22} fontSize={Math.max(11, fSizeElev * 0.34)} fill={kState.golaSystem === 'black' ? '#ffffff' : '#0f172a'} fontWeight="900" textAnchor="middle">GOLA L</text>
+                      <line x1={latX + bodyDMm - 36} y1={0} x2={latX + bodyDMm - 36} y2={58} stroke="#d97706" strokeWidth={strokeElev * 0.8} />
+                      <text x={latX + bodyDMm - 40} y={34} fontSize={Math.max(13, fSizeElev * 0.38)} fill="#d97706" fontWeight="bold" textAnchor="end" fontFamily="monospace">58</text>
+                      <text x={latX + bodyDMm - 13} y={22} fontSize={Math.max(11, fSizeElev * 0.34)} fill={kState.golaSystem === 'black' ? '#ffffff' : '#0f172a'} fontWeight="900" textAnchor="middle">GOLA L</text>
                     </g>
                   )}
 
                   {/* Destaje CNC y Perfil Gola C Intermedio en Lateral */}
                   {hasGolaC && (
                     <g>
-                      <rect x={latX + cabD - 26} y={golaCY_lat - 34} width={26} height={68} fill="#fef3c7" stroke="#d97706" strokeWidth={strokeElev} strokeDasharray="3,2" />
+                      <rect x={latX + bodyDMm - 26} y={golaCY_lat - 34} width={26} height={68} fill="#fef3c7" stroke="#d97706" strokeWidth={strokeElev} strokeDasharray="3,2" />
                       <path 
-                        d={`M ${latX + cabD - 3.5} ${golaCY_lat - 28} Q ${latX + cabD - 9} ${golaCY_lat - 14} ${latX + cabD - 26} ${golaCY_lat - 24} L ${latX + cabD - 26} ${golaCY_lat + 24} Q ${latX + cabD - 9} ${golaCY_lat + 14} ${latX + cabD - 3.5} ${golaCY_lat + 28} L ${latX + cabD - 5} ${golaCY_lat + 28} Q ${latX + cabD - 10} ${golaCY_lat + 15.5} ${latX + cabD - 24.5} ${golaCY_lat + 24} L ${latX + cabD - 24.5} ${golaCY_lat - 24} Q ${latX + cabD - 10} ${golaCY_lat - 15.5} ${latX + cabD - 5} ${golaCY_lat - 28} Z`} 
+                        d={`M ${latX + bodyDMm - 3.5} ${golaCY_lat - 28} Q ${latX + bodyDMm - 9} ${golaCY_lat - 14} ${latX + bodyDMm - 26} ${golaCY_lat - 24} L ${latX + bodyDMm - 26} ${golaCY_lat + 24} Q ${latX + bodyDMm - 9} ${golaCY_lat + 14} ${latX + bodyDMm - 3.5} ${golaCY_lat + 28} L ${latX + bodyDMm - 5} ${golaCY_lat + 28} Q ${latX + bodyDMm - 10} ${golaCY_lat + 15.5} ${latX + bodyDMm - 24.5} ${golaCY_lat + 24} L ${latX + bodyDMm - 24.5} ${golaCY_lat - 24} Q ${latX + bodyDMm - 10} ${golaCY_lat - 15.5} ${latX + bodyDMm - 5} ${golaCY_lat - 28} Z`} 
                         fill={golaColorHex} 
                         stroke="#0f172a" 
                         strokeWidth={strokeElev * 0.8} 
                       />
-                      <line x1={latX + cabD - 36} y1={golaCY_lat - 34} x2={latX + cabD - 36} y2={golaCY_lat + 34} stroke="#d97706" strokeWidth={strokeElev * 0.8} />
-                      <text x={latX + cabD - 40} y={golaCY_lat + 5} fontSize={Math.max(13, fSizeElev * 0.38)} fill="#d97706" fontWeight="bold" textAnchor="end" fontFamily="monospace">68</text>
-                      <text x={latX + cabD - 13} y={golaCY_lat + 5} fontSize={Math.max(11, fSizeElev * 0.34)} fill={kState.golaSystem === 'black' ? '#ffffff' : '#0f172a'} fontWeight="900" textAnchor="middle">GOLA C</text>
+                      <line x1={latX + bodyDMm - 36} y1={golaCY_lat - 34} x2={latX + bodyDMm - 36} y2={golaCY_lat + 34} stroke="#d97706" strokeWidth={strokeElev * 0.8} />
+                      <text x={latX + bodyDMm - 40} y={golaCY_lat + 5} fontSize={Math.max(13, fSizeElev * 0.38)} fill="#d97706" fontWeight="bold" textAnchor="end" fontFamily="monospace">68</text>
+                      <text x={latX + bodyDMm - 13} y={golaCY_lat + 5} fontSize={Math.max(11, fSizeElev * 0.34)} fill={kState.golaSystem === 'black' ? '#ffffff' : '#0f172a'} fontWeight="900" textAnchor="middle">GOLA C</text>
                     </g>
                   )}
 
@@ -1676,21 +1698,22 @@ export function KitchenBlueprint() {
                     return shelfElevations.map((elev, sIdx) => {
                       const elevMm = Math.round(elev * 10);
                       const yShelf = bodyH - elevMm - thickMm / 2;
+                      const sWidth = Math.max(10, bodyDMm - 40);
                       return (
                         <g key={`lat-shelf-${sIdx}`}>
                           <rect 
                             x={latX + 25} 
                             y={yShelf} 
-                            width={cabD - 45} 
+                            width={sWidth} 
                             height={thickMm} 
                             fill="#cbd5e1" 
                             stroke="#0284c7" 
                             strokeWidth={strokeElev * 0.7} 
                           />
                           <circle cx={latX + 37} cy={yShelf + thickMm} r={3} fill="#0284c7" />
-                          <circle cx={latX + cabD - 45} cy={yShelf + thickMm} r={3} fill="#0284c7" />
+                          <circle cx={latX + 25 + sWidth - 12} cy={yShelf + thickMm} r={3} fill="#0284c7" />
                           <text 
-                            x={latX + cabD / 2} 
+                            x={latX + 25 + sWidth / 2} 
                             y={yShelf - 4} 
                             fontSize={Math.max(10, fSizeElev * 0.32)} 
                             fill="#0284c7" 
@@ -1705,47 +1728,49 @@ export function KitchenBlueprint() {
                     });
                   })()}
 
-                  {/* Frentes / Puertas en Vista Lateral (Respetando el vano de agarre del Riel Gola) */}
-                  {isBaseGola && hasGolaC ? (
-                    <g>
-                      {/* Frente Superior (deja libre Gola L y Gola C) */}
+                  {/* Frentes / Puertas en Vista Lateral (Montados al frente exterior) */}
+                  {hasFronts && (
+                    isBaseGola && hasGolaC ? (
+                      <g>
+                        {/* Frente Superior (deja libre Gola L y Gola C) */}
+                        <rect 
+                          x={latX + bodyDMm} 
+                          y={35} 
+                          width={frontThickMm} 
+                          height={Math.max(10, (golaCY_lat - 20) - 35)} 
+                          fill="#f97316" 
+                          stroke="#ea580c" 
+                          strokeWidth={strokeElev * 0.8} 
+                        />
+                        {/* Frente Inferior (deja libre Gola C) */}
+                        <rect 
+                          x={latX + bodyDMm} 
+                          y={golaCY_lat + 20} 
+                          width={frontThickMm} 
+                          height={Math.max(10, bodyH - (golaCY_lat + 20))} 
+                          fill="#f97316" 
+                          stroke="#ea580c" 
+                          strokeWidth={strokeElev * 0.8} 
+                        />
+                      </g>
+                    ) : (
                       <rect 
-                        x={latX + cabD - 18} 
-                        y={35} 
-                        width={18} 
-                        height={Math.max(10, (golaCY_lat - 20) - 35)} 
+                        x={latX + bodyDMm} 
+                        y={isBaseGola ? 35 : 0} 
+                        width={frontThickMm} 
+                        height={isBaseGola ? bodyH - 35 : bodyH} 
                         fill="#f97316" 
                         stroke="#ea580c" 
                         strokeWidth={strokeElev * 0.8} 
                       />
-                      {/* Frente Inferior (deja libre Gola C) */}
-                      <rect 
-                        x={latX + cabD - 18} 
-                        y={golaCY_lat + 20} 
-                        width={18} 
-                        height={Math.max(10, bodyH - (golaCY_lat + 20))} 
-                        fill="#f97316" 
-                        stroke="#ea580c" 
-                        strokeWidth={strokeElev * 0.8} 
-                      />
-                    </g>
-                  ) : (
-                    <rect 
-                      x={latX + cabD - 18} 
-                      y={isBaseGola ? 35 : 0} 
-                      width={18} 
-                      height={isBaseGola ? bodyH - 35 : bodyH} 
-                      fill="#f97316" 
-                      stroke="#ea580c" 
-                      strokeWidth={strokeElev * 0.8} 
-                    />
+                    )
                   )}
                   
                   {/* Zócalo Lateral */}
                   {legsH > 0 && (
                     <g>
-                      <rect x={latX + 15} y={bodyH} width={cabD - 30} height={legsH} fill="#e2e8f0" stroke="#475569" strokeWidth={strokeElev} />
-                      <text x={latX + cabD / 2} y={bodyH + legsH * 0.65} fontSize={Math.max(18, fSizeElev * 0.55)} fill="#475569" fontWeight="bold" textAnchor="middle">ZÓCALO</text>
+                      <rect x={latX + 15} y={bodyH} width={bodyDMm - 15} height={legsH} fill="#e2e8f0" stroke="#475569" strokeWidth={strokeElev} />
+                      <text x={latX + bodyDMm / 2} y={bodyH + legsH * 0.65} fontSize={Math.max(18, fSizeElev * 0.55)} fill="#475569" fontWeight="bold" textAnchor="middle">ZÓCALO</text>
                     </g>
                   )}
 

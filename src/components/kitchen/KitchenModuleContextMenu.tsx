@@ -984,10 +984,24 @@ export function KitchenModuleContextMenu({
                 activeCabinet.variant === 'tall_terminal_shelves' ? 120 :
                 activeCabinet.variant?.includes('wine_rack') ? 65 :
                 activeCabinet.variant?.startsWith('wall_corner_blind') ? 100 :
-                (activeCabinet.variant?.startsWith('corner_blind') ? 130 : 120)
+                activeCabinet.variant?.startsWith('corner_blind') ? 130 :
+                (activeCabinet.variant === '1_door' ||
+                 activeCabinet.variant === '1_door_1_drawer' ||
+                 activeCabinet.variant === 'tall_1_door' ||
+                 activeCabinet.variant === 'tall_split_2_doors' ||
+                 activeCabinet.variant === 'tall_inner_drawers' ||
+                 activeCabinet.variant === 'tall_oven_micro' ||
+                 activeCabinet.variant === 'tall_oven_vent' ||
+                 activeCabinet.variant === 'tall_microwave_niche') ? 60 : 120
               }
               stepMm={1}
-              onChangeCm={(val) => updateCabinet(activeCabinet.id, { width: val })}
+              onChangeCm={(val) => {
+                const patch: Partial<CabinetType> = { width: val };
+                if (val > 60) {
+                  if (activeCabinet.variant === 'wall_1_door') patch.variant = 'wall_2_doors';
+                }
+                updateCabinet(activeCabinet.id, patch);
+              }}
             />
 
             {/* Alto Total */}

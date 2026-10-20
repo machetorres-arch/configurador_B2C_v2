@@ -330,14 +330,17 @@ function AnimatedDoor({
 
   const hingeXOffset = isRightHinge ? doorW / 2 : -doorW / 2;
   
-  const hingeYs = [];
-  if (doorHeight > 200) {
-    hingeYs.push(-doorHeight/2 + 20, -doorHeight/6, doorHeight/6, doorHeight/2 - 20);
-  } else if (doorHeight > 120) {
-    hingeYs.push(-doorHeight/2 + 20, 0, doorHeight/2 - 20);
-  } else {
-    hingeYs.push(-doorHeight/2 + 15, doorHeight/2 - 15);
-  }
+  // Criterio Técnico Industrial de Bisagras según altura (mm):
+  // <= 900mm: 2 | 901-1500mm: 3 | 1501-2000mm: 4 | 2001-2500mm: 5
+  const doorHMm = doorHeight * 10;
+  const hingeCount = doorHMm <= 900 ? 2 : doorHMm <= 1500 ? 3 : doorHMm <= 2000 ? 4 : 5;
+  const hingeYs = hingeCount === 2
+    ? [-doorHeight / 2 + 15, doorHeight / 2 - 15]
+    : hingeCount === 3
+    ? [-doorHeight / 2 + 15, 0, doorHeight / 2 - 15]
+    : hingeCount === 4
+    ? [-doorHeight / 2 + 20, -doorHeight / 6, doorHeight / 6, doorHeight / 2 - 20]
+    : [-doorHeight / 2 + 20, -doorHeight / 4, 0, doorHeight / 4, doorHeight / 2 - 20];
   const hingeDir = isRightHinge ? -1 : 1;
 
   return (
@@ -849,16 +852,14 @@ export function Closet() {
       // Si cubre cajones interiores o no hay cajones, parte desde la misma base del módulo (tapando el piso interior)
       const doorY = baseOffset + totalDrawersHeight + doorSpaceHeight / 2;
       
-      const doorCount = mod.width > 60 ? 2 : 1;
-      const doorW = doorCount > 1 ? (mod.width - 0.6) / 2 : (mod.width - 0.3);
+      const doorCount = Math.max(1, Math.ceil(mod.width / 60));
+      const totalGap = (doorCount - 1) * 0.3 + 0.3;
+      const doorW = (mod.width - totalGap) / doorCount;
       
       for(let i = 0; i < doorCount; i++) {
-        // Cálculo de posición X para puertas sobrepuestas
-        const dX = doorCount > 1 
-          ? (i === 0 ? modCenterX - mod.width / 4 - 0.075 : modCenterX + mod.width / 4 + 0.075)
-          : modCenterX;
-
-        const isRightHinge = doorCount > 1 ? i === 1 : false;
+        // Posición X paramétrica para puertas sobrepuestas (máx 60cm por hoja)
+        const dX = modCenterX - mod.width / 2 + 0.15 + (i + 0.5) * doorW + i * 0.3;
+        const isRightHinge = doorCount === 1 ? false : (i % 2 === 1);
 
         parts.push(
           <AnimatedDoor 

@@ -1,4 +1,4 @@
-import React, { useRef, useState, useMemo } from 'react';
+import React, { useRef, useState, useMemo, useEffect } from 'react';
 import { CabinetType, useKitchenStore, getCabinetLabel } from '../../store/kitchenStore';
 import { useStore } from '../../store';
 import { Edges, Line, Text, Billboard } from '@react-three/drei';
@@ -14,6 +14,109 @@ import { PlantDecoration } from './decoration/PlantDecoration';
 import { DishwasherFDVActive12C } from './decoration/DishwasherFDVActive12C';
 import { KitchenHandle3D } from './KitchenHandle3D';
 import { getResolvedCabinetShelfElevations, getDrawerBottomSpecs } from '../../utils/kitchenManufacturing';
+
+/**
+ * Lateral continuo con rebaje CNC para paso continuo del Riel Gola (pieza única extruida sin costuras).
+ */
+export function NotchedLateralBoard({
+  position,
+  thickness,
+  cabH,
+  bodyDepth,
+  notchDepth,
+  notchHeight,
+  colorProps,
+  notchYFromBottom,
+}: {
+  position: [number, number, number];
+  thickness: number;
+  cabH: number;
+  bodyDepth: number;
+  notchDepth: number;
+  notchHeight: number;
+  colorProps: any;
+  notchYFromBottom?: number;
+}) {
+  const [texture, setTexture] = useState<THREE.Texture | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    if (colorProps?.textureUrl) {
+      const loader = new THREE.TextureLoader();
+      loader.setCrossOrigin('anonymous');
+      loader.load(colorProps.textureUrl, (tex) => {
+        if (!active) {
+          tex.dispose();
+          return;
+        }
+        tex.wrapS = THREE.MirroredRepeatWrapping;
+        tex.wrapT = THREE.MirroredRepeatWrapping;
+        tex.repeat.set(bodyDepth / 183, cabH / 244);
+        setTexture(tex);
+      });
+    } else {
+      setTexture(null);
+    }
+    return () => {
+      active = false;
+    };
+  }, [colorProps?.textureUrl, bodyDepth, cabH]);
+
+  const geom = useMemo(() => {
+    const shape = new THREE.Shape();
+    const zMin = -bodyDepth / 2;
+    const zMax = bodyDepth / 2;
+    const yMin = -cabH / 2;
+    const yMax = cabH / 2;
+
+    if (notchYFromBottom !== undefined) {
+      // Destaje intermedio CNC en el frente (zMax) a la cota notchYFromBottom desde la base del casco
+      const yNotchTop = Math.min(yMax, yMin + notchYFromBottom);
+      const yNotchBottom = Math.max(yMin, yNotchTop - notchHeight);
+
+      shape.moveTo(zMin, yMin);
+      shape.lineTo(zMin, yMax);
+      shape.lineTo(zMax, yMax);
+      shape.lineTo(zMax, yNotchTop);
+      shape.lineTo(zMax - notchDepth, yNotchTop);
+      shape.lineTo(zMax - notchDepth, yNotchBottom);
+      shape.lineTo(zMax, yNotchBottom);
+      shape.lineTo(zMax, yMin);
+      shape.closePath();
+    } else {
+      // Destaje superior en el frente (zMax) para muebles base e islas
+      shape.moveTo(zMin, yMin);
+      shape.lineTo(zMin, yMax);
+      shape.lineTo(zMax - notchDepth, yMax);
+      shape.lineTo(zMax - notchDepth, yMax - notchHeight);
+      shape.lineTo(zMax, yMax - notchHeight);
+      shape.lineTo(zMax, yMin);
+      shape.closePath();
+    }
+
+    const g = new THREE.ExtrudeGeometry(shape, {
+      depth: thickness,
+      bevelEnabled: false,
+      steps: 1,
+    });
+    g.translate(0, 0, -thickness / 2);
+    g.rotateY(-Math.PI / 2);
+    g.computeVertexNormals();
+    return g;
+  }, [cabH, bodyDepth, thickness, notchDepth, notchHeight, notchYFromBottom]);
+
+  return (
+    <mesh position={position} geometry={geom} castShadow receiveShadow>
+      <meshStandardMaterial
+        color={texture ? '#ffffff' : (colorProps?.color || '#ffffff')}
+        map={texture}
+        roughness={colorProps?.roughness ?? 0.6}
+        metalness={colorProps?.metalness ?? 0.1}
+      />
+      <Edges threshold={15} color="#18181b" />
+    </mesh>
+  );
+}
 
 export function AssemblyJoint({
   position, 
@@ -163,11 +266,17 @@ export function AnimatedDoor({
   const hingeXOffset = isRightHinge ? doorW / 2 : -doorW / 2;
   const hingeDir = isRightHinge ? -1 : 1;
 
-  const hingeYs = doorH > 180
+  // Criterio Técnico Industrial de Bisagras según altura (mm):
+  // <= 900mm: 2 | 901-1500mm: 3 | 1501-2000mm: 4 | 2001-2500mm: 5
+  const doorHMm = doorH * 10;
+  const hingeCount = doorHMm <= 900 ? 2 : doorHMm <= 1500 ? 3 : doorHMm <= 2000 ? 4 : 5;
+  const hingeYs = hingeCount === 2
+    ? [-doorH / 2 + 10, doorH / 2 - 10]
+    : hingeCount === 3
+    ? [-doorH / 2 + 10, 0, doorH / 2 - 10]
+    : hingeCount === 4
     ? [-doorH / 2 + 10, -doorH / 6, doorH / 6, doorH / 2 - 10]
-    : (doorH > 140
-      ? [-doorH / 2 + 12, 0, doorH / 2 - 12]
-      : [-doorH / 2 + 10, doorH / 2 - 10]);
+    : [-doorH / 2 + 10, -doorH / 4, 0, doorH / 4, doorH / 2 - 10];
 
   const { handleConfig: storeHandleConfig, golaSystem } = useKitchenStore();
   const handleConfig = propHandleConfig || storeHandleConfig;
@@ -1302,8 +1411,18 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
    const cabH = height - legsHeight;
    const innerW = width - (thickness * 2);
    const gap = 0.3; // 3mm de cantería
-   const frontZ = depth/2 + thickness/2;
-   const effectiveVariant = variant || (width > 60 ? '2_doors' : '1_door');
+   const isWineRack = variant?.includes('wine_rack') || variant === 'base_wine_rack' || variant === 'wall_wine_rack' || variant === 'tall_wine_rack' || variant === 'island_wine_rack';
+   const isOpenVariant = variant === 'open' || variant === 'tall_open' || variant === 'wall_open';
+   const hasFronts = !isWineRack && !isOpenVariant && type !== 'decoration';
+   // Criterio de ensamble industrial: la profundidad total 'depth' incluye el espesor del frente.
+   // El cuerpo del mueble (laterales, piso, techo) tiene profundidad 'bodyDepth' retranqueado en -thickness/2.
+   const bodyDepth = hasFronts ? (depth - thickness) : depth;
+   const bodyCenterZ = hasFronts ? (-thickness / 2) : 0;
+   const frontZ = hasFronts ? (depth / 2 - thickness / 2) : depth / 2;
+   const isWidthOver60 = width > 60;
+   const effectiveVariant = (variant === 'wall_1_door' && isWidthOver60)
+      ? 'wall_2_doors'
+      : (variant || (isWidthOver60 ? '2_doors' : '1_door'));
 
    const renderParametricBody = () => {
       // 1. Renderizado de Elementos de Decoración & Electrodomésticos Especializados
@@ -1326,10 +1445,8 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
       }
 
       const renderCoverPanels = () => {
-         const isWineRack = variant?.includes('wine_rack') || variant === 'base_wine_rack' || variant === 'wall_wine_rack' || variant === 'tall_wine_rack' || variant === 'island_wine_rack';
-         const hasFronts = !isWineRack && variant !== 'open' && variant !== 'tall_open' && variant !== 'wall_open';
-         const coverDepth = (hasFronts || isWineRack) ? depth + thickness : depth;
-         const coverZ = (hasFronts || isWineRack) ? thickness / 2 : 0;
+         const coverDepth = (hasFronts || isWineRack) ? depth : bodyDepth;
+         const coverZ = (hasFronts || isWineRack) ? 0 : bodyCenterZ;
 
          return (
             <>
@@ -1383,12 +1500,12 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
          if (variant === 'open') return null;
          
           const renderUndermountDrawer = (keyPrefix: string, yPos: number, drawerH: number, colorProps: any, drawerKey = 'drawer-0') => {
-            const innerDepthMm = (depth - 1.5) * 10;
+            const innerDepthMm = (bodyDepth - 1.5) * 10;
             const nominalLength = getNominalSlideLength(innerDepthMm) / 10; // cm
             const drawerBoxLength = nominalLength; // SKL = NL para corredera telescópica
             
-            const drawerBoxZCenter = depth/2 - drawerBoxLength/2;
-            const slideZCenter = depth/2 - nominalLength/2;
+            const drawerBoxZCenter = (depth/2 - thickness) - drawerBoxLength/2;
+            const slideZCenter = (depth/2 - thickness) - nominalLength/2;
             
             // SKW = LW - 26mm (Holgura telescópica estándar 13mm por lado)
             const skw = innerW - 2.6; 
@@ -1481,8 +1598,8 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
             const innerDepthMm = (depth - 1.5) * 10;
             const nominalLength = getNominalSlideLength(innerDepthMm) / 10; // cm
             const drawerBoxLength = nominalLength;
-            const drawerBoxZCenter = depth / 2 - drawerBoxLength / 2;
-            const slideZCenter = depth / 2 - nominalLength / 2;
+            const drawerBoxZCenter = (depth / 2 - thickness) - drawerBoxLength / 2;
+            const slideZCenter = (depth / 2 - thickness) - nominalLength / 2;
             const skw = innerW - 2.6;
             const sideHeight = Math.max(10, drawerH - 4);
             const yBoxCenter = yPos;
@@ -1668,19 +1785,22 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
             </group>
          );
 
-         const renderGolaL = () => (
-            <group key="gola-l-profile">
-               {/* Perfil Gola Superior Tipo J Provelcar x175 Oficial */}
-               <mesh 
-                  geometry={getProvelcarX175Geometry(golaSpan)} 
-                  position={[-golaSpan / 2, legsHeight + cabH, depth / 2]} 
-                  rotation={[0, Math.PI / 2, 0]}
-                  castShadow
-               >
-                  <meshStandardMaterial color={golaColor} metalness={golaMetalness} roughness={golaRoughness} side={THREE.DoubleSide} />
-               </mesh>
-            </group>
-         );
+         const renderGolaL = (yElevation?: number) => {
+            const targetY = yElevation !== undefined ? yElevation : (legsHeight + cabH);
+            return (
+               <group key={`gola-l-profile-${targetY}`}>
+                  {/* Perfil Gola Superior Tipo J Oficial adosado al casco del gabinete */}
+                  <mesh 
+                     geometry={getProvelcarX175Geometry(golaSpan)} 
+                     position={[-golaSpan / 2, targetY, depth / 2 - thickness]} 
+                     rotation={[0, Math.PI / 2, 0]}
+                     castShadow
+                  >
+                     <meshStandardMaterial color={golaColor} metalness={golaMetalness} roughness={golaRoughness} side={THREE.DoubleSide} />
+                  </mesh>
+               </group>
+            );
+         };
 
          const renderGolaC = (yPos: number) => (
             <group key={`gola-c-profile-${yPos}`}>
@@ -1731,13 +1851,21 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
          }
 
          if (effectiveVariant === 'tall_split_2_doors') {
-            const baseH = 70;
-            const lowerDoorH = baseH - gap*2;
-            const upperDoorH = (cabH - baseH) - gap*2;
-            const lowerY = legsHeight + gap + lowerDoorH/2;
-            const upperY = legsHeight + baseH + gap + upperDoorH/2;
+            const adjacentBase = (leftNeighbor && (leftNeighbor.type === 'base' || leftNeighbor.type === 'island')) 
+               ? leftNeighbor 
+               : ((rightNeighbor && (rightNeighbor.type === 'base' || rightNeighbor.type === 'island')) 
+                  ? rightNeighbor 
+                  : cabinets.find((c) => (c.type === 'base' || c.type === 'island') && !c.variant?.startsWith('deco_')));
+            const baseH = adjacentBase ? (adjacentBase.height - legsHeight) : 70;
+            const isGola = isGolaGloballyActive;
+            const topDeduct = isGola ? 3.5 : 0;
+            const lowerDoorH = Math.max(10, baseH - topDeduct - gap * 2);
+            const upperDoorH = Math.max(10, (cabH - baseH) - gap * 2);
+            const lowerY = legsHeight + gap + lowerDoorH / 2;
+            const upperY = legsHeight + baseH + gap + upperDoorH / 2;
             return (
                <>
+                  {isGola && renderGolaL(legsHeight + baseH)}
                   <AnimatedDoor
                      position={[0, lowerY, frontZ]}
                      doorW={width - gap*2}
@@ -1750,7 +1878,15 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                      globalPosition={[position[0], position[1] + lowerY, position[2] + frontZ]}
                      handleConfig={handleConfig}
                   />
-                  {renderShelfWithJoints(legsHeight + baseH, 'div')}
+                  {isGola ? (
+                     <group key="shelf-div">
+                        <Board position={[0, legsHeight + baseH, -1.75]} args={[innerW, thickness, depth - 5.5]} {...parseColor(cShelves, shelfMaterial, 'shelf')} />
+                        <AssemblyJoint position={[-innerW/2, legsHeight + baseH, -1.75]} length={depth - 5.5} axis="z" pointing="right" thickness={thickness} count={2} />
+                        <AssemblyJoint position={[innerW/2, legsHeight + baseH, -1.75]} length={depth - 5.5} axis="z" pointing="left" thickness={thickness} count={2} />
+                     </group>
+                  ) : (
+                     renderShelfWithJoints(legsHeight + baseH, 'div')
+                  )}
                   <AnimatedDoor
                      position={[0, upperY, frontZ]}
                      doorW={width - gap*2}
@@ -1982,8 +2118,8 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
             
             const cartW = Math.max(8, innerW - 2.6);
             const cartH = Math.max(30, cabH - 12);
-            const cartZCenter = depth / 2 - cartDepth / 2;
-            const slideZCenter = depth / 2 - nominalLength / 2;
+            const cartZCenter = (depth / 2 - thickness) - cartDepth / 2;
+            const slideZCenter = (depth / 2 - thickness) - nominalLength / 2;
             
             const cartBottomY = legsHeight + thickness + 1.2;
             const midShelfY = cartBottomY + cartH * 0.48;
@@ -3482,89 +3618,52 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                      );
                   }
 
-                  // Si Gola no está activo, el lateral se mantiene cerrado y completo al ras
-                  if (!isGolaActive) {
+                  if (isGolaActive) {
                      return (
-                        <Board 
+                        <NotchedLateralBoard 
                            key={`lat-${key}`}
-                           position={[xPos, legsHeight + cabH/2, 0]} 
-                           args={[thickness, cabH, depth]} 
-                           {...parseColor(cStructure, structureMaterial, key)} 
+                           position={[xPos, legsHeight + cabH/2, bodyCenterZ]} 
+                           thickness={thickness}
+                           cabH={cabH}
+                           bodyDepth={bodyDepth}
+                           notchDepth={2.8}
+                           notchHeight={5.6}
+                           colorProps={parseColor(cStructure, structureMaterial, key)}
                         />
                      );
                   }
 
-                  // Lateral con Gola activo: Destaje CNC para paso continuo del riel Gola L (y Gola C si aplica)
-                  const notchDepth = 2.8;
-                  const notchLHeight = 5.8;
-                  const backDepth = depth - notchDepth;
-                  const zBack = -depth/2 + backDepth/2;
-                  const zFront = depth/2 - notchDepth/2;
-
-                  let effVariant = variant;
-                  if (!effVariant) {
-                     effVariant = width > 60 ? '2_doors' : '1_door';
-                  }
-                  const myHasGolaC = effVariant === '1_door_1_drawer' || effVariant === '2_pot_drawers' || effVariant === '4_drawers';
-                  const hasGolaC = myHasGolaC;
-
-                  const effGolaCVariant = effVariant;
-                  let yGolaC = 0;
-                  if (effGolaCVariant === '1_door_1_drawer') {
-                     const drawerH = 14.5;
-                     yGolaC = legsHeight + cabH - 3.5 - drawerH - 2.0;
-                  } else if (effGolaCVariant === '2_pot_drawers') {
-                     const availH = Math.max(20, cabH - 3.5 - 4.0 - gap * 3);
-                     const drawerH = availH / 2;
-                     yGolaC = legsHeight + gap + drawerH + 2.0;
-                  } else if (effGolaCVariant === '4_drawers') {
-                     const availH = Math.max(20, cabH - 3.5 - 4.0 - gap * 5);
-                     const drawerH = availH / 4;
-                     yGolaC = legsHeight + gap + (drawerH + gap) * 2 + 2.0;
-                  }
-
-                  const notchCHeight = 6.8;
-
-                  return (
-                     <group key={`lateral-${key}`}>
-                        {/* Cuerpo trasero completo a toda la altura */}
-                        <Board 
-                           position={[xPos, legsHeight + cabH/2, zBack]} 
-                           args={[thickness, cabH, backDepth]} 
-                           {...parseColor(cStructure, structureMaterial, key)} 
+                  // Si es despensa dividida con Gola activo globalmente: destaje intermedio pasante a cota baseH
+                  if (isGolaGloballyActive && type === 'tall' && (effectiveVariant === 'tall_split_2_doors' || effectiveVariant === 'tall_oven_micro' || effectiveVariant === 'tall_oven_vent')) {
+                     const adjacentBase = (leftNeighbor && (leftNeighbor.type === 'base' || leftNeighbor.type === 'island')) 
+                        ? leftNeighbor 
+                        : ((rightNeighbor && (rightNeighbor.type === 'base' || rightNeighbor.type === 'island')) 
+                           ? rightNeighbor 
+                           : cabinets.find((c) => (c.type === 'base' || c.type === 'island') && !c.variant?.startsWith('deco_')));
+                     const baseH = adjacentBase ? (adjacentBase.height - legsHeight) : 70;
+                     return (
+                        <NotchedLateralBoard 
+                           key={`lat-${key}`}
+                           position={[xPos, legsHeight + cabH/2, bodyCenterZ]} 
+                           thickness={thickness}
+                           cabH={cabH}
+                           bodyDepth={bodyDepth}
+                           notchDepth={2.8}
+                           notchHeight={5.6}
+                           notchYFromBottom={baseH}
+                           colorProps={parseColor(cStructure, structureMaterial, key)}
                         />
+                     );
+                  }
 
-                        {/* Cuerpo frontal con rebajes CNC para paso libre y continuo del perfil Gola */}
-                        {!hasGolaC ? (
-                           <Board 
-                              position={[xPos, legsHeight + (cabH - notchLHeight)/2, zFront]} 
-                              args={[thickness, cabH - notchLHeight, notchDepth]} 
-                              {...parseColor(cStructure, structureMaterial, key)} 
-                           />
-                        ) : (
-                           (() => {
-                              const yCBottom = yGolaC - notchCHeight/2;
-                              const yCTop = yGolaC + notchCHeight/2;
-                              const yLBottom = legsHeight + cabH - notchLHeight;
-                              const lowerH = Math.max(2, yCBottom - legsHeight);
-                              const middleH = Math.max(2, yLBottom - yCTop);
-                              return (
-                                 <>
-                                    <Board 
-                                       position={[xPos, legsHeight + lowerH/2, zFront]} 
-                                       args={[thickness, lowerH, notchDepth]} 
-                                       {...parseColor(cStructure, structureMaterial, key)} 
-                                    />
-                                    <Board 
-                                       position={[xPos, yCTop + middleH/2, zFront]} 
-                                       args={[thickness, middleH, notchDepth]} 
-                                       {...parseColor(cStructure, structureMaterial, key)} 
-                                    />
-                                 </>
-                              );
-                           })()
-                        )}
-                     </group>
+                  // Lateral continuo completo al ras (cuando Gola no está activo)
+                  return (
+                     <Board 
+                        key={`lat-${key}`}
+                        position={[xPos, legsHeight + cabH/2, bodyCenterZ]} 
+                        args={[thickness, cabH, bodyDepth]} 
+                        {...parseColor(cStructure, structureMaterial, key)} 
+                     />
                   );
                };
 
@@ -3577,8 +3676,8 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
             })()}
             {(() => {
                const isWineRack = variant?.includes('wine_rack') || variant === 'base_wine_rack' || variant === 'wall_wine_rack' || variant === 'tall_wine_rack' || variant === 'island_wine_rack';
-               const botDepth = isWineRack ? depth + thickness : depth;
-               const botZ = isWineRack ? thickness / 2 : 0;
+               const botDepth = isWineRack ? depth : bodyDepth;
+               const botZ = isWineRack ? 0 : bodyCenterZ;
                return (
                   <>
                      <Board position={[0, legsHeight + thickness/2, botZ]} args={[innerW, thickness, botDepth]} {...parseColor(cStructure, structureMaterial, 'bottom')} />
@@ -3625,7 +3724,7 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                <>
                   {(() => {
                      const isWineRack = variant?.includes('wine_rack') || variant === 'base_wine_rack' || variant === 'wall_wine_rack' || variant === 'tall_wine_rack' || variant === 'island_wine_rack';
-                     const frontRailZ = isWineRack ? depth/2 + thickness - 5 : (isGolaActive ? depth/2 - 2.8 - 5 : depth/2 - 5);
+                     const frontRailZ = isWineRack ? depth/2 - 5 : (isGolaActive ? depth/2 - thickness - 2.8 - 5 : depth/2 - thickness - 5);
                      return (
                         <>
                            <Board 
@@ -3651,10 +3750,10 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                </>
             ) : (
                <>
-                  <Board position={[0, height - thickness/2, 0]} args={[innerW, thickness, depth]} {...parseColor(cStructure, structureMaterial, 'top')} />
+                  <Board position={[0, height - thickness/2, bodyCenterZ]} args={[innerW, thickness, bodyDepth]} {...parseColor(cStructure, structureMaterial, 'top')} />
                   {/* Techo a laterales */}
-                  <AssemblyJoint position={[-innerW/2, height - thickness/2, 0]} length={depth} axis="z" pointing="right" thickness={thickness} count={2} />
-                  <AssemblyJoint position={[innerW/2, height - thickness/2, 0]} length={depth} axis="z" pointing="left" thickness={thickness} count={2} />
+                  <AssemblyJoint position={[-innerW/2, height - thickness/2, bodyCenterZ]} length={bodyDepth} axis="z" pointing="right" thickness={thickness} count={2} />
+                  <AssemblyJoint position={[innerW/2, height - thickness/2, bodyCenterZ]} length={bodyDepth} axis="z" pointing="left" thickness={thickness} count={2} />
                </>
             )}
             {renderFronts()}

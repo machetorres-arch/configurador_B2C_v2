@@ -788,17 +788,29 @@ export const useKitchenStore = create<KitchenState>((set, get) => {
       const history = saveSnapshot(state);
       const walls = state.walls;
       const roomPoly = state.roomConfig?.vertices?.map((v) => [v.x, v.y] as [number, number]) || [];
+      const isSingleDoorVariant = (v?: string) =>
+        v === '1_door' ||
+        v === '1_door_1_drawer' ||
+        v === 'tall_1_door' ||
+        v === 'tall_split_2_doors' ||
+        v === 'tall_inner_drawers' ||
+        v === 'tall_oven_micro' ||
+        v === 'tall_oven_vent' ||
+        v === 'tall_microwave_niche';
+      const finalWidth = isSingleDoorVariant(cabinet.variant)
+        ? Math.min(cabinet.width, 60)
+        : cabinet.width;
       const constrainedPos = constrainInsideRoomAndWalls(
         cabinet.position,
         cabinet.rotation || 0,
-        cabinet.width,
+        finalWidth,
         cabinet.depth,
         cabinet.height,
         walls,
         roomPoly,
         state.architecturalElements
       );
-      return { history, cabinets: [...state.cabinets, { ...cabinet, position: constrainedPos }] };
+      return { history, cabinets: [...state.cabinets, { ...cabinet, width: finalWidth, position: constrainedPos }] };
     }),
   removeCabinet: (id) =>
     set((state) => {
@@ -940,6 +952,22 @@ export const useKitchenStore = create<KitchenState>((set, get) => {
       const history = saveSnapshot(state);
       const targetCab = state.cabinets.find((c) => c.id === id);
       const isBaseOrIsland = targetCab?.type === 'base' || targetCab?.type === 'island';
+
+      const isSingleDoorVariant = (v?: string) =>
+        v === '1_door' ||
+        v === '1_door_1_drawer' ||
+        v === 'tall_1_door' ||
+        v === 'tall_split_2_doors' ||
+        v === 'tall_inner_drawers' ||
+        v === 'tall_oven_micro' ||
+        v === 'tall_oven_vent' ||
+        v === 'tall_microwave_niche';
+
+      if (targetCab && isSingleDoorVariant(targetCab.variant)) {
+        if (updates.width !== undefined && updates.width > 60) {
+          updates.width = 60;
+        }
+      }
 
       let nextCountertopConfig = state.countertopConfig;
       if (isBaseOrIsland) {

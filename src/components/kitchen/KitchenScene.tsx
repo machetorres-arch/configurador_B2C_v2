@@ -1186,7 +1186,7 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
   return (
     <>
       <color attach="background" args={[isLight ? '#e2e8f0' : '#1a1a1a']} />
-      <ambientLight intensity={isLight ? 0.85 : 0.7} />
+      <ambientLight intensity={isLight ? 0.65 : 0.55} />
       <directionalLight
         position={[200, 350, 250]}
         castShadow
@@ -1201,8 +1201,8 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
         shadow-camera-top={500}
         shadow-camera-bottom={-500}
       />
-      <directionalLight position={[-250, 250, -200]} intensity={0.4} />
-      <hemisphereLight args={[isLight ? '#f8fafc' : '#e0f2fe', isLight ? '#94a3b8' : '#334155', 0.55]} />
+      <directionalLight position={[-250, 250, -200]} intensity={0.35} />
+      <hemisphereLight args={[isLight ? '#f8fafc' : '#e0f2fe', isLight ? '#94a3b8' : '#334155', 0.45]} />
 
       {is2D ? (
         <OrthographicCamera 

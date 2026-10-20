@@ -39,6 +39,20 @@ export function getNominalSlideLength(innerDepthMm: number): number {
 }
 
 /**
+ * Criterio Técnico Industrial de Bisagras de Cazoleta 35mm según altura:
+ * - Hasta 900 mm: 2 bisagras por hoja
+ * - 901 mm a 1500 mm: 3 bisagras por hoja
+ * - 1501 mm a 2000 mm: 4 bisagras por hoja
+ * - 2001 mm a 2500 mm: 5 bisagras por hoja
+ */
+export function getHingesCountByHeight(doorHeightMm: number): number {
+  if (doorHeightMm <= 900) return 2;
+  if (doorHeightMm <= 1500) return 3;
+  if (doorHeightMm <= 2000) return 4;
+  return 5;
+}
+
+/**
  * Determina si una textura o color corresponde a Melamina Blanca
  */
 export function isWhiteMelamine(color?: string): boolean {
@@ -230,9 +244,12 @@ export function getCabinetHingesPositions(cab: CabinetType): number[] {
   const v = cab.variant || (cab.width > 60 ? '2_doors' : '1_door');
 
   if (v === 'tall_split_2_doors') {
+    const isGola = useKitchenStore.getState().golaSystem !== 'none';
     const baseH = 70;
+    const topDeduct = isGola ? 3.5 : 0;
+    const lowerDoorH = baseH - topDeduct;
     const upperH = cabH - baseH;
-    const hinges = [9, baseH - 9, baseH + 9, cabH - 9];
+    const hinges = [9, Math.max(15, lowerDoorH - 9), baseH + 9, cabH - 9];
     if (upperH > 100) {
       hinges.push(baseH + upperH * 0.5);
     }
@@ -414,14 +431,22 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
     
     // 1. Laterales (Sides)
     const isBaseGola = (kState.golaSystem === 'aluminum' || kState.golaSystem === 'black') && (cab.type === 'base' || cab.type === 'island');
+    const isTallSplitGola = (kState.golaSystem === 'aluminum' || kState.golaSystem === 'black') && cab.type === 'tall' && (cab.variant === 'tall_split_2_doors' || cab.variant === 'tall_oven_micro' || cab.variant === 'tall_oven_vent');
     const hasGolaC = isBaseGola && (cab.variant === '1_door_1_drawer' || cab.variant === '2_pot_drawers' || cab.variant === '4_drawers');
     const isWineRack = cab.variant?.includes('wine_rack') || cab.variant === 'base_wine_rack' || cab.variant === 'wall_wine_rack' || cab.variant === 'tall_wine_rack' || cab.variant === 'island_wine_rack';
-    const effectiveDepth = isWineRack ? (d + thickness) : d;
+    const isOpen = cab.variant === 'open' || cab.variant === 'tall_open' || cab.variant === 'wall_open' || (cab.type === 'closet' && !cab.hasDoors && cab.variant !== 'closet_2_doors' && cab.variant !== 'closet_inner_drawers');
+    const hasFronts = !isWineRack && !isOpen;
+    // Criterio técnico industrial: la profundidad total del mueble en el configurador incluye frentes.
+    // El casco (laterales, piso, techo) descuenta el espesor del frente (puerta/cajón).
+    const bodyDepth = hasFronts ? (d - thickness) : d;
+    const effectiveDepth = isWineRack ? d : bodyDepth;
     const lateralNotes = isWineRack
       ? 'Opción A: Lateral botellero prolongado a plomo con frentes contiguos (Corte recto con disco en escuadradora/panelera/celco)'
-      : (isBaseGola
-        ? (hasGolaC ? 'Mecanizado CNC: Destaje Gola L Superior 58x26mm + Gola C Intermedio 68x26mm (Paso continuo)' : 'Mecanizado CNC: Destaje Gola L Superior 58x26mm (Paso continuo)')
-        : 'Laterales del gabinete');
+      : (isTallSplitGola
+        ? 'Mecanizado CNC: Destaje intermedio pasante Riel Gola L 56x28mm a cota 700mm (Continuidad con muebles base/isla)'
+        : (isBaseGola
+          ? (hasGolaC ? 'Mecanizado CNC: Destaje Gola L Superior 58x26mm + Gola C Intermedio 68x26mm (Paso continuo)' : 'Mecanizado CNC: Destaje Gola L Superior 58x26mm (Paso continuo)')
+          : 'Laterales del gabinete'));
 
     parts.push({
       name: `Lateral ${cabName}`,
@@ -429,7 +454,7 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
       moduleIndex: index,
       qty: 2,
       length: cabH * 10,
-      width: effectiveDepth * 10,
+      width: Number((effectiveDepth * 10).toFixed(1)),
       thickness: thickness * 10,
       material: cab.structureColor || state.structureColor,
       edgeL1: true, edgeL2: false, edgeW1: true, edgeW2: true,
@@ -442,8 +467,8 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
       const isBaseOrTall = cab.type === 'base' || cab.type === 'tall' || cab.type === 'island' || cab.type === 'closet';
       const coverExtend = cab.leftCoverPanel.extendToFloor && isBaseOrTall;
       const coverH = coverExtend ? h : cabH;
-      const hasFronts = !isWineRack && cab.variant !== 'open' && cab.variant !== 'tall_open' && cab.variant !== 'wall_open';
-      const coverDepth = (hasFronts || isWineRack) ? (d + thickness) : d;
+      // La tapa lateral vista enrasa con los frentes en la profundidad total
+      const coverDepth = (hasFronts || isWineRack) ? d : effectiveDepth;
       const coverMat = cab.leftCoverPanel.color || cab.doorColor || state.doorColor;
 
       parts.push({
@@ -452,7 +477,7 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
         moduleIndex: index,
         qty: 1,
         length: coverH * 10,
-        width: coverDepth * 10,
+        width: Number((coverDepth * 10).toFixed(1)),
         thickness: coverThick * 10,
         material: coverMat,
         edgeL1: true, edgeL2: true, edgeW1: true, edgeW2: true,
@@ -465,8 +490,7 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
       const isBaseOrTall = cab.type === 'base' || cab.type === 'tall' || cab.type === 'island' || cab.type === 'closet';
       const coverExtend = cab.rightCoverPanel.extendToFloor && isBaseOrTall;
       const coverH = coverExtend ? h : cabH;
-      const hasFronts = !isWineRack && cab.variant !== 'open' && cab.variant !== 'tall_open' && cab.variant !== 'wall_open';
-      const coverDepth = (hasFronts || isWineRack) ? (d + thickness) : d;
+      const coverDepth = (hasFronts || isWineRack) ? d : effectiveDepth;
       const coverMat = cab.rightCoverPanel.color || cab.doorColor || state.doorColor;
 
       parts.push({
@@ -475,7 +499,7 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
         moduleIndex: index,
         qty: 1,
         length: coverH * 10,
-        width: coverDepth * 10,
+        width: Number((coverDepth * 10).toFixed(1)),
         thickness: coverThick * 10,
         material: coverMat,
         edgeL1: true, edgeL2: true, edgeW1: true, edgeW2: true,
@@ -490,7 +514,7 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
       moduleIndex: index,
       qty: 1,
       length: innerW * 10,
-      width: effectiveDepth * 10,
+      width: Number((effectiveDepth * 10).toFixed(1)),
       thickness: thickness * 10,
       material: cab.structureColor || state.structureColor,
       edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
@@ -513,7 +537,7 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
                 moduleIndex: index,
                 qty: 1,
                 length: innerW * 10,
-                width: d * 10,
+                width: Number((effectiveDepth * 10).toFixed(1)),
                 thickness: thickness * 10,
                 material: cab.structureColor || state.structureColor,
                 edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
@@ -553,7 +577,7 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
             moduleIndex: index,
             qty: 1,
             length: innerW * 10,
-            width: d * 10,
+            width: Number((effectiveDepth * 10).toFixed(1)),
             thickness: thickness * 10,
             material: cab.structureColor || state.structureColor,
             edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
@@ -611,6 +635,8 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
     }
 
     // 5. Repisas (Shelves) y Divisores si corresponde
+    const stdShelfDepthMm = cab.type === 'wall' ? Math.round((effectiveDepth - 2.2) * 10) : Math.round((effectiveDepth - 4.2) * 10);
+
     if (cab.variant === '2_doors' || cab.variant === '1_door' || cab.variant?.startsWith('corner_blind') || cab.variant === 'corner_blind' || ((cab.type === 'wall' || cab.type === 'base' || cab.type === 'island') && (!cab.variant || cab.variant?.includes('door')))) {
         const shelfQty = cab.shelvesCount !== undefined ? cab.shelvesCount : getDefaultShelvesCount(cab);
         if (shelfQty > 0) {
@@ -620,7 +646,7 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
                 moduleIndex: index,
                 qty: shelfQty,
                 length: (innerW - 0.2) * 10,
-                width: (d - 4) * 10,
+                width: stdShelfDepthMm,
                 thickness: thickness * 10,
                 material: cab.shelfColor || state.structureColor,
                 edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
@@ -636,7 +662,7 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
                 moduleIndex: index,
                 qty: shelfQty,
                 length: (innerW - 0.2) * 10,
-                width: (d - 4) * 10,
+                width: stdShelfDepthMm,
                 thickness: thickness * 10,
                 material: cab.shelfColor || state.structureColor,
                 edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
@@ -650,7 +676,7 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
             moduleIndex: index,
             qty: 1,
             length: innerW * 10,
-            width: (d - 2) * 10,
+            width: Number((effectiveDepth * 10).toFixed(1)),
             thickness: thickness * 10,
             material: cab.shelfColor || state.structureColor,
             edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
@@ -664,7 +690,7 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
                 moduleIndex: index,
                 qty: lowerCount,
                 length: (innerW - 0.2) * 10,
-                width: (d - 4) * 10,
+                width: stdShelfDepthMm,
                 thickness: thickness * 10,
                 material: cab.shelfColor || state.structureColor,
                 edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
@@ -678,7 +704,7 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
                 moduleIndex: index,
                 qty: upperCount,
                 length: (innerW - 0.2) * 10,
-                width: (d - 4) * 10,
+                width: stdShelfDepthMm,
                 thickness: thickness * 10,
                 material: cab.shelfColor || state.structureColor,
                 edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
@@ -744,7 +770,7 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
                 moduleIndex: index,
                 qty: upperCount,
                 length: (innerW - 0.2) * 10,
-                width: (d - 4) * 10,
+                width: stdShelfDepthMm,
                 thickness: thickness * 10,
                 material: cab.shelfColor || state.structureColor,
                 edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
@@ -758,7 +784,7 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
             moduleIndex: index,
             qty: 1,
             length: innerW * 10,
-            width: (d - 2) * 10,
+            width: Number((effectiveDepth * 10).toFixed(1)),
             thickness: thickness * 10,
             material: cab.shelfColor || state.structureColor,
             edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
@@ -770,7 +796,7 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
             moduleIndex: index,
             qty: 1,
             length: innerW * 10,
-            width: (d - 2) * 10,
+            width: Number((effectiveDepth * 10).toFixed(1)),
             thickness: thickness * 10,
             material: cab.shelfColor || state.structureColor,
             edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
@@ -784,7 +810,7 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
                 moduleIndex: index,
                 qty: lowerCount,
                 length: (innerW - 0.2) * 10,
-                width: (d - 4) * 10,
+                width: stdShelfDepthMm,
                 thickness: thickness * 10,
                 material: cab.shelfColor || state.structureColor,
                 edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
@@ -798,7 +824,7 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
                 moduleIndex: index,
                 qty: upperCount,
                 length: (innerW - 0.2) * 10,
-                width: (d - 4) * 10,
+                width: stdShelfDepthMm,
                 thickness: thickness * 10,
                 material: cab.shelfColor || state.structureColor,
                 edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
@@ -890,7 +916,7 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
             moduleIndex: index,
             qty: 1,
             length: (innerW - 0.2) * 10,
-            width: (d - 4) * 10,
+            width: stdShelfDepthMm,
             thickness: thickness * 10,
             material: cab.shelfColor || state.structureColor,
             edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
@@ -1037,7 +1063,7 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
             moduleIndex: index,
             qty: 1,
             length: (w - 30 - 2) * 10,
-            width: (d - 4) * 10,
+            width: stdShelfDepthMm,
             thickness: thickness * 10,
             material: cab.shelfColor || state.structureColor,
             edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
@@ -1049,7 +1075,7 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
             moduleIndex: index,
             qty: 1,
             length: (30 - 2) * 10,
-            width: (d - 30 - 4) * 10,
+            width: Math.round((effectiveDepth - 30 - 2.2) * 10),
             thickness: thickness * 10,
             material: cab.shelfColor || state.structureColor,
             edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
@@ -1095,7 +1121,7 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
             moduleIndex: index,
             qty: 1,
             length: innerW * 10,
-            width: (d - 5) * 10,
+            width: Number(((effectiveDepth - 3.2) * 10).toFixed(1)),
             thickness: thickness * 10,
             material: cab.shelfColor || state.structureColor,
             edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
@@ -1107,7 +1133,7 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
             moduleIndex: index,
             qty: 1,
             length: innerW * 10,
-            width: (d - 5) * 10,
+            width: Number(((effectiveDepth - 3.2) * 10).toFixed(1)),
             thickness: thickness * 10,
             material: cab.shelfColor || state.structureColor,
             edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
@@ -1119,7 +1145,7 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
             moduleIndex: index,
             qty: 1,
             length: innerW * 10,
-            width: (d - 5) * 10,
+            width: Number(((effectiveDepth - 3.2) * 10).toFixed(1)),
             thickness: thickness * 10,
             material: cab.shelfColor || state.structureColor,
             edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
@@ -1133,7 +1159,7 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
                 moduleIndex: index,
                 qty: lowerCount,
                 length: (innerW - 0.2) * 10,
-                width: (d - 4) * 10,
+                width: stdShelfDepthMm,
                 thickness: thickness * 10,
                 material: cab.shelfColor || state.structureColor,
                 edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
@@ -1147,7 +1173,7 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
                 moduleIndex: index,
                 qty: upperCount,
                 length: (innerW - 0.2) * 10,
-                width: (d - 4) * 10,
+                width: stdShelfDepthMm,
                 thickness: thickness * 10,
                 material: cab.shelfColor || state.structureColor,
                 edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
@@ -1241,7 +1267,7 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
             moduleIndex: index,
             qty: 3,
             length: (innerW - 0.2) * 10,
-            width: (d - 2) * 10,
+            width: stdShelfDepthMm,
             thickness: thickness * 10,
             material: cab.shelfColor || state.structureColor,
             edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
@@ -1694,57 +1720,71 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
                 notes: isDouble ? 'Puertas batientes dobles de clóset' : 'Puerta batiente simple de clóset'
             });
         }
-    } else if (cab.variant === '1_door' || cab.variant === 'tall_1_door') {
+    } else if (cab.variant === '1_door' || cab.variant === 'wall_1_door' || cab.variant === 'tall_1_door') {
+        // Restricción técnica: Mueble base 1_door y despensa tall_1_door mantienen 1 sola puerta (máx 600mm) sin duplicar
+        const doorLeaves = (cab.variant === '1_door' || cab.variant === 'tall_1_door') ? 1 : (w > 60 ? 2 : 1);
+        const doorW = doorLeaves === 2 ? ((w - gap * 3) / 2) * 10 : (w - gap * 2) * 10;
         parts.push({
-            name: `Puerta Frontal ${cabName}`,
+            name: doorLeaves === 2 ? `Puerta Frontal (Hoja Doble) ${cabName}` : `Puerta Frontal ${cabName}`,
             moduleId: cab.id,
             moduleIndex: index,
-            qty: 1,
+            qty: doorLeaves,
             length: (cabH - gap*2) * 10,
-            width: (w - gap*2) * 10,
+            width: Number(doorW.toFixed(1)),
             thickness: thickness * 10,
             material: frontMat,
-            edgeL1: true, edgeL2: true, edgeW1: true, edgeW2: true
+            edgeL1: true, edgeL2: true, edgeW1: true, edgeW2: true,
+            notes: doorLeaves === 2 ? 'Módulo > 60cm subdividido en 2 hojas (máx 600mm)' : undefined
         });
     } else if (cab.variant === '2_doors' || cab.variant === 'tall_2_doors') {
+        const doorLeaves = Math.max(2, Math.ceil(w / 60));
+        const totalCanteria = (doorLeaves + 1) * gap;
+        const doorW = ((w - totalCanteria) / doorLeaves) * 10;
         parts.push({
             name: `Puerta Frontal ${cabName}`,
             moduleId: cab.id,
             moduleIndex: index,
-            qty: 2,
+            qty: doorLeaves,
             length: (cabH - gap*2) * 10,
-            width: ((w - gap*3)/2) * 10,
+            width: Number(doorW.toFixed(1)),
             thickness: thickness * 10,
             material: frontMat,
-            edgeL1: true, edgeL2: true, edgeW1: true, edgeW2: true
+            edgeL1: true, edgeL2: true, edgeW1: true, edgeW2: true,
+            notes: `${doorLeaves} hojas batientes (ancho <= 600mm)`
         });
     } else if (cab.variant === 'tall_split_2_doors') {
+        const isGola = useKitchenStore.getState().golaSystem !== 'none';
         const baseH = 70;
-        const lowerDoorH = baseH - gap*2;
-        const upperDoorH = (cabH - baseH) - gap*2;
+        const topDeduct = isGola ? 3.5 : 0;
+        const lowerDoorH = Math.max(10, baseH - topDeduct - gap * 2);
+        const upperDoorH = Math.max(10, (cabH - baseH) - gap * 2);
+        const doorLeaves = 1;
+        const doorW = (w - gap * 2) * 10;
         parts.push({
             name: `Puerta Inferior Base ${cabName}`,
             moduleId: cab.id,
             moduleIndex: index,
-            qty: 1,
-            length: lowerDoorH * 10,
-            width: (w - gap*2) * 10,
+            qty: doorLeaves,
+            length: Number((lowerDoorH * 10).toFixed(1)),
+            width: Number(doorW.toFixed(1)),
             thickness: thickness * 10,
             material: frontMat,
             edgeL1: true, edgeL2: true, edgeW1: true, edgeW2: true,
-            notes: 'Puerta inferior a cota de mueble base'
+            notes: isGola 
+                ? 'Puerta inferior a cota de mueble base con rebaje Gola 35mm (ancho <= 600mm)' 
+                : 'Puerta inferior a cota de mueble base (ancho <= 600mm)'
         });
         parts.push({
             name: `Puerta Superior Alta ${cabName}`,
             moduleId: cab.id,
             moduleIndex: index,
-            qty: 1,
-            length: upperDoorH * 10,
-            width: (w - gap*2) * 10,
+            qty: doorLeaves,
+            length: Number((upperDoorH * 10).toFixed(1)),
+            width: Number(doorW.toFixed(1)),
             thickness: thickness * 10,
             material: frontMat,
             edgeL1: true, edgeL2: true, edgeW1: true, edgeW2: true,
-            notes: 'Puerta superior despensa'
+            notes: 'Puerta superior despensa (ancho <= 600mm)'
         });
     } else if (cab.variant === 'tall_oven_micro') {
         const baseH = 70;
@@ -1829,7 +1869,7 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
                 moduleIndex: index,
                 qty: 1,
                 length: (innerW - 0.2) * 10,
-                width: (d - 2) * 10,
+                width: stdShelfDepthMm,
                 thickness: thickness * 10,
                 material: cab.shelfColor || state.structureColor,
                 edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false
@@ -1867,7 +1907,7 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
             moduleIndex: index,
             qty: 1,
             length: (innerW - 0.2) * 10,
-            width: (d - 2) * 10,
+            width: Number((effectiveDepth * 10).toFixed(1)),
             thickness: thickness * 10,
             material: cab.shelfColor || state.structureColor,
             edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
@@ -1883,7 +1923,7 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
             moduleIndex: index,
             qty: 1,
             length: (innerW - 0.2) * 10,
-            width: (d - 2) * 10,
+            width: Number((effectiveDepth * 10).toFixed(1)),
             thickness: thickness * 10,
             material: cab.shelfColor || state.structureColor,
             edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
@@ -1908,7 +1948,7 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
                 moduleIndex: index,
                 qty: 1,
                 length: (innerW - 0.2) * 10,
-                width: (d - 2) * 10,
+                width: stdShelfDepthMm,
                 thickness: thickness * 10,
                 material: cab.shelfColor || state.structureColor,
                 edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false
@@ -1921,7 +1961,7 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
             moduleIndex: index,
             qty: 2,
             length: (innerW - 0.2) * 10,
-            width: (d - 2) * 10,
+            width: Number((effectiveDepth * 10).toFixed(1)),
             thickness: thickness * 10,
             material: cab.shelfColor || state.structureColor,
             edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
@@ -2019,7 +2059,7 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
                     moduleIndex: index,
                     qty: shelfQty,
                     length: (innerW - 0.2) * 10,
-                    width: (d - 4) * 10,
+                    width: stdShelfDepthMm,
                     thickness: thickness * 10,
                     material: cab.shelfColor || state.structureColor,
                     edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
@@ -2029,7 +2069,7 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
         }
         
         // Cajas de cajones calculadas con HARDWARE_SPECS exactos
-        const innerDepthMm = (d - 5) * 10;
+        const innerDepthMm = (effectiveDepth - 2) * 10;
         const nominalLength = getNominalSlideLength(innerDepthMm);
         const drawerBoxLength = nominalLength - hwSpec.drawerLengthDeduction;
         const drawerBoxOuterWidth = innerW * 10 - hwSpec.slideClearanceTotal;
@@ -2368,11 +2408,21 @@ export function generateKitchenHardwareList(cabinets: CabinetType[]) {
             totalStructureDowels += 8; // Guías de tarugo para alineación
         }
 
-        // Bisagras y Sistemas Elevadores
+        // Bisagras y Sistemas Elevadores (Criterio técnico por altura de puerta: <=900mm: 2, <=1500mm: 3, <=2000mm: 4, >2000mm: 5)
+        const gap = 0.3;
+        const isBaseOrIslandCab = cab.type === 'base' || cab.type === 'island';
+        const cabLegsH = (isBaseOrIslandCab || cab.type === 'tall' || cab.type === 'closet') ? ((cab.type === 'closet' ? (cab.closetSocleHeight ?? 7) : (kState.socleHeight ?? 10))) : 0;
+        const cabBodyH = cab.height - cabLegsH;
+        const topDeductMm = (kState.golaSystem === 'aluminum' || kState.golaSystem === 'black') && isBaseOrIslandCab ? 35 : 0;
+        const stdDoorHMm = Math.max(100, Math.round((cabBodyH - (gap * 2)) * 10 - topDeductMm));
+        const stdHingesPerLeaf = getHingesCountByHeight(stdDoorHMm);
+
         if (cab.variant === '1_door' || cab.variant === '1_door_1_drawer' || cab.variant?.startsWith('corner_blind') || cab.variant === 'corner_blind' || cab.variant?.startsWith('wall_corner_blind')) {
-            totalHinges += 2;
+            const leaves = 1;
+            totalHinges += leaves * stdHingesPerLeaf;
         } else if (cab.variant === '2_doors') {
-            totalHinges += 4;
+            const leaves = Math.max(2, Math.ceil(cab.width / 60));
+            totalHinges += leaves * stdHingesPerLeaf;
         } else if (cab.variant === 'wall_lift_up') {
             liftUpPistonsCount += 2;
         } else if (cab.variant === 'wall_lift_up_double') {
@@ -2381,23 +2431,47 @@ export function generateKitchenHardwareList(cabinets: CabinetType[]) {
             liftUpPistonsCount += 2;
             portableMicrowavesCount += 1;
         } else if (cab.variant === 'tall_1_door') {
-            totalHinges += 4;
+            const leaves = 1;
+            totalHinges += leaves * stdHingesPerLeaf;
         } else if (cab.variant === 'tall_2_doors') {
-            totalHinges += 8;
+            const leaves = Math.max(2, Math.ceil(cab.width / 60));
+            totalHinges += leaves * stdHingesPerLeaf;
         } else if (cab.variant === 'tall_split_2_doors') {
-            totalHinges += 6; // 2 inferior + 4 superior
+            const leaves = 1;
+            const lowerHMm = Math.round((70 - gap * 2) * 10);
+            const upperHMm = Math.round(((cabBodyH - 70) - gap * 2) * 10);
+            totalHinges += leaves * (getHingesCountByHeight(lowerHMm) + getHingesCountByHeight(upperHMm));
         } else if (cab.variant === 'tall_oven_micro' || cab.variant === 'tall_oven_vent') {
-            totalHinges += 4; // 2 inferior + 2 superior
+            const leaves = 1;
+            const baseH = 70;
+            const ovenH = 60;
+            const microH = 38;
+            const topH = Math.max(10, cabBodyH - (baseH + ovenH + microH));
+            const lowerHMm = Math.round((baseH - gap * 2) * 10);
+            const topHMm = Math.round((topH - gap * 2) * 10);
+            totalHinges += leaves * getHingesCountByHeight(lowerHMm);
+            if (topH > 10) {
+                totalHinges += leaves * getHingesCountByHeight(topHMm);
+            }
             builtInOvensCount += 1;
             builtInMicrowavesCount += 1;
             if (cab.variant === 'tall_oven_vent') {
                 ventGrillesCount += 1;
             }
         } else if (cab.variant === 'tall_microwave_niche') {
-            totalHinges += 5; // 2 inferior + 3 superior
+            const leaves = 1;
+            const baseH = 70;
+            const nicheH = 45;
+            const topH = Math.max(10, cabBodyH - (baseH + nicheH));
+            const lowerHMm = Math.round((baseH - gap * 2) * 10);
+            const topHMm = Math.round((topH - gap * 2) * 10);
+            totalHinges += leaves * getHingesCountByHeight(lowerHMm);
+            if (topH > 10) {
+                totalHinges += leaves * getHingesCountByHeight(topHMm);
+            }
             portableMicrowavesCount += 1;
         } else if (cab.variant === 'tall_inner_drawers') {
-            zeroProtrusionHingesCount += 5; // Bisagras 155° codo cero p/ apertura completa sin interferencia con cajones
+            zeroProtrusionHingesCount += stdHingesPerLeaf; // Bisagras 155° codo cero según altura
         } else if (cab.variant === 'corner_l' || cab.variant === 'base_corner_l') {
             biFoldInterHingesCount += 2; // Bisagras intermedias entre hojas bi-fold
             biFoldPostHingesCount += 2;  // Bisagras gran angular 170° a lateral
@@ -2405,7 +2479,9 @@ export function generateKitchenHardwareList(cabinets: CabinetType[]) {
         } else if (cab.type === 'closet' || cab.variant?.startsWith('closet_')) {
             const isClosetDoors = Boolean(cab.hasDoors || cab.variant === 'closet_2_doors' || cab.variant === 'closet_inner_drawers');
             if (isClosetDoors) {
-                totalHinges += (cab.width > 50 ? 8 : 4);
+                const doorLeaves = Math.max(1, Math.ceil(cab.width / 60));
+                const closetDoorHMm = Math.round((cabBodyH - gap * 2) * 10);
+                totalHinges += doorLeaves * getHingesCountByHeight(closetDoorHMm);
             }
             if (cab.hasHanger !== false && cab.variant !== 'closet_shelves') {
                 closetRodsCount += 1;

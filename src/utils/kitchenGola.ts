@@ -58,6 +58,11 @@ export function calculateGolaSystem(
     (c) => (c.type === 'base' || c.type === 'island') && !c.variant?.startsWith('deco_')
   );
 
+  // Tall split cabinets that continue the horizontal base Gola line
+  const tallSplitCabinets = cabinets.filter(
+    (c) => c.type === 'tall' && c.variant === 'tall_split_2_doors'
+  );
+
   let totalGolaLLengthMm = 0;
   let totalGolaCLengthMm = 0;
   let golaCModulesCount = 0;
@@ -76,6 +81,12 @@ export function calculateGolaSystem(
       totalGolaCLengthMm += widthMm * 2;
       golaCModulesCount += 2;
     }
+  });
+
+  tallSplitCabinets.forEach((cab) => {
+    // Tall split 2 doors cabinet receives Gola L profile at base counter level
+    const widthMm = cab.width * 10;
+    totalGolaLLengthMm += widthMm;
   });
 
   // Calculate 90° interior corner joints
@@ -111,7 +122,7 @@ export function calculateGolaSystem(
   const stripsGolaC = totalGolaCLengthMm > 0 ? Math.max(1, Math.ceil((totalGolaCLengthMm * 1.05) / 3000)) : 0;
 
   // Mounting brackets: 2 brackets per module for Gola L + 2 brackets per module for each Gola C
-  const bracketsCount = (baseCabinets.length * 2) + (golaCModulesCount * 2);
+  const bracketsCount = ((baseCabinets.length + tallSplitCabinets.length) * 2) + (golaCModulesCount * 2);
 
   const hardwareItems: GolaBOMItem[] = [];
 
@@ -121,7 +132,7 @@ export function calculateGolaSystem(
       Item: `Perfil Gola Superior "L" Provelcar x175 (${finishName})`,
       Cantidad: stripsGolaL,
       Unidad: 'Tiras (3000mm / 3m)',
-      Detalles: `Bajo cubierta muebles base. Longitud neta: ${(totalGolaLLengthMm / 1000).toFixed(2)}m lineales (+5% merma corte)`
+      Detalles: `Bajo cubierta muebles base y despensa dividida. Longitud neta: ${(totalGolaLLengthMm / 1000).toFixed(2)}m lineales (+5% merma corte)`
     });
   }
 
