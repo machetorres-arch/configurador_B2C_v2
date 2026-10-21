@@ -1052,7 +1052,7 @@ export function resolvePlacement({
 
     // Acople ortogonal en esquineros ciegos
     if (isCornerBlind) {
-      const blindW = Math.max(35, cab.width / 2);
+      const blindW = cab.blindWidth && cab.blindWidth > 0 ? cab.blindWidth : (cab.width >= 100 ? 65 : Math.max(35, cab.width / 2));
       const localBlindOffsetX = isRightBlind ? cab.width / 2 - blindW / 2 : -cab.width / 2 + blindW / 2;
       const orthoRot = isRightBlind ? rot + Math.PI / 2 : rot - Math.PI / 2;
       const dockLocalZ = cab.depth / 2 + cabWidth / 2;
@@ -1251,7 +1251,39 @@ export function resolvePlacement({
 
         // Proyectar ratón sobre el muro
         const s = (mouseX - x1) * uX + (mouseZ - z1) * uZ;
-        const sClamped = Math.max(cabWidth / 2 + 0.5, Math.min(wallLen - cabWidth / 2 - 0.5, s));
+        let sClamped = Math.max(cabWidth / 2 + 0.5, Math.min(wallLen - cabWidth / 2 - 0.5, s));
+
+        // Imantación magnética de esquina para muebles esquineros (tope exacto contra muro perpendicular)
+        const isCornerVariant = variant?.startsWith('corner_blind') || variant === 'corner_blind' || variant?.startsWith('wall_corner_blind') || variant === 'corner_l';
+        if (isCornerVariant) {
+          const isRightSide = !variant?.endsWith('_left');
+          // Imantación al extremo derecho (+uX hacia x2, z2)
+          if (isRightSide && s > wallLen - cabWidth / 2 - 45) {
+            for (const otherW of effectiveWalls) {
+              if (otherW.id === w.id) continue;
+              const d1 = Math.hypot(otherW.start[0] - x2, otherW.start[1] - z2);
+              const d2 = Math.hypot(otherW.end[0] - x2, otherW.end[1] - z2);
+              if (Math.min(d1, d2) < 30) {
+                const perpThick = otherW.thickness || 20;
+                sClamped = wallLen - perpThick / 2 - cabWidth / 2;
+                break;
+              }
+            }
+          } else if (!isRightSide && s < cabWidth / 2 + 45) {
+            // Imantación al extremo izquierdo (-uX hacia x1, z1)
+            for (const otherW of effectiveWalls) {
+              if (otherW.id === w.id) continue;
+              const d1 = Math.hypot(otherW.start[0] - x1, otherW.start[1] - z1);
+              const d2 = Math.hypot(otherW.end[0] - x1, otherW.end[1] - z1);
+              if (Math.min(d1, d2) < 30) {
+                const perpThick = otherW.thickness || 20;
+                sClamped = perpThick / 2 + cabWidth / 2;
+                break;
+              }
+            }
+          }
+        }
+
         const wallThickness = w.thickness || 20;
         const isWallMountedDeco = variant === 'deco_hood' || variant === 'deco_stove' || variant === 'deco_fridge' || variant === 'deco_dishwasher';
         const flushDist = (cabType === 'decoration' && !isWallMountedDeco && variant !== 'deco_plant') ? 0 : (variant === 'deco_plant' ? 0 : wallThickness / 2 + cabDepth / 2);
@@ -1537,6 +1569,7 @@ export interface CabinetToolSpecs {
   hasHanger?: boolean;
   hasDoors?: boolean;
   innerDrawers?: boolean;
+  blindWidth?: number;
 }
 
 export function getCabinetSpecsFromTool(toolMode: string, existingCabinets: any[] = []): CabinetToolSpecs {
@@ -1582,9 +1615,9 @@ export function getCabinetSpecsFromTool(toolMode: string, existingCabinets: any[
     else if (v === 'sink_u_drawer') { w = 90; name = 'Fregadero Cajón en U'; }
     else if (v === 'spice_rack') { w = 15; name = 'Especiero Extraíble'; }
     else if (v === 'wine_rack') { w = 20; name = 'Botellero Base'; }
-    else if (v === 'corner_blind') { w = 100; name = 'Esquinero Ciego'; variant = 'corner_blind_right'; }
+    else if (v === 'corner_blind') { w = 110; name = 'Esquinero Ciego'; variant = 'corner_blind_right'; }
     else if (v === 'corner_l') { w = 90; d = 90; name = 'Esquinero en L'; }
-    return { type: 'base', variant, name, width: w, height: 80, depth: d };
+    return { type: 'base', variant, name, width: w, height: 80, depth: d, blindWidth: v === 'corner_blind' ? 60 : undefined };
   }
 
   // Torres
@@ -1824,6 +1857,24 @@ export function findSmartWallPlacement(
 
       // Fallback pegado a la derecha
       return { position: candRight, rotation: rotRight };
+    }
+  }
+
+  // Posicionamiento inteligente automático para Esquineros (Ciegos y en L) adosados a esquina de muro
+  if (specs.variant?.startsWith('corner_blind') || specs.variant === 'corner_l' || specs.variant?.startsWith('wall_corner_blind')) {
+    const dummyCab: any = {
+      id: 'temp_corner',
+      variant: specs.variant,
+      width: specs.width,
+      depth: specs.depth,
+      height: specs.height,
+      position: currentCabinets.length > 0 ? currentCabinets[currentCabinets.length - 1].position : [0, defaultY, 0],
+      rotation: currentCabinets.length > 0 ? (currentCabinets[currentCabinets.length - 1].rotation || 0) : 0,
+      type: specs.type,
+    };
+    const cornerSnap = findCornerSnapForCabinet(dummyCab, currentCabinets, effectiveWalls, roomPoly);
+    if (cornerSnap) {
+      return { position: cornerSnap.position, rotation: cornerSnap.rotation };
     }
   }
 
@@ -2073,4 +2124,292 @@ export function findSmartWallPlacement(
     architecturalElements,
   });
   return { position: fallbackResult.position, rotation: fallbackResult.rotation };
+}
+
+/**
+ * Localiza la esquina de encuentro de muros a 90° más próxima para un mueble esquinero,
+ * calculando la posición exacta milimétrica para que su lateral ciego haga tope a ras contra
+ * la cara interior del muro de fondo / perpendicular (sin holguras ni desfaces).
+ * Si hay un mueble perpendicular adosado a su frente ciego (como una cajonera), también
+ * calcula la posición de dicho mueble para que su trasera quede a plomo contra el muro perpendicular.
+ */
+export function findCornerSnapForCabinet(
+  cab: {
+    id?: string;
+    variant?: string;
+    width: number;
+    depth: number;
+    height: number;
+    position: [number, number, number];
+    rotation?: number;
+    type?: string;
+  },
+  allCabinets: any[],
+  walls: any[],
+  roomPoly: [number, number][] = [],
+  preferredCorner: 'auto' | 'right' | 'left' = 'auto'
+): {
+  position: [number, number, number];
+  rotation: number;
+  blindWidth?: number;
+  connectedUpdates?: Array<{ id: string; position: [number, number, number]; rotation: number }>;
+} | null {
+  if (!walls || walls.length === 0) return null;
+
+  const cabWidth = cab.width;
+  const cabDepth = cab.depth;
+  const defaultY = cab.position[1];
+  const isRightBlind = preferredCorner === 'right' ? true : (preferredCorner === 'left' ? false : !cab.variant?.endsWith('_left'));
+
+  // 1. Identificar el muro anfitrión actual (el más cercano al respaldo o al que esté alineado)
+  let bestHostWall: any = null;
+  let bestHostDist = Infinity;
+  let bestHostNormal: [number, number] = [0, 1];
+
+  for (const w of walls) {
+    const [x1, z1] = w.start;
+    const [x2, z2] = w.end;
+    const dx = x2 - x1;
+    const dz = z2 - z1;
+    const len = Math.hypot(dx, dz);
+    if (len < 10) continue;
+
+    const uX = dx / len;
+    const uZ = dz / len;
+    const [nX, nZ] = getWallInwardNormal(x1, z1, x2, z2, roomPoly);
+
+    const s = (cab.position[0] - x1) * uX + (cab.position[2] - z1) * uZ;
+    const normDist = (cab.position[0] - x1) * nX + (cab.position[2] - z1) * nZ;
+    const expectedFlush = (w.thickness || 20) / 2 + cabDepth / 2;
+    const distToFlush = Math.abs(normDist - expectedFlush);
+
+    if (s >= -60 && s <= len + 60 && distToFlush < bestHostDist) {
+      bestHostDist = distToFlush;
+      bestHostWall = w;
+      bestHostNormal = [nX, nZ];
+    }
+  }
+
+  if (!bestHostWall) {
+    bestHostWall = walls[0];
+    const [x1, z1] = bestHostWall.start;
+    const [x2, z2] = bestHostWall.end;
+    bestHostNormal = getWallInwardNormal(x1, z1, x2, z2, roomPoly);
+  }
+
+  const [x1, z1] = bestHostWall.start;
+  const [x2, z2] = bestHostWall.end;
+  const hostLen = Math.hypot(x2 - x1, z2 - z1);
+  const uHostX = (x2 - x1) / hostLen;
+  const uHostZ = (z2 - z1) / hostLen;
+  const nHostX = bestHostNormal[0];
+  const nHostZ = bestHostNormal[1];
+  const hostThickness = bestHostWall.thickness || 20;
+  const wallRot = Math.atan2(nHostX, nHostZ);
+
+  // 2. Determinar el vértice de esquina buscado:
+  // Si es ciego derecho (+uHost), la esquina buscada está en 'end' (x2, z2).
+  // Si es ciego izquierdo (-uHost), la esquina buscada está en 'start' (x1, z1).
+  const cornerVertex: [number, number] = isRightBlind ? [x2, z2] : [x1, z1];
+
+  // 3. Buscar el muro perpendicular que converge en dicho vértice
+  let bestPerpWall: any = null;
+  let bestPerpNormal: [number, number] = [0, 1];
+  let minVertexDist = Infinity;
+
+  for (const w of walls) {
+    if (w.id === bestHostWall.id) continue;
+    const dStart = Math.hypot(w.start[0] - cornerVertex[0], w.start[1] - cornerVertex[1]);
+    const dEnd = Math.hypot(w.end[0] - cornerVertex[0], w.end[1] - cornerVertex[1]);
+    const minD = Math.min(dStart, dEnd);
+
+    if (minD < 45 && minD < minVertexDist) {
+      const [npX, npZ] = getWallInwardNormal(w.start[0], w.start[1], w.end[0], w.end[1], roomPoly);
+      const dotNorm = Math.abs(nHostX * npX + nHostZ * npZ);
+      if (dotNorm < 0.5) {
+        minVertexDist = minD;
+        bestPerpWall = w;
+        bestPerpNormal = [npX, npZ];
+      }
+    }
+  }
+
+  if (!bestPerpWall) return null;
+
+  const perpThickness = bestPerpWall.thickness || 20;
+
+  // 4. Calcular el punto de tope contra la cara interior del muro perpendicular:
+  // En la esquina, la cara interna de bestPerpWall está a una distancia (perpThickness / 2) hacia el interior.
+  const perpInnerOffsetAlongHost = (perpThickness / 2) * (bestPerpNormal[0] * uHostX + bestPerpNormal[1] * uHostZ);
+  let sCorner = isRightBlind ? hostLen + perpInnerOffsetAlongHost : 0 + perpInnerOffsetAlongHost;
+
+  if (isRightBlind && sCorner > hostLen - 0.5) {
+    sCorner = hostLen - perpThickness / 2;
+  } else if (!isRightBlind && sCorner < 0.5) {
+    sCorner = perpThickness / 2;
+  }
+
+  const sCenter = isRightBlind ? sCorner - cabWidth / 2 : sCorner + cabWidth / 2;
+  const flushDistHost = hostThickness / 2 + cabDepth / 2;
+  const newCabX = x1 + sCenter * uHostX + flushDistHost * nHostX;
+  const newCabZ = z1 + sCenter * uHostZ + flushDistHost * nHostZ;
+  const newCabPos: [number, number, number] = [
+    Math.round(newCabX * 10) / 10,
+    defaultY,
+    Math.round(newCabZ * 10) / 10,
+  ];
+
+  // 5. Detectar y reubicar módulo perpendicular acoplado (ej. cajonera)
+  const connectedUpdates: Array<{ id: string; position: [number, number, number]; rotation: number }> = [];
+
+  let syncedBlindWidth: number | undefined = undefined;
+
+  for (const other of allCabinets) {
+    if (other.id === cab.id) continue;
+    const rotDiff = Math.abs(Math.sin((other.rotation || 0) - wallRot));
+    if (rotDiff > 0.7) {
+      const distToCab = Math.hypot(other.position[0] - cab.position[0], other.position[2] - cab.position[2]);
+      if (distToCab < (cabWidth + other.width + other.depth) / 2 + 30) {
+        syncedBlindWidth = other.depth;
+        const perpDx = bestPerpWall.end[0] - bestPerpWall.start[0];
+        const perpDz = bestPerpWall.end[1] - bestPerpWall.start[1];
+        const perpLen = Math.hypot(perpDx, perpDz);
+        const uPerpX = perpDx / perpLen;
+        const uPerpZ = perpDz / perpLen;
+        const perpRot = Math.atan2(bestPerpNormal[0], bestPerpNormal[1]);
+
+        const flushDistPerp = perpThickness / 2 + other.depth / 2;
+        const esquineroFrontPos: [number, number] = [
+          newCabPos[0] + (cabDepth / 2) * nHostX,
+          newCabPos[2] + (cabDepth / 2) * nHostZ,
+        ];
+        const sPerpCornerFront = (esquineroFrontPos[0] - bestPerpWall.start[0]) * uPerpX + (esquineroFrontPos[1] - bestPerpWall.start[1]) * uPerpZ;
+        const sCornerPerp = (cornerVertex[0] - bestPerpWall.start[0]) * uPerpX + (cornerVertex[1] - bestPerpWall.start[1]) * uPerpZ;
+        const awayDir = sPerpCornerFront >= sCornerPerp ? 1 : -1;
+        const sOtherCenter = sPerpCornerFront + awayDir * (other.width / 2);
+
+        const newOtherX = bestPerpWall.start[0] + sOtherCenter * uPerpX + flushDistPerp * bestPerpNormal[0];
+        const newOtherZ = bestPerpWall.start[1] + sOtherCenter * uPerpZ + flushDistPerp * bestPerpNormal[1];
+
+        connectedUpdates.push({
+          id: other.id,
+          position: [Math.round(newOtherX * 10) / 10, other.position[1], Math.round(newOtherZ * 10) / 10],
+          rotation: perpRot,
+        });
+      }
+    }
+  }
+
+  return {
+    position: newCabPos,
+    rotation: wallRot,
+    blindWidth: syncedBlindWidth,
+    connectedUpdates,
+  };
+}
+
+/**
+ * Detecta el mueble perpendicular adosado a la zona ciega de un mueble esquinero ciego.
+ * Permite que la medida del lado ciego (blindWidth) dependa siempre de la profundidad
+ * del mueble que se ubique perpendicular a este.
+ */
+export function findPerpendicularCabinetForCorner(
+  cornerCab: {
+    id?: string;
+    type?: string;
+    variant?: string;
+    width: number;
+    depth: number;
+    height: number;
+    position: [number, number, number];
+    rotation?: number;
+  },
+  allCabinets: any[]
+): any | null {
+  const isCorner = cornerCab.variant?.startsWith('corner_blind') || 
+                   cornerCab.variant === 'corner_blind' ||
+                   cornerCab.variant?.startsWith('wall_corner_blind');
+  if (!isCorner) return null;
+
+  const isRight = cornerCab.variant !== 'corner_blind_left' && cornerCab.variant !== 'wall_corner_blind_left';
+  const cRot = cornerCab.rotation || 0;
+  const cos = Math.cos(cRot);
+  const sin = Math.sin(cRot);
+
+  let bestCandidate: any = null;
+  let minDistance = Infinity;
+
+  for (const other of allCabinets) {
+    if (other.id === cornerCab.id) continue;
+    // Deben pertenecer a la misma categoría o nivel de trabajo (base/isla con base/isla, o aéreo con aéreo)
+    const isBothBase = (cornerCab.type === 'base' || cornerCab.type === 'island') && (other.type === 'base' || other.type === 'island');
+    const isBothWall = cornerCab.type === 'wall' && other.type === 'wall';
+    if (!isBothBase && !isBothWall) continue;
+
+    // Altura Y similar (superposición vertical)
+    if (Math.abs(other.position[1] - cornerCab.position[1]) > 35) continue;
+
+    // Orientación perpendicular (diferencia angular ~90°)
+    const rotDiff = Math.abs(Math.sin(cRot - (other.rotation || 0)));
+    if (rotDiff < 0.7) continue;
+
+    // Transformación precisa a coordenadas locales del mueble esquinero (inversa de R_y de Three.js)
+    // Three.js: X_w = X_c + x*cos + z*sin, Z_w = Z_c - x*sin + z*cos
+    // Inversa: xLocal = dX*cos - dZ*sin, zLocal = dX*sin + dZ*cos
+    const dX = other.position[0] - cornerCab.position[0];
+    const dZ = other.position[2] - cornerCab.position[2];
+    const xLocal = dX * cos - dZ * sin;
+    const zLocal = dX * sin + dZ * cos;
+
+    // El mueble perpendicular debe situarse en el lado de la zona ciega (+X si isRight, -X si !isRight)
+    if (isRight && xLocal < -5) continue;
+    if (!isRight && xLocal > 5) continue;
+
+    // Debe extenderse hacia el frente del mueble esquinero (zLocal > -10)
+    if (zLocal < -10) continue;
+
+    // Distancia al vértice de encuentro de la esquina ciega
+    const blindCornerX = isRight ? cornerCab.width / 2 : -cornerCab.width / 2;
+    const blindCornerZ = cornerCab.depth / 2;
+    const distToBlindMeeting = Math.hypot(xLocal - blindCornerX, zLocal - blindCornerZ);
+
+    const maxReach = (cornerCab.depth + other.width + other.depth) / 2 + 35;
+    if (distToBlindMeeting < maxReach && distToBlindMeeting < minDistance) {
+      minDistance = distToBlindMeeting;
+      bestCandidate = other;
+    }
+  }
+
+  return bestCandidate;
+}
+
+/**
+ * Detecta si un mueble dado es perpendicular y está adosado a la zona ciega de algún esquinero ciego.
+ */
+export function findCornerCabinetForPerpendicular(
+  cab: {
+    id?: string;
+    type?: string;
+    variant?: string;
+    width: number;
+    depth: number;
+    height: number;
+    position: [number, number, number];
+    rotation?: number;
+  },
+  allCabinets: any[]
+): any | null {
+  for (const other of allCabinets) {
+    if (other.id === cab.id) continue;
+    const isCorner = other.variant?.startsWith('corner_blind') || 
+                     other.variant === 'corner_blind' ||
+                     other.variant?.startsWith('wall_corner_blind');
+    if (!isCorner) continue;
+
+    const matchedPerp = findPerpendicularCabinetForCorner(other, allCabinets);
+    if (matchedPerp && matchedPerp.id === cab.id) {
+      return other;
+    }
+  }
+  return null;
 }

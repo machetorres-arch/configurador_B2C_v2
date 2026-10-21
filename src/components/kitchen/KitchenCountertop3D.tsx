@@ -685,9 +685,9 @@ export function KitchenCountertop3D() {
         const trimRightCm = (run.cornerTrimRightMm || 0) / 10;
 
         const bsExtLeftCm =
-          ((run.backsplashExtLeftMm || 0) + (run.extensionToWallLeftMm || 0)) / 10;
+          ((run.backsplashExtLeftMm || 0) + (run.extensionToWallLeftMm || 0) + (run.overhangLeftMm || 0)) / 10;
         const bsExtRightCm =
-          ((run.backsplashExtRightMm || 0) + (run.extensionToWallRightMm || 0)) / 10;
+          ((run.backsplashExtRightMm || 0) + (run.extensionToWallRightMm || 0) + (run.overhangRightMm || 0)) / 10;
 
         return (
           <group
@@ -962,8 +962,8 @@ export function KitchenCountertop3D() {
               const waterLeftExtCm = isWaterLeft && run.canWaterfallLeft ? stoneThicknessCm : 0;
               const waterRightExtCm = isWaterRight && run.canWaterfallRight ? stoneThicknessCm : 0;
 
-              const effectiveExtLeftCm = (totalExtLeftCm - trimLeftCm) + waterLeftExtCm;
-              const effectiveExtRightCm = (totalExtRightCm - trimRightCm) + waterRightExtCm;
+              const effectiveExtLeftCm = bsExtLeftCm + waterLeftExtCm;
+              const effectiveExtRightCm = bsExtRightCm + waterRightExtCm;
 
               const bsLenCm = Math.max(0.1, totalRunLengthCm + effectiveExtLeftCm + effectiveExtRightCm);
               const bsCenterShiftX = (effectiveExtRightCm - effectiveExtLeftCm) / 2;

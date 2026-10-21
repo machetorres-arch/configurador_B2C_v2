@@ -441,7 +441,9 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
     const bodyDepth = hasFronts ? (d - thickness) : d;
     const effectiveDepth = isWineRack ? d : bodyDepth;
     const lateralNotes = isWineRack
-      ? 'Opción A: Lateral botellero prolongado a plomo con frentes contiguos (Corte recto con disco en escuadradora/panelera/celco)'
+      ? (isBaseGola
+        ? 'Opción A: Lateral botellero continuo hasta cubierta a plomo con frentes contiguos (tope para rieles Gola contiguos, corte recto sin destaje)'
+        : 'Opción A: Lateral botellero a plomo con frentes contiguos (Corte recto con disco en escuadradora/panelera/celco)')
       : (isTallSplitGola
         ? 'Mecanizado CNC: Destaje intermedio pasante Riel Gola L 56x28mm a cota 700mm (Continuidad con muebles base/isla)'
         : (isBaseGola
@@ -860,7 +862,8 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
         });
     } else if (cab.variant?.includes('wine_rack')) {
         const usefulDepth = Math.min(d - 2, 32);
-        const innerH = cabH - thickness * 2;
+        const innerH = Math.max(15, cabH - thickness * 2);
+
         // Fondo falso estructural a 32cm útiles del frente
         parts.push({
             name: `Fondo Falso Botellero ${cabName}`,
@@ -868,7 +871,7 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
             moduleIndex: index,
             qty: 1,
             length: innerW * 10,
-            width: innerH * 10,
+            width: Number((innerH * 10).toFixed(1)),
             thickness: thickness * 10,
             material: cab.structureColor || state.structureColor,
             edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
@@ -967,9 +970,9 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
             notes: 'Puerta batiente para mueble aéreo esquinero'
         });
     } else if (cab.variant?.startsWith('corner_blind') || cab.variant === 'corner_blind') {
-        const blindW = Math.max(35, w / 2);
+        const blindW = cab.blindWidth && cab.blindWidth > 0 ? cab.blindWidth : (w >= 100 ? 65 : Math.max(35, w / 2));
         const stripW = 6.5; // Regleta de ajuste frontal traslapada de 65 mm (evita colisiones con tiradores a 90°)
-        const doorW = w - blindW - gap * 2;
+        const doorW = Math.max(15, w - blindW - gap * 2);
         parts.push({
             name: `Panel Ciego ${cabName}`,
             moduleId: cab.id,

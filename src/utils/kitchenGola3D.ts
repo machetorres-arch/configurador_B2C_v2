@@ -78,80 +78,70 @@ export function createProvelcarX175Shape(): THREE.Shape {
 
 /**
  * Sección transversal oficial del Perfil Gola Tipo C / U Provelcar x176 (en cm):
- * Centrado en Y = 0 (rebaje CNC de 68mm alto x 26mm fondo).
+ * Según ficha técnica oficial del proveedor (50 mm alto x 20 mm profundidad):
+ * - Centrado en Y = 0 (alto de cuerpo en U: 5.0 cm, de Y = -2.50 a Y = +2.50 cm).
+ * - Profundidad del canal en U: 2.0 cm (de X = 0 en el borde frontal del casco a X = 2.00 cm en el respaldo plano).
+ * - Pestañas/labios exteriores superior (+Y) e inferior (-Y) que abrazan el destaje CNC del lateral.
+ * - Nervaduras traseras centrales de fijación para clip/escuadra.
  */
 export function createProvelcarX176Shape(): THREE.Shape {
   const shape = new THREE.Shape();
-  const t = 0.15; // Espesor 1.5mm
 
-  // Labio superior frontal:
-  shape.moveTo(0.35, 2.8);
+  // 1. Labio / pestaña frontal superior (abraza el borde superior del destaje CNC en X=0)
+  shape.moveTo(0.00, 2.36);
+  shape.lineTo(0.00, 2.72);
+  shape.lineTo(0.24, 2.72);
+  shape.lineTo(0.24, 2.58);
+  shape.lineTo(0.14, 2.58);
+  shape.lineTo(0.14, 2.50);
 
-  // Curva cóncava superior hacia el fondo del mueble:
-  shape.bezierCurveTo(
-    0.35, 2.0,
-    0.9, 1.4,
-    1.4, 1.4
-  );
-  shape.bezierCurveTo(
-    2.0, 1.4,
-    2.6, 1.8,
-    2.6, 2.4
-  );
+  // 2. Ala horizontal superior exterior hacia el fondo del destaje
+  shape.lineTo(1.65, 2.50);
 
-  // Espina vertical posterior de fijación:
-  shape.lineTo(2.6, -2.4);
+  // Curva exterior superior hacia la espalda vertical plana
+  shape.quadraticCurveTo(2.00, 2.50, 2.00, 2.15);
 
-  // Curva cóncava inferior hacia adelante:
-  shape.bezierCurveTo(
-    2.6, -1.8,
-    2.0, -1.4,
-    1.4, -1.4
-  );
-  shape.bezierCurveTo(
-    0.9, -1.4,
-    0.35, -2.0,
-    0.35, -2.8
-  );
+  // 3. Espalda vertical plana posterior con nervaduras centrales de anclaje
+  shape.lineTo(2.00, 0.55);
+  // Nervadura trasera superior (clip en L)
+  shape.lineTo(2.26, 0.55);
+  shape.lineTo(2.26, 0.25);
+  shape.lineTo(2.16, 0.25);
+  shape.lineTo(2.16, 0.42);
+  shape.lineTo(2.00, 0.42);
 
-  // Labio inferior con remate redondeado:
-  shape.bezierCurveTo(
-    0.35, -2.95,
-    0.5, -2.95,
-    0.5, -2.8
-  );
+  // Tramo central entre nervaduras
+  shape.lineTo(2.00, -0.42);
 
-  // Contorno interior:
-  shape.bezierCurveTo(
-    0.5, -2.1,
-    1.0, -1.55,
-    1.4, -1.55
-  );
-  shape.bezierCurveTo(
-    1.9, -1.55,
-    2.45, -1.9,
-    2.45, -2.4
-  );
+  // Nervadura trasera inferior (clip en L simétrico)
+  shape.lineTo(2.16, -0.42);
+  shape.lineTo(2.16, -0.25);
+  shape.lineTo(2.26, -0.25);
+  shape.lineTo(2.26, -0.55);
+  shape.lineTo(2.00, -0.55);
 
-  // Cara interior de la espina posterior:
-  shape.lineTo(2.45, 2.4);
+  // Continúa espalda vertical plana hasta la curva inferior
+  shape.lineTo(2.00, -2.15);
 
-  shape.bezierCurveTo(
-    2.45, 1.9,
-    1.9, 1.55,
-    1.4, 1.55
-  );
-  shape.bezierCurveTo(
-    1.0, 1.55,
-    0.5, 2.1,
-    0.5, 2.8
-  );
+  // Curva exterior inferior hacia el ala horizontal inferior
+  shape.quadraticCurveTo(2.00, -2.50, 1.65, -2.50);
 
-  shape.bezierCurveTo(
-    0.5, 2.95,
-    0.35, 2.95,
-    0.35, 2.8
-  );
+  // 4. Ala horizontal inferior exterior hacia el frente del casco
+  shape.lineTo(0.14, -2.50);
+
+  // 5. Labio / pestaña frontal inferior (abraza el borde inferior del destaje CNC en X=0)
+  shape.lineTo(0.14, -2.58);
+  shape.lineTo(0.24, -2.58);
+  shape.lineTo(0.24, -2.72);
+  shape.lineTo(0.00, -2.72);
+  shape.lineTo(0.00, -2.36);
+
+  // 6. Contorno interior del canal en U (espesor constante ~1.4mm)
+  shape.lineTo(1.55, -2.36);
+  shape.quadraticCurveTo(1.86, -2.36, 1.86, -2.05);
+  shape.lineTo(1.86, 2.05);
+  shape.quadraticCurveTo(1.86, 2.36, 1.55, 2.36);
+  shape.lineTo(0.00, 2.36);
 
   shape.closePath();
   return shape;

@@ -53,9 +53,9 @@ export function calculateGolaSystem(
   const finishName = system === 'aluminum' ? 'Aluminio Anodizado Natural' : 'Negro Mate Anodizado';
   const finishCode = system === 'aluminum' ? 'ALU' : 'BLK';
 
-  // Base, island and floor cabinets that support horizontal counter/drawer Gola
+  // Base, island and floor cabinets that support horizontal counter/drawer Gola (excluding wine racks where Gola rails butt into its side panels)
   const baseCabinets = cabinets.filter(
-    (c) => (c.type === 'base' || c.type === 'island') && !c.variant?.startsWith('deco_')
+    (c) => (c.type === 'base' || c.type === 'island') && !c.variant?.startsWith('deco_') && !c.variant?.includes('wine_rack')
   );
 
   // Tall split cabinets that continue the horizontal base Gola line
@@ -69,7 +69,11 @@ export function calculateGolaSystem(
 
   baseCabinets.forEach((cab) => {
     // Each base/island module receives Gola L profile under the countertop
-    const widthMm = cab.width * 10;
+    const isCornerBlind = cab.variant?.startsWith('corner_blind') || cab.variant === 'corner_blind';
+    const effectiveWidth = isCornerBlind 
+      ? Math.max(15, cab.width - (cab.blindWidth && cab.blindWidth > 0 ? cab.blindWidth : (cab.width >= 100 ? 65 : Math.round(cab.width / 2))))
+      : cab.width;
+    const widthMm = effectiveWidth * 10;
     totalGolaLLengthMm += widthMm;
 
     // Check intermediate Gola C profile requirement for drawers

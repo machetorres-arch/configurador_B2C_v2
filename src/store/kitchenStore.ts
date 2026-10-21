@@ -1,6 +1,13 @@
 import { create } from 'zustand';
 import { RoomConfig, getPresetRoomVertices, generateWallsFromRoom } from '../utils/roomGeometry';
-import { constrainInsideRoomAndWalls, repositionCabinetsOnRoomChange, resolveCabinetsAgainstPillars, getWallInwardNormal } from '../utils/kitchenCollision';
+import { 
+  constrainInsideRoomAndWalls, 
+  repositionCabinetsOnRoomChange, 
+  resolveCabinetsAgainstPillars, 
+  getWallInwardNormal,
+  findPerpendicularCabinetForCorner,
+  findCornerCabinetForPerpendicular
+} from '../utils/kitchenCollision';
 import { 
   CountertopConfig, 
   DEFAULT_COUNTERTOP_CONFIG, 
@@ -159,6 +166,7 @@ export interface CabinetType {
   rightCoverPanel?: CoverPanelConfig;
   closetSocleHeight?: number;
   closetSocleColorMode?: 'structure' | 'doors';
+  blindWidth?: number; // cm (ancho independiente de la zona ciega del esquinero, por defecto 65cm)
 }
 
 export interface GolaIncompatibilityAlert {
@@ -463,6 +471,22 @@ function resolveCabinetsWithResize(
           updatedTarget.position[2] + (deltaD / 2) * cos,
         ];
       }
+
+      // Sincronizar automáticamente el ancho del lado ciego de cualquier mueble esquinero perpendicular
+      const perpCorner = findCornerCabinetForPerpendicular(updatedTarget, nextCabinets);
+      if (perpCorner && newDepth > 0) {
+        perpCorner.blindWidth = newDepth;
+      }
+    }
+  }
+
+  // Sincronización paramétrica continua del lado ciego (blindWidth) con la profundidad del mueble perpendicular
+  for (const cab of nextCabinets) {
+    if (cab.variant?.startsWith('corner_blind') || cab.variant === 'corner_blind' || cab.variant?.startsWith('wall_corner_blind')) {
+      const perp = findPerpendicularCabinetForCorner(cab, nextCabinets);
+      if (perp && perp.depth > 0) {
+        cab.blindWidth = perp.depth;
+      }
     }
   }
 
@@ -580,6 +604,16 @@ function resolveCabinetsWithResize(
         const pushX = (dx / distance) * overlap;
         const pushZ = (dz / distance) * overlap;
         other.position = [other.position[0] + pushX, other.position[1], other.position[2] + pushZ];
+      }
+    }
+  }
+
+  // Sincronización paramétrica continua del lado ciego (blindWidth) con la profundidad del mueble perpendicular
+  for (const cab of nextCabinets) {
+    if (cab.variant?.startsWith('corner_blind') || cab.variant === 'corner_blind' || cab.variant?.startsWith('wall_corner_blind')) {
+      const perp = findPerpendicularCabinetForCorner(cab, nextCabinets);
+      if (perp && perp.depth > 0) {
+        cab.blindWidth = perp.depth;
       }
     }
   }
@@ -810,7 +844,16 @@ export const useKitchenStore = create<KitchenState>((set, get) => {
         roomPoly,
         state.architecturalElements
       );
-      return { history, cabinets: [...state.cabinets, { ...cabinet, width: finalWidth, position: constrainedPos }] };
+      const newCabList = [...state.cabinets, { ...cabinet, width: finalWidth, position: constrainedPos }];
+      for (const cab of newCabList) {
+        if (cab.variant?.startsWith('corner_blind') || cab.variant === 'corner_blind' || cab.variant?.startsWith('wall_corner_blind')) {
+          const perp = findPerpendicularCabinetForCorner(cab, newCabList);
+          if (perp && perp.depth > 0) {
+            cab.blindWidth = perp.depth;
+          }
+        }
+      }
+      return { history, cabinets: newCabList };
     }),
   removeCabinet: (id) =>
     set((state) => {
@@ -945,7 +988,18 @@ export const useKitchenStore = create<KitchenState>((set, get) => {
         return;
       }
     }
-    set((state) => ({ history: saveSnapshot(state), golaSystem: system }));
+    set((state) => {
+      const updatedCabinets = state.cabinets.map((c) => ({ ...c }));
+      for (const cab of updatedCabinets) {
+        if (cab.variant?.startsWith('corner_blind') || cab.variant === 'corner_blind' || cab.variant?.startsWith('wall_corner_blind')) {
+          const perp = findPerpendicularCabinetForCorner(cab, updatedCabinets);
+          if (perp && perp.depth > 0) {
+            cab.blindWidth = perp.depth;
+          }
+        }
+      }
+      return { history: saveSnapshot(state), golaSystem: system, cabinets: updatedCabinets };
+    });
   },
   updateCabinet: (id, updates) =>
     set((state) => {

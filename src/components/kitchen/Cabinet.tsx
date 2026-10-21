@@ -13,7 +13,9 @@ import { FridgeFDVSignatureSBS } from './decoration/FridgeFDVSignatureSBS';
 import { PlantDecoration } from './decoration/PlantDecoration';
 import { DishwasherFDVActive12C } from './decoration/DishwasherFDVActive12C';
 import { KitchenHandle3D } from './KitchenHandle3D';
+import { GolaCornerJoint3D } from './GolaCornerJoint3D';
 import { getResolvedCabinetShelfElevations, getDrawerBottomSpecs } from '../../utils/kitchenManufacturing';
+import { findPerpendicularCabinetForCorner } from '../../utils/kitchenCollision';
 
 /**
  * Lateral continuo con rebaje CNC para paso continuo del Riel Gola (pieza única extruida sin costuras).
@@ -27,6 +29,9 @@ export function NotchedLateralBoard({
   notchHeight,
   colorProps,
   notchYFromBottom,
+  midNotchCenterYFromBottom,
+  midNotchDepth = 2.0,
+  midNotchHeight = 5.0,
 }: {
   position: [number, number, number];
   thickness: number;
@@ -36,6 +41,9 @@ export function NotchedLateralBoard({
   notchHeight: number;
   colorProps: any;
   notchYFromBottom?: number;
+  midNotchCenterYFromBottom?: number;
+  midNotchDepth?: number;
+  midNotchHeight?: number;
 }) {
   const [texture, setTexture] = useState<THREE.Texture | null>(null);
 
@@ -84,12 +92,26 @@ export function NotchedLateralBoard({
       shape.lineTo(zMax, yMin);
       shape.closePath();
     } else {
-      // Destaje superior en el frente (zMax) para muebles base e islas
+      // Destaje superior en el frente (zMax) para muebles base e islas (+ destaje intermedio Gola C/U si corresponde)
+      const topCutBottomY = yMax - notchHeight;
       shape.moveTo(zMin, yMin);
       shape.lineTo(zMin, yMax);
       shape.lineTo(zMax - notchDepth, yMax);
-      shape.lineTo(zMax - notchDepth, yMax - notchHeight);
-      shape.lineTo(zMax, yMax - notchHeight);
+      shape.lineTo(zMax - notchDepth, topCutBottomY);
+      shape.lineTo(zMax, topCutBottomY);
+
+      if (midNotchCenterYFromBottom !== undefined) {
+        const yMidCenter = yMin + midNotchCenterYFromBottom;
+        const yMidTop = Math.min(topCutBottomY - 0.5, yMidCenter + midNotchHeight / 2);
+        const yMidBottom = Math.max(yMin + 0.5, yMidCenter - midNotchHeight / 2);
+        if (yMidTop > yMidBottom) {
+          shape.lineTo(zMax, yMidTop);
+          shape.lineTo(zMax - midNotchDepth, yMidTop);
+          shape.lineTo(zMax - midNotchDepth, yMidBottom);
+          shape.lineTo(zMax, yMidBottom);
+        }
+      }
+
       shape.lineTo(zMax, yMin);
       shape.closePath();
     }
@@ -103,7 +125,7 @@ export function NotchedLateralBoard({
     g.rotateY(-Math.PI / 2);
     g.computeVertexNormals();
     return g;
-  }, [cabH, bodyDepth, thickness, notchDepth, notchHeight, notchYFromBottom]);
+  }, [cabH, bodyDepth, thickness, notchDepth, notchHeight, notchYFromBottom, midNotchCenterYFromBottom, midNotchDepth, midNotchHeight]);
 
   return (
     <mesh position={position} geometry={geom} castShadow receiveShadow>
@@ -1248,7 +1270,7 @@ interface CabinetProps extends CabinetType {
   index?: number;
 }
 
-export function Cabinet({ id, type, variant, width, height, depth, position, rotation, color, structureColor, doorColor, drawerFrontColor, drawerInnerColor, shelfColor, backColor, socleColor, structureMaterial, doorMaterial, drawerFrontMaterial, drawerInnerMaterial, shelfMaterial, backMaterial, socleMaterial, grainDirection, grainElements, hplBalancer, isOpen, openElements, index, shelvesCount, shelvesCountLower, shelvesCountUpper, drawersCount, hasHanger, hasDoors, innerDrawers, handleConfig: propHandleConfig, leftCoverPanel, rightCoverPanel, backThickness, drawerBottomMaterial, drawerBottomThickness, closetSocleHeight, closetSocleColorMode }: CabinetProps) {
+export function Cabinet({ id, type, variant, width, height, depth, position, rotation, color, structureColor, doorColor, drawerFrontColor, drawerInnerColor, shelfColor, backColor, socleColor, structureMaterial, doorMaterial, drawerFrontMaterial, drawerInnerMaterial, shelfMaterial, backMaterial, socleMaterial, grainDirection, grainElements, hplBalancer, isOpen, openElements, index, shelvesCount, shelvesCountLower, shelvesCountUpper, drawersCount, hasHanger, hasDoors, innerDrawers, handleConfig: propHandleConfig, leftCoverPanel, rightCoverPanel, backThickness, drawerBottomMaterial, drawerBottomThickness, closetSocleHeight, closetSocleColorMode, blindWidth }: CabinetProps) {
    const { activeCabinetId, setActiveCabinet, setDraggingCabinetId, setToolMode, showSocle, socleHeight, cabinets, viewMode, golaSystem, countertopConfig, qstoneCatalog, setOpenElement, handleConfig: storeHandleConfig } = useKitchenStore();
    const handleConfig = propHandleConfig || storeHandleConfig;
 
@@ -1804,10 +1826,10 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
 
          const renderGolaC = (yPos: number) => (
             <group key={`gola-c-profile-${yPos}`}>
-               {/* Perfil Gola Intermedio Tipo C / U Provelcar x176 Oficial */}
+               {/* Perfil Gola Intermedio Tipo C / U Provelcar x176 Oficial embutido en el casco tras los frentes */}
                <mesh 
                   geometry={getProvelcarX176Geometry(golaSpan)} 
-                  position={[-golaSpan / 2, yPos, depth / 2]} 
+                  position={[-golaSpan / 2, yPos, depth / 2 - thickness]} 
                   rotation={[0, Math.PI / 2, 0]}
                   castShadow
                >
@@ -2573,44 +2595,101 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
 
          if (effectiveVariant === 'corner_blind_right' || effectiveVariant === 'corner_blind_left' || effectiveVariant === 'corner_blind') {
             const isRight = effectiveVariant !== 'corner_blind_left';
-            const blindW = Math.max(35, width / 2);
-            const stripW = 6.5; // Regleta de ajuste frontal traslapada de 65 mm (evita colisiones con tiradores a 90°)
-            const doorW = width - blindW - gap * 2;
+            const perpCab = findPerpendicularCabinetForCorner(
+               { id, type, variant, width, height, depth, position, rotation } as CabinetType,
+               cabinets
+            );
+            const resolvedBlindW = (perpCab && perpCab.depth > 0)
+               ? perpCab.depth
+               : ((blindWidth && blindWidth > 0 && blindWidth !== 65) ? blindWidth : 60);
+            const blindClearance = 5.0; // 5 cm adicionales en la cara ciega para holgura libre con cajones/puertas perpendiculares
+            const blindFaceW = resolvedBlindW + blindClearance;
+            const stripW = blindClearance;
+            const doorW = Math.max(15, width - blindFaceW - gap * 2);
             const topDeduct = isGolaActive ? 3.5 : (isBaseOrIsland ? regruesoDeduct : 0);
             const doorH = Math.max(10, cabH - topDeduct - gap * 2);
             const doorY = isGolaActive ? (legsHeight + (cabH - topDeduct)/2) : (legsHeight + gap + doorH / 2);
+            const blindTopDeduct = isGolaActive ? 5.6 : topDeduct;
+            const blindH = Math.max(10, cabH - blindTopDeduct - gap * 2);
+            const blindY = isGolaActive ? (legsHeight + (cabH - blindTopDeduct) / 2) : doorY;
+            const blindZ = isGolaActive ? (depth / 2 - thickness - 2.8 - thickness / 2) : (frontZ - thickness);
             
-            const blindX = isRight ? (width / 2 - blindW / 2) : (-width / 2 + blindW / 2);
-            const postX = isRight ? (width / 2 - blindW + thickness / 2) : (-width / 2 + blindW - thickness / 2);
+            const blindX = isRight ? (width / 2 - resolvedBlindW / 2) : (-width / 2 + resolvedBlindW / 2);
+            const postX = isRight ? (width / 2 - blindFaceW + thickness / 2) : (-width / 2 + blindFaceW - thickness / 2);
             const doorX = isRight ? (-width / 2 + gap + doorW / 2) : (width / 2 - gap - doorW / 2);
-            // Regleta traslapada: montada sobre el panel ciego con solape de 2cm
-            const stripX = isRight ? (width / 2 - blindW + stripW / 2 - 2.0) : (-width / 2 + blindW - stripW / 2 + 2.0);
+            // Franja frontal de 5 cm coplanar entre el frente del mueble perpendicular y la puerta del esquinero (sin traslape)
+            const stripX = isRight ? (width / 2 - resolvedBlindW - stripW / 2) : (-width / 2 + resolvedBlindW + stripW / 2);
             
             return (
                <>
-                  {isGolaActive && renderGolaL()}
-                  {/* Panel Ciego Frontal Fijo (recesado por detrás de la regleta) */}
+                  {isGolaActive && (
+                     (() => {
+                        const cornerWingLen = 2.8;
+                        const golaSpineOffset = thickness + 2.6;
+                        const cornerJointX = isRight
+                           ? (width / 2 - resolvedBlindW + golaSpineOffset)
+                           : (-width / 2 + resolvedBlindW - golaSpineOffset);
+                        const golaRailSpan = Math.max(10, width - resolvedBlindW + golaSpineOffset - cornerWingLen);
+                        const golaRailX = isRight ? -width / 2 : (cornerJointX + cornerWingLen);
+
+                        return (
+                           <group key={`corner-blind-gola-${legsHeight + cabH}`}>
+                              {/* Tramo Recto Gola L recortado: Sobre el vano de puerta hasta la unión del esquinero */}
+                              <mesh 
+                                 geometry={getProvelcarX175Geometry(golaRailSpan)} 
+                                 position={[
+                                    golaRailX, 
+                                    legsHeight + cabH, 
+                                    depth / 2 - thickness
+                                 ]} 
+                                 rotation={[0, Math.PI / 2, 0]}
+                                 castShadow
+                              >
+                                 <meshStandardMaterial color={golaColor} metalness={golaMetalness} roughness={golaRoughness} side={THREE.DoubleSide} />
+                              </mesh>
+
+                              {/* Pieza Esquinera Interior 90° Oficial para Perfil Gola L (Foto 4) */}
+                              <GolaCornerJoint3D 
+                                 position={[
+                                    cornerJointX,
+                                    legsHeight + cabH,
+                                    depth / 2 - thickness
+                                 ]}
+                                 isRight={isRight}
+                                 color={golaColor}
+                                 metalness={golaMetalness}
+                                 roughness={golaRoughness}
+                              />
+                           </group>
+                        );
+                     })()
+                  )}
+                  {/* Panel Ciego Frontal Fijo */}
                   <Board
-                     position={[blindX, doorY, frontZ - thickness / 2]}
-                     args={[blindW, doorH, thickness]}
+                     position={[blindX, blindY, blindZ]}
+                     args={[resolvedBlindW, blindH, thickness]}
                      {...parseColor(cStructure, structureMaterial, 'blind')}
                      isFrontPanel={false}
-                     globalPosition={[position[0] + blindX, position[1] + doorY, position[2] + frontZ - thickness / 2]}
+                     globalPosition={[position[0] + blindX, position[1] + blindY, position[2] + blindZ]}
                   />
 
-                  {/* Regleta de Ajuste Frontal Traslapada de 65 mm */}
+                  {/* Franja de Holgura Frontal de 50 mm (coplanar con la puerta, sin traslape) */}
                   <Board
-                     position={[stripX, doorY, frontZ + thickness / 2]}
+                     position={[stripX, doorY, frontZ]}
                      args={[stripW, doorH, thickness]}
                      {...parseColor(cDoors, doorMaterial, 'adjustment_strip')}
                      isFrontPanel={true}
-                     globalPosition={[position[0] + stripX, position[1] + doorY, position[2] + frontZ + thickness / 2]}
+                     globalPosition={[position[0] + stripX, position[1] + doorY, position[2] + frontZ]}
                   />
 
                   {/* Poste / Regleta Vertical de Amarre Interior */}
                   <Board
-                     position={[postX, legsHeight + cabH / 2, isGolaActive ? depth / 2 - 2.8 - 5 : depth / 2 - 5]}
-                     args={[thickness, cabH, 10]}
+                     position={[
+                        postX,
+                        legsHeight + (isGolaActive ? (cabH - 5.6) / 2 : cabH / 2),
+                        isGolaActive ? depth / 2 - thickness - 2.8 - 5 : depth / 2 - thickness - 5
+                     ]}
+                     args={[thickness, isGolaActive ? cabH - 5.6 : cabH, 10]}
                      {...parseColor(cStructure, structureMaterial)}
                   />
 
@@ -2707,8 +2786,8 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
          }
 
          if (effectiveVariant === 'wine_rack' || effectiveVariant === 'base_wine_rack' || effectiveVariant === 'wall_wine_rack' || effectiveVariant === 'tall_wine_rack' || effectiveVariant === 'island_wine_rack') {
-            // Opción A: Fabricación a disco (escuadradora/panelera) con frente enrasado a plomo con puertas/cajones
-            const frontPlaneZ = depth / 2 + thickness;
+            // Frente enrasado a plomo con puertas/cajones (Z = +depth/2) y altura completa hasta cubierta
+            const frontPlaneZ = depth / 2;
             const usefulDepth = Math.min(depth - 2, 32); // Fondo útil para botellas estándar 32cm
             const falseBackZ = frontPlaneZ - usefulDepth - thickness / 2;
             const cellsZ = frontPlaneZ - usefulDepth / 2;
@@ -2719,7 +2798,7 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
             const cols = Math.min(5, Math.max(1, maxColsPossible));
             const colWidth = (innerW - (cols - 1) * thickness) / cols;
 
-            // Filas según altura del mueble (~12.5 cm por corrida de botella)
+            // Filas según altura completa del mueble (~12.5 cm por corrida de botella)
             const availableH = cabH - thickness * 2;
             const rows = Math.max(2, Math.floor(availableH / 12.5));
             const rowHeight = (availableH - (rows - 1) * thickness) / rows;
@@ -2738,7 +2817,7 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                   {/* Fondo Falso Vertical Estructural a 32cm útiles del frente */}
                   <Board
                      position={[0, legsHeight + cabH / 2, falseBackZ]}
-                     args={[innerW, cabH - thickness * 2, thickness]}
+                     args={[innerW, availableH, thickness]}
                      {...parseColor(cStructure, structureMaterial, 'false_back')}
                   />
 
@@ -2749,7 +2828,7 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                         <Board
                            key={`wine-vdiv-${i}`}
                            position={[divX, legsHeight + cabH / 2, cellsZ]}
-                           args={[thickness, cabH - thickness * 2, usefulDepth]}
+                           args={[thickness, availableH, usefulDepth]}
                            {...parseColor(cShelves, shelfMaterial)}
                         />
                      );
@@ -3592,15 +3671,14 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                   const xPos = isLeft ? -width/2 + thickness/2 : width/2 - thickness/2;
                   const key = isLeft ? 'left' : 'right';
 
-                  // Opción A: Botellero con laterales prolongados a escuadra (corte a disco) para enrasar a plomo con puertas/cajones contiguos
+                  // Opción A: Botellero con laterales continuos hasta cubierta a plomo con puertas/cajones contiguos (Z = +depth/2)
+                  // Los rieles Gola de los módulos adyacentes topan directamente en las caras exteriores de estos laterales
                   if (isWineRack) {
-                     const wineDepth = depth + thickness;
-                     const wineZ = thickness / 2;
                      return (
                         <Board 
                            key={`lat-${key}`}
-                           position={[xPos, legsHeight + cabH/2, wineZ]} 
-                           args={[thickness, cabH, wineDepth]} 
+                           position={[xPos, legsHeight + cabH/2, 0]} 
+                           args={[thickness, cabH, depth]} 
                            {...parseColor(cStructure, structureMaterial, key)} 
                         />
                      );
@@ -3618,7 +3696,33 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                      );
                   }
 
-                  if (isGolaActive) {
+                  const isCornerBlind = effectiveVariant?.startsWith('corner_blind') || effectiveVariant === 'corner_blind';
+                  const isBlindSide = isCornerBlind && (
+                     (effectiveVariant !== 'corner_blind_left' && key === 'right') ||
+                     (effectiveVariant === 'corner_blind_left' && key === 'left')
+                  );
+
+                  if (isGolaActive && !isBlindSide) {
+                     const golaRegruesoDeduct = Math.max(0, rawRegruesoCm - 3.5);
+                     let midNotchCenterYFromBottom: number | undefined = undefined;
+                     if (effectiveVariant === '1_door_1_drawer') {
+                        const drawerH = Math.max(8, 14.5 - golaRegruesoDeduct);
+                        const yTopFrontFromBottom = cabH - 3.5 - gap - golaRegruesoDeduct;
+                        midNotchCenterYFromBottom = yTopFrontFromBottom - drawerH - gap - 2.0;
+                     } else if (effectiveVariant === '4_drawers') {
+                        const availH = Math.max(20, cabH - 3.5 - 4.0 - gap * 5 - golaRegruesoDeduct);
+                        const drawerH = availH / 4;
+                        midNotchCenterYFromBottom = gap + (drawerH + gap) * 2 + 2.0;
+                     } else if (effectiveVariant === '2_pot_drawers' || effectiveVariant === 'sink_u_drawer') {
+                        const availH = Math.max(20, cabH - 3.5 - 4.0 - gap * 3 - golaRegruesoDeduct);
+                        const drawerH = availH / 2;
+                        midNotchCenterYFromBottom = gap + drawerH + 2.0;
+                     } else if (effectiveVariant === '2_drawers_1_pot') {
+                        const availH = Math.max(20, cabH - 3.5 - 4.0 - gap * 4 - golaRegruesoDeduct);
+                        const lowerH = availH * 0.5;
+                        midNotchCenterYFromBottom = gap + lowerH + 2.0;
+                     }
+
                      return (
                         <NotchedLateralBoard 
                            key={`lat-${key}`}
@@ -3628,6 +3732,9 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                            bodyDepth={bodyDepth}
                            notchDepth={2.8}
                            notchHeight={5.6}
+                           midNotchCenterYFromBottom={midNotchCenterYFromBottom}
+                           midNotchDepth={2.0}
+                           midNotchHeight={5.0}
                            colorProps={parseColor(cStructure, structureMaterial, key)}
                         />
                      );
@@ -3724,7 +3831,7 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                <>
                   {(() => {
                      const isWineRack = variant?.includes('wine_rack') || variant === 'base_wine_rack' || variant === 'wall_wine_rack' || variant === 'tall_wine_rack' || variant === 'island_wine_rack';
-                     const frontRailZ = isWineRack ? depth/2 - 5 : (isGolaActive ? depth/2 - thickness - 2.8 - 5 : depth/2 - thickness - 5);
+                     const frontRailZ = isWineRack ? (depth/2 - 5) : (isGolaActive ? (depth/2 - thickness - 2.8 - 5) : (depth/2 - thickness - 5));
                      return (
                         <>
                            <Board 
@@ -3771,11 +3878,18 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
       const isCornerBlind = variant?.startsWith('corner_blind') || variant === 'corner_blind' || variant?.startsWith('wall_corner_blind');
       const isWineRack = variant?.includes('wine_rack');
       const doorCount = variant === '2_doors' ? 2 : (variant === '1_door' || variant === 'spice_rack' || isCornerBlind ? 1 : 0);
+      const perpCab = findPerpendicularCabinetForCorner(
+         { id, type, variant, width, height, depth, position, rotation } as CabinetType,
+         cabinets
+      );
+      const resolvedBlindW = (perpCab && perpCab.depth > 0)
+         ? perpCab.depth
+         : ((blindWidth && blindWidth > 0 && blindWidth !== 65) ? blindWidth : 60);
       const doorW = doorCount === 2 
          ? (width - gap*3) / 2 
          : (variant?.startsWith('wall_corner_blind')
             ? (width - 5.5 - gap*3)
-            : (isCornerBlind ? (width - Math.max(35, width/2) - gap*2) : (width - gap*2)));
+            : (isCornerBlind ? (width - (resolvedBlindW + 5) - gap*2) : (width - gap*2)));
       const doorH = variant === '1_door_1_drawer' ? cabH - 15 - gap*3 : cabH - gap*2;
 
       return (
@@ -3883,9 +3997,8 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                   {isCornerBlind ? (
                      (() => {
                         const isRight = variant !== 'corner_blind_left';
-                        const blindW = Math.max(35, width / 2);
-                        const cDoorW = width - blindW - gap * 2;
-                        const blindX = isRight ? (width / 2 - blindW / 2) : (-width / 2 + blindW / 2);
+                        const cDoorW = Math.max(15, width - resolvedBlindW - gap * 2);
+                        const blindX = isRight ? (width / 2 - resolvedBlindW / 2) : (-width / 2 + resolvedBlindW / 2);
                         const doorX = isRight ? (-width / 2 + gap + cDoorW / 2) : (width / 2 - gap - cDoorW / 2);
                         return (
                            <>
@@ -3898,10 +4011,10 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
                               </group>
                               {/* Cota Panel Ciego */}
                               <group position={[blindX, -height/2 + legsHeight + cabH/2 + doorH/2 + 5, frontZ + 2]}>
-                                 <Line points={[[-blindW / 2, 0, 0], [blindW / 2, 0, 0]]} color="#94a3b8" lineWidth={1.5} depthTest={false} renderOrder={999} />
-                                 <Line points={[[-blindW / 2, -2, 0], [-blindW / 2, 2, 0]]} color="#94a3b8" lineWidth={1.5} depthTest={false} renderOrder={999} />
-                                 <Line points={[[blindW / 2, -2, 0], [blindW / 2, 2, 0]]} color="#94a3b8" lineWidth={1.5} depthTest={false} renderOrder={999} />
-                                 <Text position={[0, 3, 0]} fontSize={4.5} color="#94a3b8" anchorX="center" anchorY="bottom" material-depthTest={false} material-toneMapped={false} renderOrder={1000}>Ciego {blindW.toFixed(1)}</Text>
+                                 <Line points={[[-resolvedBlindW / 2, 0, 0], [resolvedBlindW / 2, 0, 0]]} color="#94a3b8" lineWidth={1.5} depthTest={false} renderOrder={999} />
+                                 <Line points={[[-resolvedBlindW / 2, -2, 0], [-resolvedBlindW / 2, 2, 0]]} color="#94a3b8" lineWidth={1.5} depthTest={false} renderOrder={999} />
+                                 <Line points={[[resolvedBlindW / 2, -2, 0], [resolvedBlindW / 2, 2, 0]]} color="#94a3b8" lineWidth={1.5} depthTest={false} renderOrder={999} />
+                                 <Text position={[0, 3, 0]} fontSize={4.5} color="#94a3b8" anchorX="center" anchorY="bottom" material-depthTest={false} material-toneMapped={false} renderOrder={1000}>Ciego {resolvedBlindW.toFixed(1)}</Text>
                               </group>
                            </>
                         );

@@ -3,10 +3,11 @@ import { useKitchenStore, CabinetType } from '../../store/kitchenStore';
 import { useStore, PartType } from '../../store';
 import { useAdminStore } from '../../store/adminStore';
 import { isCabinetWithDoors, getDefaultShelvesCount, isCabinetWithSplitDoors, getSplitCabinetShelvesCounts, isWhiteMelamine } from '../../utils/kitchenManufacturing';
-import { SlidersHorizontal, X, RefreshCw, ArrowUpDown, ArrowLeftRight, RotateCw, Move3D, DoorOpen, DoorClosed, Layers, Trash2, Palette, Sparkles, Box, Info, Check, ShieldAlert, Sliders, ChevronDown, ChevronRight, Ruler } from 'lucide-react';
+import { SlidersHorizontal, X, RefreshCw, ArrowUpDown, ArrowLeftRight, RotateCw, Move3D, DoorOpen, DoorClosed, Layers, Trash2, Palette, Sparkles, Box, Info, Check, ShieldAlert, Sliders, ChevronDown, ChevronRight, Ruler, Maximize2 } from 'lucide-react';
 import { HANDLE_CATALOG, FINISH_LABELS, FINISH_HEX, HandleModelId, HandleFinish, KitchenHandleConfig } from '../../types/handle';
 import { IslandBackPanelConfigSection } from './IslandBackPanelConfigSection';
 import { DottedDepthSlider } from './DottedDepthSlider';
+import { findCornerSnapForCabinet, findPerpendicularCabinetForCorner } from '../../utils/kitchenCollision';
 
 interface AccordionSectionProps {
   id: string;
@@ -464,6 +465,115 @@ export function KitchenModuleContextMenu({
     });
 
     updateCabinet(activeCabinetId, { isOpen: nextState, openElements: newOpenElements });
+  };
+
+  const handleSnapToCorner = () => {
+    if (!activeCabinet) return;
+    const storeState = useKitchenStore.getState();
+    const effectiveWalls = storeState.walls && storeState.walls.length > 0 
+      ? storeState.walls 
+      : (storeState.roomConfig?.vertices && storeState.roomConfig.vertices.length >= 3 
+          ? storeState.roomConfig.vertices.map((v, i, arr) => {
+              const next = arr[(i + 1) % arr.length];
+              return { id: `wall_v_${i}`, start: [v.x, v.y] as [number, number], end: [next.x, next.y] as [number, number], thickness: 20, height: 240 };
+            }) 
+          : []);
+    const vertices = storeState.roomConfig?.vertices || [];
+    const roomPoly: [number, number][] = vertices.length >= 3 ? vertices.map(v => [v.x, v.y]) : [];
+
+    const cornerSnap = findCornerSnapForCabinet(
+      activeCabinet,
+      cabinets,
+      effectiveWalls,
+      roomPoly
+    );
+
+    if (cornerSnap) {
+      updateCabinet(activeCabinet.id, {
+        position: cornerSnap.position,
+        rotation: cornerSnap.rotation,
+        ...(cornerSnap.blindWidth ? { blindWidth: cornerSnap.blindWidth } : {}),
+      });
+
+      if (cornerSnap.connectedUpdates && cornerSnap.connectedUpdates.length > 0) {
+        for (const conn of cornerSnap.connectedUpdates) {
+          updateCabinet(conn.id, {
+            position: conn.position,
+            rotation: conn.rotation,
+          });
+        }
+      }
+    }
+  };
+
+  const handleUpdateCornerBlind = (updates: { newBlindWidth?: number; newDoorWidth?: number; newTotalWidth?: number }) => {
+    const currentBlindW = activeCabinet.blindWidth && activeCabinet.blindWidth > 0 
+      ? activeCabinet.blindWidth 
+      : (activeCabinet.width >= 100 ? 60 : Math.round(activeCabinet.width / 2));
+    const currentDoorW = Math.max(20, activeCabinet.width - currentBlindW);
+
+    let nextBlindW = currentBlindW;
+    let nextDoorW = currentDoorW;
+    let nextTotalW = activeCabinet.width;
+
+    if (updates.newBlindWidth !== undefined) {
+      nextBlindW = updates.newBlindWidth;
+      nextTotalW = Math.round((nextBlindW + currentDoorW) * 10) / 10;
+      // Sincronizar profundidad del mueble perpendicular adyacente si existe
+      const perp = findPerpendicularCabinetForCorner(activeCabinet, cabinets);
+      if (perp && perp.depth !== nextBlindW) {
+        updateCabinet(perp.id, { depth: nextBlindW });
+      }
+    } else if (updates.newDoorWidth !== undefined) {
+      nextDoorW = updates.newDoorWidth;
+      nextTotalW = Math.round((currentBlindW + nextDoorW) * 10) / 10;
+    } else if (updates.newTotalWidth !== undefined) {
+      nextTotalW = updates.newTotalWidth;
+      nextBlindW = Math.min(nextTotalW - 25, currentBlindW);
+    }
+
+    const patch: Partial<CabinetType> = {
+      blindWidth: nextBlindW,
+      width: nextTotalW,
+    };
+
+    const storeState = useKitchenStore.getState();
+    const effectiveWalls =
+      storeState.walls && storeState.walls.length > 0
+        ? storeState.walls
+        : (storeState.roomConfig?.vertices && storeState.roomConfig.vertices.length >= 3
+            ? storeState.roomConfig.vertices.map((v, i, arr) => {
+                const next = arr[(i + 1) % arr.length];
+                return { id: `wall_v_${i}`, start: [v.x, v.y] as [number, number], end: [next.x, next.y] as [number, number], thickness: 20, height: 240 };
+              })
+            : []);
+    const vertices = storeState.roomConfig?.vertices || [];
+    const roomPoly: [number, number][] = vertices.length >= 3 ? vertices.map(v => [v.x, v.y]) : [];
+
+    const cornerSnap = findCornerSnapForCabinet(
+      { ...activeCabinet, ...patch },
+      cabinets,
+      effectiveWalls,
+      roomPoly
+    );
+
+    if (cornerSnap) {
+      const currentDist = Math.hypot(activeCabinet.position[0] - cornerSnap.position[0], activeCabinet.position[2] - cornerSnap.position[2]);
+      if (currentDist < 35) {
+        patch.position = cornerSnap.position;
+        patch.rotation = cornerSnap.rotation;
+        if (cornerSnap.connectedUpdates && cornerSnap.connectedUpdates.length > 0) {
+          for (const conn of cornerSnap.connectedUpdates) {
+            updateCabinet(conn.id, {
+              position: conn.position,
+              rotation: conn.rotation,
+            });
+          }
+        }
+      }
+    }
+
+    updateCabinet(activeCabinet.id, patch);
   };
 
   const handleApplyTexture = (url: string, name: string, specificThickness?: number, specificMat?: 'melamina' | 'hpl' | 'durolac') => {
@@ -936,6 +1046,59 @@ export function KitchenModuleContextMenu({
                   Izquierdo (Ciego Izq)
                 </button>
               </div>
+
+              {/* Botón de Enrase y Tope a Esquina de Muro */}
+              <button
+                type="button"
+                onClick={handleSnapToCorner}
+                className={`w-full py-2 px-2.5 rounded-lg text-[11px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer border shadow-sm ${
+                  isLight
+                    ? 'bg-orange-500 hover:bg-orange-600 text-black border-orange-600'
+                    : 'bg-orange-500 hover:bg-orange-400 text-black border-orange-400'
+                }`}
+                title="Ajustar y enrasar el mueble esquinero contra el muro de fondo / perpendicular de la esquina"
+              >
+                <Maximize2 size={13} />
+                <span>Ajustar a Esquina de Muro (Tope a Fondo)</span>
+              </button>
+
+              {/* Ajuste Independiente de Zona Ciega y Puerta */}
+              <div className={`mt-1 pt-2 border-t flex flex-col gap-2.5 ${isLight ? 'border-slate-200' : 'border-white/10'}`}>
+                <div className="flex items-center justify-between">
+                  <span className={`text-[10px] uppercase tracking-wider font-extrabold ${isLight ? 'text-slate-800' : 'text-orange-400'}`}>
+                    Anchos Independientes (Ciego / Puerta)
+                  </span>
+                </div>
+
+                {/* 1. Ancho Zona Ciega */}
+                <DimensionMmControl
+                  isLight={isLight}
+                  label="Ancho Zona Ciega (Fondo a 90°)"
+                  valueCm={activeCabinet.blindWidth && activeCabinet.blindWidth > 0 ? activeCabinet.blindWidth : (activeCabinet.width >= 100 ? 60 : Math.round(activeCabinet.width / 2))}
+                  minCm={40}
+                  maxCm={90}
+                  stepMm={1}
+                  onChangeCm={(val) => {
+                    handleUpdateCornerBlind({ newBlindWidth: val });
+                  }}
+                />
+                <div className={`text-[9px] -mt-1.5 font-medium leading-tight ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
+                  💡 Se sincroniza automáticamente con la profundidad del mueble perpendicular para un encuentro Gola exacto a 90°.
+                </div>
+
+                {/* 2. Ancho Puerta Batiente */}
+                <DimensionMmControl
+                  isLight={isLight}
+                  label="Ancho Puerta Batiente (Frente Útil)"
+                  valueCm={Math.max(15, activeCabinet.width - (activeCabinet.blindWidth && activeCabinet.blindWidth > 0 ? activeCabinet.blindWidth : (activeCabinet.width >= 100 ? 60 : Math.round(activeCabinet.width / 2))))}
+                  minCm={25}
+                  maxCm={75}
+                  stepMm={1}
+                  onChangeCm={(val) => {
+                    handleUpdateCornerBlind({ newDoorWidth: val });
+                  }}
+                />
+              </div>
             </div>
           )}
 
@@ -970,7 +1133,13 @@ export function KitchenModuleContextMenu({
             {/* Ancho */}
             <DimensionMmControl
               isLight={isLight}
-              label={activeCabinet.variant === 'tall_terminal_shelves' ? 'Ancho (Largo Lateral / Cubre Muro)' : 'Ancho'}
+              label={
+                activeCabinet.variant?.startsWith('corner_blind') || activeCabinet.variant === 'corner_blind'
+                  ? 'Ancho Total Módulo (Ciego + Puerta)'
+                  : activeCabinet.variant === 'tall_terminal_shelves'
+                  ? 'Ancho (Largo Lateral / Cubre Muro)'
+                  : 'Ancho'
+              }
               valueCm={activeCabinet.width}
               minCm={
                 activeCabinet.variant === "spice_rack" ? 15 : 
@@ -984,7 +1153,7 @@ export function KitchenModuleContextMenu({
                 activeCabinet.variant === 'tall_terminal_shelves' ? 120 :
                 activeCabinet.variant?.includes('wine_rack') ? 65 :
                 activeCabinet.variant?.startsWith('wall_corner_blind') ? 100 :
-                activeCabinet.variant?.startsWith('corner_blind') ? 130 :
+                activeCabinet.variant?.startsWith('corner_blind') ? 160 :
                 (activeCabinet.variant === '1_door' ||
                  activeCabinet.variant === '1_door_1_drawer' ||
                  activeCabinet.variant === 'tall_1_door' ||
@@ -996,6 +1165,10 @@ export function KitchenModuleContextMenu({
               }
               stepMm={1}
               onChangeCm={(val) => {
+                if (activeCabinet.variant?.startsWith('corner_blind') || activeCabinet.variant === 'corner_blind') {
+                  handleUpdateCornerBlind({ newTotalWidth: val });
+                  return;
+                }
                 const patch: Partial<CabinetType> = { width: val };
                 if (val > 60) {
                   if (activeCabinet.variant === 'wall_1_door') patch.variant = 'wall_2_doors';
