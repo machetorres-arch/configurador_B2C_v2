@@ -117,7 +117,7 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
   const [openAccordions, setOpenAccordions] = useState<Record<string, boolean>>({
     gola: false,
     socle: false,
-    handles: true,
+    handles: false,
     tapacantos: false,
     assembly: false,
     view: false,
@@ -180,7 +180,7 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
   };
 
   const [moduleAccordions, setModuleAccordions] = useState<Record<string, boolean>>({
-    bases: true,
+    bases: false,
     torres: false,
     murales: false,
     isla: false,
@@ -190,11 +190,34 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
   });
 
   const toggleModuleAccordion = (key: string) => {
-    setModuleAccordions(prev => ({ ...prev, [key]: !prev[key] }));
+    setModuleAccordions(prev => {
+      const isCurrentlyOpen = !!prev[key];
+      return {
+        bases: false,
+        torres: false,
+        murales: false,
+        isla: false,
+        closets: false,
+        arch: false,
+        deco: false,
+        [key]: !isCurrentlyOpen,
+      };
+    });
   };
 
   const toggleAccordion = (key: string) => {
-    setOpenAccordions(prev => ({ ...prev, [key]: !prev[key] }));
+    setOpenAccordions(prev => {
+      const isCurrentlyOpen = !!prev[key];
+      return {
+        gola: false,
+        socle: false,
+        handles: false,
+        tapacantos: false,
+        assembly: false,
+        view: false,
+        [key]: !isCurrentlyOpen,
+      };
+    });
   };
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
