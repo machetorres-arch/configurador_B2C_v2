@@ -823,16 +823,11 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                     <Sparkles size={16} className="text-amber-400 shrink-0" />
                     <div className="flex flex-col text-left">
                       <div className="flex items-center gap-1.5">
-                        <span>Cubiertas Qstone</span>
+                        <span>Cubiertas</span>
                         {countertopConfig.enabled && (
                           <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
                         )}
                       </div>
-                      <span className="text-[9px] font-normal text-slate-400 font-mono">
-                        {countertopConfig.enabled
-                          ? `${qstoneCatalog.find(p => p.id === countertopConfig.selectedProductId)?.materialType === 'sinterizado' ? 'Sinterizado 12mm' : 'Cuarzo'} • Faldón ${countertopConfig.regruesoCm}cm`
-                          : 'Cuarzos & Sinterizados • Nesting'}
-                      </span>
                     </div>
                   </button>
 
