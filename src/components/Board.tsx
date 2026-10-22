@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect } from 'react';
 import { useStore } from '../store';
 import { useKitchenStore } from '../store/kitchenStore';
+import { useAdminStore } from '../store/adminStore';
 import { DoubleSide } from 'three';
 import { Edges } from '@react-three/drei';
 import * as THREE from 'three';
@@ -44,18 +45,42 @@ export function Board({ position, args, color, textureUrl, materialType, transpa
         }
         
         const clonedTex = tex.clone();
-        clonedTex.wrapS = THREE.MirroredRepeatWrapping;
-        clonedTex.wrapT = THREE.MirroredRepeatWrapping;
+        // NUNCA usar MirroredRepeatWrapping: evita duplicación en espejo e inversión de cabeza
+        clonedTex.wrapS = THREE.RepeatWrapping;
+        clonedTex.wrapT = THREE.RepeatWrapping;
         
         const img = clonedTex.image;
         const imgAspect = img && img.width > 0 ? (img.height / img.width) : 1;
         
-        const isHpl = materialType === "hpl";
+        // Consultar si es una textura personalizada o HPL de autor registrada en el Back Office
+        const adminTextures = useAdminStore.getState().textures || [];
+        const customItem = adminTextures.find(
+          t => t.url === textureUrl || t.previewUrl === textureUrl
+        ) as any;
+        const isHpl = materialType === "hpl" || (customItem && (customItem.category === 'hpl_autor' || customItem.brand?.toLowerCase().includes('abet')));
+        
         // Dimensiones estándar reales del tablero/plancha (cm):
-        // HPL: estándar ~120 x 240/305 cm
-        // Melamina: formato industrial comercial estándar de 183 x 244 cm / 250 cm
-        const realWidthCm = isHpl ? 120 : 183;
-        const realHeightCm = (!isHpl && imgAspect === 1) ? 244 : (realWidthCm * imgAspect);
+        // HPL: estándar ~130 x 305 cm
+        // Melamina: formato industrial comercial estándar de 183 x 250 cm
+        const dim1 = customItem?.sheetWidthM ? customItem.sheetWidthM * 100 : (isHpl ? 130 : 183);
+        const dim2 = customItem?.sheetHeightM ? customItem.sheetHeightM * 100 : (isHpl ? 305 : 250);
+        const maxSheetDim = Math.max(dim1, dim2); // ej: 305 cm (HPL) o 250 cm (Melamina)
+        const minSheetDim = Math.min(dim1, dim2); // ej: 130 cm (HPL) o 183 cm (Melamina)
+
+        let realWidthCm = minSheetDim;
+        let realHeightCm = maxSheetDim;
+
+        if (img && img.width > 0 && img.height > 0) {
+          if (img.width > img.height) {
+            // Imagen horizontal / apaisada (ej: mural de autor 1600x689 o plancha acostada)
+            realWidthCm = maxSheetDim;
+            realHeightCm = Math.max(minSheetDim, maxSheetDim * imgAspect);
+          } else {
+            // Imagen vertical o cuadrada
+            realHeightCm = maxSheetDim;
+            realWidthCm = Math.max(minSheetDim, maxSheetDim / imgAspect);
+          }
+        }
         
         let mapWidth = args[0];
         let mapHeight = args[1];
@@ -88,7 +113,7 @@ export function Board({ position, args, color, textureUrl, materialType, transpa
           const offsetX = (boardLeftX - closetLeftX) / realWidthCm;
           const offsetY = (boardBottomY - closetBottomY) / realHeightCm;
           clonedTex.offset.set(offsetX, offsetY);
-        } else if (isHpl && mapWidth > mapHeight) {
+        } else if (isHpl && mapWidth > mapHeight && imgAspect >= 1) {
            clonedTex.rotation = Math.PI / 2;
         }
 

@@ -34,25 +34,81 @@ export function AdminLoginModal({ isOpen, onClose, onSuccess }: AdminLoginModalP
 
     if (isCloudConfigured) {
       if (mode === 'signup') {
-        const res = await supabaseSignUp(email, password, fullName, tenantName);
+        let signUpSuccess = false;
+        try {
+          const res = await supabaseSignUp(email, password, fullName, tenantName);
+          if (res.success) {
+            signUpSuccess = true;
+          }
+        } catch (e) {
+          console.warn('Supabase signUp error, fallback to local registration:', e);
+        }
+
+        if (signUpSuccess) {
+          setIsLoading(false);
+          onSuccess();
+          return;
+        }
+
+        // Si la conexión a la nube no está disponible (Failed to fetch), registrar proveedor localmente
+        const newTenantId = `tenant-${Date.now()}`;
+        const provName = tenantName.trim() || fullName.trim() || 'Empresa Proveedora';
+        useAdminStore.getState().addProvider({
+          name: provName,
+          email: email.trim(),
+          commissionPercentage: 15,
+          active: true
+        });
+
+        // Registrar usuario en arquify_admin_users
+        try {
+          const rawUsers = localStorage.getItem('arquify_admin_users');
+          const userList = rawUsers ? JSON.parse(rawUsers) : [];
+          const newU = {
+            id: `user-${Date.now()}`,
+            email: email.trim().toLowerCase(),
+            full_name: fullName.trim() || email.trim(),
+            role: 'tenant_admin',
+            tenant_id: newTenantId,
+            tenant_name: provName,
+            created_at: new Date().toISOString().split('T')[0],
+            status: 'active',
+            password: password.trim()
+          };
+          localStorage.setItem('arquify_admin_users', JSON.stringify([newU, ...userList]));
+        } catch (err) {
+          console.warn('Error guardando usuario local:', err);
+        }
+
+        const logRes = localLogin(email, password);
         setIsLoading(false);
-        if (res.success) {
+        if (logRes.success) {
           onSuccess();
         } else {
-          setErrorMsg(res.error || 'Error al registrar nuevo proveedor.');
+          setErrorMsg(logRes.error || 'Proveedor registrado. Por favor inicie sesión.');
         }
       } else {
-        const res = await supabaseLogin(email, password);
-        setIsLoading(false);
-        if (res.success) {
+        let cloudSuccess = false;
+        try {
+          const res = await supabaseLogin(email, password);
+          if (res.success) {
+            cloudSuccess = true;
+          }
+        } catch (e) {
+          console.warn('Supabase login error, fallback to local authentication:', e);
+        }
+
+        if (cloudSuccess) {
+          setIsLoading(false);
           onSuccess();
         } else {
-          // Intentar fallback local si no coincide en nube
+          // Fallback a autenticación multi-tenant local (Superadmin, Proveedores o Usuarios autorizados)
           const localRes = localLogin(email, password);
+          setIsLoading(false);
           if (localRes.success) {
             onSuccess();
           } else {
-            setErrorMsg(res.error || 'Credenciales inválidas en Supabase y local.');
+            setErrorMsg(localRes.error || 'Credenciales inválidas. Verifique correo y contraseña.');
           }
         }
       }

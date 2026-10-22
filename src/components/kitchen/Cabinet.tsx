@@ -57,8 +57,8 @@ export function NotchedLateralBoard({
           tex.dispose();
           return;
         }
-        tex.wrapS = THREE.MirroredRepeatWrapping;
-        tex.wrapT = THREE.MirroredRepeatWrapping;
+        tex.wrapS = THREE.RepeatWrapping;
+        tex.wrapT = THREE.RepeatWrapping;
         tex.repeat.set(bodyDepth / 183, cabH / 244);
         setTexture(tex);
       });

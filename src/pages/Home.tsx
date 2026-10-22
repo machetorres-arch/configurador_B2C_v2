@@ -10,6 +10,8 @@ export function Home({ onNavigate }: { onNavigate: (route: 'closet' | 'kitchen' 
   const [isLoginOpen, setIsLoginOpen] = useState(false);
   const [isBackofficeOpen, setIsBackofficeOpen] = useState(false);
   const isLocalAuth = useAdminStore((state) => state.isAuthenticated);
+  const adminEmail = useAdminStore((state) => state.adminEmail);
+  const currentUser = useAdminStore((state) => state.currentUser);
   const supabaseUser = useSupabaseAuthStore((state) => state.user);
   const supabaseTenant = useSupabaseAuthStore((state) => state.tenant);
   const isCloud = isSupabaseConfigured();
@@ -51,11 +53,11 @@ export function Home({ onNavigate }: { onNavigate: (route: 'closet' | 'kitchen' 
               <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-slate-300">
                 <User size={13} className="text-orange-400" />
                 <span className="font-mono text-[11px] truncate max-w-[150px]">
-                  {supabaseUser?.email || 'marcelo@robfu.cl'}
+                  {supabaseUser?.email || currentUser?.email || adminEmail || 'marcelo@robfu.cl'}
                 </span>
-                {supabaseUser?.role && (
+                {(supabaseUser?.role || currentUser?.role) && (
                   <span className="px-1.5 py-0.5 bg-orange-500/20 text-orange-400 text-[9px] font-bold uppercase rounded">
-                    {supabaseUser.role}
+                    {supabaseUser?.role || currentUser?.role}
                   </span>
                 )}
               </div>

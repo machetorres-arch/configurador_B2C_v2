@@ -104,6 +104,7 @@ export function TexturesManagerTab({ currentProviderId, isSuperAdmin = true }: T
   const [sheetHeightM, setSheetHeightM] = useState<number>(2.50);
   const [sheetFormat, setSheetFormat] = useState('1.83 x 2.50 m');
   const [priceSheetClp, setPriceSheetClp] = useState(48000); // Valor de venta final
+  const [stock, setStock] = useState<number>(30); // Stock disponible en planchas
   const [previewUrl, setPreviewUrl] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -228,7 +229,8 @@ export function TexturesManagerTab({ currentProviderId, isSuperAdmin = true }: T
       providerName: currentSelectedProvider.name,
       commissionPercentage: commissionPct,
       providerNetPriceClp: providerNetPayoutClp,
-      approvalStatus: initialApprovalStatus
+      approvalStatus: initialApprovalStatus,
+      stock: Math.max(0, Number(stock) || 0)
     });
 
     // Inyectar en el store de Clóset / TexturesSection sólo si está aprobado Y NO es piedra
@@ -759,6 +761,38 @@ export function TexturesManagerTab({ currentProviderId, isSuperAdmin = true }: T
                 />
               </div>
 
+              {/* Stock disponible cargado por el proveedor */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-[11px] uppercase font-bold text-zinc-400">
+                    Stock Disponible *
+                  </label>
+                  <span className={`text-[10px] font-mono font-bold ${Number(stock) <= 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+                    {Number(stock) <= 0 ? 'Agotado (0)' : `${stock} planchas`}
+                  </span>
+                </div>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    required
+                    value={stock}
+                    onChange={(e) => setStock(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                    placeholder="Ej. 30"
+                    className="w-full pl-3 pr-16 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-xs text-white font-mono font-bold focus:border-orange-500 focus:outline-none"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-zinc-500 font-mono pointer-events-none">
+                    planchas
+                  </span>
+                </div>
+                <p className="text-[10px] text-zinc-500 mt-1">
+                  {Number(stock) <= 0
+                    ? '⚠️ Al registrar 0, se apagará automáticamente en el front office.'
+                    : 'Inventario de planchas. Si el proyecto excede este stock, se bloqueará su uso.'}
+                </p>
+              </div>
+
               {/* Valor de Venta Final y Desglose de Comisión Arquify */}
               <div className="sm:col-span-2 p-4 bg-zinc-950/80 border border-amber-500/30 rounded-xl space-y-3">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -989,6 +1023,89 @@ export function TexturesManagerTab({ currentProviderId, isSuperAdmin = true }: T
                   <div className="pt-1 border-t border-zinc-800/80 flex items-center justify-between font-bold">
                     <span className="text-emerald-400">Neto Proveedor:</span>
                     <span className="text-emerald-300 font-mono">${net.toLocaleString('es-CL')}</span>
+                  </div>
+                </div>
+
+                {/* Control de Stock Disponible */}
+                <div className="p-2.5 bg-zinc-950/80 rounded-xl space-y-1.5 border border-zinc-800/80 text-[11px]">
+                  <div className="flex items-center justify-between">
+                    <span className="text-zinc-400 font-semibold">Stock en Almacén:</span>
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold font-mono ${
+                      (tex.stock ?? 30) <= 0 
+                        ? 'bg-red-500/20 text-red-400 border border-red-500/30' 
+                        : (tex.stock ?? 30) < 10 
+                          ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' 
+                          : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                    }`}>
+                      {(tex.stock ?? 30) <= 0 ? 'AGOTADO (0)' : `${tex.stock ?? 30} planchas`}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-1 pt-1 border-t border-zinc-800/80">
+                    <span className="text-[10px] text-zinc-500">Ajuste rápido:</span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const current = tex.stock ?? 30;
+                          const next = Math.max(0, current - 5);
+                          updateTexture(tex.id, { stock: next });
+                          showToast(`Stock de "${tex.name}" actualizado a ${next} planchas.`);
+                        }}
+                        className="px-1.5 py-0.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded text-[10px] font-mono cursor-pointer"
+                        title="Restar 5"
+                      >
+                        -5
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const current = tex.stock ?? 30;
+                          const next = Math.max(0, current - 1);
+                          updateTexture(tex.id, { stock: next });
+                          showToast(`Stock de "${tex.name}" actualizado a ${next} planchas.`);
+                        }}
+                        className="px-1.5 py-0.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded text-[10px] font-mono cursor-pointer"
+                        title="Restar 1"
+                      >
+                        -1
+                      </button>
+                      <input
+                        type="number"
+                        min="0"
+                        value={tex.stock ?? 30}
+                        onChange={(e) => {
+                          const val = Math.max(0, parseInt(e.target.value, 10) || 0);
+                          updateTexture(tex.id, { stock: val });
+                        }}
+                        className="w-14 px-1 py-0.5 bg-zinc-900 border border-zinc-700 rounded text-[10px] text-center font-mono font-bold text-white focus:outline-none focus:border-orange-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const current = tex.stock ?? 30;
+                          const next = current + 1;
+                          updateTexture(tex.id, { stock: next });
+                          showToast(`Stock de "${tex.name}" actualizado a ${next} planchas.`);
+                        }}
+                        className="px-1.5 py-0.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded text-[10px] font-mono cursor-pointer"
+                        title="Sumar 1"
+                      >
+                        +1
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const current = tex.stock ?? 30;
+                          const next = current + 10;
+                          updateTexture(tex.id, { stock: next });
+                          showToast(`Stock de "${tex.name}" actualizado a ${next} planchas.`);
+                        }}
+                        className="px-1.5 py-0.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded text-[10px] font-mono cursor-pointer"
+                        title="Sumar 10"
+                      >
+                        +10
+                      </button>
+                    </div>
                   </div>
                 </div>
 

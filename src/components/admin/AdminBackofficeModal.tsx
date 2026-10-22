@@ -44,7 +44,7 @@ export function AdminBackofficeModal({
   onNavigateToModule,
 }: AdminBackofficeModalProps) {
   const [activeTab, setActiveTab] = useState<'projects' | 'supplies' | 'textures' | 'users' | 'analytics' | 'manufacturing'>('projects');
-  const { adminEmail, logout: localLogout, projects, supplies, textures, themeMode, toggleThemeMode } = useAdminStore();
+  const { adminEmail, currentUser, logout: localLogout, projects, supplies, textures, themeMode, toggleThemeMode } = useAdminStore();
   const { user: supabaseUser, tenant: supabaseTenant, logout: supabaseLogout } = useSupabaseAuthStore();
   const { fetchTenantData, materials, hardware, projects: cloudProjects } = useTenantDataStore();
   const isCloud = isSupabaseConfigured();
@@ -115,7 +115,7 @@ export function AdminBackofficeModal({
                   </span>
                 </div>
                 <span className="px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-widest bg-orange-500/20 text-orange-500 border border-orange-500/30 rounded">
-                  {supabaseUser?.role || 'Superadmin'}
+                  {supabaseUser?.role || currentUser?.role || 'Superadmin'}
                 </span>
                 {isCloud && (
                   <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-500 bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded">
@@ -128,9 +128,9 @@ export function AdminBackofficeModal({
                   isLight ? 'text-zinc-600' : 'text-slate-400'
                 }`}
               >
-                {supabaseTenant?.name ? (
+                {supabaseTenant?.name || currentUser?.tenant_name ? (
                   <span className="text-orange-500 font-semibold flex items-center gap-1">
-                    <Building size={12} /> {supabaseTenant.name}
+                    <Building size={12} /> {supabaseTenant?.name || currentUser?.tenant_name}
                   </span>
                 ) : (
                   'Portal de Proveedores, Liquidaciones, Catálogo 3D con VB y Precios'
@@ -166,14 +166,14 @@ export function AdminBackofficeModal({
 
             <div className="hidden sm:flex flex-col text-right">
               <span className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">
-                {supabaseTenant?.name ? 'Proveedor / Usuario' : 'Sesión Activa'}
+                {supabaseTenant?.name || currentUser?.tenant_name ? 'Proveedor / Usuario' : 'Sesión Activa'}
               </span>
               <span
                 className={`text-xs font-mono font-semibold ${
                   isLight ? 'text-zinc-800' : 'text-slate-300'
                 }`}
               >
-                {supabaseUser?.email || adminEmail || 'marcelo@robfu.cl'}
+                {supabaseUser?.email || currentUser?.email || adminEmail || 'marcelo@robfu.cl'}
               </span>
             </div>
 

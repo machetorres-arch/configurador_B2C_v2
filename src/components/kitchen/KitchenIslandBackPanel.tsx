@@ -33,8 +33,8 @@ export function KitchenIslandBackPanel() {
     const loader = new THREE.TextureLoader();
     loader.setCrossOrigin('anonymous');
     const tex = loader.load(product.textureUrl);
-    tex.wrapS = THREE.MirroredRepeatWrapping;
-    tex.wrapT = THREE.MirroredRepeatWrapping;
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
     tex.repeat.set(1.5, 1.5);
     return tex;
   }, [product?.textureUrl]);

@@ -1,8 +1,13 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 const metaEnv = (import.meta as any).env || {};
-const supabaseUrl: string = metaEnv.VITE_SUPABASE_URL || '';
+const rawSupabaseUrl: string = metaEnv.VITE_SUPABASE_URL || '';
 const supabaseAnonKey: string = metaEnv.VITE_SUPABASE_ANON_KEY || '';
+
+// Sanitizar URL: eliminar sufijo /rest/v1 o barras finales
+const supabaseUrl: string = rawSupabaseUrl
+  .replace(/\/rest\/v1\/?$/, '')
+  .replace(/\/+$/, '');
 
 let supabaseInstance: SupabaseClient | null = null;
 

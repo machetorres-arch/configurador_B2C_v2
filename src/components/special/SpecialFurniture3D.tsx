@@ -48,15 +48,24 @@ export function SpecialFurniture3D() {
         }
 
         const clonedTex = tex.clone();
-        clonedTex.wrapS = THREE.MirroredRepeatWrapping;
-        clonedTex.wrapT = THREE.MirroredRepeatWrapping;
+        clonedTex.wrapS = THREE.RepeatWrapping;
+        clonedTex.wrapT = THREE.RepeatWrapping;
 
         const img = clonedTex.image;
-        const imgAspect = img && img.width > 0 ? (img.height / img.width) : (305 / 130);
+        const imgAspect = img && img.width > 0 ? (img.height / img.width) : (130 / 305);
 
-        // Formato HPL estándar Abet Laminati: 130 cm de ancho x 305 cm de alto
-        const realWidthCm = 130;
-        const realHeightCm = realWidthCm * imgAspect;
+        // Formato HPL estándar Abet Laminati: 130 cm x 305 cm
+        let realWidthCm = 130;
+        let realHeightCm = 305;
+        if (img && img.width > 0 && img.height > 0) {
+          if (img.width > img.height) {
+            realWidthCm = 305;
+            realHeightCm = Math.max(130, 305 * imgAspect);
+          } else {
+            realHeightCm = 305;
+            realWidthCm = Math.max(130, 305 / imgAspect);
+          }
+        }
 
         const mapWidth = innerW;
         const mapHeight = innerH;

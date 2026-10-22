@@ -3,7 +3,7 @@ import { useKitchenStore, CabinetType } from '../../store/kitchenStore';
 import { useStore, PartType } from '../../store';
 import { useAdminStore } from '../../store/adminStore';
 import { isCabinetWithDoors, getDefaultShelvesCount, isCabinetWithSplitDoors, getSplitCabinetShelvesCounts, isWhiteMelamine } from '../../utils/kitchenManufacturing';
-import { SlidersHorizontal, X, RefreshCw, ArrowUpDown, ArrowLeftRight, RotateCw, Move3D, DoorOpen, DoorClosed, Layers, Trash2, Palette, Sparkles, Box, Info, Check, ShieldAlert, Sliders, ChevronDown, ChevronRight, Ruler, Maximize2 } from 'lucide-react';
+import { SlidersHorizontal, X, RefreshCw, ArrowUpDown, ArrowLeftRight, RotateCw, Move3D, DoorOpen, DoorClosed, Layers, Trash2, Palette, Sparkles, Box, Info, Check, ShieldAlert, Sliders, ChevronDown, ChevronRight, Ruler, Maximize2, AlertTriangle } from 'lucide-react';
 import { HANDLE_CATALOG, FINISH_LABELS, FINISH_HEX, HandleModelId, HandleFinish, KitchenHandleConfig } from '../../types/handle';
 import { IslandBackPanelConfigSection } from './IslandBackPanelConfigSection';
 import { DottedDepthSlider } from './DottedDepthSlider';
@@ -216,6 +216,7 @@ export function KitchenModuleContextMenu({
   const globalStore = useStore();
   const adminTextures = useAdminStore((s) => s.textures);
   const [targetZone, setTargetZone] = useState<PartType>('doors');
+  const [moduleStockAlert, setModuleStockAlert] = useState<{ textureName: string; stock: number } | null>(null);
   const [selectedDoorSection, setSelectedDoorSection] = useState<'lower' | 'upper'>('lower');
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     dimensions: true,
@@ -695,6 +696,8 @@ export function KitchenModuleContextMenu({
       providerName: t.providerName,
       category: t.category,
       thicknessMm: t.thicknessMm || (t.category === 'hpl_autor' ? 0.9 : (t.name?.includes('15') ? 15 : 18)),
+      sheetFormat: t.sheetFormat,
+      stock: t.stock !== undefined ? t.stock : 30
     }));
 
   const allTextures = approvedBackofficeTextures;
@@ -819,25 +822,54 @@ export function KitchenModuleContextMenu({
   const renderTextureButton = (tex: any) => {
     const is15 = tex.thicknessMm === 15;
     const is18 = tex.thicknessMm === 18;
+    const isOutOfStock = tex.stock !== undefined && tex.stock <= 0;
+    const stockCount = tex.stock !== undefined ? tex.stock : 30;
+
+    const handleButtonClick = () => {
+      if (isOutOfStock) {
+        setModuleStockAlert({ textureName: tex.name, stock: 0 });
+        return;
+      }
+      const isBack = targetZone === 'back';
+      const specificMat = isBack ? (tex.category === 'hpl_autor' ? 'hpl' : 'melamina') : undefined;
+      handleApplyTexture(tex.url, tex.name, tex.thicknessMm, specificMat);
+    };
+
     return (
       <div key={tex.id} className="relative group">
         <button 
-          onClick={() => {
-            const isBack = targetZone === 'back';
-            const specificMat = isBack ? (tex.category === 'hpl_autor' ? 'hpl' : 'melamina') : undefined;
-            handleApplyTexture(tex.url, tex.name, tex.thicknessMm, specificMat);
-          }}
-          className={`flex flex-col items-center gap-1 p-1 rounded-lg transition-colors w-full border cursor-pointer relative ${
-            isLight
-              ? 'bg-white border-slate-200 hover:border-orange-500 shadow-sm'
-              : 'bg-white/5 border-white/10 hover:border-orange-500/60'
+          type="button"
+          disabled={isOutOfStock}
+          onClick={handleButtonClick}
+          className={`flex flex-col items-center gap-1 p-1 rounded-lg transition-all w-full border relative ${
+            isOutOfStock
+              ? 'opacity-35 grayscale cursor-not-allowed bg-zinc-900/60 border-dashed border-red-500/50'
+              : isLight
+                ? 'bg-white border-slate-200 hover:border-orange-500 shadow-sm cursor-pointer'
+                : 'bg-white/5 border-white/10 hover:border-orange-500/60 cursor-pointer'
           }`}
-          title={`${tex.name} ${tex.thicknessMm ? `[${tex.thicknessMm}mm]` : ''}`}
+          title={
+            isOutOfStock
+              ? `${tex.name} - SIN STOCK (0 planchas registradas)`
+              : `${tex.name} ${tex.thicknessMm ? `[${tex.thicknessMm}mm]` : ''} [Stock: ${stockCount} planchas]`
+          }
         >
+          {isOutOfStock ? (
+            <span className="absolute top-1 left-1 px-1 py-0.2 rounded text-[7px] font-mono font-extrabold uppercase shadow-xs z-10 bg-red-600 text-white">
+              SIN STOCK
+            </span>
+          ) : stockCount <= 10 ? (
+            <span className="absolute top-1 left-1 px-1 py-0.2 rounded text-[7px] font-mono font-bold uppercase shadow-xs z-10 bg-amber-500/90 text-black">
+              {stockCount}
+            </span>
+          ) : null}
+
           {tex.thicknessMm && (
             <span
               className={`absolute top-1 right-1 px-1 py-0.2 rounded text-[7px] font-mono font-extrabold uppercase shadow-xs z-10 ${
-                is15
+                isOutOfStock
+                  ? 'bg-zinc-800 text-zinc-500'
+                  : is15
                   ? 'bg-blue-600 text-white'
                   : is18
                   ? 'bg-orange-500 text-black'
@@ -848,13 +880,15 @@ export function KitchenModuleContextMenu({
             </span>
           )}
           <div 
-            className={`w-full aspect-square rounded-md border group-hover:shadow-[0_0_10px_rgba(249,115,22,0.3)] bg-cover bg-center ${
-              isLight ? 'border-slate-300' : 'border-white/20'
+            className={`w-full aspect-square rounded-md border bg-cover bg-center ${
+              isOutOfStock
+                ? 'border-red-500/20'
+                : isLight ? 'border-slate-300 group-hover:shadow-[0_0_10px_rgba(249,115,22,0.3)]' : 'border-white/20 group-hover:shadow-[0_0_10px_rgba(249,115,22,0.3)]'
             }`}
             style={tex.url.startsWith('#') ? { backgroundColor: tex.url } : { backgroundImage: `url('${tex.url}')` }}
           />
           <span className={`text-[8px] uppercase tracking-wider truncate w-full text-center ${
-            isLight ? 'text-slate-600 font-bold' : 'text-slate-400'
+            isOutOfStock ? 'text-red-400/80 line-through' : isLight ? 'text-slate-600 font-bold' : 'text-slate-400'
           }`}>
             {tex.name.length > 14 ? tex.name.substring(0, 14) + '...' : tex.name}
           </span>
@@ -2823,6 +2857,47 @@ export function KitchenModuleContextMenu({
             <Trash2 size={13} /> Eliminar Mueble
           </button>
         </div>
+
+        {/* Modal de Alerta de Stock para Módulo */}
+        {moduleStockAlert && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-in fade-in duration-200">
+            <div className={`max-w-md w-full p-5 rounded-2xl border shadow-2xl space-y-4 ${
+              isLight ? 'bg-white border-red-300 text-slate-800' : 'bg-zinc-900 border-red-500/50 text-white'
+            }`}>
+              <div className="flex items-start gap-3">
+                <div className="p-2.5 bg-red-500/20 text-red-500 rounded-xl shrink-0 mt-0.5 border border-red-500/30">
+                  <AlertTriangle size={24} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-bold uppercase tracking-wider text-red-500">
+                      Material Sin Stock
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={() => setModuleStockAlert(null)}
+                      className="text-zinc-400 hover:text-white p-1 rounded-lg cursor-pointer"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                  <p className="text-xs text-zinc-300 mt-1.5 leading-relaxed">
+                    El decorativo <strong className="text-white">"{moduleStockAlert.textureName}"</strong> se encuentra agotado y registra <strong className="text-red-400">0 planchas</strong> disponibles en stock. No es posible aplicarlo a este módulo.
+                  </p>
+                </div>
+              </div>
+              <div className="flex justify-end pt-1">
+                <button
+                  type="button"
+                  onClick={() => setModuleStockAlert(null)}
+                  className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white font-extrabold text-xs uppercase tracking-wider rounded-xl cursor-pointer transition-all shadow-md shadow-red-500/20"
+                >
+                  Entendido
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

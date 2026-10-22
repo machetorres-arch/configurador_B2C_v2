@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
+import { AlertTriangle, X } from 'lucide-react';
 import { useStore, PartType } from '../store';
 import { useAdminStore } from '../store/adminStore';
 import { useKitchenStore } from '../store/kitchenStore';
-import { isWhiteMelamine } from '../utils/manufacturing';
+import { isWhiteMelamine, generatePartsList } from '../utils/manufacturing';
+import { generateKitchenPartsList } from '../utils/kitchenManufacturing';
 
 const DEFAULT_TEXTURES = [
-  { id: 'def_mas_blanco_15', name: 'Masisa Blanco', url: '#FFFFFF', thicknessMm: 15, brand: 'Masisa' },
-  { id: 'def_mas_blanco_18', name: 'Masisa Blanco', url: '#FFFFFF', thicknessMm: 18, brand: 'Masisa' },
-  { id: 'def_mas_negro_18', name: 'Masisa Negro', url: '#171717', thicknessMm: 18, brand: 'Masisa' }
+  { id: 'def_mas_blanco_15', name: 'Masisa Blanco', url: '#FFFFFF', thicknessMm: 15, brand: 'Masisa', stock: 50 },
+  { id: 'def_mas_blanco_18', name: 'Masisa Blanco', url: '#FFFFFF', thicknessMm: 18, brand: 'Masisa', stock: 50 },
+  { id: 'def_mas_negro_18', name: 'Masisa Negro', url: '#171717', thicknessMm: 18, brand: 'Masisa', stock: 50 }
 ];
 
 export const TexturesSection = ({ 
@@ -24,7 +26,103 @@ export const TexturesSection = ({
   const state = useStore();
   const adminTextures = useAdminStore((s) => s.textures);
   const [thicknessFilter, setThicknessFilter] = useState<'all' | 15 | 18>('all');
+  const [stockAlert, setStockAlert] = useState<{
+    textureName: string;
+    stock: number;
+    required: number;
+  } | null>(null);
   const hasIslands = useKitchenStore((s) => s.cabinets?.some((c) => c.type === 'island'));
+
+  // Calcula la cantidad estimada de planchas que requiere el proyecto según la zona
+  const calculateRequiredSheetsForTarget = (targetPart: PartType, sheetFormat?: string): number => {
+    let sheetAreaM2 = 4.575; // Estándar 1.83 x 2.50 m
+    if (sheetFormat) {
+      const match = sheetFormat.match(/([0-9.]+)\s*x\s*([0-9.]+)/i);
+      if (match) {
+        const w = parseFloat(match[1]);
+        const h = parseFloat(match[2]);
+        if (w > 0 && h > 0) sheetAreaM2 = w * h;
+      }
+    }
+    const usableSheetM2 = Math.max(0.5, sheetAreaM2 * 0.82);
+    let totalAreaM2 = 0;
+
+    const kitchenCabinets = useKitchenStore.getState().cabinets?.filter(c => c.type !== 'decoration' && !c.variant?.startsWith('deco_')) || [];
+    if (kitchenCabinets.length > 0) {
+      try {
+        const parts = generateKitchenPartsList(kitchenCabinets);
+        parts.forEach((p) => {
+          const isFront = (p.name.includes('Puerta') || p.name.includes('Frente') || p.name.includes('Panel Ciego')) &&
+                          !p.name.toLowerCase().includes('contrafrente') &&
+                          !p.name.toLowerCase().includes('amarre') &&
+                          !p.name.toLowerCase().includes('caja');
+          const isDrawerInner = p.name.toLowerCase().includes('lateral caj') || p.name.toLowerCase().includes('contrafrente') || p.name.toLowerCase().includes('trasera caj');
+          const isShelf = p.name.toLowerCase().includes('repisa');
+          const isBack = p.name.toLowerCase().includes('fondo') || p.name.toLowerCase().includes('trasera');
+          const isStructure = !isFront && !isDrawerInner && !isShelf && !isBack;
+
+          let matchesTarget = false;
+          if (targetPart === 'all') matchesTarget = true;
+          else if (targetPart === 'doors' || targetPart === 'drawerFronts') matchesTarget = isFront;
+          else if (targetPart === 'structure') matchesTarget = isStructure;
+          else if (targetPart === 'drawerInner') matchesTarget = isDrawerInner;
+          else if (targetPart === 'shelves') matchesTarget = isShelf;
+          else if (targetPart === 'back') matchesTarget = isBack;
+          else matchesTarget = true;
+
+          if (matchesTarget) {
+            totalAreaM2 += (p.length * p.width * p.qty) / 1000000;
+          }
+        });
+      } catch (err) {
+        totalAreaM2 = kitchenCabinets.reduce((acc, c) => acc + ((c.width * c.height * 3.5) / 10000), 0);
+      }
+    } else {
+      const closetState = useStore.getState();
+      if (closetState.modules && closetState.modules.length > 0) {
+        try {
+          const parts = generatePartsList({
+            height: closetState.height,
+            depth: closetState.depth,
+            thickness: closetState.thickness,
+            showTopWall: closetState.showTopWall,
+            showBottomWall: closetState.showBottomWall,
+            showLeftWall: closetState.showLeftWall,
+            showRightWall: closetState.showRightWall,
+            showBackWall: closetState.showBackWall,
+            showSocle: closetState.showSocle,
+            backColor: closetState.backColor,
+            doorColor: closetState.doorColor,
+            drawerHardware: closetState.drawerHardware,
+            assemblyType: closetState.assemblyType,
+            modules: closetState.modules
+          });
+          parts.forEach((p) => {
+            const isDoor = p.name.toLowerCase().includes('puerta');
+            const isDrawer = p.name.toLowerCase().includes('cajón');
+            const isBack = p.name.toLowerCase().includes('fondo') || p.name.toLowerCase().includes('trasera');
+            const isStructure = !isDoor && !isDrawer && !isBack;
+
+            let matchesTarget = false;
+            if (targetPart === 'all') matchesTarget = true;
+            else if (targetPart === 'doors') matchesTarget = isDoor;
+            else if (targetPart === 'drawerFronts' || targetPart === 'drawerInner') matchesTarget = isDrawer;
+            else if (targetPart === 'back') matchesTarget = isBack;
+            else if (targetPart === 'structure') matchesTarget = isStructure;
+            else matchesTarget = true;
+
+            if (matchesTarget) {
+              totalAreaM2 += (p.length * p.width * p.qty) / 1000000;
+            }
+          });
+        } catch (err) {
+          totalAreaM2 = closetState.modules.reduce((acc, m) => acc + ((m.width * closetState.height * 3) / 10000), 0);
+        }
+      }
+    }
+
+    return Math.max(1, Math.ceil(totalAreaM2 / usableSheetM2));
+  };
 
   const applyTexture = (url: string, name: string, specificThickness?: number, specificMat?: 'hpl' | 'melamina' | 'durolac') => {
     const nameLower = name.toLowerCase();
@@ -85,7 +183,8 @@ export const TexturesSection = ({
       brand: t.brand || t.providerName,
       providerName: t.providerName,
       thicknessMm: t.thicknessMm || (t.category === 'hpl_autor' ? 0.9 : (t.name.includes('15') ? 15 : 18)),
-      sheetFormat: t.sheetFormat
+      sheetFormat: t.sheetFormat,
+      stock: t.stock !== undefined ? t.stock : 30
     }));
 
   // Solo usar defaults de emergencia si no hay ninguna textura en el gestor
@@ -96,7 +195,8 @@ export const TexturesSection = ({
         code: 'DEF',
         category: 'solidos' as const,
         providerName: t.brand,
-        sheetFormat: '1.83 x 2.50 m'
+        sheetFormat: '1.83 x 2.50 m',
+        stock: t.stock ?? 50
       }));
   
   const isMasisaItem = (t: any) => {
@@ -135,36 +235,84 @@ export const TexturesSection = ({
   const renderTextureButton = (tex: any) => {
     const is15 = tex.thicknessMm === 15;
     const is18 = tex.thicknessMm === 18;
+    const isOutOfStock = tex.stock !== undefined && tex.stock <= 0;
+    const stockCount = tex.stock !== undefined ? tex.stock : 30;
+
+    const handleButtonClick = () => {
+      // 1. Si está sin stock / agotado, bloquear
+      if (isOutOfStock) {
+        setStockAlert({
+          textureName: tex.name,
+          stock: 0,
+          required: calculateRequiredSheetsForTarget(state.targetPart, tex.sheetFormat),
+        });
+        return;
+      }
+
+      // 2. Si no alcanza el stock para el proyecto, bloquear y alertar
+      const requiredSheets = calculateRequiredSheetsForTarget(state.targetPart, tex.sheetFormat);
+      if (stockCount < requiredSheets) {
+        setStockAlert({
+          textureName: tex.name,
+          stock: stockCount,
+          required: requiredSheets,
+        });
+        return;
+      }
+
+      // 3. Stock suficiente: aplicar normalmente
+      const isBack = state.targetPart === 'back';
+      const specificMat = isBack ? (tex.category === 'hpl_autor' ? 'hpl' : 'melamina') : undefined;
+      applyTexture(tex.url, tex.name, tex.thicknessMm, specificMat);
+
+      // Solo ajustar espesor global de la estructura si se está configurando la estructura o todo el mueble
+      if (
+        tex.thicknessMm &&
+        tex.thicknessMm >= 12 &&
+        (state.targetPart === 'structure' || state.targetPart === 'all') &&
+        state.setThickness
+      ) {
+        state.setThickness(Number((tex.thicknessMm / 10).toFixed(2)));
+      }
+    };
+
     return (
       <div key={tex.id} className="relative group">
         <button 
-          onClick={() => {
-            const isBack = state.targetPart === 'back';
-            const specificMat = isBack ? (tex.category === 'hpl_autor' ? 'hpl' : 'melamina') : undefined;
-            applyTexture(tex.url, tex.name, tex.thicknessMm, specificMat);
-            // Solo ajustar espesor global de la estructura si se está configurando la estructura o todo el mueble,
-            // y solo para tableros autoportantes (>= 12 mm). Nunca para láminas HPL (0.8/0.9 mm) ni al cambiar solo puertas.
-            if (
-              tex.thicknessMm &&
-              tex.thicknessMm >= 12 &&
-              (state.targetPart === 'structure' || state.targetPart === 'all') &&
-              state.setThickness
-            ) {
-              state.setThickness(Number((tex.thicknessMm / 10).toFixed(2)));
-            }
-          }}
-          className={`flex flex-col items-center gap-1 p-1 rounded transition-colors w-full cursor-pointer relative ${
-            isLight 
-              ? 'bg-white border border-slate-300 hover:border-orange-500 shadow-sm' 
-              : 'bg-white/5 border border-white/10 hover:border-orange-500/50'
+          type="button"
+          disabled={isOutOfStock}
+          onClick={handleButtonClick}
+          className={`flex flex-col items-center gap-1 p-1 rounded transition-all w-full relative ${
+            isOutOfStock
+              ? 'opacity-35 grayscale cursor-not-allowed bg-zinc-900/60 border border-dashed border-red-500/50 hover:border-red-500/50'
+              : isLight 
+                ? 'bg-white border border-slate-300 hover:border-orange-500 shadow-sm cursor-pointer' 
+                : 'bg-white/5 border border-white/10 hover:border-orange-500/50 cursor-pointer'
           }`}
-          title={`${tex.name} ${tex.thicknessMm ? `[${tex.thicknessMm}mm]` : ''} ${tex.code ? `(${tex.code})` : ''}`}
+          title={
+            isOutOfStock
+              ? `${tex.name} - AGOTADO / SIN STOCK (0 planchas registradas)`
+              : `${tex.name} ${tex.thicknessMm ? `[${tex.thicknessMm}mm]` : ''} [Stock: ${stockCount} planchas]`
+          }
         >
+          {/* Badge de Sin Stock si está agotado */}
+          {isOutOfStock ? (
+            <span className="absolute top-1 left-1 px-1 py-0.2 rounded text-[7px] font-mono font-extrabold uppercase shadow-sm z-10 bg-red-600 text-white">
+              SIN STOCK
+            </span>
+          ) : stockCount <= 10 ? (
+            <span className="absolute top-1 left-1 px-1 py-0.2 rounded text-[7px] font-mono font-bold uppercase shadow-sm z-10 bg-amber-500/90 text-black">
+              {stockCount} disp.
+            </span>
+          ) : null}
+
           {/* Badge de Espesor visible en esquina superior derecha */}
           {tex.thicknessMm && (
             <span
               className={`absolute top-1 right-1 px-1 py-0.2 rounded text-[7px] font-mono font-extrabold uppercase shadow-sm z-10 ${
-                is15
+                isOutOfStock
+                  ? 'bg-zinc-800 text-zinc-500'
+                  : is15
                   ? 'bg-blue-600 text-white'
                   : is18
                   ? 'bg-orange-500 text-black'
@@ -176,13 +324,15 @@ export const TexturesSection = ({
           )}
 
           <div 
-            className={`w-full aspect-square rounded border group-hover:shadow-[0_0_10px_rgba(249,115,22,0.3)] bg-cover bg-center ${
-              isLight ? 'border-slate-200' : 'border-white/20'
+            className={`w-full aspect-square rounded border bg-cover bg-center ${
+              isOutOfStock 
+                ? 'border-red-500/20' 
+                : isLight ? 'border-slate-200 group-hover:shadow-[0_0_10px_rgba(249,115,22,0.3)]' : 'border-white/20 group-hover:shadow-[0_0_10px_rgba(249,115,22,0.3)]'
             }`}
             style={tex.url.startsWith('#') ? { backgroundColor: tex.url } : { backgroundImage: `url('${tex.url}')` }}
           />
           <span className={`text-[8px] uppercase tracking-wider font-bold truncate w-full text-center ${
-            isLight ? 'text-slate-800' : 'text-slate-400'
+            isOutOfStock ? 'text-red-400/80 line-through' : isLight ? 'text-slate-800' : 'text-slate-400'
           }`}>
             {tex.name.length > 17 ? tex.name.substring(0, 17) + '...' : tex.name}
           </span>
@@ -564,6 +714,72 @@ export const TexturesSection = ({
           }`}>5. Otros Proveedores Homologados</label>
           <div className="grid grid-cols-3 gap-2">
             {otherTextures.map(t => renderTextureButton(t))}
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Alerta de Stock Insuficiente / Agotado */}
+      {stockAlert && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className={`max-w-md w-full p-5 rounded-2xl border shadow-2xl space-y-4 ${
+            isLight ? 'bg-white border-amber-300 text-slate-800' : 'bg-zinc-900 border-amber-500/50 text-white'
+          }`}>
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 bg-amber-500/20 text-amber-500 rounded-xl shrink-0 mt-0.5 border border-amber-500/30">
+                <AlertTriangle size={24} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-bold uppercase tracking-wider text-amber-500">
+                    {stockAlert.stock <= 0 ? 'Material Agotado' : 'Stock Insuficiente'}
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setStockAlert(null)}
+                    className="text-zinc-400 hover:text-white p-1 rounded-lg cursor-pointer"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+                <p className="text-xs text-zinc-300 mt-1.5 leading-relaxed">
+                  {stockAlert.stock <= 0 ? (
+                    <>
+                      El decorativo <strong className="text-white">"{stockAlert.textureName}"</strong> se encuentra agotado y registra <strong className="text-red-400">0 planchas</strong> en el stock del proveedor. No es posible aplicarlo al proyecto.
+                    </>
+                  ) : (
+                    <>
+                      El proyecto requiere aproximadamente <strong className="text-amber-400">{stockAlert.required} plancha(s)</strong> de <strong className="text-white">"{stockAlert.textureName}"</strong>, pero el proveedor solo registra <strong className="text-red-400">{stockAlert.stock} plancha(s)</strong> en stock disponible.
+                    </>
+                  )}
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3 rounded-xl bg-zinc-950/70 border border-zinc-800 text-[11px] space-y-1.5">
+              <div className="flex justify-between items-center text-zinc-400">
+                <span>Consumo estimado del proyecto:</span>
+                <strong className="text-amber-400 font-mono font-bold text-xs">{stockAlert.required} plancha(s)</strong>
+              </div>
+              <div className="flex justify-between items-center text-zinc-400">
+                <span>Stock registrado en Back Office:</span>
+                <strong className={`font-mono font-bold text-xs ${stockAlert.stock <= 0 ? 'text-red-400' : 'text-amber-300'}`}>
+                  {stockAlert.stock} plancha(s)
+                </strong>
+              </div>
+              <div className="pt-1.5 border-t border-zinc-800/80 text-[10px] text-zinc-500">
+                * Contacte al proveedor o seleccione otra terminación con inventario suficiente.
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-1">
+              <button
+                type="button"
+                onClick={() => setStockAlert(null)}
+                className="px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 text-black font-extrabold text-xs uppercase tracking-wider rounded-xl cursor-pointer transition-all shadow-md shadow-orange-500/20"
+              >
+                Entendido
+              </button>
+            </div>
           </div>
         </div>
       )}
