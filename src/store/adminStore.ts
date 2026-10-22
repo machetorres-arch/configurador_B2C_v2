@@ -33,6 +33,7 @@ export interface SupplyItem {
   priceClp: number;
   supplier: string;
   stockRef?: number;
+  providerId?: string;
   notes?: string;
 }
 
@@ -228,7 +229,7 @@ export const DEFAULT_SUPPLIES: SupplyItem[] = [
     spec: 'HPL espesor 0.9 mm de autor para aplacado',
     unit: 'Plancha (3.96 m²)',
     priceClp: 92000,
-    supplier: 'Abet Laminati Italia / Provelcar',
+    supplier: 'Abet Laminati Italia',
     stockRef: 24,
     notes: 'Aplacado en MDF 18 mm con contrabalanceador'
   },
@@ -546,7 +547,7 @@ export const DEFAULT_CUSTOM_TEXTURES: CustomTextureItem[] = [
     active: true,
     createdAt: '2026-01-10',
     approvalStatus: 'approved',
-    providerName: 'Abet Laminati / Provelcar',
+    providerName: 'Abet Laminati',
     commissionPercentage: 15,
     providerNetPriceClp: 78200,
     stock: 24
@@ -566,7 +567,7 @@ export const DEFAULT_CUSTOM_TEXTURES: CustomTextureItem[] = [
     active: true,
     createdAt: '2026-01-15',
     approvalStatus: 'approved',
-    providerName: 'Abet Laminati / Provelcar',
+    providerName: 'Abet Laminati',
     commissionPercentage: 15,
     providerNetPriceClp: 78200,
     stock: 18
@@ -816,9 +817,9 @@ export const DEFAULT_PROVIDERS: ProviderItem[] = [
   },
   {
     id: 'prov-abet',
-    name: 'Abet Laminati / Provelcar',
+    name: 'Abet Laminati',
     rut: '76.123.456-7',
-    email: 'contacto@provelcar.cl',
+    email: 'contacto@abetlaminati.com',
     phone: '+56 2 2234 5678',
     address: 'Av. Italia 1234, Providencia, Santiago',
     commissionPercentage: 15,
@@ -874,7 +875,8 @@ export function textureToSupplyItem(tex: CustomTextureItem): SupplyItem {
     unit,
     priceClp,
     supplier: tex.providerName || tex.brand || 'Proveedor Registrado',
-    stockRef: 50,
+    stockRef: tex.stock ?? 50,
+    providerId: tex.providerId,
     notes: `Decorativo 3D sincronizado automáticamente`,
   };
 }
@@ -948,6 +950,10 @@ const getInitialState = () => {
         });
         return Array.from(map.values()).map((t) => ({
           ...t,
+          providerName:
+            t.providerName?.includes('Provelcar') && t.providerName?.includes('Abet')
+              ? 'Abet Laminati'
+              : t.providerName,
           approvalStatus: t.approvalStatus || 'approved'
         }));
       })();
@@ -961,7 +967,11 @@ const getInitialState = () => {
         parsed.supplies.forEach((s: SupplyItem) => {
           if (!s || !s.id || DEPRECATED_FICTITIOUS_IDS.has(s.id) || (s.id.startsWith('sup-') && DEPRECATED_FICTITIOUS_IDS.has(s.id.replace('sup-', '')))) return;
           const def = map.get(s.id);
-          map.set(s.id, def ? { ...def, ...s } : s);
+          const merged = def ? { ...def, ...s } : s;
+          if (merged.supplier?.includes('Abet') && merged.supplier?.includes('Provelcar')) {
+            merged.supplier = 'Abet Laminati';
+          }
+          map.set(s.id, merged);
         });
         return mergeTexturesIntoSupplies(Array.from(map.values()), parsedTextures);
       })();
@@ -969,7 +979,15 @@ const getInitialState = () => {
       return {
         isAuthenticated: !!parsed.isAuthenticated,
         adminEmail: parsed.adminEmail || null,
-        currentUser: parsed.currentUser || null,
+        currentUser: parsed.currentUser
+          ? {
+              ...parsed.currentUser,
+              tenant_name:
+                parsed.currentUser.tenant_name?.includes('Provelcar') && parsed.currentUser.tenant_name?.includes('Abet')
+                  ? 'Abet Laminati'
+                  : parsed.currentUser.tenant_name
+            }
+          : null,
         themeMode: (parsed.themeMode === 'light' ? 'light' : 'dark') as 'dark' | 'light',
         providers: (() => {
           if (!Array.isArray(parsed.providers) || parsed.providers.length === 0) return DEFAULT_PROVIDERS;
@@ -977,7 +995,14 @@ const getInitialState = () => {
           DEFAULT_PROVIDERS.forEach((p) => map.set(p.id, p));
           parsed.providers.forEach((p: ProviderItem) => {
             const def = map.get(p.id);
-            map.set(p.id, def ? { ...def, ...p } : p);
+            const merged = def ? { ...def, ...p } : p;
+            if (merged.id === 'prov-abet' || (merged.name?.includes('Abet') && merged.name?.includes('Provelcar'))) {
+              merged.name = 'Abet Laminati';
+              if (merged.email?.includes('provelcar')) {
+                merged.email = 'contacto@abetlaminati.com';
+              }
+            }
+            map.set(p.id, merged);
           });
           return Array.from(map.values());
         })(),

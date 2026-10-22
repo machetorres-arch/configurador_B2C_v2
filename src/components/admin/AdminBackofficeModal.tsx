@@ -43,14 +43,94 @@ export function AdminBackofficeModal({
   onClose,
   onNavigateToModule,
 }: AdminBackofficeModalProps) {
-  const [activeTab, setActiveTab] = useState<'projects' | 'supplies' | 'textures' | 'users' | 'analytics' | 'manufacturing'>('projects');
   const { adminEmail, currentUser, logout: localLogout, projects, supplies, textures, themeMode, toggleThemeMode } = useAdminStore();
   const { user: supabaseUser, tenant: supabaseTenant, logout: supabaseLogout } = useSupabaseAuthStore();
   const { fetchTenantData, materials, hardware, projects: cloudProjects } = useTenantDataStore();
   const isCloud = isSupabaseConfigured();
 
+  const isSuperAdmin = !supabaseUser?.tenant_id && (!currentUser || currentUser.role === 'superadmin');
+  const isProvider = !isSuperAdmin;
+  const currentTenantId = supabaseUser?.tenant_id || currentUser?.tenant_id || '';
+  const currentTenantName = supabaseTenant?.name || currentUser?.tenant_name || '';
+
+  const [activeTab, setActiveTab] = useState<'projects' | 'supplies' | 'textures' | 'users' | 'analytics' | 'manufacturing'>(
+    isProvider ? 'supplies' : 'projects'
+  );
+
+  useEffect(() => {
+    if (isProvider && (activeTab === 'projects' || activeTab === 'users' || activeTab === 'manufacturing')) {
+      setActiveTab('supplies');
+    }
+  }, [isProvider, activeTab]);
+
   const isLight = themeMode === 'light';
-  const pendingTexturesCount = textures.filter((t) => t.approvalStatus === 'pending').length;
+
+  // Insumos y texturas filtradas si es sesión de proveedor
+  const displayedSupplies = isProvider
+    ? supplies.filter((s) => {
+        if (currentTenantId && s.providerId === currentTenantId) return true;
+        const pId = (currentTenantId || '').toLowerCase();
+        const pName = (currentTenantName || '').toLowerCase();
+        const sup = (s.supplier || '').toLowerCase();
+        const name = (s.name || '').toLowerCase();
+        const code = (s.code || '').toLowerCase();
+
+        // Caso específico Abet Laminati: aislar de herrajes de terceros (Rehau, DTC, Häfele)
+        if (pId.includes('abet') || pName.includes('abet')) {
+          if (
+            sup.includes('rehau') ||
+            sup.includes('dtc') ||
+            sup.includes('häfele') ||
+            sup.includes('hafele') ||
+            s.category === 'herrajes'
+          ) {
+            return false;
+          }
+          return (
+            sup.includes('abet') ||
+            name.includes('abet') ||
+            code.includes('abet') ||
+            name.includes('totoy') ||
+            code.includes('lam-hpl')
+          );
+        }
+
+        if (pId.includes('masisa') || pName.includes('masisa')) {
+          return sup.includes('masisa') || name.includes('masisa');
+        }
+        if (pId.includes('arauco') || pName.includes('arauco')) {
+          return sup.includes('arauco') || sup.includes('vesto');
+        }
+        if (pId.includes('qstone') || pName.includes('qstone') || pId.includes('sysprotec') || pName.includes('sysprotec')) {
+          return sup.includes('qstone') || sup.includes('sysprotec');
+        }
+
+        if (currentTenantName) {
+          return sup.includes(pName) || pName.includes(sup);
+        }
+        return false;
+      })
+    : supplies;
+
+  const displayedTextures = isProvider
+    ? textures.filter((t) => {
+        if (currentTenantId && t.providerId === currentTenantId) return true;
+        if (currentTenantName) {
+          const pName = currentTenantName.toLowerCase();
+          const b = (t.brand || '').toLowerCase();
+          const pn = (t.providerName || '').toLowerCase();
+          return b.includes(pName) || pName.includes(b) || pn.includes(pName) || pName.includes(pn);
+        }
+        return false;
+      })
+    : textures;
+
+  const pendingTexturesCount = displayedTextures.filter((t) => t.approvalStatus === 'pending').length;
+
+  const providerInventoryValue = displayedSupplies.reduce(
+    (acc, s) => acc + (s.priceClp * (s.stockRef ?? 1)),
+    0
+  );
 
   useEffect(() => {
     if (isOpen && isCloud && supabaseUser?.tenant_id) {
@@ -205,20 +285,28 @@ export function AdminBackofficeModal({
           }`}
         >
           <div className="flex flex-wrap items-center gap-6">
-            <div className="flex items-center gap-2">
-              <FolderKanban size={15} className="text-orange-500" />
-              <span className={isLight ? 'text-zinc-600' : 'text-slate-400'}>Proyectos Guardados:</span>
-              <strong className={isLight ? 'text-zinc-900 font-mono' : 'text-white font-mono'}>{projects.length}</strong>
-            </div>
+            {isSuperAdmin && (
+              <div className="flex items-center gap-2">
+                <FolderKanban size={15} className="text-orange-500" />
+                <span className={isLight ? 'text-zinc-600' : 'text-slate-400'}>Proyectos Guardados:</span>
+                <strong className={isLight ? 'text-zinc-900 font-mono' : 'text-white font-mono'}>{projects.length}</strong>
+              </div>
+            )}
             <div className="flex items-center gap-2">
               <DollarSign size={15} className="text-emerald-500" />
-              <span className={isLight ? 'text-zinc-600' : 'text-slate-400'}>Insumos Registrados:</span>
-              <strong className={isLight ? 'text-zinc-900 font-mono' : 'text-white font-mono'}>{supplies.length}</strong>
+              <span className={isLight ? 'text-zinc-600' : 'text-slate-400'}>
+                {isProvider ? 'Mis Insumos Registrados:' : 'Insumos Registrados:'}
+              </span>
+              <strong className={isLight ? 'text-zinc-900 font-mono' : 'text-white font-mono'}>{displayedSupplies.length}</strong>
             </div>
             <div className="flex items-center gap-2">
               <Palette size={15} className="text-sky-500" />
-              <span className={isLight ? 'text-zinc-600' : 'text-slate-400'}>Texturas Activas:</span>
-              <strong className={isLight ? 'text-zinc-900 font-mono' : 'text-white font-mono'}>{textures.filter((t) => t.active).length}</strong>
+              <span className={isLight ? 'text-zinc-600' : 'text-slate-400'}>
+                {isProvider ? 'Mis Texturas Activas:' : 'Texturas Activas:'}
+              </span>
+              <strong className={isLight ? 'text-zinc-900 font-mono' : 'text-white font-mono'}>
+                {displayedTextures.filter((t) => t.active).length}
+              </strong>
             </div>
             {pendingTexturesCount > 0 && (
               <div className="flex items-center gap-1.5 px-2.5 py-0.5 bg-amber-500/20 border border-amber-500/40 text-amber-500 rounded-full font-bold animate-pulse">
@@ -229,9 +317,9 @@ export function AdminBackofficeModal({
           </div>
 
           <div className={`text-[11px] ${isLight ? 'text-zinc-600' : 'text-zinc-400'}`}>
-            Valor Estimado Cartera:{' '}
+            {isProvider ? 'Valor Estimado de Mi Inventario: ' : 'Valor Estimado Cartera: '}
             <strong className="text-orange-500 font-mono text-xs">
-              ${totalProjectsValue.toLocaleString('es-CL')} CLP
+              ${(isProvider ? providerInventoryValue : totalProjectsValue).toLocaleString('es-CL')} CLP
             </strong>
           </div>
         </div>
@@ -242,19 +330,21 @@ export function AdminBackofficeModal({
             isLight ? 'bg-white border-zinc-300' : 'bg-zinc-950 border-zinc-800'
           }`}
         >
-          <button
-            onClick={() => setActiveTab('projects')}
-            className={`px-4 py-2.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all shrink-0 cursor-pointer ${
-              activeTab === 'projects'
-                ? 'border-orange-500 text-orange-500 bg-orange-500/5'
-                : isLight
-                ? 'border-transparent text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
-                : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-zinc-900/50'
-            }`}
-          >
-            <FolderKanban size={15} />
-            Gestor de Proyectos ({projects.length})
-          </button>
+          {isSuperAdmin && (
+            <button
+              onClick={() => setActiveTab('projects')}
+              className={`px-4 py-2.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all shrink-0 cursor-pointer ${
+                activeTab === 'projects'
+                  ? 'border-orange-500 text-orange-500 bg-orange-500/5'
+                  : isLight
+                  ? 'border-transparent text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
+                  : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-zinc-900/50'
+              }`}
+            >
+              <FolderKanban size={15} />
+              Gestor de Proyectos ({projects.length})
+            </button>
+          )}
 
           <button
             onClick={() => setActiveTab('supplies')}
@@ -267,7 +357,7 @@ export function AdminBackofficeModal({
             }`}
           >
             <DollarSign size={15} />
-            Tabla de Precios e Insumos ({supplies.length})
+            {isProvider ? `Mis Insumos y Precios (${displayedSupplies.length})` : `Tabla de Precios e Insumos (${supplies.length})`}
           </button>
 
           <button
@@ -281,7 +371,7 @@ export function AdminBackofficeModal({
             }`}
           >
             <Palette size={15} />
-            Gestor de Texturas & Decorativos ({textures.length})
+            {isProvider ? `Mis Diseños & Texturas 3D (${displayedTextures.length})` : `Gestor de Texturas & Decorativos (${textures.length})`}
             {pendingTexturesCount > 0 && (
               <span className="px-1.5 py-0.2 bg-amber-500 text-black text-[10px] font-extrabold rounded-full">
                 {pendingTexturesCount}
@@ -300,36 +390,40 @@ export function AdminBackofficeModal({
             }`}
           >
             <BarChart3 size={15} />
-            Estadísticas Proveedor
+            {isProvider ? 'Mis Estadísticas & Métricas' : 'Estadísticas Proveedor'}
           </button>
 
-          <button
-            onClick={() => setActiveTab('users')}
-            className={`px-4 py-2.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all shrink-0 cursor-pointer ${
-              activeTab === 'users'
-                ? 'border-orange-500 text-orange-500 bg-orange-500/5'
-                : isLight
-                ? 'border-transparent text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
-                : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-zinc-900/50'
-            }`}
-          >
-            <Users size={15} />
-            Usuarios & Proveedores
-          </button>
+          {isSuperAdmin && (
+            <button
+              onClick={() => setActiveTab('users')}
+              className={`px-4 py-2.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all shrink-0 cursor-pointer ${
+                activeTab === 'users'
+                  ? 'border-orange-500 text-orange-500 bg-orange-500/5'
+                  : isLight
+                  ? 'border-transparent text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
+                  : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-zinc-900/50'
+              }`}
+            >
+              <Users size={15} />
+              Usuarios & Proveedores
+            </button>
+          )}
 
-          <button
-            onClick={() => setActiveTab('manufacturing')}
-            className={`px-4 py-2.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all shrink-0 cursor-pointer ${
-              activeTab === 'manufacturing'
-                ? 'border-orange-500 text-orange-500 bg-orange-500/5'
-                : isLight
-                ? 'border-transparent text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
-                : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-zinc-900/50'
-            }`}
-          >
-            <Wrench size={15} />
-            Tarifas B2B & Manufactura
-          </button>
+          {isSuperAdmin && (
+            <button
+              onClick={() => setActiveTab('manufacturing')}
+              className={`px-4 py-2.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all shrink-0 cursor-pointer ${
+                activeTab === 'manufacturing'
+                  ? 'border-orange-500 text-orange-500 bg-orange-500/5'
+                  : isLight
+                  ? 'border-transparent text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
+                  : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-zinc-900/50'
+              }`}
+            >
+              <Wrench size={15} />
+              Tarifas B2B & Manufactura
+            </button>
+          )}
         </div>
 
         {/* Main Content Area */}
@@ -338,14 +432,31 @@ export function AdminBackofficeModal({
             isLight ? 'bg-zinc-50' : 'bg-zinc-950/80'
           }`}
         >
-          {activeTab === 'projects' && (
+          {isSuperAdmin && activeTab === 'projects' && (
             <ProjectsManagerTab onLoadProjectToModule={handleLoadProject} />
           )}
-          {activeTab === 'supplies' && <SuppliesPriceTab />}
-          {activeTab === 'textures' && <TexturesManagerTab />}
-          {activeTab === 'analytics' && <ProviderAnalyticsTab />}
-          {activeTab === 'users' && <UsersAndProvidersTab />}
-          {activeTab === 'manufacturing' && <ManufacturingRatesTab />}
+          {activeTab === 'supplies' && (
+            <SuppliesPriceTab
+              currentProviderId={currentTenantId}
+              currentProviderName={currentTenantName}
+              isSuperAdmin={isSuperAdmin}
+            />
+          )}
+          {activeTab === 'textures' && (
+            <TexturesManagerTab
+              currentProviderId={currentTenantId}
+              currentProviderName={currentTenantName}
+              isSuperAdmin={isSuperAdmin}
+            />
+          )}
+          {activeTab === 'analytics' && (
+            <ProviderAnalyticsTab
+              currentProviderId={currentTenantId}
+              isSuperAdmin={isSuperAdmin}
+            />
+          )}
+          {isSuperAdmin && activeTab === 'users' && <UsersAndProvidersTab />}
+          {isSuperAdmin && activeTab === 'manufacturing' && <ManufacturingRatesTab />}
         </div>
       </div>
     </div>

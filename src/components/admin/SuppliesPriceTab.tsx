@@ -17,19 +17,34 @@ import {
   CheckCircle2,
   Sparkles,
   Plus,
-  Trash2
+  Trash2,
+  Building,
+  PackageCheck
 } from 'lucide-react';
 import { useAdminStore, SupplyItem, SupplyCategory } from '../../store/adminStore';
 
-export function SuppliesPriceTab() {
+interface SuppliesPriceTabProps {
+  currentProviderId?: string;
+  currentProviderName?: string;
+  isSuperAdmin?: boolean;
+}
+
+export function SuppliesPriceTab({
+  currentProviderId,
+  currentProviderName,
+  isSuperAdmin = true
+}: SuppliesPriceTabProps) {
   const { supplies, updateSupplyPrice, updateSupply, addSupply, deleteSupply, resetSuppliesToDefault } = useAdminStore();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<'all' | SupplyCategory>('all');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editPrice, setEditPrice] = useState<number>(0);
+  const [editStock, setEditStock] = useState<number>(0);
   const [editSupplier, setEditSupplier] = useState<string>('');
   const [editNotes, setEditNotes] = useState<string>('');
   const [feedback, setFeedback] = useState<string | null>(null);
+
+  const isProvider = !isSuperAdmin && Boolean(currentProviderId || currentProviderName);
 
   // Modal para agregar nuevo insumo / material
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -39,7 +54,10 @@ export function SuppliesPriceTab() {
   const [newSpec, setNewSpec] = useState('');
   const [newUnit, setNewUnit] = useState('m²');
   const [newPrice, setNewPrice] = useState<number>(180000);
-  const [newSupplier, setNewSupplier] = useState('Qstone Chile');
+  const [newStock, setNewStock] = useState<number>(50);
+  const [newSupplier, setNewSupplier] = useState(
+    isProvider ? (currentProviderName || 'Mi Empresa') : 'Qstone Chile'
+  );
   const [newNotes, setNewNotes] = useState('');
 
   const categories: { id: 'all' | SupplyCategory; label: string; icon: any }[] = [
@@ -51,7 +69,54 @@ export function SuppliesPriceTab() {
     { id: 'fijaciones_sellantes', label: 'Fijaciones & Sellos', icon: DollarSign },
   ];
 
+  const isMySupply = (s: SupplyItem) => {
+    if (isSuperAdmin) return true;
+    if (currentProviderId && s.providerId === currentProviderId) return true;
+
+    const pId = (currentProviderId || '').toLowerCase();
+    const pName = (currentProviderName || '').toLowerCase();
+    const sup = (s.supplier || '').toLowerCase();
+    const name = (s.name || '').toLowerCase();
+    const code = (s.code || '').toLowerCase();
+
+    // Caso específico Abet Laminati / HPL: aislar de herrajes ajenos (Rehau, DTC, Häfele)
+    if (pId.includes('abet') || pName.includes('abet')) {
+      if (
+        sup.includes('rehau') ||
+        sup.includes('dtc') ||
+        sup.includes('häfele') ||
+        sup.includes('hafele') ||
+        s.category === 'herrajes'
+      ) {
+        return false;
+      }
+      return (
+        sup.includes('abet') ||
+        name.includes('abet') ||
+        code.includes('abet') ||
+        name.includes('totoy') ||
+        code.includes('lam-hpl')
+      );
+    }
+
+    if (pId.includes('masisa') || pName.includes('masisa')) {
+      return sup.includes('masisa') || name.includes('masisa');
+    }
+    if (pId.includes('arauco') || pName.includes('arauco')) {
+      return sup.includes('arauco') || sup.includes('vesto');
+    }
+    if (pId.includes('qstone') || pName.includes('qstone') || pId.includes('sysprotec') || pName.includes('sysprotec')) {
+      return sup.includes('qstone') || sup.includes('sysprotec');
+    }
+
+    if (currentProviderName) {
+      return sup.includes(pName) || pName.includes(sup);
+    }
+    return false;
+  };
+
   const filteredSupplies = supplies.filter((s) => {
+    if (!isMySupply(s)) return false;
     const matchesCat = selectedCategory === 'all' || s.category === selectedCategory;
     const matchesSearch =
       s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -69,6 +134,7 @@ export function SuppliesPriceTab() {
   const handleStartEdit = (item: SupplyItem) => {
     setEditingId(item.id);
     setEditPrice(item.priceClp);
+    setEditStock(item.stockRef ?? 0);
     setEditSupplier(item.supplier);
     setEditNotes(item.notes || '');
   };
@@ -76,11 +142,12 @@ export function SuppliesPriceTab() {
   const handleSaveEdit = (id: string) => {
     updateSupply(id, {
       priceClp: Number(editPrice),
-      supplier: editSupplier.trim(),
+      stockRef: Math.max(0, Number(editStock) || 0),
+      ...(isSuperAdmin ? { supplier: editSupplier.trim() } : {}),
       notes: editNotes.trim(),
     });
     setEditingId(null);
-    showToast('Precio y especificación actualizados correctamente.');
+    showToast('Precio, stock y especificación actualizados con éxito.');
   };
 
   const handleResetDefaults = () => {
@@ -111,7 +178,9 @@ export function SuppliesPriceTab() {
       spec: newSpec.trim() || 'Especificación estándar de taller',
       unit: newUnit.trim() || 'Unid.',
       priceClp: Math.max(0, Number(newPrice)),
-      supplier: newSupplier.trim() || 'Proveedor General',
+      supplier: isProvider ? (currentProviderName || 'Mi Empresa') : (newSupplier.trim() || 'Proveedor General'),
+      stockRef: Math.max(0, Number(newStock) || 0),
+      providerId: currentProviderId,
       notes: newNotes.trim()
     });
 
@@ -121,8 +190,9 @@ export function SuppliesPriceTab() {
     setNewCode('');
     setNewSpec('');
     setNewPrice(180000);
+    setNewStock(50);
     setNewNotes('');
-    showToast(`Material "${newName}" agregado al catálogo con éxito.`);
+    showToast(`Producto "${newName}" agregado al catálogo con éxito.`);
   };
 
   const getCategoryBadge = (cat: SupplyCategory) => {
@@ -153,34 +223,50 @@ export function SuppliesPriceTab() {
       {/* Info Notice */}
       <div className="p-4 bg-orange-500/10 border border-orange-500/30 rounded-xl flex items-start justify-between gap-4 text-xs">
         <div className="flex items-start gap-2.5">
-          <DollarSign size={18} className="text-orange-400 shrink-0 mt-0.5" />
+          {isProvider ? (
+            <Building size={18} className="text-orange-400 shrink-0 mt-0.5" />
+          ) : (
+            <DollarSign size={18} className="text-orange-400 shrink-0 mt-0.5" />
+          )}
           <div>
-            <p className="font-bold text-white">Impacto en Presupuestos y Cubicaciones</p>
+            <p className="font-bold text-white">
+              {isProvider
+                ? `Catálogo de Productos y Precios: ${currentProviderName || 'Mi Empresa'}`
+                : 'Impacto en Presupuestos y Cubicaciones'}
+            </p>
             <p className="text-slate-400 text-[11px] mt-0.5">
-              Cualquier cambio de costo unitario impacta inmediatamente en las estimaciones de costo, planillas Excel de fabricación y reportes técnicos de todos los módulos.
+              {isProvider
+                ? 'Gestiona directamente los valores de venta, disponibilidad de stock en bodega y especificaciones técnicas de tus insumos comercializados.'
+                : 'Cualquier cambio de costo unitario impacta inmediatamente en las estimaciones de costo, planillas Excel de fabricación y reportes técnicos de todos los módulos.'}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={() => {
-              setNewCategory('cubiertas_qstone');
-              setNewUnit('m²');
-              setNewSupplier('Qstone Chile');
+              if (isProvider) {
+                setNewSupplier(currentProviderName || 'Mi Empresa');
+              } else {
+                setNewCategory('cubiertas_qstone');
+                setNewUnit('m²');
+                setNewSupplier('Qstone Chile');
+              }
               setIsAddModalOpen(true);
             }}
             className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg text-[11px] flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
-            title="Agregar nuevo material de cubierta o insumo"
+            title="Agregar nuevo material o producto"
           >
-            <Plus size={13} /> Agregar Insumo / Material
+            <Plus size={13} /> {isProvider ? 'Cargar Mi Producto' : 'Agregar Insumo / Material'}
           </button>
-          <button
-            onClick={handleResetDefaults}
-            className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-slate-300 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 shrink-0 transition-colors cursor-pointer"
-            title="Restaurar precios iniciales"
-          >
-            <RotateCcw size={13} /> Restaurar Fábrica
-          </button>
+          {isSuperAdmin && (
+            <button
+              onClick={handleResetDefaults}
+              className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-slate-300 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 shrink-0 transition-colors cursor-pointer"
+              title="Restaurar precios iniciales"
+            >
+              <RotateCcw size={13} /> Restaurar Fábrica
+            </button>
+          )}
         </div>
       </div>
 
@@ -229,21 +315,26 @@ export function SuppliesPriceTab() {
                 <th className="p-3.5">Categoría</th>
                 <th className="p-3.5">Especificación Técnica</th>
                 <th className="p-3.5">Unidad</th>
-                <th className="p-3.5">Proveedor</th>
-                <th className="p-3.5 text-right">Precio Unitario (CLP)</th>
+                <th className="p-3.5">{isProvider ? 'Marca / Proveedor' : 'Proveedor'}</th>
+                <th className="p-3.5 text-center">Stock Disponible</th>
+                <th className="p-3.5 text-right">Precio Venta (CLP)</th>
                 <th className="p-3.5 text-center">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-800/60">
               {filteredSupplies.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="p-8 text-center text-slate-500">
-                    No se encontraron insumos que coincidan con la búsqueda.
+                  <td colSpan={8} className="p-8 text-center text-slate-500">
+                    {isProvider
+                      ? 'No tienes productos registrados en tu catálogo comercial aún. Haz clic en "Cargar Mi Producto" para añadir el primero.'
+                      : 'No se encontraron insumos que coincidan con la búsqueda.'}
                   </td>
                 </tr>
               ) : (
                 filteredSupplies.map((item) => {
                   const isEditing = editingId === item.id;
+                  const itemStock = item.stockRef ?? 0;
+                  const isLowStock = itemStock <= 10;
                   return (
                     <tr key={item.id} className="hover:bg-zinc-800/30 transition-colors">
                       {/* Name & Code */}
@@ -263,7 +354,7 @@ export function SuppliesPriceTab() {
 
                       {/* Supplier */}
                       <td className="p-3.5 text-slate-400 text-[11px]">
-                        {isEditing ? (
+                        {isEditing && isSuperAdmin ? (
                           <input
                             type="text"
                             value={editSupplier}
@@ -271,7 +362,34 @@ export function SuppliesPriceTab() {
                             className="p-1 bg-zinc-950 border border-orange-500 rounded text-xs text-white w-full"
                           />
                         ) : (
-                          item.supplier
+                          <span className="font-medium text-slate-300">{item.supplier}</span>
+                        )}
+                      </td>
+
+                      {/* Stock */}
+                      <td className="p-3.5 text-center whitespace-nowrap">
+                        {isEditing ? (
+                          <div className="flex items-center justify-center gap-1">
+                            <input
+                              type="number"
+                              min="0"
+                              value={editStock}
+                              onChange={(e) => setEditStock(Number(e.target.value))}
+                              className="p-1 w-20 bg-zinc-950 border border-orange-500 rounded text-xs text-center text-white font-mono font-bold"
+                            />
+                          </div>
+                        ) : (
+                          <span
+                            className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-mono font-bold border ${
+                              isLowStock
+                                ? 'bg-amber-500/15 border-amber-500/30 text-amber-400'
+                                : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                            }`}
+                            title={isLowStock ? 'Stock bajo' : 'Stock en niveles óptimos'}
+                          >
+                            <PackageCheck size={12} />
+                            {itemStock} {item.unit.includes('m²') ? 'm²' : 'unid.'}
+                          </span>
                         )}
                       </td>
 
@@ -302,14 +420,14 @@ export function SuppliesPriceTab() {
                           <div className="flex items-center justify-center gap-1">
                             <button
                               onClick={() => handleSaveEdit(item.id)}
-                              className="p-1.5 bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 rounded-lg"
-                              title="Guardar precio"
+                              className="p-1.5 bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 rounded-lg cursor-pointer"
+                              title="Guardar precio y stock"
                             >
                               <Check size={14} />
                             </button>
                             <button
                               onClick={() => setEditingId(null)}
-                              className="p-1.5 bg-zinc-800 text-slate-400 hover:bg-zinc-700 rounded-lg"
+                              className="p-1.5 bg-zinc-800 text-slate-400 hover:bg-zinc-700 rounded-lg cursor-pointer"
                               title="Cancelar"
                             >
                               <X size={14} />
@@ -319,13 +437,13 @@ export function SuppliesPriceTab() {
                           <div className="flex items-center justify-center gap-1.5">
                             <button
                               onClick={() => handleStartEdit(item)}
-                              className="px-2.5 py-1 bg-zinc-800/80 hover:bg-orange-500/20 text-slate-300 hover:text-orange-400 border border-zinc-700/60 rounded-md text-[11px] font-semibold flex items-center gap-1 transition-colors"
+                              className="px-2.5 py-1 bg-zinc-800/80 hover:bg-orange-500/20 text-slate-300 hover:text-orange-400 border border-zinc-700/60 rounded-md text-[11px] font-semibold flex items-center gap-1 transition-colors cursor-pointer"
                             >
                               <Edit2 size={12} /> Editar
                             </button>
                             <button
                               onClick={() => handleDeleteItem(item.id, item.name)}
-                              className="p-1 text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 rounded transition-colors"
+                              className="p-1 text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 rounded transition-colors cursor-pointer"
                               title="Eliminar insumo"
                             >
                               <Trash2 size={13} />
@@ -352,8 +470,14 @@ export function SuppliesPriceTab() {
                   <Sparkles size={16} />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-white">Nuevo Insumo o Cubierta</h3>
-                  <p className="text-[11px] text-zinc-400">Incorpora materiales de marmolería Qstone, herrajes o tableros con costo unitario</p>
+                  <h3 className="text-sm font-bold text-white">
+                    {isProvider ? `Nuevo Producto de ${currentProviderName || 'Proveedor'}` : 'Nuevo Insumo o Cubierta'}
+                  </h3>
+                  <p className="text-[11px] text-zinc-400">
+                    {isProvider
+                      ? 'Carga un nuevo insumo con su valor venta y stock disponible en tu inventario'
+                      : 'Incorpora materiales de marmolería Qstone, herrajes o tableros con costo unitario'}
+                  </p>
                 </div>
               </div>
               <button
@@ -377,10 +501,10 @@ export function SuppliesPriceTab() {
                       setNewCategory(cat);
                       if (cat === 'cubiertas_qstone') {
                         setNewUnit('m²');
-                        setNewSupplier('Qstone Chile');
+                        if (!isProvider) setNewSupplier('Qstone Chile');
                       } else if (cat === 'melamina') {
                         setNewUnit('Plancha (4.57 m²)');
-                        setNewSupplier('Arauco / Masisa');
+                        if (!isProvider) setNewSupplier('Arauco / Masisa');
                       } else {
                         setNewUnit('Unid.');
                       }
@@ -424,10 +548,10 @@ export function SuppliesPriceTab() {
                 />
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div>
                   <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider mb-1.5">
-                    Precio Unitario ($ CLP)
+                    Precio Venta ($ CLP)
                   </label>
                   <input
                     type="number"
@@ -442,12 +566,26 @@ export function SuppliesPriceTab() {
 
                 <div>
                   <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider mb-1.5">
+                    Stock Disponible
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    required
+                    value={newStock}
+                    onChange={(e) => setNewStock(Number(e.target.value))}
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-sky-400 font-bold focus:outline-none focus:border-amber-500 font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider mb-1.5">
                     Unidad de Medida
                   </label>
                   <input
                     type="text"
                     required
-                    placeholder="m², Plancha, Metro Lineal, Unid."
+                    placeholder="m², Plancha, Unid."
                     value={newUnit}
                     onChange={(e) => setNewUnit(e.target.value)}
                     className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
@@ -458,14 +596,21 @@ export function SuppliesPriceTab() {
                   <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider mb-1.5">
                     Proveedor
                   </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ej: Qstone Chile"
-                    value={newSupplier}
-                    onChange={(e) => setNewSupplier(e.target.value)}
-                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
-                  />
+                  {isProvider ? (
+                    <div className="w-full px-3 py-2 bg-zinc-950/80 border border-zinc-800 rounded-xl text-xs text-orange-400 font-semibold truncate flex items-center gap-1.5">
+                      <Building size={12} className="text-orange-500 shrink-0" />
+                      <span className="truncate">{currentProviderName || 'Mi Empresa'}</span>
+                    </div>
+                  ) : (
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ej: Qstone Chile"
+                      value={newSupplier}
+                      onChange={(e) => setNewSupplier(e.target.value)}
+                      className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
+                    />
+                  )}
                 </div>
               </div>
 
@@ -505,7 +650,7 @@ export function SuppliesPriceTab() {
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors shadow-md"
+                  className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors shadow-md cursor-pointer"
                 >
                   <Save size={14} /> Guardar en Catálogo
                 </button>

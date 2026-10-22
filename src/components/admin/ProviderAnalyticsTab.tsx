@@ -51,8 +51,17 @@ export function ProviderAnalyticsTab({
   const [timeRange, setTimeRange] = useState<'30d' | 'q3' | 'ytd'>('30d');
 
   const selectedProvider = useMemo(() => {
+    if (!isSuperAdmin && currentProviderId) {
+      const match = providers.find(
+        (p) =>
+          p.id === currentProviderId ||
+          p.name.toLowerCase().includes(currentProviderId.toLowerCase()) ||
+          currentProviderId.toLowerCase().includes(p.id.toLowerCase())
+      );
+      if (match) return match;
+    }
     return providers.find((p) => p.id === selectedProviderId) || providers[0];
-  }, [providers, selectedProviderId]);
+  }, [providers, selectedProviderId, isSuperAdmin, currentProviderId]);
 
   const providerName = selectedProvider ? selectedProvider.name : 'Arauco & Masisa Soluciones (Chile)';
 
@@ -199,6 +208,8 @@ export function ProviderAnalyticsTab({
         {activeSubTab === 'resumen' && (
           <ExecutiveOverviewSheet
             selectedProviderName={providerName}
+            selectedProviderId={selectedProvider?.id || selectedProviderId}
+            isSuperAdmin={isSuperAdmin}
             onNavigateToTab={(tab) => {
               if (tab === 'materiales') setActiveSubTab('materiales');
               if (tab === 'geografica') setActiveSubTab('geografica');

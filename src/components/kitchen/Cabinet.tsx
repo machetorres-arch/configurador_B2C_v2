@@ -1270,7 +1270,7 @@ interface CabinetProps extends CabinetType {
   index?: number;
 }
 
-export function Cabinet({ id, type, variant, width, height, depth, position, rotation, color, structureColor, doorColor, drawerFrontColor, drawerInnerColor, shelfColor, backColor, socleColor, structureMaterial, doorMaterial, drawerFrontMaterial, drawerInnerMaterial, shelfMaterial, backMaterial, socleMaterial, grainDirection, grainElements, hplBalancer, isOpen, openElements, index, shelvesCount, shelvesCountLower, shelvesCountUpper, drawersCount, hasHanger, hasDoors, innerDrawers, handleConfig: propHandleConfig, leftCoverPanel, rightCoverPanel, backThickness, drawerBottomMaterial, drawerBottomThickness, closetSocleHeight, closetSocleColorMode, blindWidth }: CabinetProps) {
+function CabinetBase({ id, type, variant, width, height, depth, position, rotation, color, structureColor, doorColor, drawerFrontColor, drawerInnerColor, shelfColor, backColor, socleColor, structureMaterial, doorMaterial, drawerFrontMaterial, drawerInnerMaterial, shelfMaterial, backMaterial, socleMaterial, grainDirection, grainElements, hplBalancer, isOpen, openElements, index, shelvesCount, shelvesCountLower, shelvesCountUpper, drawersCount, hasHanger, hasDoors, innerDrawers, handleConfig: propHandleConfig, leftCoverPanel, rightCoverPanel, backThickness, drawerBottomMaterial, drawerBottomThickness, closetSocleHeight, closetSocleColorMode, blindWidth }: CabinetProps) {
    const { activeCabinetId, setActiveCabinet, setDraggingCabinetId, setToolMode, showSocle, socleHeight, cabinets, viewMode, golaSystem, countertopConfig, qstoneCatalog, setOpenElement, handleConfig: storeHandleConfig } = useKitchenStore();
    const handleConfig = propHandleConfig || storeHandleConfig;
 
@@ -4488,3 +4488,5 @@ export function Cabinet({ id, type, variant, width, height, depth, position, rot
      </group>
    );
 }
+
+export const Cabinet = React.memo(CabinetBase);

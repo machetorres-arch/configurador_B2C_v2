@@ -286,6 +286,14 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
     const handleGlobalPointerUp = () => {
       const state = useKitchenStore.getState();
       if (state.draggingCabinetId) {
+        const dragId = state.draggingCabinetId;
+        const cab = state.cabinets.find((c) => c.id === dragId);
+        if (cab) {
+          state.updateCabinet(dragId, {
+            position: cab.position,
+            rotation: cab.rotation,
+          });
+        }
         state.setDraggingCabinetId(null);
       }
       cabinetDragRef.current = null;
@@ -370,7 +378,7 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
              });
 
              if (!result.isColliding && (result.position[0] !== cab.position[0] || result.position[2] !== cab.position[2] || result.rotation !== cab.rotation)) {
-                useKitchenStore.getState().updateCabinet(draggingCabinetId, {
+                useKitchenStore.getState().moveCabinetTransient(draggingCabinetId, {
                    position: result.position,
                    rotation: result.rotation,
                 });
@@ -1274,13 +1282,17 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
             if (toolMode === 'move_active' && cab.id === useKitchenStore.getState().activeCabinetId) return null;
             return <Cabinet key={cab.id} {...cab} index={idx} />;
           })}
-          <KitchenSocle />
-          <KitchenCountertop3D />
-          <KitchenIslandBackPanel />
-          <KitchenRunDimensions />
-          <KitchenSpatialDimensions />
+          {!draggingCabinetId && (
+            <>
+              <KitchenSocle />
+              <KitchenCountertop3D />
+              <KitchenIslandBackPanel />
+              <KitchenRunDimensions />
+              <KitchenSpatialDimensions />
+              <KitchenMepScene />
+            </>
+          )}
           <ArchitecturalElementsRenderer />
-          <KitchenMepScene />
         </React.Suspense>
 
         {/* Drawing Preview */}

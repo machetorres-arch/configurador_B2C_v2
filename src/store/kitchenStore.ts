@@ -288,6 +288,7 @@ interface KitchenState {
   setGolaSystem: (system: GolaSystem) => void;
   setGolaIncompatibilityAlert: (alert: GolaIncompatibilityAlert | null) => void;
   updateCabinet: (id: string, updates: Partial<CabinetType>) => void;
+  moveCabinetTransient: (id: string, updates: Partial<CabinetType>) => void;
   setOpenElement: (id: string, elementKey: string, isOpen: boolean) => void;
   setRoomPlannerOpen: (open: boolean) => void;
   setRoomConfig: (config: RoomConfig) => void;
@@ -963,7 +964,15 @@ export const useKitchenStore = create<KitchenState>((set, get) => {
       history: id && !state.draggingArchElementId ? saveSnapshot(state) : state.history,
       draggingArchElementId: id,
     })),
-  setDraggingCabinetId: (id) => set({ draggingCabinetId: id }),
+  setDraggingCabinetId: (id) =>
+    set((state) => ({
+      history: id && !state.draggingCabinetId ? saveSnapshot(state) : state.history,
+      draggingCabinetId: id,
+    })),
+  moveCabinetTransient: (id, updates) =>
+    set((state) => ({
+      cabinets: state.cabinets.map((c) => (c.id === id ? { ...c, ...updates } : c)),
+    })),
   setDraggingWallId: (id) => set({ draggingWallId: id }),
   setDrawingStart: (pos) => set({ drawingStart: pos }),
   setShowSocle: (val) => set((state) => ({ history: saveSnapshot(state), showSocle: val })),

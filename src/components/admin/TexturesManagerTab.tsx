@@ -25,6 +25,7 @@ import { useKitchenStore } from '../../store/kitchenStore';
 
 interface TexturesManagerTabProps {
   currentProviderId?: string; // Si se encuentra en sesión de proveedor
+  currentProviderName?: string;
   isSuperAdmin?: boolean;
 }
 
@@ -70,7 +71,7 @@ function compressImageFile(file: File, maxDim = 800, quality = 0.82): Promise<st
   });
 }
 
-export function TexturesManagerTab({ currentProviderId, isSuperAdmin = true }: TexturesManagerTabProps) {
+export function TexturesManagerTab({ currentProviderId, currentProviderName, isSuperAdmin = true }: TexturesManagerTabProps) {
   const {
     textures,
     providers,
@@ -83,10 +84,22 @@ export function TexturesManagerTab({ currentProviderId, isSuperAdmin = true }: T
     resetTexturesToDefault
   } = useAdminStore();
 
+  const matchedProvider = useMemo(() => {
+    if (!currentProviderId && !currentProviderName) return undefined;
+    return providers.find(
+      (p) =>
+        (currentProviderId && p.id === currentProviderId) ||
+        (currentProviderName && p.name.toLowerCase().includes(currentProviderName.toLowerCase())) ||
+        (currentProviderName && currentProviderName.toLowerCase().includes(p.name.toLowerCase()))
+    );
+  }, [providers, currentProviderId, currentProviderName]);
+
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCat, setSelectedCat] = useState<'all' | 'maderas' | 'solidos' | 'hpl_autor' | 'piedras_marmoles'>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
-  const [selectedProviderFilter, setSelectedProviderFilter] = useState<string>(currentProviderId || 'all');
+  const [selectedProviderFilter, setSelectedProviderFilter] = useState<string>(
+    matchedProvider?.id || currentProviderId || 'all'
+  );
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [toastMsg, setToastMsg] = useState<{ type: 'success' | 'warning' | 'info'; text: string } | null>(null);
   const [approvalMode, setApprovalMode] = useState<'approved' | 'pending'>(isSuperAdmin ? 'approved' : 'pending');
@@ -95,7 +108,7 @@ export function TexturesManagerTab({ currentProviderId, isSuperAdmin = true }: T
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
   const [selectedProviderId, setSelectedProviderId] = useState<string>(
-    currentProviderId || (providers[0]?.id ?? 'prov-masisa')
+    matchedProvider?.id || currentProviderId || (providers[0]?.id ?? 'prov-masisa')
   );
   const [category, setCategory] = useState<'maderas' | 'solidos' | 'hpl_autor' | 'piedras_marmoles'>('maderas');
   const [finish, setFinish] = useState('Poro Sincronizado');
@@ -110,12 +123,12 @@ export function TexturesManagerTab({ currentProviderId, isSuperAdmin = true }: T
 
   // Obtener proveedor activo del formulario
   const currentSelectedProvider = useMemo(() => {
-    return providers.find((p) => p.id === selectedProviderId) || providers[0] || {
-      id: 'prov-default',
-      name: 'Proveedor General',
+    return providers.find((p) => p.id === selectedProviderId) || matchedProvider || providers[0] || {
+      id: currentProviderId || 'prov-default',
+      name: currentProviderName || 'Proveedor General',
       commissionPercentage: 15
     };
-  }, [providers, selectedProviderId]);
+  }, [providers, selectedProviderId, matchedProvider, currentProviderId, currentProviderName]);
 
   const commissionPct = currentSelectedProvider.commissionPercentage ?? 15;
   const arquifyRetainedClp = Math.round((priceSheetClp * commissionPct) / 100);
@@ -130,18 +143,35 @@ export function TexturesManagerTab({ currentProviderId, isSuperAdmin = true }: T
 
   const priceM2Clp = Math.round(priceSheetClp / calculatedM2);
 
+  const isMyTexture = (t: CustomTextureItem) => {
+    if (isSuperAdmin) return true;
+    const targetId = matchedProvider?.id || currentProviderId;
+    const targetName = matchedProvider?.name || currentProviderName;
+    if (targetId && t.providerId === targetId) return true;
+    if (targetName) {
+      const tn = targetName.toLowerCase();
+      const brand = (t.brand || '').toLowerCase();
+      const pName = (t.providerName || '').toLowerCase();
+      if (brand.includes(tn) || tn.includes(brand) || pName.includes(tn) || tn.includes(pName)) return true;
+    }
+    return false;
+  };
+
   // Conteo de pendientes de VB
   const pendingCount = useMemo(() => {
-    return textures.filter((t) => t.approvalStatus === 'pending').length;
-  }, [textures]);
+    return textures.filter((t) => isMyTexture(t) && t.approvalStatus === 'pending').length;
+  }, [textures, isSuperAdmin, matchedProvider, currentProviderId, currentProviderName]);
 
   const approvedCount = useMemo(() => {
-    return textures.filter((t) => t.approvalStatus === 'approved' || !t.approvalStatus).length;
-  }, [textures]);
+    return textures.filter((t) => isMyTexture(t) && (t.approvalStatus === 'approved' || !t.approvalStatus)).length;
+  }, [textures, isSuperAdmin, matchedProvider, currentProviderId, currentProviderName]);
 
   // Filtrado de texturas
   const filteredTextures = textures.filter((t) => {
-    // Filtro por proveedor si aplica
+    // Aislamiento RBAC estricto si es sesión de proveedor
+    if (!isMyTexture(t)) return false;
+
+    // Filtro por proveedor si aplica (Superadmin)
     if (selectedProviderFilter !== 'all') {
       const p = providers.find((pr) => pr.id === selectedProviderFilter);
       const matchesProvider =
@@ -462,20 +492,27 @@ export function TexturesManagerTab({ currentProviderId, isSuperAdmin = true }: T
             />
           </div>
 
-          {/* Filtro por Proveedor */}
+          {/* Filtro por Proveedor (Solo Superadmin) o Badge Proveedor */}
           <div className="w-full sm:w-56">
-            <select
-              value={selectedProviderFilter}
-              onChange={(e) => setSelectedProviderFilter(e.target.value)}
-              className="w-full py-2 px-3 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-orange-500"
-            >
-              <option value="all">Todos los Proveedores</option>
-              {providers.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name} ({p.commissionPercentage}% Com.)
-                </option>
-              ))}
-            </select>
+            {isSuperAdmin ? (
+              <select
+                value={selectedProviderFilter}
+                onChange={(e) => setSelectedProviderFilter(e.target.value)}
+                className="w-full py-2 px-3 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-orange-500"
+              >
+                <option value="all">Todos los Proveedores</option>
+                {providers.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} ({p.commissionPercentage}% Com.)
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <div className="flex items-center gap-2 px-3 py-2 bg-orange-500/10 border border-orange-500/30 rounded-xl text-xs text-orange-400 font-semibold">
+                <Building size={14} className="text-orange-500 shrink-0" />
+                <span className="truncate">{matchedProvider?.name || currentProviderName || 'Mi Catálogo'}</span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -509,13 +546,15 @@ export function TexturesManagerTab({ currentProviderId, isSuperAdmin = true }: T
           >
             <Plus size={16} /> Cargar Terminación
           </button>
-          <button
-            onClick={handleReset}
-            className="p-2 bg-zinc-800 hover:bg-zinc-700 text-slate-400 hover:text-white rounded-xl transition-colors cursor-pointer"
-            title="Restaurar catálogo de fábrica"
-          >
-            <RotateCcw size={16} />
-          </button>
+          {isSuperAdmin && (
+            <button
+              onClick={handleReset}
+              className="p-2 bg-zinc-800 hover:bg-zinc-700 text-slate-400 hover:text-white rounded-xl transition-colors cursor-pointer"
+              title="Restaurar catálogo de fábrica"
+            >
+              <RotateCcw size={16} />
+            </button>
+          )}
         </div>
       </div>
 
@@ -531,7 +570,7 @@ export function TexturesManagerTab({ currentProviderId, isSuperAdmin = true }: T
                 <Palette size={18} />
               </div>
               <h3 className="text-sm font-bold text-white uppercase tracking-wider">
-                Cargar Nueva Terminación / Producto de Proveedor
+                {isSuperAdmin ? 'Cargar Nueva Terminación / Producto' : `Cargar Producto a Mi Catálogo (${matchedProvider?.name || currentProviderName || 'Proveedor'})`}
               </h3>
             </div>
             <button type="button" onClick={() => setIsFormOpen(false)} className="text-slate-400 hover:text-white">
@@ -544,17 +583,24 @@ export function TexturesManagerTab({ currentProviderId, isSuperAdmin = true }: T
             <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-[11px] uppercase font-bold text-zinc-400 mb-1">Proveedor *</label>
-                <select
-                  value={selectedProviderId}
-                  onChange={(e) => setSelectedProviderId(e.target.value)}
-                  className="w-full p-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-xs text-white focus:border-orange-500 focus:outline-none"
-                >
-                  {providers.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} (Comisión Arquify: {p.commissionPercentage}%)
-                    </option>
-                  ))}
-                </select>
+                {isSuperAdmin ? (
+                  <select
+                    value={selectedProviderId}
+                    onChange={(e) => setSelectedProviderId(e.target.value)}
+                    className="w-full p-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-xs text-white focus:border-orange-500 focus:outline-none"
+                  >
+                    {providers.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} (Comisión Arquify: {p.commissionPercentage}%)
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="w-full p-2.5 bg-zinc-950/80 border border-zinc-700 rounded-xl text-xs text-orange-400 font-semibold flex items-center gap-2">
+                    <Building size={14} className="text-orange-500 shrink-0" />
+                    <span>{currentSelectedProvider.name} (Comisión: {commissionPct}%)</span>
+                  </div>
+                )}
               </div>
 
               <div>
