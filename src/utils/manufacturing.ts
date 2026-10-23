@@ -468,8 +468,13 @@ export function generatePartsList(data: ManufacturingData): Part[] {
 export function generateEdgeBandingList(parts: Part[], edgeFronts = 2.0, edgeCabinets = 0.45) {
   let edge2mm = 0; // en milímetros
   let edge045mm = 0; // en milímetros
+  let edgeRehau1mm = 0; // en milímetros para Rehau Rauvisio (Canteado exclusivo 1mm)
 
   parts.forEach(part => {
+    const matLower = (part.material || '').toLowerCase();
+    const notesLower = (part.notes || '').toLowerCase();
+    const isRehauPart = matLower.includes('rehau') || matLower.includes('rauvisio') || notesLower.includes('rehau') || notesLower.includes('rauvisio');
+
     // Calcular el perímetro de cantos aplicados en la pieza actual
     const partEdgeLength = 
       (part.edgeL1 ? part.length : 0) + 
@@ -479,7 +484,9 @@ export function generateEdgeBandingList(parts: Part[], edgeFronts = 2.0, edgeCab
     
     const totalEdgeForPart = partEdgeLength * part.qty;
 
-    if (part.material === 'Melamina Frente' || part.material === 'Melamina Frente Cajón') {
+    if (isRehauPart) {
+      edgeRehau1mm += totalEdgeForPart;
+    } else if (part.material === 'Melamina Frente' || part.material === 'Melamina Frente Cajón') {
       // Puertas y Frentes de Cajón usan tapacanto de frentes
       edge2mm += totalEdgeForPart;
     } else if (part.material === 'Melamina Cuerpo' || part.material === 'Melamina Fondo' || part.material === 'Melamina Zócalo') {
@@ -492,8 +499,18 @@ export function generateEdgeBandingList(parts: Part[], edgeFronts = 2.0, edgeCab
   const margin = 1.1;
   const meters2mm = (edge2mm / 1000) * margin;
   const meters045mm = (edge045mm / 1000) * margin;
+  const metersRehau1mm = (edgeRehau1mm / 1000) * margin;
 
   const edgeList = [];
+  if (metersRehau1mm > 0) {
+    edgeList.push({
+      Especialidad: 'Insumos',
+      Item: 'Tapacanto PVC 1.00mm (Rehau Rauvisio Exclusivo)',
+      Cantidad: Number(metersRehau1mm.toFixed(1)),
+      Unidad: 'Metros',
+      Notas: 'Canteado exclusivo Rehau Rauvisio (incluye 10% desperdicio)'
+    });
+  }
   if (meters2mm > 0) {
     edgeList.push({
       Especialidad: 'Insumos',

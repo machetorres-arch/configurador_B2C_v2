@@ -836,6 +836,17 @@ export const DEFAULT_PROVIDERS: ProviderItem[] = [
     commissionPercentage: 20,
     active: true,
     createdAt: '2026-03-01'
+  },
+  {
+    id: 'prov-rehau',
+    name: 'Rehau Rauvisio',
+    rut: '76.456.789-1',
+    email: 'ventas@rehau.com',
+    phone: '+56 2 2580 9000',
+    address: 'Av. Vitacura 2909, Las Condes, Santiago',
+    commissionPercentage: 15,
+    active: true,
+    createdAt: '2026-03-10'
   }
 ];
 
@@ -921,7 +932,8 @@ const DEPRECATED_FICTITIOUS_IDS = new Set([
   'tex-qs-cotton-diamond-18', 'tex-qs-onix-20', 'tex-qs-ash-honed-20', 'tex-qs-sint-deep-indigo-black-12',
   'tex-qs-sint-golden-jade-white-12', 'tex-qs-sint-light-clement-grey-12', 'tex-qs-sint-light-clement-white-12',
   'tex-qs-sint-lime-stone-white-12',
-  'def_mas_blanco_15', 'def_mas_blanco_18', 'def_mas_negro_18'
+  'def_mas_blanco_15', 'def_mas_blanco_18', 'def_mas_negro_18',
+  'tex-rauvisio-blanco-mate', 'tex-rauvisio-antracita-mate', 'tex-rauvisio-blanco-brillo', 'tex-rauvisio-negro-brillo'
 ]);
 
 // IDs de proyectos de muestra para depuración automática

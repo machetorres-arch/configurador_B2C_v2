@@ -726,6 +726,7 @@ export function TexturesManagerTab({ currentProviderId, currentProviderName, isS
                 <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
                   <span className="text-zinc-500 font-semibold uppercase text-[9px] mr-1">Presets:</span>
                   {[
+                    { label: '2.80 x 1.22 m (Rehau Rauvisio)', w: 2.80, h: 1.22 },
                     { label: '1.83 x 2.50 m (Masisa/Arauco)', w: 1.83, h: 2.50 },
                     { label: '1.83 x 2.75 m (Faplac/Egger)', w: 1.83, h: 2.75 },
                     { label: '1.22 x 2.44 m (Tablero 4x8)', w: 1.22, h: 2.44 },
@@ -802,9 +803,25 @@ export function TexturesManagerTab({ currentProviderId, currentProviderName, isS
                   type="text"
                   value={finish}
                   onChange={(e) => setFinish(e.target.value)}
-                  placeholder="Ej. Longline Mate, Silk, Poro Sincronizado"
-                  className="w-full p-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-xs text-white placeholder:text-zinc-600 focus:border-orange-500 focus:outline-none"
+                  placeholder="Ej. Extra Mate, Extra Brillo, Poro Sincronizado, Silk"
+                  className="w-full p-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-xs text-white placeholder:text-zinc-600 focus:border-orange-500 focus:outline-none mb-1.5"
                 />
+                <div className="flex flex-wrap items-center gap-1">
+                  {['Extra Mate', 'Extra Brillo', 'Poro Sincronizado', 'Silk / Soft'].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setFinish(preset)}
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer border ${
+                        finish === preset
+                          ? 'bg-orange-500 text-black border-orange-500 font-extrabold'
+                          : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:border-zinc-600 hover:text-white'
+                      }`}
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {/* Stock disponible cargado por el proveedor */}

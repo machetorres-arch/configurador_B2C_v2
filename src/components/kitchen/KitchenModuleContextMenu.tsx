@@ -701,38 +701,39 @@ export function KitchenModuleContextMenu({
     }));
 
   const allTextures = approvedBackofficeTextures;
-  const masisaTextures = allTextures.filter(t => {
+  const isMasisaItem = (t: any) => {
     const n = (t.name || '').toLowerCase();
     const b = ((t as any).brand || '').toLowerCase();
     const p = ((t as any).providerName || '').toLowerCase();
     return n.includes('masisa') || b.includes('masisa') || p.includes('masisa');
-  });
-  const araucoTextures = allTextures.filter(t => {
+  };
+
+  const isAraucoItem = (t: any) => {
     const n = (t.name || '').toLowerCase();
     const b = ((t as any).brand || '').toLowerCase();
     const p = ((t as any).providerName || '').toLowerCase();
-    const isMas = n.includes('masisa') || b.includes('masisa') || p.includes('masisa');
-    const isAra = n.includes('arauco') || b.includes('arauco') || p.includes('arauco') || n.includes('vesto') || b.includes('vesto');
-    return !isMas && isAra;
-  });
-  const abetTextures = allTextures.filter(t => {
+    return n.includes('arauco') || b.includes('arauco') || p.includes('arauco') || n.includes('vesto') || b.includes('vesto');
+  };
+
+  const isRehauItem = (t: any) => {
     const n = (t.name || '').toLowerCase();
     const b = ((t as any).brand || '').toLowerCase();
     const p = ((t as any).providerName || '').toLowerCase();
-    const isMas = n.includes('masisa') || b.includes('masisa') || p.includes('masisa');
-    const isAra = n.includes('arauco') || b.includes('arauco') || p.includes('arauco') || n.includes('vesto') || b.includes('vesto');
-    const isAb = n.includes('abet') || b.includes('abet') || p.includes('abet') || n.includes('laminati') || n.includes('hpl') || (t as any).category === 'hpl_autor';
-    return !isMas && !isAra && isAb;
-  });
-  const otherTextures = allTextures.filter(t => {
+    return n.includes('rehau') || b.includes('rehau') || p.includes('rehau') || n.includes('rauvisio') || b.includes('rauvisio');
+  };
+
+  const isAbetItem = (t: any) => {
     const n = (t.name || '').toLowerCase();
     const b = ((t as any).brand || '').toLowerCase();
     const p = ((t as any).providerName || '').toLowerCase();
-    const isMas = n.includes('masisa') || b.includes('masisa') || p.includes('masisa');
-    const isAra = n.includes('arauco') || b.includes('arauco') || p.includes('arauco') || n.includes('vesto') || b.includes('vesto');
-    const isAb = n.includes('abet') || b.includes('abet') || p.includes('abet') || n.includes('laminati') || n.includes('hpl') || (t as any).category === 'hpl_autor';
-    return !isMas && !isAra && !isAb;
-  });
+    return n.includes('abet') || b.includes('abet') || p.includes('abet') || n.includes('laminati') || n.includes('hpl') || (t as any).category === 'hpl_autor';
+  };
+
+  const masisaTextures = allTextures.filter(t => isMasisaItem(t));
+  const araucoTextures = allTextures.filter(t => !isMasisaItem(t) && isAraucoItem(t));
+  const rehauTextures = allTextures.filter(t => !isMasisaItem(t) && !isAraucoItem(t) && isRehauItem(t));
+  const abetTextures = allTextures.filter(t => !isMasisaItem(t) && !isAraucoItem(t) && !isRehauItem(t) && isAbetItem(t));
+  const otherTextures = allTextures.filter(t => !isMasisaItem(t) && !isAraucoItem(t) && !isRehauItem(t) && !isAbetItem(t));
 
   const variant = activeCabinet.variant || (activeCabinet.width > 60 ? '2_doors' : '1_door');
   const is4Drawers = variant === '4_drawers';
@@ -824,6 +825,10 @@ export function KitchenModuleContextMenu({
     const is18 = tex.thicknessMm === 18;
     const isOutOfStock = tex.stock !== undefined && tex.stock <= 0;
     const stockCount = tex.stock !== undefined ? tex.stock : 30;
+    const isRehau = isRehauItem(tex);
+    const finishLower = (tex.finish || '').toLowerCase();
+    const isExtraMate = finishLower.includes('mate') || finishLower.includes('matt');
+    const isExtraBrillo = finishLower.includes('brillo') || finishLower.includes('brilliant') || finishLower.includes('gloss');
 
     const handleButtonClick = () => {
       if (isOutOfStock) {
@@ -851,7 +856,7 @@ export function KitchenModuleContextMenu({
           title={
             isOutOfStock
               ? `${tex.name} - SIN STOCK (0 planchas registradas)`
-              : `${tex.name} ${tex.thicknessMm ? `[${tex.thicknessMm}mm]` : ''} [Stock: ${stockCount} planchas]`
+              : `${tex.name} ${tex.finish ? `[${tex.finish}]` : ''} ${tex.thicknessMm ? `[${tex.thicknessMm}mm]` : ''} [Stock: ${stockCount} planchas]`
           }
         >
           {isOutOfStock ? (
@@ -863,6 +868,17 @@ export function KitchenModuleContextMenu({
               {stockCount}
             </span>
           ) : null}
+
+          {/* Badge de Acabado Específico (Extra Mate / Extra Brillo) */}
+          {(isExtraMate || isExtraBrillo) && (
+            <span className={`absolute top-1 left-1 px-1 py-0.2 rounded text-[6.5px] font-mono font-extrabold uppercase shadow-xs z-10 ${
+              isExtraBrillo
+                ? 'bg-cyan-400 text-black'
+                : 'bg-purple-600 text-white'
+            }`}>
+              {isExtraBrillo ? 'EXTRA BRILLO' : 'EXTRA MATE'}
+            </span>
+          )}
 
           {tex.thicknessMm && (
             <span
@@ -887,6 +903,19 @@ export function KitchenModuleContextMenu({
             }`}
             style={tex.url.startsWith('#') ? { backgroundColor: tex.url } : { backgroundImage: `url('${tex.url}')` }}
           />
+
+          {/* Indicador de Tapacanto 1mm para Rehau Rauvisio */}
+          {isRehau && (
+            <div className="w-full flex items-center justify-between px-0.5">
+              <span className="text-[6.5px] font-mono font-bold text-purple-400 uppercase tracking-tighter">
+                Canteado 1mm
+              </span>
+              <span className="text-[6.5px] font-mono font-bold text-zinc-400 uppercase tracking-tighter">
+                2800x1220
+              </span>
+            </div>
+          )}
+
           <span className={`text-[8px] uppercase tracking-wider truncate w-full text-center ${
             isOutOfStock ? 'text-red-400/80 line-through' : isLight ? 'text-slate-600 font-bold' : 'text-slate-400'
           }`}>
@@ -2769,13 +2798,32 @@ export function KitchenModuleContextMenu({
               </div>
             )}
 
+            {/* Rehau Rauvisio */}
+            {rehauTextures.length > 0 && (
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <div className={`text-[10px] uppercase tracking-wider font-semibold ${
+                    isLight ? 'text-slate-600' : 'text-zinc-400'
+                  }`}>
+                    4. Rehau Rauvisio (Superficies Poliméricas 2.80 x 1.22 m)
+                  </div>
+                  <span className="text-[8.5px] font-mono font-bold px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 border border-purple-500/30">
+                    Tapacanto Exclusivo 1 mm
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {rehauTextures.map(t => renderTextureButton(t))}
+                </div>
+              </div>
+            )}
+
             {/* Abet */}
             {abetTextures.length > 0 && (
               <div className="flex flex-col gap-2">
                 <div className={`text-[10px] uppercase tracking-wider font-semibold ${
                   isLight ? 'text-slate-600' : 'text-zinc-400'
                 }`}>
-                  4. Abet Laminati (HPL)
+                  5. Abet Laminati (HPL)
                 </div>
 
                 {/* Sub-opción contextual en Abet Laminati: Trascara Balancer Blanco 0,9 mm */}
@@ -2824,7 +2872,7 @@ export function KitchenModuleContextMenu({
                 <div className={`text-[10px] uppercase tracking-wider font-semibold ${
                   isLight ? 'text-slate-600' : 'text-zinc-400'
                 }`}>
-                  5. Otras Terminaciones de Proveedor
+                  6. Otras Terminaciones de Proveedor
                 </div>
                 <div className="grid grid-cols-3 gap-2">
                   {otherTextures.map(t => renderTextureButton(t))}

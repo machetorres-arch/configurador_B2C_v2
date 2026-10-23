@@ -220,6 +220,13 @@ export const TexturesSection = ({
     return n.includes('abet') || b.includes('abet') || p.includes('abet') || n.includes('laminati') || n.includes('hpl') || t.category === 'hpl_autor';
   };
 
+  const isRehauItem = (t: any) => {
+    const n = (t.name || '').toLowerCase();
+    const b = (t.brand || '').toLowerCase();
+    const p = (t.providerName || '').toLowerCase();
+    return n.includes('rehau') || b.includes('rehau') || p.includes('rehau') || n.includes('rauvisio') || b.includes('rauvisio');
+  };
+
   // Filtrado por espesor si aplica (solo afecta a melaminas / maderas / tableros)
   const matchesThickness = (t: any) => {
     if (thicknessFilter === 'all') return true;
@@ -229,14 +236,19 @@ export const TexturesSection = ({
 
   const masisaTextures = allTextures.filter(t => isMasisaItem(t) && matchesThickness(t));
   const araucoTextures = allTextures.filter(t => !isMasisaItem(t) && isAraucoItem(t) && matchesThickness(t));
-  const abetTextures = allTextures.filter(t => !isMasisaItem(t) && !isAraucoItem(t) && isAbetItem(t));
-  const otherTextures = allTextures.filter(t => !isMasisaItem(t) && !isAraucoItem(t) && !isAbetItem(t) && matchesThickness(t));
+  const rehauTextures = allTextures.filter(t => !isMasisaItem(t) && !isAraucoItem(t) && isRehauItem(t) && matchesThickness(t));
+  const abetTextures = allTextures.filter(t => !isMasisaItem(t) && !isAraucoItem(t) && !isRehauItem(t) && isAbetItem(t));
+  const otherTextures = allTextures.filter(t => !isMasisaItem(t) && !isAraucoItem(t) && !isRehauItem(t) && !isAbetItem(t) && matchesThickness(t));
 
   const renderTextureButton = (tex: any) => {
     const is15 = tex.thicknessMm === 15;
     const is18 = tex.thicknessMm === 18;
     const isOutOfStock = tex.stock !== undefined && tex.stock <= 0;
     const stockCount = tex.stock !== undefined ? tex.stock : 30;
+    const isRehau = isRehauItem(tex);
+    const finishLower = (tex.finish || '').toLowerCase();
+    const isExtraMate = finishLower.includes('mate') || finishLower.includes('matt');
+    const isExtraBrillo = finishLower.includes('brillo') || finishLower.includes('brilliant') || finishLower.includes('gloss');
 
     const handleButtonClick = () => {
       // 1. Si está sin stock / agotado, bloquear
@@ -292,7 +304,7 @@ export const TexturesSection = ({
           title={
             isOutOfStock
               ? `${tex.name} - AGOTADO / SIN STOCK (0 planchas registradas)`
-              : `${tex.name} ${tex.thicknessMm ? `[${tex.thicknessMm}mm]` : ''} [Stock: ${stockCount} planchas]`
+              : `${tex.name} ${tex.finish ? `[${tex.finish}]` : ''} ${tex.thicknessMm ? `[${tex.thicknessMm}mm]` : ''} [Stock: ${stockCount} planchas]`
           }
         >
           {/* Badge de Sin Stock si está agotado */}
@@ -305,6 +317,17 @@ export const TexturesSection = ({
               {stockCount} disp.
             </span>
           ) : null}
+
+          {/* Badge de Acabado Específico (Extra Mate / Extra Brillo) */}
+          {(isExtraMate || isExtraBrillo) && (
+            <span className={`absolute top-1 left-1 px-1 py-0.2 rounded text-[6.5px] font-mono font-extrabold uppercase shadow-sm z-10 ${
+              isExtraBrillo
+                ? 'bg-cyan-400 text-black'
+                : 'bg-purple-600 text-white'
+            }`}>
+              {isExtraBrillo ? 'EXTRA BRILLO' : 'EXTRA MATE'}
+            </span>
+          )}
 
           {/* Badge de Espesor visible en esquina superior derecha */}
           {tex.thicknessMm && (
@@ -331,6 +354,19 @@ export const TexturesSection = ({
             }`}
             style={tex.url.startsWith('#') ? { backgroundColor: tex.url } : { backgroundImage: `url('${tex.url}')` }}
           />
+
+          {/* Indicador de Tapacanto 1mm para Rehau Rauvisio */}
+          {isRehau && (
+            <div className="w-full flex items-center justify-between px-0.5">
+              <span className="text-[6.5px] font-mono font-bold text-purple-400 uppercase tracking-tighter">
+                Canteado 1mm
+              </span>
+              <span className="text-[6.5px] font-mono font-bold text-zinc-400 uppercase tracking-tighter">
+                2800x1220
+              </span>
+            </div>
+          )}
+
           <span className={`text-[8px] uppercase tracking-wider font-bold truncate w-full text-center ${
             isOutOfStock ? 'text-red-400/80 line-through' : isLight ? 'text-slate-800' : 'text-slate-400'
           }`}>
@@ -640,6 +676,22 @@ export const TexturesSection = ({
           }`}>3. Arauco / Vesto (Melaminas)</label>
           <div className="grid grid-cols-3 gap-2">
             {araucoTextures.map(t => renderTextureButton(t))}
+          </div>
+        </div>
+      )}
+
+      {rehauTextures.length > 0 && (
+        <div className="mb-4">
+          <div className="flex items-center justify-between mb-2">
+            <label className={`text-[10px] uppercase tracking-widest font-bold ${
+              isLight ? 'text-slate-700' : 'text-slate-400'
+            }`}>4. Rehau Rauvisio (Superficies Poliméricas 2.80 x 1.22 m)</label>
+            <span className="text-[8.5px] font-mono font-bold px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 border border-purple-500/30">
+              Tapacanto Exclusivo 1 mm
+            </span>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {rehauTextures.map(t => renderTextureButton(t))}
           </div>
         </div>
       )}

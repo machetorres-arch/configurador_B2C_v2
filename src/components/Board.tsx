@@ -159,6 +159,26 @@ export function Board({ position, args, color, textureUrl, materialType, transpa
     ? '#edf2f7' 
     : (texture ? '#ffffff' : finalColor);
 
+  // Consultar acabado (Extra Mate vs Extra Brillo) para adaptar roughness y metalness en 3D
+  const adminTexturesList = useAdminStore.getState().textures || [];
+  const matchedCustomTexture = adminTexturesList.find(
+    t => (textureUrl && (t.url === textureUrl || t.previewUrl === textureUrl)) || 
+         (finalColor && (t.url === finalColor || t.previewUrl === finalColor))
+  );
+  const finishStr = (matchedCustomTexture?.finish || '').toLowerCase();
+  const isExtraMate = finishStr.includes('mate') || finishStr.includes('matt');
+  const isExtraBrillo = finishStr.includes('brillo') || finishStr.includes('brilliant') || finishStr.includes('gloss');
+
+  let activeRoughness = 0.85;
+  let activeMetalness = 0.0;
+  if (isExtraMate) {
+    activeRoughness = 0.95; // Superficie polimérica mate sedosa
+    activeMetalness = 0.0;
+  } else if (isExtraBrillo) {
+    activeRoughness = 0.05; // Espejo ultra brillante reflectivo
+    activeMetalness = 0.12;
+  }
+
   // Create array of 6 materials
   const baseMatProps = {
     color: resolvedColor,
@@ -166,7 +186,8 @@ export function Board({ position, args, color, textureUrl, materialType, transpa
     side: DoubleSide,
     transparent: isTransp,
     opacity: currentOpacity,
-    roughness: 0.85,
+    roughness: activeRoughness,
+    metalness: activeMetalness,
     depthWrite: !isTransp,
   };
 
@@ -177,6 +198,7 @@ export function Board({ position, args, color, textureUrl, materialType, transpa
     transparent: isTransp,
     opacity: currentOpacity,
     roughness: 0.85,
+    metalness: 0.0,
     depthWrite: !isTransp,
   };
 
@@ -215,7 +237,7 @@ export function Board({ position, args, color, textureUrl, materialType, transpa
         const props = idx === trascaraFace ? whiteMatProps : baseMatProps;
         return (
           <meshStandardMaterial 
-            key={`${idx}-${texture ? texture.uuid : (props.color || 'solid')}-${idx === trascaraFace}`}
+            key={`${idx}-${texture ? texture.uuid : (props.color || 'solid')}-${idx === trascaraFace}-${props.roughness}`}
             attach={`material-${idx}`}
             color={props.color}
             map={props.map}
@@ -223,6 +245,7 @@ export function Board({ position, args, color, textureUrl, materialType, transpa
             transparent={props.transparent}
             opacity={props.opacity}
             roughness={props.roughness}
+            metalness={props.metalness}
             depthWrite={props.depthWrite}
           />
         );
