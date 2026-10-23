@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { getSupabase, isSupabaseConfigured } from '../lib/supabase';
 
-export type UserRole = 'superadmin' | 'tenant_admin' | 'designer' | 'operator';
+export type UserRole = 'superadmin' | 'tenant_admin' | 'designer' | 'operator' | 'free_user';
 
 export interface TenantInfo {
   id: string;

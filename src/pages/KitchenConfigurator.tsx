@@ -21,8 +21,10 @@ import { calculatePolygonArea } from '../utils/roomGeometry';
 import { KitchenMepPanel } from '../components/kitchen/KitchenMepPanel';
 import { detectMepClashes } from '../utils/mepClashDetection';
 import { resolvePlacement, getCabinetSpecsFromTool, findSmartWallPlacement } from '../utils/kitchenCollision';
-import { ArrowLeft, Box, Square, Move3D, PenTool, LayoutGrid, Trash2, RotateCw, Undo2, Redo2, Flame, Refrigerator, Flower2, Utensils, Info, Sparkles, Maximize2, Layers, Palette, ListOrdered, Save, Columns, Sliders, Sun, Moon, Wine, Wrench, DollarSign, ChevronDown, ChevronRight, Globe, Ruler, Menu, X, MoreVertical } from 'lucide-react';
+import { ArrowLeft, Box, Square, Move3D, PenTool, LayoutGrid, Trash2, RotateCw, Undo2, Redo2, Flame, Refrigerator, Flower2, Utensils, Info, Sparkles, Maximize2, Layers, Palette, ListOrdered, Save, Columns, Sliders, Sun, Moon, Wine, Wrench, DollarSign, ChevronDown, ChevronRight, Globe, Ruler, Menu, X, MoreVertical, Download } from 'lucide-react';
 import { HandlesSection } from '../components/kitchen/HandlesSection';
+import { useAdminStore } from '../store/adminStore';
+import { exportKitchenCommercialPdf } from '../utils/kitchenCommercialPdfGenerator';
 import { HANDLE_CATALOG } from '../types/handle';
 
 const sectionTitle = "text-xs uppercase tracking-wider text-orange-400 font-bold mb-3 mt-4 first:mt-0";
@@ -248,6 +250,64 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
       alert('Error al generar las etiquetas de producción.');
     } finally {
       setIsExportingLabels(false);
+    }
+  };
+
+  const { currentUser, isAuthenticated, logAccess } = useAdminStore();
+
+  // Control de Acceso y Trazabilidad en Auditoría del Superadmin
+  useEffect(() => {
+    if (!isAuthenticated) {
+      onNavigate();
+      return;
+    }
+
+    logAccess({
+      userId: currentUser?.id || 'guest',
+      userName: currentUser?.full_name || 'Usuario',
+      userEmail: currentUser?.email || 'usuario@sistema.cl',
+      userPhone: currentUser?.phone,
+      userRubro: currentUser?.rubro,
+      userCity: currentUser?.city,
+      userCommune: currentUser?.commune,
+      module: 'Configurador de Cocinas 3D',
+    });
+  }, [isAuthenticated, currentUser, logAccess, onNavigate]);
+
+  // Descarga directa de Cotización y Ficha Comercial en PDF sin salir al Backoffice
+  const handleDirectCommercialPdfDownload = () => {
+    try {
+      const state = useStore.getState();
+      let screenshotUrl: string | undefined = undefined;
+      try {
+        const canvas = document.querySelector('canvas');
+        if (canvas) {
+          screenshotUrl = canvas.toDataURL('image/png');
+        }
+      } catch (e) {
+        console.warn('No se pudo capturar imagen del canvas 3D:', e);
+      }
+
+      exportKitchenCommercialPdf({
+        projectName: 'Proyecto Cocina Integral 3D',
+        cabinets,
+        state,
+        countertopConfig,
+        qstoneCatalog,
+        userInfo: {
+          fullName: currentUser?.full_name || 'Cliente Particular',
+          email: currentUser?.email,
+          phone: currentUser?.phone,
+          rubro: currentUser?.rubro,
+          city: currentUser?.city,
+          commune: currentUser?.commune,
+          address: currentUser?.address,
+        },
+        screenshotUrl,
+      });
+    } catch (err) {
+      console.error('Error al generar cotización comercial directa:', err);
+      alert('Hubo un error al generar la cotización PDF.');
     }
   };
 
@@ -654,17 +714,29 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
             <span className="hidden md:inline">{theme === 'dark' ? 'Modo Claro' : 'Modo Oscuro'}</span>
           </button>
 
+          {currentUser?.role !== 'free_user' && (
+            <button
+              onClick={() => setIsB2BQuoteOpen(true)}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 border rounded-lg transition-all text-xs font-bold uppercase tracking-wider shadow-sm cursor-pointer ${
+                isLight
+                  ? 'bg-amber-50 hover:bg-amber-100 border-amber-300 text-amber-900'
+                  : 'bg-amber-500/15 hover:bg-amber-500/25 border-amber-500/40 text-amber-400 hover:text-amber-300'
+              }`}
+              title="Cotización Comercial Dual (Costo Fábrica B2B vs Venta Cliente Final)"
+            >
+              <DollarSign size={14} className="text-amber-500" />
+              <span>Cotización B2B</span>
+            </button>
+          )}
+
+          {/* Descarga directa de Cotización Comercial PDF con Vistas 3D sin tener que salir */}
           <button
-            onClick={() => setIsB2BQuoteOpen(true)}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 border rounded-lg transition-all text-xs font-bold uppercase tracking-wider shadow-sm cursor-pointer ${
-              isLight
-                ? 'bg-amber-50 hover:bg-amber-100 border-amber-300 text-amber-900'
-                : 'bg-amber-500/15 hover:bg-amber-500/25 border-amber-500/40 text-amber-400 hover:text-amber-300'
-            }`}
-            title="Cotización Comercial Dual (Costo Fábrica B2B vs Venta Cliente Final)"
+            onClick={handleDirectCommercialPdfDownload}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-400 hover:to-amber-500 text-white rounded-lg transition-all text-xs font-bold uppercase tracking-wider shadow-md shadow-orange-500/20 cursor-pointer"
+            title="Descargar Cotización y Ficha Comercial en PDF con Vistas 3D"
           >
-            <DollarSign size={14} className="text-amber-500" />
-            <span>Cotización B2B</span>
+            <Download size={14} />
+            <span>Cotización PDF</span>
           </button>
 
           <button
@@ -720,6 +792,14 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
             </div>
 
             <button
+              onClick={() => { setIsMobileMenuOpen(false); handleDirectCommercialPdfDownload(); }}
+              className="flex items-center gap-3 p-3 rounded-xl bg-gradient-to-r from-orange-500 to-amber-600 text-white text-xs font-bold uppercase tracking-wider shadow-md cursor-pointer"
+            >
+              <Download size={16} />
+              <span>Descargar Cotización PDF (3D y Precios)</span>
+            </button>
+
+            <button
               onClick={() => { setIsMobileMenuOpen(false); setRoomPlannerOpen(true); }}
               className="flex items-center gap-3 p-3 rounded-xl border border-orange-500/20 bg-orange-500/10 text-orange-400 text-xs font-bold uppercase tracking-wider cursor-pointer"
             >
@@ -743,13 +823,15 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
               <span>Planos y Despiece de Fabricación</span>
             </button>
 
-            <button
-              onClick={() => { setIsMobileMenuOpen(false); setIsB2BQuoteOpen(true); }}
-              className="flex items-center gap-3 p-3 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-300 text-xs font-bold uppercase tracking-wider cursor-pointer"
-            >
-              <DollarSign size={16} />
-              <span>Cotización Comercial B2B</span>
-            </button>
+            {currentUser?.role !== 'free_user' && (
+              <button
+                onClick={() => { setIsMobileMenuOpen(false); setIsB2BQuoteOpen(true); }}
+                className="flex items-center gap-3 p-3 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-300 text-xs font-bold uppercase tracking-wider cursor-pointer"
+              >
+                <DollarSign size={16} />
+                <span>Cotización Comercial B2B</span>
+              </button>
+            )}
 
             <button
               onClick={() => { setIsMobileMenuOpen(false); setIsBimModalOpen(true); }}

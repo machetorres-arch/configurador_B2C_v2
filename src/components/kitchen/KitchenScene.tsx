@@ -1431,6 +1431,7 @@ export function KitchenScene({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
       gl={{ 
         antialias: true, 
         powerPreference: 'high-performance',
+        preserveDrawingBuffer: true,
       }}
       onPointerMissed={() => {
         const state = useKitchenStore.getState();

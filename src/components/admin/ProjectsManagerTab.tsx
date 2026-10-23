@@ -22,12 +22,19 @@ import {
   Cloud,
   HardDrive,
   Building2,
-  Armchair
+  Armchair,
+  Phone,
+  MapPin,
+  Activity,
+  ShoppingBag,
+  ExternalLink,
+  Image as ImageIcon
 } from 'lucide-react';
 import { useAdminStore, ProjectItem, ProjectType } from '../../store/adminStore';
 import { useSupabaseAuthStore } from '../../store/supabaseAuthStore';
 import { useTenantDataStore } from '../../store/tenantDataStore';
 import { exportProjectToPdf } from '../../utils/pdfGenerator';
+import { exportKitchenCommercialPdf } from '../../utils/kitchenCommercialPdfGenerator';
 import * as XLSX from 'xlsx-js-style';
 import { useKitchenStore } from '../../store/kitchenStore';
 import { useStore as useClosetStore } from '../../store';
@@ -36,10 +43,11 @@ import { useOfficeStore } from '../../store/officeStore';
 
 interface ProjectsManagerTabProps {
   onLoadProjectToModule: (route: 'kitchen' | 'closet' | 'special' | 'hpl-bathroom' | 'office' | 'chair') => void;
+  isFreeUserMode?: boolean;
 }
 
-export function ProjectsManagerTab({ onLoadProjectToModule }: ProjectsManagerTabProps) {
-  const { projects, saveProject, updateProject, renameProject, duplicateProject, deleteProject, clearAllProjects, syncCloudProjects } = useAdminStore();
+export function ProjectsManagerTab({ onLoadProjectToModule, isFreeUserMode = false }: ProjectsManagerTabProps) {
+  const { projects, saveProject, updateProject, renameProject, duplicateProject, deleteProject, clearAllProjects, syncCloudProjects, currentUser, accessLogs } = useAdminStore();
   const { user: supabaseUser, tenant: supabaseTenant } = useSupabaseAuthStore();
   const { saveProjectToCloud } = useTenantDataStore();
 
@@ -82,8 +90,14 @@ export function ProjectsManagerTab({ onLoadProjectToModule }: ProjectsManagerTab
     }
   };
 
-  // Filtered projects
-  const filteredProjects = projects.filter((p) => {
+  const [adminSubTab, setAdminSubTab] = useState<'projects' | 'access_logs'>('projects');
+
+  // Filtered projects (para usuario gratuito se filtra estrictamente por su usuario/email)
+  const scopedProjects = isFreeUserMode
+    ? projects.filter((p) => p.userId === currentUser?.id || p.userEmail === currentUser?.email)
+    : projects;
+
+  const filteredProjects = scopedProjects.filter((p) => {
     const matchesType = selectedType === 'all' || p.type === selectedType;
     const currentStatus = p.status || 'designed';
     const matchesStatus = selectedStatus === 'all' || currentStatus === selectedStatus;
@@ -91,15 +105,18 @@ export function ProjectsManagerTab({ onLoadProjectToModule }: ProjectsManagerTab
       p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       p.client.toLowerCase().includes(searchTerm.toLowerCase()) ||
       p.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (p.userName && p.userName.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (p.userEmail && p.userEmail.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (p.userRubro && p.userRubro.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (p.orderNumber && p.orderNumber.toLowerCase().includes(searchTerm.toLowerCase()));
     return matchesType && matchesStatus && matchesSearch;
   });
 
   // Métricas rápidas de pipeline
-  const totalProjectsCount = projects.length;
-  const soldProjects = projects.filter((p) => p.status === 'sold' || p.status === 'in_production');
+  const totalProjectsCount = scopedProjects.length;
+  const soldProjects = scopedProjects.filter((p) => p.status === 'sold' || p.status === 'in_production');
   const soldVolumeClp = soldProjects.reduce((acc, p) => acc + (p.finalSalePriceClp || p.totalCostEstimateClp || 0), 0);
-  const totalDesignedVolumeClp = projects.reduce((acc, p) => acc + (p.totalCostEstimateClp || 0), 0);
+  const totalDesignedVolumeClp = scopedProjects.reduce((acc, p) => acc + (p.totalCostEstimateClp || 0), 0);
   const conversionRate = totalProjectsCount > 0 ? Math.round((soldProjects.length / totalProjectsCount) * 100) : 0;
 
   const handleOpenSaleModal = (proj: ProjectItem) => {
@@ -271,6 +288,56 @@ export function ProjectsManagerTab({ onLoadProjectToModule }: ProjectsManagerTab
     }
   };
 
+  const handleDownloadCommercialPdf = (proj: ProjectItem) => {
+    try {
+      const kState = useKitchenStore.getState();
+      const gState = useClosetStore.getState();
+      const cabinets = proj.data?.cabinets || kState.cabinets || [];
+      const countertopConfig = proj.data?.countertopConfig || kState.countertopConfig;
+      const qstoneCatalog = kState.qstoneCatalog;
+
+      exportKitchenCommercialPdf({
+        projectName: proj.name,
+        cabinets,
+        state: {
+          ...gState,
+          structureColor: proj.data?.structureColor || gState.structureColor,
+          doorColor: proj.data?.doorColor || gState.doorColor,
+          drawerFrontColor: proj.data?.drawerFrontColor || gState.drawerFrontColor,
+          socleHeight: proj.data?.socleHeight || kState.socleHeight,
+          socleFinish: proj.data?.socleFinish || kState.socleFinish,
+          drawerHardware: proj.data?.drawerHardware || gState.drawerHardware,
+          golaSystem: proj.data?.golaSystem || kState.golaSystem,
+        },
+        countertopConfig,
+        qstoneCatalog,
+        userInfo: {
+          fullName: proj.userName || currentUser?.full_name || proj.client,
+          email: proj.userEmail || currentUser?.email,
+          phone: proj.userPhone || currentUser?.phone,
+          rubro: proj.userRubro || currentUser?.rubro,
+          city: proj.userCity || currentUser?.city,
+          commune: currentUser?.commune,
+          address: currentUser?.address,
+        },
+        screenshotUrl: proj.thumbnail,
+        estimatedTotalClp: proj.totalCostEstimateClp,
+      });
+      showNotification(`Ficha Comercial y Cotización PDF descargada para "${proj.name}".`);
+    } catch (err) {
+      console.error('Error al generar PDF comercial:', err);
+      exportProjectToPdf(proj);
+    }
+  };
+
+  const handleRequestPurchase = (proj: ProjectItem) => {
+    updateProject(proj.id, {
+      status: 'quoted',
+      soldDate: new Date().toISOString().split('T')[0],
+    });
+    showNotification(`¡Solicitud enviada! Registrado interés de compra para "${proj.name}".`);
+  };
+
   const handleDownloadExcel = (proj: ProjectItem) => {
     try {
       generateProjectExcel(proj);
@@ -415,402 +482,620 @@ export function ProjectsManagerTab({ onLoadProjectToModule }: ProjectsManagerTab
         </div>
       )}
 
-      {/* Summary KPI Strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="bg-zinc-900/80 border border-zinc-800 rounded-xl p-3">
-          <div className="text-[10px] uppercase font-bold text-zinc-400">Total en Cartera</div>
-          <div className="text-xl font-extrabold text-white mt-0.5">{totalProjectsCount}</div>
-          <div className="text-[10px] text-zinc-500 font-mono">${(totalDesignedVolumeClp / 1000000).toFixed(2)}M CLP est.</div>
-        </div>
-
-        <div className="bg-zinc-900/80 border border-emerald-500/30 rounded-xl p-3">
-          <div className="text-[10px] uppercase font-bold text-emerald-400 flex items-center justify-between">
-            <span>Ventas Cerradas</span>
-            <span className="text-[9px] bg-emerald-500/20 px-1.5 py-0.2 rounded font-mono font-bold">{conversionRate}% conv.</span>
+      {/* Vista de Usuario Gratuito vs Superadministrador */}
+      {isFreeUserMode ? (
+        /* Banner de Bienvenida Usuario Gratuito */
+        <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <h3 className="text-base sm:text-lg font-bold text-white">
+                Mis Proyectos Guardados
+              </h3>
+              <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-orange-500/20 text-orange-400 border border-orange-500/30">
+                {currentUser?.rubro || 'Diseñador'}
+              </span>
+            </div>
+            <p className="text-xs text-slate-400 max-w-2xl">
+              Diseña libremente con todas las funciones del configurador 3D. Desde este panel puedes revisar tus diseños, abrir en 3D, descargar tu cotización comercial en PDF y solicitar la fabricación.
+            </p>
           </div>
-          <div className="text-xl font-extrabold text-emerald-400 mt-0.5">{soldProjects.length}</div>
-          <div className="text-[10px] text-emerald-300/80 font-mono">${(soldVolumeClp / 1000000).toFixed(2)}M CLP real</div>
-        </div>
-
-        <div className="bg-zinc-900/80 border border-blue-500/20 rounded-xl p-3">
-          <div className="text-[10px] uppercase font-bold text-blue-400">En Diseño / Borrador</div>
-          <div className="text-xl font-extrabold text-blue-400 mt-0.5">
-            {projects.filter((p) => !p.status || p.status === 'designed').length}
-          </div>
-          <div className="text-[10px] text-zinc-500 font-mono">Demanda potencial</div>
-        </div>
-
-        <div className="bg-zinc-900/80 border border-amber-500/20 rounded-xl p-3">
-          <div className="text-[10px] uppercase font-bold text-amber-400">Cotizados / En Taller</div>
-          <div className="text-xl font-extrabold text-amber-400 mt-0.5">
-            {projects.filter((p) => p.status === 'quoted' || p.status === 'in_production').length}
-          </div>
-          <div className="text-[10px] text-zinc-500 font-mono">En negociación / taller</div>
-        </div>
-      </div>
-
-      {/* Action & Filter Bar */}
-      <div className="space-y-3 bg-zinc-900/80 p-4 rounded-xl border border-zinc-800">
-        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
-          {/* Search */}
-          <div className="relative flex-1">
-            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Buscar por proyecto, cliente, N° OT o descripción..."
-              className="w-full pl-10 pr-4 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-orange-500"
-            />
-          </div>
-
-          {/* Type Tabs */}
-          <div className="flex items-center gap-1 bg-zinc-950 p-1 rounded-lg border border-zinc-800 overflow-x-auto">
-            {[
-              { id: 'all', label: 'Todos' },
-              { id: 'kitchen', label: 'Cocinas' },
-              { id: 'closet', label: 'Clósets' },
-              { id: 'office', label: 'Oficinas' },
-              { id: 'special', label: 'Muebles Esp.' },
-              { id: 'hpl-bathroom', label: 'Baños HPL' },
-              { id: 'chair', label: 'Sillas' },
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setSelectedType(tab.id as any)}
-                className={`px-3 py-1.5 rounded-md text-[11px] font-semibold transition-all whitespace-nowrap ${
-                  selectedType === tab.id
-                    ? 'bg-orange-500 text-white shadow'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-zinc-900'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Actions Buttons */}
           <div className="flex items-center gap-2 shrink-0">
-            {projects.length > 0 && (
-              <button
-                onClick={() => {
-                  if (window.confirm('¿Confirmas eliminar TODOS los proyectos guardados y reiniciar desde cero?')) {
-                    clearAllProjects();
-                    showNotification('Todos los proyectos han sido eliminados.');
-                  }
-                }}
-                className="px-3 py-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 hover:text-red-300 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer"
-                title="Eliminar todos los proyectos y partir desde cero"
-              >
-                <Trash2 size={14} />
-                <span className="hidden sm:inline">Vaciar Todo</span>
-              </button>
-            )}
-
-            {supabaseUser && supabaseTenant && (
-              <button
-                onClick={handleManualSync}
-                disabled={isSyncing}
-                className="px-3 py-2 bg-zinc-950 border border-sky-500/30 text-sky-400 hover:text-sky-300 hover:bg-sky-500/10 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer"
-                title="Sincronizar proyectos con base de datos en la nube"
-              >
-                <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />
-                <span className="hidden sm:inline">{isSyncing ? 'Sincronizando...' : 'Sincronizar Nube'}</span>
-              </button>
-            )}
-
-            {/* Create Button */}
-            <button
-              onClick={() => setIsCreatingNew(!isCreatingNew)}
-              className="px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-400 hover:to-amber-500 text-white rounded-lg text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-md shadow-orange-500/20 transition-all cursor-pointer"
-            >
-              <Plus size={16} /> Guardar Nuevo
-            </button>
+            <span className="px-3.5 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-slate-300 font-semibold flex items-center gap-2">
+              <FolderKanban size={15} className="text-orange-400" />
+              <span>{scopedProjects.length} {scopedProjects.length === 1 ? 'Proyecto' : 'Proyectos'}</span>
+            </span>
           </div>
         </div>
-
-        {/* Pipeline Status Filter Pills */}
-        <div className="flex items-center gap-2 pt-2 border-t border-zinc-800/80 overflow-x-auto text-xs">
-          <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider shrink-0 flex items-center gap-1">
-            <Filter size={12} /> Pipeline:
-          </span>
-          {[
-            { id: 'all', label: 'Todos los estados' },
-            { id: 'designed', label: '✏ Diseñados' },
-            { id: 'quoted', label: '📋 Cotizados' },
-            { id: 'sold', label: '✓ Vendidos' },
-            { id: 'in_production', label: '⚙ En Taller' },
-          ].map((st) => (
+      ) : (
+        /* Superadmin: Selector de Pestañas (Proyectos vs Registro de Accesos) */
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 border-b border-zinc-800 pb-3">
             <button
-              key={st.id}
-              onClick={() => setSelectedStatus(st.id as any)}
-              className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                selectedStatus === st.id
-                  ? 'bg-zinc-100 text-zinc-950 font-bold shadow'
-                  : 'bg-zinc-950 text-zinc-400 hover:text-white border border-zinc-800'
+              onClick={() => setAdminSubTab('projects')}
+              className={`px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
+                adminSubTab === 'projects'
+                  ? 'bg-orange-500 text-white shadow-md shadow-orange-500/20'
+                  : 'bg-zinc-900 text-slate-400 hover:text-white'
               }`}
             >
-              {st.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* New Project Form */}
-      {isCreatingNew && (
-        <form
-          onSubmit={handleCreateNewProject}
-          className="p-5 bg-zinc-900/90 border border-orange-500/40 rounded-xl space-y-4 animate-in fade-in duration-200"
-        >
-          <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
-            <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
-              <FolderKanban size={18} className="text-orange-500" />
-              Guardar Nuevo Proyecto en Base de Datos
-            </h3>
-            <button
-              type="button"
-              onClick={() => setIsCreatingNew(false)}
-              className="text-slate-400 hover:text-white"
-            >
-              <X size={16} />
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Módulo / Tipo</label>
-              <select
-                value={newType}
-                onChange={(e) => setNewType(e.target.value as ProjectType)}
-                className="w-full p-2 bg-zinc-950 border border-zinc-700 rounded-lg text-xs text-white focus:border-orange-500 focus:outline-none"
-              >
-                <option value="kitchen">Cocina Planificador 2D/3D</option>
-                <option value="closet">Clóset Paramétrico Modular</option>
-                <option value="office">Mobiliario de Oficina (Space Planning 3D)</option>
-                <option value="special">Mueble Especial Abet & Madera</option>
-                <option value="hpl-bathroom">Cabinas Sanitarias HPL</option>
-                <option value="chair">Diseño y Fabricación de Sillas</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Nombre del Proyecto</label>
-              <input
-                type="text"
-                required
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                placeholder="Ej. Casa Molco Lago Ranco"
-                className="w-full p-2 bg-zinc-950 border border-zinc-700 rounded-lg text-xs text-white placeholder:text-zinc-600 focus:border-orange-500 focus:outline-none"
-              />
-            </div>
-
-            <div>
-              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Cliente / Referencia</label>
-              <input
-                type="text"
-                value={newClient}
-                onChange={(e) => setNewClient(e.target.value)}
-                placeholder="Ej. Inmobiliaria Sur / Particular"
-                className="w-full p-2 bg-zinc-950 border border-zinc-700 rounded-lg text-xs text-white placeholder:text-zinc-600 focus:border-orange-500 focus:outline-none"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Descripción Técnica</label>
-            <input
-              type="text"
-              value={newDescription}
-              onChange={(e) => setNewDescription(e.target.value)}
-              placeholder="Especificaciones, ubicación o notas de cubicación..."
-              className="w-full p-2 bg-zinc-950 border border-zinc-700 rounded-lg text-xs text-white placeholder:text-zinc-600 focus:border-orange-500 focus:outline-none"
-            />
-          </div>
-
-          <div className="flex justify-end gap-2 pt-2">
-            <button
-              type="button"
-              onClick={() => setIsCreatingNew(false)}
-              className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-slate-300 text-xs font-semibold rounded-lg"
-            >
-              Cancelar
+              <FolderKanban size={14} />
+              <span>Gestión de Proyectos & Pipeline ({projects.length})</span>
             </button>
             <button
-              type="submit"
-              className="px-5 py-2 bg-orange-500 hover:bg-orange-400 text-white text-xs font-bold uppercase tracking-wider rounded-lg shadow"
+              onClick={() => setAdminSubTab('access_logs')}
+              className={`px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
+                adminSubTab === 'access_logs'
+                  ? 'bg-orange-500 text-white shadow-md shadow-orange-500/20'
+                  : 'bg-zinc-900 text-slate-400 hover:text-white'
+              }`}
             >
-              Guardar Proyecto
+              <Activity size={14} />
+              <span>Registro de Ingresos al Configurador ({accessLogs.length})</span>
             </button>
           </div>
-        </form>
-      )}
 
-      {/* Projects List */}
-      <div className="space-y-3">
-        {filteredProjects.length === 0 ? (
-          <div className="p-12 text-center bg-zinc-900/40 border border-zinc-800 rounded-2xl">
-            <FolderKanban size={40} className="mx-auto text-zinc-600 mb-3" />
-            <p className="text-sm font-semibold text-slate-400">No se encontraron proyectos guardados.</p>
-            <p className="text-xs text-zinc-600 mt-1">Guarda un nuevo proyecto o ajusta el filtro de búsqueda.</p>
-          </div>
-        ) : (
-          filteredProjects.map((proj) => (
-            <div
-              key={proj.id}
-              className="group bg-zinc-900/90 border border-zinc-800 hover:border-zinc-700 rounded-xl p-4 transition-all hover:bg-zinc-900 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 shadow-sm"
-            >
-              {/* Left Info */}
-              <div className="space-y-2 flex-1 min-w-0">
-                <div className="flex flex-wrap items-center gap-2.5">
-                  {getModuleBadge(proj.type)}
-                  {getStatusBadge(proj.status)}
-
-                  {editingId === proj.id ? (
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        value={editName}
-                        onChange={(e) => setEditName(e.target.value)}
-                        className="p-1 px-2 bg-zinc-950 border border-orange-500 rounded text-xs text-white font-bold"
-                      />
-                      <input
-                        type="text"
-                        value={editClient}
-                        onChange={(e) => setEditClient(e.target.value)}
-                        placeholder="Cliente"
-                        className="p-1 px-2 bg-zinc-950 border border-zinc-700 rounded text-xs text-slate-300"
-                      />
-                      <button
-                        onClick={() => handleSaveEdit(proj.id)}
-                        className="p-1 bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 rounded"
-                        title="Guardar"
-                      >
-                        <Check size={14} />
-                      </button>
-                      <button
-                        onClick={() => setEditingId(null)}
-                        className="p-1 bg-zinc-800 text-slate-400 hover:bg-zinc-700 rounded"
-                        title="Cancelar"
-                      >
-                        <X size={14} />
-                      </button>
-                    </div>
-                  ) : (
-                    <h4 className="text-sm font-bold text-white tracking-tight truncate flex items-center gap-2">
-                      {proj.name}
-                      <button
-                        onClick={() => handleStartEdit(proj)}
-                        className="opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-orange-400 transition-opacity"
-                        title="Editar nombre y cliente"
-                      >
-                        <Edit3 size={12} />
-                      </button>
-                    </h4>
-                  )}
-                </div>
-
-                <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-400">
-                  <span className="flex items-center gap-1 text-slate-300">
-                    <User size={12} className="text-zinc-500" />
-                    Cliente: <strong className="text-slate-200">{proj.client || 'General'}</strong>
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Calendar size={12} className="text-zinc-500" />
-                    {proj.date}
-                  </span>
-                  <span className="text-orange-400/90 font-mono font-semibold">
-                    Est. ${proj.totalCostEstimateClp?.toLocaleString('es-CL') || '0'} CLP
-                  </span>
-
-                  {/* Detalle si fue vendido */}
-                  {proj.status === 'sold' && (
-                    <span className="flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 font-mono font-bold">
-                      Venta: ${(proj.finalSalePriceClp || proj.totalCostEstimateClp || 0).toLocaleString('es-CL')} CLP
-                      {proj.orderNumber && ` • OT: ${proj.orderNumber}`}
-                    </span>
-                  )}
-                </div>
-
-                <p className="text-xs text-zinc-500 truncate max-w-2xl">{proj.description}</p>
+          {adminSubTab === 'projects' && (
+            /* Summary KPI Strip */
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="bg-zinc-900/80 border border-zinc-800 rounded-xl p-3">
+                <div className="text-[10px] uppercase font-bold text-zinc-400">Total en Cartera</div>
+                <div className="text-xl font-extrabold text-white mt-0.5">{totalProjectsCount}</div>
+                <div className="text-[10px] text-zinc-500 font-mono">${(totalDesignedVolumeClp / 1000000).toFixed(2)}M CLP est.</div>
               </div>
 
-              {/* Action Buttons & Status Selector */}
-              <div className="flex flex-wrap items-center gap-2 shrink-0">
-                {/* Pipeline Status Selector */}
-                <select
-                  value={proj.status || 'designed'}
-                  onChange={(e) => handleChangeStatus(proj, e.target.value as any)}
-                  className="py-1.5 px-2 bg-zinc-950 border border-zinc-700 text-xs rounded-lg text-slate-300 font-medium focus:border-orange-500 focus:outline-none cursor-pointer"
-                  title="Cambiar estado del proyecto en el pipeline"
-                >
-                  <option value="designed">✏ Diseñado</option>
-                  <option value="quoted">📋 Cotizado</option>
-                  <option value="sold">✓ Vendido</option>
-                  <option value="in_production">⚙ En Taller</option>
-                </select>
+              <div className="bg-zinc-900/80 border border-emerald-500/30 rounded-xl p-3">
+                <div className="text-[10px] uppercase font-bold text-emerald-400 flex items-center justify-between">
+                  <span>Ventas Cerradas</span>
+                  <span className="text-[9px] bg-emerald-500/20 px-1.5 py-0.2 rounded font-mono font-bold">{conversionRate}% conv.</span>
+                </div>
+                <div className="text-xl font-extrabold text-emerald-400 mt-0.5">{soldProjects.length}</div>
+                <div className="text-[10px] text-emerald-300/80 font-mono">${(soldVolumeClp / 1000000).toFixed(2)}M CLP real</div>
+              </div>
 
-                {/* Quick Register Sale Button if not sold */}
-                {proj.status !== 'sold' && proj.status !== 'in_production' && (
+              <div className="bg-zinc-900/80 border border-blue-500/20 rounded-xl p-3">
+                <div className="text-[10px] uppercase font-bold text-blue-400">En Diseño / Borrador</div>
+                <div className="text-xl font-extrabold text-blue-400 mt-0.5">
+                  {projects.filter((p) => !p.status || p.status === 'designed').length}
+                </div>
+                <div className="text-[10px] text-zinc-500 font-mono">Demanda potencial</div>
+              </div>
+
+              <div className="bg-zinc-900/80 border border-amber-500/20 rounded-xl p-3">
+                <div className="text-[10px] uppercase font-bold text-amber-400">Cotizados / En Taller</div>
+                <div className="text-xl font-extrabold text-amber-400 mt-0.5">
+                  {projects.filter((p) => p.status === 'quoted' || p.status === 'in_production').length}
+                </div>
+                <div className="text-[10px] text-zinc-500 font-mono">En negociación / taller</div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {!isFreeUserMode && adminSubTab === 'access_logs' ? (
+        /* Superadmin: Tabla de Registro de Accesos al Configurador */
+        <div className="space-y-4">
+          <div className="bg-zinc-900/80 p-4 rounded-xl border border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Activity size={16} className="text-orange-500" />
+                Registro de Ingresos al Configurador
+              </h3>
+              <p className="text-xs text-zinc-400">
+                Auditoría en tiempo real de cada diseñador, arquitecto o mueblista que ingresa al configurador 3D.
+              </p>
+            </div>
+            <div className="text-xs text-zinc-400 font-mono bg-zinc-950 px-3 py-1.5 rounded-lg border border-zinc-800 shrink-0">
+              Total Ingresos: <strong className="text-orange-400">{accessLogs.length}</strong>
+            </div>
+          </div>
+
+          {accessLogs.length === 0 ? (
+            <div className="p-12 text-center bg-zinc-900/40 border border-zinc-800 rounded-2xl">
+              <Activity size={40} className="mx-auto text-zinc-600 mb-3" />
+              <p className="text-sm font-semibold text-slate-400">No hay registros de ingresos aún.</p>
+              <p className="text-xs text-zinc-600 mt-1">Cada vez que un usuario ingrese al configurador quedará trazado con su información de contacto y rubro.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-zinc-800 shadow-xl">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-zinc-950 text-zinc-400 font-bold uppercase tracking-wider text-[10px] border-b border-zinc-800">
+                  <tr>
+                    <th className="py-3 px-4">Fecha y Hora</th>
+                    <th className="py-3 px-4">Usuario / Diseñador</th>
+                    <th className="py-3 px-4">Email</th>
+                    <th className="py-3 px-4">Teléfono</th>
+                    <th className="py-3 px-4">Rubro</th>
+                    <th className="py-3 px-4">Ciudad / Comuna</th>
+                    <th className="py-3 px-4">Módulo</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-800 bg-zinc-900/60">
+                  {accessLogs.map((log) => (
+                    <tr key={log.id} className="hover:bg-zinc-800/40 transition-colors">
+                      <td className="py-3 px-4 font-mono text-zinc-400 whitespace-nowrap">
+                        {new Date(log.timestamp).toLocaleString('es-CL')}
+                      </td>
+                      <td className="py-3 px-4 font-semibold text-white whitespace-nowrap">
+                        {log.userName}
+                      </td>
+                      <td className="py-3 px-4 text-slate-300">
+                        {log.userEmail}
+                      </td>
+                      <td className="py-3 px-4 font-mono text-emerald-400 whitespace-nowrap">
+                        {log.userPhone || '-'}
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-orange-500/10 text-orange-400 border border-orange-500/20">
+                          {log.userRubro || 'Diseñador'}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-zinc-400">
+                        {[log.userCity, log.userCommune].filter(Boolean).join(', ') || '-'}
+                      </td>
+                      <td className="py-3 px-4 font-medium text-slate-200">
+                        {log.module}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      ) : (
+        <>
+          {/* Action & Filter Bar */}
+          <div className="space-y-3 bg-zinc-900/80 p-4 rounded-xl border border-zinc-800">
+            <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+              {/* Search */}
+              <div className="relative flex-1">
+                <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Buscar por proyecto, cliente, N° OT o descripción..."
+                  className="w-full pl-10 pr-4 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-orange-500"
+                />
+              </div>
+
+              {/* Type Tabs */}
+              <div className="flex items-center gap-1 bg-zinc-950 p-1 rounded-lg border border-zinc-800 overflow-x-auto">
+                {[
+                  { id: 'all', label: 'Todos' },
+                  { id: 'kitchen', label: 'Cocinas' },
+                  { id: 'closet', label: 'Clósets' },
+                  { id: 'office', label: 'Oficinas' },
+                  { id: 'special', label: 'Muebles Esp.' },
+                  { id: 'hpl-bathroom', label: 'Baños HPL' },
+                  { id: 'chair', label: 'Sillas' },
+                ].map((tab) => (
                   <button
-                    onClick={() => handleOpenSaleModal(proj)}
-                    className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer shadow-sm shadow-emerald-600/30"
-                    title="Registrar cierre de venta con precio y N° OT"
+                    key={tab.id}
+                    onClick={() => setSelectedType(tab.id as any)}
+                    className={`px-3 py-1.5 rounded-md text-[11px] font-semibold transition-all whitespace-nowrap cursor-pointer ${
+                      selectedType === tab.id
+                        ? 'bg-orange-500 text-white shadow'
+                        : 'text-slate-400 hover:text-slate-200 hover:bg-zinc-900'
+                    }`}
                   >
-                    <Check size={13} />
-                    <span>Registrar Venta</span>
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Actions Buttons */}
+              <div className="flex items-center gap-2 shrink-0">
+                {!isFreeUserMode && projects.length > 0 && (
+                  <button
+                    onClick={() => {
+                      if (window.confirm('¿Confirmas eliminar TODOS los proyectos guardados y reiniciar desde cero?')) {
+                        clearAllProjects();
+                        showNotification('Todos los proyectos han sido eliminados.');
+                      }
+                    }}
+                    className="px-3 py-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 hover:text-red-300 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                    title="Eliminar todos los proyectos y partir desde cero"
+                  >
+                    <Trash2 size={14} />
+                    <span className="hidden sm:inline">Vaciar Todo</span>
                   </button>
                 )}
 
-                {/* Open in Configurator */}
-                <button
-                  onClick={() => handleOpenInConfigurator(proj)}
-                  className="px-3 py-1.5 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors cursor-pointer"
-                  title="Abrir y editar en el configurador 3D"
-                >
-                  <Play size={13} /> Cargar en 3D
-                </button>
+                {!isFreeUserMode && supabaseUser && supabaseTenant && (
+                  <button
+                    onClick={handleManualSync}
+                    disabled={isSyncing}
+                    className="px-3 py-2 bg-zinc-950 border border-sky-500/30 text-sky-400 hover:text-sky-300 hover:bg-sky-500/10 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                    title="Sincronizar proyectos con base de datos en la nube"
+                  >
+                    <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />
+                    <span className="hidden sm:inline">{isSyncing ? 'Sincronizando...' : 'Sincronizar Nube'}</span>
+                  </button>
+                )}
 
-                {/* Direct PDF Download */}
+                {/* Create Button */}
                 <button
-                  onClick={() => handleDownloadPdf(proj)}
-                  className="px-2.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors"
-                  title="Descargar Ficha Técnica en PDF"
+                  onClick={() => setIsCreatingNew(!isCreatingNew)}
+                  className="px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-400 hover:to-amber-500 text-white rounded-lg text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-md shadow-orange-500/20 transition-all cursor-pointer"
                 >
-                  <FileText size={14} className="text-orange-400" /> PDF
-                </button>
-
-                {/* Direct Excel Download */}
-                <button
-                  onClick={() => handleDownloadExcel(proj)}
-                  className="px-2.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors"
-                  title="Descargar Planilla de Materiales en Excel"
-                >
-                  <FileSpreadsheet size={14} className="text-emerald-400" /> Excel
-                </button>
-
-                {/* Duplicate */}
-                <button
-                  onClick={() => handleDuplicate(proj.id)}
-                  className="p-1.5 bg-zinc-800/80 hover:bg-zinc-700 text-slate-400 hover:text-white rounded-lg transition-colors"
-                  title="Duplicar proyecto"
-                >
-                  <Copy size={14} />
-                </button>
-
-                {/* Delete */}
-                <button
-                  onClick={() => handleDelete(proj.id, proj.name)}
-                  className="p-1.5 bg-zinc-800/80 hover:bg-red-500/20 text-slate-400 hover:text-red-400 rounded-lg transition-colors"
-                  title="Eliminar proyecto"
-                >
-                  <Trash2 size={14} />
+                  <Plus size={16} /> Guardar Nuevo
                 </button>
               </div>
             </div>
-          ))
-        )}
-      </div>
+
+            {/* Pipeline Status Filter Pills (Only for Superadmin) */}
+            {!isFreeUserMode && (
+              <div className="flex items-center gap-2 pt-2 border-t border-zinc-800/80 overflow-x-auto text-xs">
+                <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider shrink-0 flex items-center gap-1">
+                  <Filter size={12} /> Pipeline:
+                </span>
+                {[
+                  { id: 'all', label: 'Todos los estados' },
+                  { id: 'designed', label: '✏ Diseñados' },
+                  { id: 'quoted', label: '📋 Cotizados' },
+                  { id: 'sold', label: '✓ Vendidos' },
+                  { id: 'in_production', label: '⚙ En Taller' },
+                ].map((st) => (
+                  <button
+                    key={st.id}
+                    onClick={() => setSelectedStatus(st.id as any)}
+                    className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                      selectedStatus === st.id
+                        ? 'bg-zinc-100 text-zinc-950 font-bold shadow'
+                        : 'bg-zinc-950 text-zinc-400 hover:text-white border border-zinc-800'
+                    }`}
+                  >
+                    {st.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* New Project Form */}
+          {isCreatingNew && (
+            <form
+              onSubmit={handleCreateNewProject}
+              className="p-5 bg-zinc-900/90 border border-orange-500/40 rounded-xl space-y-4 animate-in fade-in duration-200"
+            >
+              <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                  <FolderKanban size={18} className="text-orange-500" />
+                  Guardar Nuevo Proyecto en Base de Datos
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setIsCreatingNew(false)}
+                  className="text-slate-400 hover:text-white"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Módulo / Tipo</label>
+                  <select
+                    value={newType}
+                    onChange={(e) => setNewType(e.target.value as ProjectType)}
+                    className="w-full p-2 bg-zinc-950 border border-zinc-700 rounded-lg text-xs text-white focus:border-orange-500 focus:outline-none"
+                  >
+                    <option value="kitchen">Cocina Planificador 2D/3D</option>
+                    <option value="closet">Clóset Paramétrico Modular</option>
+                    <option value="office">Mobiliario de Oficina (Space Planning 3D)</option>
+                    <option value="special">Mueble Especial Abet & Madera</option>
+                    <option value="hpl-bathroom">Cabinas Sanitarias HPL</option>
+                    <option value="chair">Diseño y Fabricación de Sillas</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Nombre del Proyecto</label>
+                  <input
+                    type="text"
+                    required
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    placeholder="Ej. Casa Molco Lago Ranco"
+                    className="w-full p-2 bg-zinc-950 border border-zinc-700 rounded-lg text-xs text-white placeholder:text-zinc-600 focus:border-orange-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Cliente / Referencia</label>
+                  <input
+                    type="text"
+                    value={newClient}
+                    onChange={(e) => setNewClient(e.target.value)}
+                    placeholder="Ej. Inmobiliaria Sur / Particular"
+                    className="w-full p-2 bg-zinc-950 border border-zinc-700 rounded-lg text-xs text-white placeholder:text-zinc-600 focus:border-orange-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Descripción Técnica</label>
+                <input
+                  type="text"
+                  value={newDescription}
+                  onChange={(e) => setNewDescription(e.target.value)}
+                  placeholder="Especificaciones, ubicación o notas de cubicación..."
+                  className="w-full p-2 bg-zinc-950 border border-zinc-700 rounded-lg text-xs text-white placeholder:text-zinc-600 focus:border-orange-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsCreatingNew(false)}
+                  className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-slate-300 text-xs font-semibold rounded-lg"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-orange-500 hover:bg-orange-400 text-white text-xs font-bold uppercase tracking-wider rounded-lg shadow"
+                >
+                  Guardar Proyecto
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* Projects List */}
+          <div className="space-y-3">
+            {filteredProjects.length === 0 ? (
+              <div className="p-12 text-center bg-zinc-900/40 border border-zinc-800 rounded-2xl">
+                <FolderKanban size={40} className="mx-auto text-zinc-600 mb-3" />
+                <p className="text-sm font-semibold text-slate-400">No se encontraron proyectos guardados.</p>
+                <p className="text-xs text-zinc-600 mt-1">
+                  {isFreeUserMode
+                    ? 'Diseña tu primera cocina en 3D y pulsa "Guardar Proyecto" para verla aquí.'
+                    : 'Guarda un nuevo proyecto o ajusta el filtro de búsqueda.'}
+                </p>
+              </div>
+            ) : (
+              filteredProjects.map((proj) => (
+                <div
+                  key={proj.id}
+                  className="group bg-zinc-900/90 border border-zinc-800 hover:border-zinc-700 rounded-xl p-4 transition-all hover:bg-zinc-900 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 shadow-sm"
+                >
+                  {/* Left Info with Thumbnail Preview */}
+                  <div className="flex items-start gap-4 flex-1 min-w-0">
+                    {proj.thumbnail ? (
+                      <div className="w-20 h-20 rounded-lg overflow-hidden border border-zinc-700 bg-zinc-950 shrink-0 relative group/thumb shadow">
+                        <img
+                          src={proj.thumbnail}
+                          alt={proj.name}
+                          className="w-full h-full object-cover object-center group-hover/thumb:scale-105 transition-transform"
+                        />
+                      </div>
+                    ) : (
+                      <div className="w-16 h-16 rounded-lg bg-zinc-950 border border-zinc-800 flex items-center justify-center shrink-0 text-zinc-600">
+                        <FolderKanban size={24} />
+                      </div>
+                    )}
+
+                    <div className="space-y-1.5 flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {getModuleBadge(proj.type)}
+                        {getStatusBadge(proj.status)}
+
+                        {editingId === proj.id ? (
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={editName}
+                              onChange={(e) => setEditName(e.target.value)}
+                              className="p-1 px-2 bg-zinc-950 border border-orange-500 rounded text-xs text-white font-bold"
+                            />
+                            <input
+                              type="text"
+                              value={editClient}
+                              onChange={(e) => setEditClient(e.target.value)}
+                              placeholder="Cliente"
+                              className="p-1 px-2 bg-zinc-950 border border-zinc-700 rounded text-xs text-slate-300"
+                            />
+                            <button
+                              onClick={() => handleSaveEdit(proj.id)}
+                              className="p-1 bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 rounded cursor-pointer"
+                              title="Guardar"
+                            >
+                              <Check size={14} />
+                            </button>
+                            <button
+                              onClick={() => setEditingId(null)}
+                              className="p-1 bg-zinc-800 text-slate-400 hover:bg-zinc-700 rounded cursor-pointer"
+                              title="Cancelar"
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                        ) : (
+                          <h4 className="text-sm font-bold text-white tracking-tight truncate flex items-center gap-2">
+                            {proj.name}
+                            <button
+                              onClick={() => handleStartEdit(proj)}
+                              className="opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-orange-400 transition-opacity cursor-pointer"
+                              title="Editar nombre y cliente"
+                            >
+                              <Edit3 size={12} />
+                            </button>
+                          </h4>
+                        )}
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-400">
+                        <span className="flex items-center gap-1 text-slate-300">
+                          <User size={12} className="text-zinc-500" />
+                          Cliente: <strong className="text-slate-200">{proj.client || 'General'}</strong>
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Calendar size={12} className="text-zinc-500" />
+                          {proj.date}
+                        </span>
+                        <span className="text-orange-400/90 font-mono font-semibold">
+                          Est. ${proj.totalCostEstimateClp?.toLocaleString('es-CL') || '0'} CLP
+                        </span>
+
+                        {/* Superadmin: Trazabilidad de quién diseñó este proyecto */}
+                        {!isFreeUserMode && proj.userName && (
+                          <span className="flex items-center gap-1 text-[11px] text-zinc-300 bg-zinc-950 px-2 py-0.5 rounded border border-zinc-800">
+                            <User size={11} className="text-orange-400" />
+                            Diseñó: <strong className="text-white">{proj.userName}</strong>
+                            {proj.userRubro && <span className="text-orange-400">({proj.userRubro})</span>}
+                            {proj.userPhone && ` • Tel: ${proj.userPhone}`}
+                            {proj.userCity && ` • ${proj.userCity}`}
+                          </span>
+                        )}
+
+                        {/* Detalle si fue vendido */}
+                        {proj.status === 'sold' && (
+                          <span className="flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 font-mono font-bold">
+                            Venta: ${(proj.finalSalePriceClp || proj.totalCostEstimateClp || 0).toLocaleString('es-CL')} CLP
+                            {proj.orderNumber && ` • OT: ${proj.orderNumber}`}
+                          </span>
+                        )}
+                      </div>
+
+                      <p className="text-xs text-zinc-500 truncate max-w-2xl">{proj.description}</p>
+                    </div>
+                  </div>
+
+                  {/* Actions for Free User vs Superadmin */}
+                  {isFreeUserMode ? (
+                    <div className="flex flex-wrap items-center gap-2 shrink-0">
+                      <button
+                        onClick={() => handleOpenInConfigurator(proj)}
+                        className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm shadow-emerald-600/30"
+                        title="Abrir y editar en el configurador 3D"
+                      >
+                        <Play size={13} /> Cargar en 3D
+                      </button>
+
+                      <button
+                        onClick={() => handleDownloadCommercialPdf(proj)}
+                        className="px-3.5 py-2 bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-400 hover:to-amber-500 text-white rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm shadow-orange-500/20"
+                        title="Descargar Ficha y Cotización Comercial en PDF con Vistas 3D"
+                      >
+                        <FileText size={14} /> Descargar Cotización PDF
+                      </button>
+
+                      {proj.status !== 'sold' && (
+                        <button
+                          onClick={() => handleRequestPurchase(proj)}
+                          disabled={proj.status === 'quoted'}
+                          className={`px-3 py-2 border rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                            proj.status === 'quoted'
+                              ? 'bg-zinc-950 border-emerald-500/40 text-emerald-400 cursor-default'
+                              : 'bg-zinc-800 hover:bg-zinc-700 border-zinc-700 text-slate-200'
+                          }`}
+                          title="Enviar solicitud para fabricar o comprar este proyecto"
+                        >
+                          <ShoppingBag size={14} className="text-emerald-400" />
+                          <span>{proj.status === 'quoted' ? 'Solicitud Enviada' : 'Solicitar Fabricación'}</span>
+                        </button>
+                      )}
+
+                      <button
+                        onClick={() => handleDelete(proj.id, proj.name)}
+                        className="p-2 bg-zinc-800/80 hover:bg-red-500/20 text-slate-400 hover:text-red-400 rounded-lg transition-colors cursor-pointer"
+                        title="Eliminar proyecto"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  ) : (
+                    /* Superadmin Action Buttons & Status Selector */
+                    <div className="flex flex-wrap items-center gap-2 shrink-0">
+                      {/* Pipeline Status Selector */}
+                      <select
+                        value={proj.status || 'designed'}
+                        onChange={(e) => handleChangeStatus(proj, e.target.value as any)}
+                        className="py-1.5 px-2 bg-zinc-950 border border-zinc-700 text-xs rounded-lg text-slate-300 font-medium focus:border-orange-500 focus:outline-none cursor-pointer"
+                        title="Cambiar estado del proyecto en el pipeline"
+                      >
+                        <option value="designed">✏ Diseñado</option>
+                        <option value="quoted">📋 Cotizado</option>
+                        <option value="sold">✓ Vendido</option>
+                        <option value="in_production">⚙ En Taller</option>
+                      </select>
+
+                      {/* Quick Register Sale Button if not sold */}
+                      {proj.status !== 'sold' && proj.status !== 'in_production' && (
+                        <button
+                          onClick={() => handleOpenSaleModal(proj)}
+                          className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer shadow-sm shadow-emerald-600/30"
+                          title="Registrar cierre de venta con precio y N° OT"
+                        >
+                          <Check size={13} />
+                          <span>Registrar Venta</span>
+                        </button>
+                      )}
+
+                      {/* Open in Configurator */}
+                      <button
+                        onClick={() => handleOpenInConfigurator(proj)}
+                        className="px-3 py-1.5 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors cursor-pointer"
+                        title="Abrir y editar en el configurador 3D"
+                      >
+                        <Play size={13} /> Cargar en 3D
+                      </button>
+
+                      {/* Commercial PDF Download */}
+                      <button
+                        onClick={() => handleDownloadCommercialPdf(proj)}
+                        className="px-2.5 py-1.5 bg-orange-500/15 hover:bg-orange-500/25 border border-orange-500/30 text-orange-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                        title="Descargar Ficha y Cotización Comercial en PDF"
+                      >
+                        <FileText size={14} className="text-orange-400" /> PDF Comercial
+                      </button>
+
+                      {/* Technical Factory PDF Download */}
+                      <button
+                        onClick={() => handleDownloadPdf(proj)}
+                        className="px-2.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                        title="Descargar Ficha Técnica de Fábrica en PDF"
+                      >
+                        <FileText size={14} className="text-zinc-400" /> Ficha Técnica
+                      </button>
+
+                      {/* Direct Excel Download */}
+                      <button
+                        onClick={() => handleDownloadExcel(proj)}
+                        className="px-2.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                        title="Descargar Planilla de Materiales en Excel"
+                      >
+                        <FileSpreadsheet size={14} className="text-emerald-400" /> Excel
+                      </button>
+
+                      {/* Duplicate */}
+                      <button
+                        onClick={() => handleDuplicate(proj.id)}
+                        className="p-1.5 bg-zinc-800/80 hover:bg-zinc-700 text-slate-400 hover:text-white rounded-lg transition-colors cursor-pointer"
+                        title="Duplicar proyecto"
+                      >
+                        <Copy size={14} />
+                      </button>
+
+                      {/* Delete */}
+                      <button
+                        onClick={() => handleDelete(proj.id, proj.name)}
+                        className="p-1.5 bg-zinc-800/80 hover:bg-red-500/20 text-slate-400 hover:text-red-400 rounded-lg transition-colors cursor-pointer"
+                        title="Eliminar proyecto"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        </>
+      )}
 
       {/* Modal Registrar Venta */}
       {saleModalProject && (

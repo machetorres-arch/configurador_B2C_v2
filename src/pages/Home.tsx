@@ -18,12 +18,22 @@ export function Home({ onNavigate }: { onNavigate: (route: 'closet' | 'kitchen' 
 
   const isUserLoggedIn = Boolean(isLocalAuth || supabaseUser);
 
-  const handleOpenAdmin = () => {
+  const [loginPrompt, setLoginPrompt] = useState<string>('');
+  const [pendingRoute, setPendingRoute] = useState<'kitchen' | null>(null);
+
+  const handleEnterConfigurator = (targetRoute: 'kitchen') => {
     if (isUserLoggedIn) {
-      setIsBackofficeOpen(true);
+      useAdminStore.getState().logAccess(targetRoute);
+      onNavigate(targetRoute);
     } else {
+      setPendingRoute(targetRoute);
+      setLoginPrompt('Para ingresar a diseñar al configurador debes estar registrado o iniciar sesión.');
       setIsLoginOpen(true);
     }
+  };
+
+  const handleLogout = () => {
+    useAdminStore.getState().logout();
   };
 
   return (
@@ -41,35 +51,52 @@ export function Home({ onNavigate }: { onNavigate: (route: 'closet' | 'kitchen' 
               <button
                 onClick={() => setIsBackofficeOpen(true)}
                 className="group px-3 sm:px-4 py-2 bg-gradient-to-r from-orange-500/20 to-amber-500/20 hover:from-orange-500/30 hover:to-amber-500/30 border border-orange-500/50 rounded-xl text-xs font-bold uppercase tracking-wider text-orange-300 hover:text-orange-200 flex items-center gap-2 transition-all shadow-lg shadow-orange-500/10 cursor-pointer"
-                title="Abrir panel de control y administración"
+                title="Abrir panel de proyectos y control"
               >
                 <div className="p-1 bg-orange-500/30 rounded-md text-orange-400">
                   <ShieldCheck size={14} />
                 </div>
-                <span>Backoffice</span>
+                <span>{currentUser?.role === 'free_user' ? 'Mis Proyectos' : 'Backoffice'}</span>
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" title="Sesión activa" />
               </button>
 
               <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-slate-300">
                 <User size={13} className="text-orange-400" />
-                <span className="font-mono text-[11px] truncate max-w-[150px]">
-                  {supabaseUser?.email || currentUser?.email || adminEmail || 'marcelo@robfu.cl'}
+                <span className="font-semibold text-xs text-white max-w-[150px] truncate">
+                  {currentUser?.full_name || supabaseUser?.full_name || currentUser?.email || 'Usuario'}
                 </span>
-                {(supabaseUser?.role || currentUser?.role) && (
+                {currentUser?.rubro && (
+                  <span className="px-1.5 py-0.5 bg-zinc-800 text-orange-400 text-[10px] font-medium rounded border border-zinc-700">
+                    {currentUser.rubro}
+                  </span>
+                )}
+                {currentUser?.role === 'superadmin' && (
                   <span className="px-1.5 py-0.5 bg-orange-500/20 text-orange-400 text-[9px] font-bold uppercase rounded">
-                    {supabaseUser?.role || currentUser?.role}
+                    Admin
                   </span>
                 )}
               </div>
+
+              <button
+                onClick={handleLogout}
+                className="p-2 text-slate-400 hover:text-red-400 hover:bg-white/5 rounded-xl transition-colors cursor-pointer text-xs"
+                title="Cerrar Sesión"
+              >
+                Salir
+              </button>
             </div>
           ) : (
             <button
-              onClick={() => setIsLoginOpen(true)}
+              onClick={() => {
+                setLoginPrompt('Ingresa o regístrate para diseñar cocinas 3D con todas las herramientas');
+                setPendingRoute(null);
+                setIsLoginOpen(true);
+              }}
               className="group px-3 sm:px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-400 hover:to-amber-500 text-white rounded-xl text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition-all shadow-lg shadow-orange-500/20 cursor-pointer"
-              title="Iniciar sesión en Backoffice o registrar empresa proveedora"
+              title="Iniciar sesión o registrar cuenta gratuita"
             >
               <LogIn size={15} />
-              <span>Iniciar Sesión / Proveedores</span>
+              <span>Iniciar Sesión / Registro Gratis</span>
             </button>
           )}
 
@@ -90,7 +117,7 @@ export function Home({ onNavigate }: { onNavigate: (route: 'closet' | 'kitchen' 
 
         {/* Primary CTA Button */}
         <button
-          onClick={() => onNavigate('kitchen')}
+          onClick={() => handleEnterConfigurator('kitchen')}
           className="mb-8 sm:mb-12 w-full sm:w-auto px-6 sm:px-8 py-3.5 sm:py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-sm sm:text-base md:text-lg rounded-2xl shadow-xl shadow-blue-500/25 flex items-center justify-center gap-3 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer border border-blue-400/30"
         >
           <LayoutDashboard size={20} className="text-blue-200" />
@@ -101,7 +128,7 @@ export function Home({ onNavigate }: { onNavigate: (route: 'closet' | 'kitchen' 
         <div className="w-full max-w-xl px-1 sm:px-0">
           {/* Cocinas & BIM Card */}
           <div 
-            onClick={() => onNavigate('kitchen')}
+            onClick={() => handleEnterConfigurator('kitchen')}
             className="group relative bg-zinc-900 border border-blue-500/60 rounded-2xl p-6 sm:p-8 hover:border-blue-400 transition-all cursor-pointer overflow-hidden flex flex-col items-start min-h-[260px] sm:min-h-[300px] shadow-xl shadow-blue-500/10 hover:shadow-blue-500/25 ring-1 ring-blue-500/20"
           >
             <div className="absolute top-0 right-0 w-72 h-72 bg-blue-500/15 rounded-full blur-3xl -mr-20 -mt-20 transition-all group-hover:bg-blue-500/25"></div>
@@ -122,13 +149,20 @@ export function Home({ onNavigate }: { onNavigate: (route: 'closet' | 'kitchen' 
         </div>
       </main>
 
-      {/* Superadmin Modals */}
+      {/* Superadmin / Login / Register Modals */}
       <AdminLoginModal
         isOpen={isLoginOpen}
         onClose={() => setIsLoginOpen(false)}
+        promptTitle={loginPrompt}
         onSuccess={() => {
           setIsLoginOpen(false);
-          setIsBackofficeOpen(true);
+          if (pendingRoute) {
+            useAdminStore.getState().logAccess(pendingRoute);
+            onNavigate(pendingRoute);
+            setPendingRoute(null);
+          } else {
+            setIsBackofficeOpen(true);
+          }
         }}
       />
 

@@ -48,20 +48,23 @@ export function AdminBackofficeModal({
   const { fetchTenantData, materials, hardware, projects: cloudProjects } = useTenantDataStore();
   const isCloud = isSupabaseConfigured();
 
-  const isSuperAdmin = !supabaseUser?.tenant_id && (!currentUser || currentUser.role === 'superadmin');
-  const isProvider = !isSuperAdmin;
+  const isFreeUser = currentUser?.role === 'free_user' || supabaseUser?.role === 'free_user';
+  const isSuperAdmin = !isFreeUser && !supabaseUser?.tenant_id && (!currentUser || currentUser.role === 'superadmin');
+  const isProvider = !isFreeUser && !isSuperAdmin;
   const currentTenantId = supabaseUser?.tenant_id || currentUser?.tenant_id || '';
   const currentTenantName = supabaseTenant?.name || currentUser?.tenant_name || '';
 
   const [activeTab, setActiveTab] = useState<'projects' | 'supplies' | 'textures' | 'users' | 'analytics' | 'manufacturing'>(
-    isProvider ? 'supplies' : 'projects'
+    isFreeUser ? 'projects' : isProvider ? 'supplies' : 'projects'
   );
 
   useEffect(() => {
-    if (isProvider && (activeTab === 'projects' || activeTab === 'users' || activeTab === 'manufacturing')) {
+    if (isFreeUser) {
+      setActiveTab('projects');
+    } else if (isProvider && (activeTab === 'projects' || activeTab === 'users' || activeTab === 'manufacturing')) {
       setActiveTab('supplies');
     }
-  }, [isProvider, activeTab]);
+  }, [isFreeUser, isProvider, activeTab]);
 
   const isLight = themeMode === 'light';
 
@@ -284,43 +287,79 @@ export function AdminBackofficeModal({
             isLight ? 'bg-zinc-200/70 border-zinc-300' : 'bg-zinc-900/50 border-zinc-800/80'
           }`}
         >
-          <div className="flex flex-wrap items-center gap-6">
-            {isSuperAdmin && (
+          {isFreeUser ? (
+            <div className="flex flex-wrap items-center gap-6">
               <div className="flex items-center gap-2">
                 <FolderKanban size={15} className="text-orange-500" />
-                <span className={isLight ? 'text-zinc-600' : 'text-slate-400'}>Proyectos Guardados:</span>
-                <strong className={isLight ? 'text-zinc-900 font-mono' : 'text-white font-mono'}>{projects.length}</strong>
+                <span className={isLight ? 'text-zinc-600' : 'text-slate-400'}>Mis Proyectos Guardados:</span>
+                <strong className={isLight ? 'text-zinc-900 font-mono' : 'text-white font-mono'}>
+                  {projects.filter((p) => p.userId === currentUser?.id || p.userEmail === currentUser?.email).length}
+                </strong>
               </div>
-            )}
-            <div className="flex items-center gap-2">
-              <DollarSign size={15} className="text-emerald-500" />
-              <span className={isLight ? 'text-zinc-600' : 'text-slate-400'}>
-                {isProvider ? 'Mis Insumos Registrados:' : 'Insumos Registrados:'}
-              </span>
-              <strong className={isLight ? 'text-zinc-900 font-mono' : 'text-white font-mono'}>{displayedSupplies.length}</strong>
-            </div>
-            <div className="flex items-center gap-2">
-              <Palette size={15} className="text-sky-500" />
-              <span className={isLight ? 'text-zinc-600' : 'text-slate-400'}>
-                {isProvider ? 'Mis Texturas Activas:' : 'Texturas Activas:'}
-              </span>
-              <strong className={isLight ? 'text-zinc-900 font-mono' : 'text-white font-mono'}>
-                {displayedTextures.filter((t) => t.active).length}
-              </strong>
-            </div>
-            {pendingTexturesCount > 0 && (
-              <div className="flex items-center gap-1.5 px-2.5 py-0.5 bg-amber-500/20 border border-amber-500/40 text-amber-500 rounded-full font-bold animate-pulse">
-                <Clock size={12} />
-                <span>{pendingTexturesCount} pendientes de VB</span>
+              <div className="flex items-center gap-2">
+                <span className="text-orange-500 font-bold">Rubro:</span>
+                <span className={isLight ? 'text-zinc-800 font-semibold' : 'text-slate-200 font-semibold'}>
+                  {currentUser?.rubro || 'Diseñador'}
+                </span>
               </div>
-            )}
-          </div>
+              {currentUser?.phone && (
+                <div className="hidden sm:flex items-center gap-2 text-slate-400">
+                  <span>Contacto:</span>
+                  <span className="font-mono text-slate-300">{currentUser.phone}</span>
+                </div>
+              )}
+              {currentUser?.city && (
+                <div className="hidden md:flex items-center gap-2 text-slate-400">
+                  <span>Ubicación:</span>
+                  <span className="text-slate-300">{currentUser.commune ? `${currentUser.commune}, ${currentUser.city}` : currentUser.city}</span>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-6">
+              {isSuperAdmin && (
+                <div className="flex items-center gap-2">
+                  <FolderKanban size={15} className="text-orange-500" />
+                  <span className={isLight ? 'text-zinc-600' : 'text-slate-400'}>Proyectos Guardados:</span>
+                  <strong className={isLight ? 'text-zinc-900 font-mono' : 'text-white font-mono'}>{projects.length}</strong>
+                </div>
+              )}
+              <div className="flex items-center gap-2">
+                <DollarSign size={15} className="text-emerald-500" />
+                <span className={isLight ? 'text-zinc-600' : 'text-slate-400'}>
+                  {isProvider ? 'Mis Insumos Registrados:' : 'Insumos Registrados:'}
+                </span>
+                <strong className={isLight ? 'text-zinc-900 font-mono' : 'text-white font-mono'}>{displayedSupplies.length}</strong>
+              </div>
+              <div className="flex items-center gap-2">
+                <Palette size={15} className="text-sky-500" />
+                <span className={isLight ? 'text-zinc-600' : 'text-slate-400'}>
+                  {isProvider ? 'Mis Texturas Activas:' : 'Texturas Activas:'}
+                </span>
+                <strong className={isLight ? 'text-zinc-900 font-mono' : 'text-white font-mono'}>
+                  {displayedTextures.filter((t) => t.active).length}
+                </strong>
+              </div>
+              {pendingTexturesCount > 0 && (
+                <div className="flex items-center gap-1.5 px-2.5 py-0.5 bg-amber-500/20 border border-amber-500/40 text-amber-500 rounded-full font-bold animate-pulse">
+                  <Clock size={12} />
+                  <span>{pendingTexturesCount} pendientes de VB</span>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className={`text-[11px] ${isLight ? 'text-zinc-600' : 'text-zinc-400'}`}>
-            {isProvider ? 'Valor Estimado de Mi Inventario: ' : 'Valor Estimado Cartera: '}
-            <strong className="text-orange-500 font-mono text-xs">
-              ${(isProvider ? providerInventoryValue : totalProjectsValue).toLocaleString('es-CL')} CLP
-            </strong>
+            {isFreeUser
+              ? 'Panel exclusivo de diseño y cotizaciones'
+              : isProvider
+              ? 'Valor Estimado de Mi Inventario: '
+              : 'Valor Estimado Cartera: '}
+            {!isFreeUser && (
+              <strong className="text-orange-500 font-mono text-xs">
+                ${(isProvider ? providerInventoryValue : totalProjectsValue).toLocaleString('es-CL')} CLP
+              </strong>
+            )}
           </div>
         </div>
 
@@ -330,99 +369,111 @@ export function AdminBackofficeModal({
             isLight ? 'bg-white border-zinc-300' : 'bg-zinc-950 border-zinc-800'
           }`}
         >
-          {isSuperAdmin && (
+          {isFreeUser ? (
             <button
               onClick={() => setActiveTab('projects')}
-              className={`px-4 py-2.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all shrink-0 cursor-pointer ${
-                activeTab === 'projects'
-                  ? 'border-orange-500 text-orange-500 bg-orange-500/5'
-                  : isLight
-                  ? 'border-transparent text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
-                  : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-zinc-900/50'
-              }`}
+              className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 border-orange-500 text-orange-500 bg-orange-500/5 shrink-0 cursor-pointer"
             >
               <FolderKanban size={15} />
-              Gestor de Proyectos ({projects.length})
+              Mis Proyectos Guardados ({projects.filter((p) => p.userId === currentUser?.id || p.userEmail === currentUser?.email).length})
             </button>
-          )}
+          ) : (
+            <>
+              {isSuperAdmin && (
+                <button
+                  onClick={() => setActiveTab('projects')}
+                  className={`px-4 py-2.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all shrink-0 cursor-pointer ${
+                    activeTab === 'projects'
+                      ? 'border-orange-500 text-orange-500 bg-orange-500/5'
+                      : isLight
+                      ? 'border-transparent text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
+                      : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-zinc-900/50'
+                  }`}
+                >
+                  <FolderKanban size={15} />
+                  Gestor de Proyectos ({projects.length})
+                </button>
+              )}
 
-          <button
-            onClick={() => setActiveTab('supplies')}
-            className={`px-4 py-2.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all shrink-0 cursor-pointer ${
-              activeTab === 'supplies'
-                ? 'border-orange-500 text-orange-500 bg-orange-500/5'
-                : isLight
-                ? 'border-transparent text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
-                : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-zinc-900/50'
-            }`}
-          >
-            <DollarSign size={15} />
-            {isProvider ? `Mis Insumos y Precios (${displayedSupplies.length})` : `Tabla de Precios e Insumos (${supplies.length})`}
-          </button>
+              <button
+                onClick={() => setActiveTab('supplies')}
+                className={`px-4 py-2.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all shrink-0 cursor-pointer ${
+                  activeTab === 'supplies'
+                    ? 'border-orange-500 text-orange-500 bg-orange-500/5'
+                    : isLight
+                    ? 'border-transparent text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
+                    : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-zinc-900/50'
+                }`}
+              >
+                <DollarSign size={15} />
+                {isProvider ? `Mis Insumos y Precios (${displayedSupplies.length})` : `Tabla de Precios e Insumos (${supplies.length})`}
+              </button>
 
-          <button
-            onClick={() => setActiveTab('textures')}
-            className={`px-4 py-2.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all shrink-0 cursor-pointer ${
-              activeTab === 'textures'
-                ? 'border-orange-500 text-orange-500 bg-orange-500/5'
-                : isLight
-                ? 'border-transparent text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
-                : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-zinc-900/50'
-            }`}
-          >
-            <Palette size={15} />
-            {isProvider ? `Mis Diseños & Texturas 3D (${displayedTextures.length})` : `Gestor de Texturas & Decorativos (${textures.length})`}
-            {pendingTexturesCount > 0 && (
-              <span className="px-1.5 py-0.2 bg-amber-500 text-black text-[10px] font-extrabold rounded-full">
-                {pendingTexturesCount}
-              </span>
-            )}
-          </button>
+              <button
+                onClick={() => setActiveTab('textures')}
+                className={`px-4 py-2.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all shrink-0 cursor-pointer ${
+                  activeTab === 'textures'
+                    ? 'border-orange-500 text-orange-500 bg-orange-500/5'
+                    : isLight
+                    ? 'border-transparent text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
+                    : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-zinc-900/50'
+                }`}
+              >
+                <Palette size={15} />
+                {isProvider ? `Mis Diseños & Texturas 3D (${displayedTextures.length})` : `Gestor de Texturas & Decorativos (${textures.length})`}
+                {pendingTexturesCount > 0 && (
+                  <span className="px-1.5 py-0.2 bg-amber-500 text-black text-[10px] font-extrabold rounded-full">
+                    {pendingTexturesCount}
+                  </span>
+                )}
+              </button>
 
-          <button
-            onClick={() => setActiveTab('analytics')}
-            className={`px-4 py-2.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all shrink-0 cursor-pointer ${
-              activeTab === 'analytics'
-                ? 'border-orange-500 text-orange-500 bg-orange-500/5'
-                : isLight
-                ? 'border-transparent text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
-                : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-zinc-900/50'
-            }`}
-          >
-            <BarChart3 size={15} />
-            {isProvider ? 'Mis Estadísticas & Métricas' : 'Estadísticas Proveedor'}
-          </button>
+              <button
+                onClick={() => setActiveTab('analytics')}
+                className={`px-4 py-2.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all shrink-0 cursor-pointer ${
+                  activeTab === 'analytics'
+                    ? 'border-orange-500 text-orange-500 bg-orange-500/5'
+                    : isLight
+                    ? 'border-transparent text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
+                    : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-zinc-900/50'
+                }`}
+              >
+                <BarChart3 size={15} />
+                {isProvider ? 'Mis Estadísticas & Métricas' : 'Estadísticas Proveedor'}
+              </button>
 
-          {isSuperAdmin && (
-            <button
-              onClick={() => setActiveTab('users')}
-              className={`px-4 py-2.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all shrink-0 cursor-pointer ${
-                activeTab === 'users'
-                  ? 'border-orange-500 text-orange-500 bg-orange-500/5'
-                  : isLight
-                  ? 'border-transparent text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
-                  : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-zinc-900/50'
-              }`}
-            >
-              <Users size={15} />
-              Usuarios & Proveedores
-            </button>
-          )}
+              {isSuperAdmin && (
+                <button
+                  onClick={() => setActiveTab('users')}
+                  className={`px-4 py-2.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all shrink-0 cursor-pointer ${
+                    activeTab === 'users'
+                      ? 'border-orange-500 text-orange-500 bg-orange-500/5'
+                      : isLight
+                      ? 'border-transparent text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
+                      : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-zinc-900/50'
+                  }`}
+                >
+                  <Users size={15} />
+                  Usuarios & Proveedores
+                </button>
+              )}
 
-          {isSuperAdmin && (
-            <button
-              onClick={() => setActiveTab('manufacturing')}
-              className={`px-4 py-2.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all shrink-0 cursor-pointer ${
-                activeTab === 'manufacturing'
-                  ? 'border-orange-500 text-orange-500 bg-orange-500/5'
-                  : isLight
-                  ? 'border-transparent text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
-                  : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-zinc-900/50'
-              }`}
-            >
-              <Wrench size={15} />
-              Tarifas B2B & Manufactura
-            </button>
+              {isSuperAdmin && (
+                <button
+                  onClick={() => setActiveTab('manufacturing')}
+                  className={`px-4 py-2.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all shrink-0 cursor-pointer ${
+                    activeTab === 'manufacturing'
+                      ? 'border-orange-500 text-orange-500 bg-orange-500/5'
+                      : isLight
+                      ? 'border-transparent text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
+                      : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-zinc-900/50'
+                  }`}
+                >
+                  <Wrench size={15} />
+                  Tarifas B2B & Manufactura
+                </button>
+              )}
+            </>
           )}
         </div>
 
@@ -432,24 +483,27 @@ export function AdminBackofficeModal({
             isLight ? 'bg-zinc-50' : 'bg-zinc-950/80'
           }`}
         >
-          {isSuperAdmin && activeTab === 'projects' && (
-            <ProjectsManagerTab onLoadProjectToModule={handleLoadProject} />
+          {activeTab === 'projects' && (
+            <ProjectsManagerTab
+              onLoadProjectToModule={handleLoadProject}
+              isFreeUserMode={isFreeUser}
+            />
           )}
-          {activeTab === 'supplies' && (
+          {!isFreeUser && activeTab === 'supplies' && (
             <SuppliesPriceTab
               currentProviderId={currentTenantId}
               currentProviderName={currentTenantName}
               isSuperAdmin={isSuperAdmin}
             />
           )}
-          {activeTab === 'textures' && (
+          {!isFreeUser && activeTab === 'textures' && (
             <TexturesManagerTab
               currentProviderId={currentTenantId}
               currentProviderName={currentTenantName}
               isSuperAdmin={isSuperAdmin}
             />
           )}
-          {activeTab === 'analytics' && (
+          {!isFreeUser && activeTab === 'analytics' && (
             <ProviderAnalyticsTab
               currentProviderId={currentTenantId}
               isSuperAdmin={isSuperAdmin}

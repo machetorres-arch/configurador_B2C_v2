@@ -14,11 +14,15 @@ import {
   FolderKanban,
   CheckCircle2,
   Sparkles,
-  ArrowRight
+  ArrowRight,
+  Download
 } from 'lucide-react';
 import { useAdminStore, ProjectType, ProjectItem } from '../../store/adminStore';
 import { useSupabaseAuthStore } from '../../store/supabaseAuthStore';
 import { useTenantDataStore } from '../../store/tenantDataStore';
+import { exportKitchenCommercialPdf } from '../../utils/kitchenCommercialPdfGenerator';
+import { useKitchenStore } from '../../store/kitchenStore';
+import { useStore as useClosetStore } from '../../store';
 
 interface SaveProjectModalProps {
   isOpen: boolean;
@@ -61,6 +65,7 @@ export function SaveProjectModal({
   const [costClp, setCostClp] = useState<number>(0);
   const [isSaving, setIsSaving] = useState(false);
   const [savedSuccessId, setSavedSuccessId] = useState<string | null>(null);
+  const [savedThumbnail, setSavedThumbnail] = useState<string | undefined>(undefined);
 
   // Al abrir, inicializar valores por defecto coherentes
   useEffect(() => {
@@ -93,6 +98,7 @@ export function SaveProjectModal({
       );
       setCostClp(effectiveEstimatedCost || 1500000);
       setSavedSuccessId(null);
+      setSavedThumbnail(undefined);
       setIsSaving(false);
     }
   }, [isOpen, projectType, effectiveDefaultName, defaultClientName, effectiveEstimatedCost]);
@@ -106,6 +112,18 @@ export function SaveProjectModal({
     setIsSaving(true);
 
     try {
+      // Capturar vista 3D del canvas
+      let thumbnail: string | undefined = undefined;
+      try {
+        const canvas = document.querySelector('canvas');
+        if (canvas) {
+          thumbnail = canvas.toDataURL('image/png');
+          setSavedThumbnail(thumbnail);
+        }
+      } catch (e) {
+        console.warn('No se pudo capturar miniatura 3D:', e);
+      }
+
       // 1. Guardar en AdminStore (LocalStorage persistente)
       const localId = saveProject({
         name: name.trim(),
@@ -114,6 +132,7 @@ export function SaveProjectModal({
         description: description.trim() || 'Diseño paramétrico guardado',
         totalCostEstimateClp: costClp > 0 ? costClp : 1000000,
         data: projectData,
+        thumbnail,
       });
 
       // 2. Si Supabase está autenticado, sincronizar a la nube
@@ -155,6 +174,42 @@ export function SaveProjectModal({
       alert('Hubo un error al guardar el proyecto. Intenta nuevamente.');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleDownloadCommercialPdfAfterSave = () => {
+    try {
+      const kState = useKitchenStore.getState();
+      const gState = useClosetStore.getState();
+      const cabinets = projectData?.cabinets || kState.cabinets || [];
+      const countertopConfig = projectData?.countertopConfig || kState.countertopConfig;
+      const qstoneCatalog = kState.qstoneCatalog;
+
+      exportKitchenCommercialPdf({
+        projectName: name.trim(),
+        cabinets,
+        state: {
+          ...gState,
+          structureColor: projectData?.structureColor || gState.structureColor,
+          doorColor: projectData?.doorColor || gState.doorColor,
+          drawerFrontColor: projectData?.drawerFrontColor || gState.drawerFrontColor,
+          socleHeight: projectData?.socleHeight || kState.socleHeight,
+          socleFinish: projectData?.socleFinish || kState.socleFinish,
+          drawerHardware: projectData?.drawerHardware || gState.drawerHardware,
+          golaSystem: projectData?.golaSystem || kState.golaSystem,
+        },
+        countertopConfig,
+        qstoneCatalog,
+        userInfo: {
+          fullName: clientName.trim() || undefined,
+          email: clientEmail.trim() || undefined,
+          phone: clientPhone.trim() || undefined,
+        },
+        screenshotUrl: savedThumbnail,
+        estimatedTotalClp: costClp,
+      });
+    } catch (err) {
+      console.error('Error al generar PDF comercial desde modal:', err);
     }
   };
 
@@ -233,26 +288,37 @@ export function SaveProjectModal({
               </div>
 
               {/* Botones de acción posterior */}
-              <div className="w-full pt-4 flex flex-col sm:flex-row gap-3">
+              <div className="w-full pt-4 space-y-2.5">
                 <button
                   type="button"
-                  onClick={() => {
-                    onClose();
-                    if (onOpenBackoffice) onOpenBackoffice();
-                  }}
-                  className="flex-1 py-2.5 px-4 bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg shadow-orange-600/20"
+                  onClick={handleDownloadCommercialPdfAfterSave}
+                  className="w-full py-2.5 px-4 bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-400 hover:to-amber-500 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg shadow-orange-500/20"
                 >
-                  <FolderKanban size={16} />
-                  Ir al Gestor de Proyectos
-                  <ArrowRight size={14} />
+                  <Download size={16} />
+                  Descargar Cotización PDF (Vistas 3D & Precios)
                 </button>
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="py-2.5 px-4 bg-zinc-800 hover:bg-zinc-700 text-slate-200 font-semibold text-xs rounded-xl transition-all cursor-pointer"
-                >
-                  Seguir Diseñando
-                </button>
+
+                <div className="flex flex-col sm:flex-row gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      if (onOpenBackoffice) onOpenBackoffice();
+                    }}
+                    className="flex-1 py-2.5 px-4 bg-zinc-800 hover:bg-zinc-700 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer border border-zinc-700"
+                  >
+                    <FolderKanban size={15} className="text-orange-400" />
+                    Ver en Mis Proyectos
+                    <ArrowRight size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="py-2.5 px-4 bg-zinc-900 hover:bg-zinc-800 text-slate-300 font-semibold text-xs rounded-xl transition-all cursor-pointer border border-zinc-800"
+                  >
+                    Seguir Diseñando
+                  </button>
+                </div>
               </div>
             </div>
           ) : (
