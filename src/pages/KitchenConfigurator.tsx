@@ -24,6 +24,7 @@ import { resolvePlacement, getCabinetSpecsFromTool, findSmartWallPlacement } fro
 import { ArrowLeft, Box, Square, Move3D, PenTool, LayoutGrid, Trash2, RotateCw, Undo2, Redo2, Flame, Refrigerator, Flower2, Utensils, Info, Sparkles, Maximize2, Layers, Palette, ListOrdered, Save, Columns, Sliders, Sun, Moon, Wine, Wrench, DollarSign, ChevronDown, ChevronRight, Globe, Ruler, Menu, X, MoreVertical, Download } from 'lucide-react';
 import { HandlesSection } from '../components/kitchen/HandlesSection';
 import { useAdminStore } from '../store/adminStore';
+import { useSupabaseAuthStore } from '../store/supabaseAuthStore';
 import { exportKitchenCommercialPdf } from '../utils/kitchenCommercialPdfGenerator';
 import { HANDLE_CATALOG } from '../types/handle';
 
@@ -253,7 +254,13 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
     }
   };
 
-  const { currentUser, isAuthenticated, logAccess } = useAdminStore();
+  const { currentUser, isAuthenticated: isLocalAuth, logAccess } = useAdminStore();
+  const supabaseUser = useSupabaseAuthStore((state) => state.user);
+  const isAuthenticated = Boolean(isLocalAuth || supabaseUser);
+  const effectiveRole = currentUser?.role || supabaseUser?.role || 'designer';
+  const canAccessIndustrialOutputs = Boolean(
+    effectiveRole === 'superadmin' || effectiveRole === 'tenant_admin' || effectiveRole === 'operator'
+  );
 
   // Control de Acceso y Trazabilidad en Auditoría del Superadmin
   useEffect(() => {
@@ -263,16 +270,16 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
     }
 
     logAccess({
-      userId: currentUser?.id || 'guest',
-      userName: currentUser?.full_name || 'Usuario',
-      userEmail: currentUser?.email || 'usuario@sistema.cl',
+      userId: currentUser?.id || supabaseUser?.id || 'guest',
+      userName: currentUser?.full_name || supabaseUser?.full_name || 'Usuario',
+      userEmail: currentUser?.email || supabaseUser?.email || 'usuario@sistema.cl',
       userPhone: currentUser?.phone,
       userRubro: currentUser?.rubro,
       userCity: currentUser?.city,
       userCommune: currentUser?.commune,
       module: 'Configurador de Cocinas 3D',
     });
-  }, [isAuthenticated, currentUser, logAccess, onNavigate]);
+  }, [isAuthenticated, currentUser, supabaseUser, logAccess, onNavigate]);
 
   // Descarga directa de Cotización y Ficha Comercial en PDF sin salir al Backoffice
   const handleDirectCommercialPdfDownload = () => {
@@ -714,7 +721,7 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
             <span className="hidden md:inline">{theme === 'dark' ? 'Modo Claro' : 'Modo Oscuro'}</span>
           </button>
 
-          {currentUser?.role !== 'free_user' && (
+          {canAccessIndustrialOutputs && (
             <button
               onClick={() => setIsB2BQuoteOpen(true)}
               className={`flex items-center gap-1.5 px-3.5 py-1.5 border rounded-lg transition-all text-xs font-bold uppercase tracking-wider shadow-sm cursor-pointer ${
@@ -739,18 +746,20 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
             <span>Cotización PDF</span>
           </button>
 
-          <button
-            onClick={() => setIsBimModalOpen(true)}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 border rounded-lg transition-all text-xs font-bold uppercase tracking-wider shadow-sm cursor-pointer ${
-              isLight
-                ? 'bg-indigo-50 hover:bg-indigo-100 border-indigo-300 text-indigo-900'
-                : 'bg-indigo-500/15 hover:bg-indigo-500/25 border-indigo-500/40 text-indigo-400 hover:text-indigo-300'
-            }`}
-            title="Descargar paquete de modelado 3D y OpenBIM (.OBJ, .IFC, .DXF 3D, .ZIP) para Revit, SketchUp, Archicad y Blender"
-          >
-            <Box size={14} className="text-indigo-500" />
-            <span>Exportar 3D / BIM</span>
-          </button>
+          {canAccessIndustrialOutputs && (
+            <button
+              onClick={() => setIsBimModalOpen(true)}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 border rounded-lg transition-all text-xs font-bold uppercase tracking-wider shadow-sm cursor-pointer ${
+                isLight
+                  ? 'bg-indigo-50 hover:bg-indigo-100 border-indigo-300 text-indigo-900'
+                  : 'bg-indigo-500/15 hover:bg-indigo-500/25 border-indigo-500/40 text-indigo-400 hover:text-indigo-300'
+              }`}
+              title="Descargar paquete de modelado 3D y OpenBIM (.OBJ, .IFC, .DXF 3D, .ZIP) para Revit, SketchUp, Archicad y Blender"
+            >
+              <Box size={14} className="text-indigo-500" />
+              <span>Exportar 3D / BIM</span>
+            </button>
+          )}
 
           <button
             onClick={() => setIsSaveModalOpen(true)}
@@ -815,15 +824,17 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
               <span>Cubiertas Qstone {countertopConfig.enabled ? '(Activada)' : ''}</span>
             </button>
 
-            <button
-              onClick={() => { setIsMobileMenuOpen(false); globalState.setIsPrinting(true); }}
-              className="flex items-center gap-3 p-3 rounded-xl bg-gradient-to-r from-orange-600 to-amber-600 text-white text-xs font-bold uppercase tracking-wider shadow-md cursor-pointer"
-            >
-              <FileText size={16} />
-              <span>Planos y Despiece de Fabricación</span>
-            </button>
+            {canAccessIndustrialOutputs && (
+              <button
+                onClick={() => { setIsMobileMenuOpen(false); globalState.setIsPrinting(true); }}
+                className="flex items-center gap-3 p-3 rounded-xl bg-gradient-to-r from-orange-600 to-amber-600 text-white text-xs font-bold uppercase tracking-wider shadow-md cursor-pointer"
+              >
+                <FileText size={16} />
+                <span>Planos y Despiece de Fabricación</span>
+              </button>
+            )}
 
-            {currentUser?.role !== 'free_user' && (
+            {canAccessIndustrialOutputs && (
               <button
                 onClick={() => { setIsMobileMenuOpen(false); setIsB2BQuoteOpen(true); }}
                 className="flex items-center gap-3 p-3 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-300 text-xs font-bold uppercase tracking-wider cursor-pointer"
@@ -833,13 +844,15 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
               </button>
             )}
 
-            <button
-              onClick={() => { setIsMobileMenuOpen(false); setIsBimModalOpen(true); }}
-              className="flex items-center gap-3 p-3 rounded-xl border border-indigo-500/30 bg-indigo-500/10 text-indigo-300 text-xs font-bold uppercase tracking-wider cursor-pointer"
-            >
-              <Box size={16} />
-              <span>Exportar 3D / BIM (.OBJ, .IFC, .DXF)</span>
-            </button>
+            {canAccessIndustrialOutputs && (
+              <button
+                onClick={() => { setIsMobileMenuOpen(false); setIsBimModalOpen(true); }}
+                className="flex items-center gap-3 p-3 rounded-xl border border-indigo-500/30 bg-indigo-500/10 text-indigo-300 text-xs font-bold uppercase tracking-wider cursor-pointer"
+              >
+                <Box size={16} />
+                <span>Exportar 3D / BIM (.OBJ, .IFC, .DXF)</span>
+              </button>
+            )}
 
             <button
               onClick={() => { setIsMobileMenuOpen(false); setIsSaveModalOpen(true); }}
@@ -2819,14 +2832,25 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
         isLight ? 'border-slate-200 bg-slate-50/95 shadow-lg' : 'border-white/10 bg-black/90'
       }`}>
         <div className="flex items-center gap-2">
-          <button 
-            onClick={() => globalState.setIsPrinting(true)} 
-            className="flex-1 flex items-center justify-center gap-2 py-2.5 sm:py-3 px-3 sm:px-4 bg-gradient-to-r from-orange-600 via-amber-600 to-orange-500 hover:from-orange-500 hover:to-amber-500 text-white rounded-xl transition-all text-xs uppercase tracking-wider font-bold shadow-lg shadow-orange-600/25 active:scale-[0.98] cursor-pointer"
-            title="Abrir planos interactivos 2D/A3, despiece de corte, cotizaciones, etiquetas QR y archivos DXF para CNC"
-          >
-            <FileText size={15} />
-            <span>Planos y Despiece</span>
-          </button>
+          {canAccessIndustrialOutputs ? (
+            <button 
+              onClick={() => globalState.setIsPrinting(true)} 
+              className="flex-1 flex items-center justify-center gap-2 py-2.5 sm:py-3 px-3 sm:px-4 bg-gradient-to-r from-orange-600 via-amber-600 to-orange-500 hover:from-orange-500 hover:to-amber-500 text-white rounded-xl transition-all text-xs uppercase tracking-wider font-bold shadow-lg shadow-orange-600/25 active:scale-[0.98] cursor-pointer"
+              title="Abrir planos interactivos 2D/A3, despiece de corte, cotizaciones, etiquetas QR y archivos DXF para CNC"
+            >
+              <FileText size={15} />
+              <span>Planos y Despiece</span>
+            </button>
+          ) : (
+            <button 
+              onClick={handleDirectCommercialPdfDownload} 
+              className="flex-1 flex items-center justify-center gap-2 py-2.5 sm:py-3 px-3 sm:px-4 bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-400 hover:to-amber-500 text-white rounded-xl transition-all text-xs uppercase tracking-wider font-bold shadow-lg shadow-orange-500/25 active:scale-[0.98] cursor-pointer"
+              title="Descargar Cotización y Ficha Comercial en PDF con Renders 3D y Precios"
+            >
+              <Download size={15} />
+              <span>Descargar Cotización PDF</span>
+            </button>
+          )}
           <button
             onClick={() => setRoomPlannerOpen(true)}
             className="lg:hidden p-2.5 bg-yellow-400 hover:bg-yellow-500 text-black font-extrabold text-xs uppercase tracking-wider rounded-xl flex items-center justify-center cursor-pointer shrink-0 shadow-sm"

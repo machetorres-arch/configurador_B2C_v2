@@ -18,10 +18,18 @@ import { calculateCncMachiningForPart } from '../utils/kitchenCncMachining';
 import { downloadPartDxfFile, downloadAllPartsDxf, downloadKitchenDxfZip } from '../utils/kitchenCncDxf';
 import { exportKitchenLabelsPDF } from '../utils/kitchenLabelsPdfGenerator';
 import { KitchenMepBlueprintSheet } from './kitchen/KitchenMepBlueprintSheet';
+import { useAdminStore } from '../store/adminStore';
+import { useSupabaseAuthStore } from '../store/supabaseAuthStore';
 
 export function KitchenBlueprint() {
   const state = useStore();
   const kState = useKitchenStore();
+  const { currentUser } = useAdminStore();
+  const supabaseUser = useSupabaseAuthStore((state) => state.user);
+  const effectiveRole = currentUser?.role || supabaseUser?.role || 'designer';
+  const canAccessIndustrialOutputs = Boolean(
+    effectiveRole === 'superadmin' || effectiveRole === 'tenant_admin' || effectiveRole === 'operator'
+  );
   const [isExportingA3, setIsExportingA3] = useState(false);
   const [isExportingLabels, setIsExportingLabels] = useState(false);
   const [isExportingDxf, setIsExportingDxf] = useState(false);
@@ -2118,113 +2126,125 @@ export function KitchenBlueprint() {
         </div>
 
         {/* Acciones Técnicas y Exportaciones */}
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Botón Principal: Descargar Planos Completos A3 en PDF */}
-          <button 
-            onClick={handleExportA3}
-            disabled={isExportingA3}
-            className="bg-orange-500 hover:bg-orange-600 disabled:opacity-50 active:scale-95 text-white px-3 py-1.5 rounded-lg font-bold uppercase text-[11px] tracking-wider shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
-            title="Generar y descargar todos los planos y despieces en formato A3 de alta resolución"
-          >
-            {isExportingA3 ? (
-              <>
-                <Loader2 size={14} className="animate-spin text-white" />
-                <span>Generando ({exportProgress ? `${exportProgress.current}/${exportProgress.total}` : '...'})</span>
-              </>
-            ) : (
-              <>
-                <Download size={14} />
-                <span>Planos PDF (A3)</span>
-              </>
-            )}
-          </button>
-
-          {generatedPdfUrl && (
-            <a
-              href={generatedPdfUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              download="planos_fabricacion_cocina_A3.pdf"
-              className="bg-green-600 hover:bg-green-500 text-white px-3 py-1.5 rounded-lg font-bold uppercase text-[11px] tracking-wider shadow-sm flex items-center gap-1.5 animate-pulse cursor-pointer"
-              title="Haz clic para abrir o descargar directamente el PDF generado"
+        {canAccessIndustrialOutputs ? (
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Botón Principal: Descargar Planos Completos A3 en PDF */}
+            <button 
+              onClick={handleExportA3}
+              disabled={isExportingA3}
+              className="bg-orange-500 hover:bg-orange-600 disabled:opacity-50 active:scale-95 text-white px-3 py-1.5 rounded-lg font-bold uppercase text-[11px] tracking-wider shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
+              title="Generar y descargar todos los planos y despieces en formato A3 de alta resolución"
             >
-              <Download size={14} />
-              <span>PDF Listo</span>
-            </a>
-          )}
+              {isExportingA3 ? (
+                <>
+                  <Loader2 size={14} className="animate-spin text-white" />
+                  <span>Generando ({exportProgress ? `${exportProgress.current}/${exportProgress.total}` : '...'})</span>
+                </>
+              ) : (
+                <>
+                  <Download size={14} />
+                  <span>Planos PDF (A3)</span>
+                </>
+              )}
+            </button>
 
-          {/* Botón Secundario: Ficha Técnica PDF Directo */}
-          <button 
-            onClick={() => exportKitchenPDF(kState.cabinets, state)}
-            className="bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white px-3 py-1.5 rounded-lg font-bold uppercase text-[11px] tracking-wider shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
-            title="Descargar archivo PDF con despiece de corte, resumen de cubicación y herrajes"
-          >
-            <FileText size={14} />
-            <span>Ficha (BOM)</span>
-          </button>
-
-          {/* Botón CAD/CAM: Exportar Excel de Corte y Materiales */}
-          <button 
-            onClick={exportKitchenToExcel}
-            className="bg-emerald-700 hover:bg-emerald-600 active:scale-95 text-white px-3 py-1.5 rounded-lg font-bold uppercase text-[11px] tracking-wider shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
-            title="Descargar planilla Excel CAD/CAM para seccionadoras y centros de corte"
-          >
-            <FileSpreadsheet size={14} />
-            <span>Excel CAD/CAM</span>
-          </button>
-
-          {/* Botón Industria 4.0: Etiquetas de Producción con Código QR */}
-          <button 
-            onClick={handleExportLabels}
-            disabled={isExportingLabels}
-            className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50 active:scale-95 text-white px-3 py-1.5 rounded-lg font-bold uppercase text-[11px] tracking-wider shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
-            title="Generar hoja de etiquetas adhesivas de corte y mecanizado con código QR y cantos"
-          >
-            {isExportingLabels ? (
-              <Loader2 size={14} className="animate-spin text-white" />
-            ) : (
-              <QrCode size={14} />
+            {generatedPdfUrl && (
+              <a
+                href={generatedPdfUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                download="planos_fabricacion_cocina_A3.pdf"
+                className="bg-green-600 hover:bg-green-500 text-white px-3 py-1.5 rounded-lg font-bold uppercase text-[11px] tracking-wider shadow-sm flex items-center gap-1.5 animate-pulse cursor-pointer"
+                title="Haz clic para abrir o descargar directamente el PDF generado"
+              >
+                <Download size={14} />
+                <span>PDF Listo</span>
+              </a>
             )}
-            <span>Etiquetas QR</span>
-          </button>
 
-          {/* Botón Industria 4.0: Exportar Paquete DXF para CNC */}
-          <button 
-            onClick={handleExportAllDxf}
-            disabled={isExportingDxf}
-            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 active:scale-95 text-white px-3 py-1.5 rounded-lg font-bold uppercase text-[11px] tracking-wider shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
-            title="Descargar paquete ZIP con subcarpetas por mueble y archivos DXF con capas CNC para centros de corte"
-          >
-            {isExportingDxf ? (
-              <Loader2 size={14} className="animate-spin text-white" />
-            ) : (
-              <Cpu size={14} />
-            )}
-            <span>DXF CNC</span>
-          </button>
+            {/* Botón Secundario: Ficha Técnica PDF Directo */}
+            <button 
+              onClick={() => exportKitchenPDF(kState.cabinets, state)}
+              className="bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white px-3 py-1.5 rounded-lg font-bold uppercase text-[11px] tracking-wider shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
+              title="Descargar archivo PDF con despiece de corte, resumen de cubicación y herrajes"
+            >
+              <FileText size={14} />
+              <span>Ficha (BOM)</span>
+            </button>
 
-          {/* Botón CAD/BIM: Exportar Paquete 3D & OpenBIM (.OBJ, .IFC, .DXF 3D, .ZIP) */}
-          <button 
-            onClick={() => setIsBimModalOpen(true)}
-            className="bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white px-3 py-1.5 rounded-lg font-bold uppercase text-[11px] tracking-wider shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
-            title="Descargar paquete de modelado 3D y OpenBIM (.OBJ, .IFC, .DXF 3D y .ZIP) para Revit, SketchUp, Archicad y Blender"
-          >
-            <Box size={14} />
-            <span>Pack 3D / BIM</span>
-          </button>
-        </div>
+            {/* Botón CAD/CAM: Exportar Excel de Corte y Materiales */}
+            <button 
+              onClick={exportKitchenToExcel}
+              className="bg-emerald-700 hover:bg-emerald-600 active:scale-95 text-white px-3 py-1.5 rounded-lg font-bold uppercase text-[11px] tracking-wider shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
+              title="Descargar planilla Excel CAD/CAM para seccionadoras y centros de corte"
+            >
+              <FileSpreadsheet size={14} />
+              <span>Excel CAD/CAM</span>
+            </button>
+
+            {/* Botón Industria 4.0: Etiquetas de Producción con Código QR */}
+            <button 
+              onClick={handleExportLabels}
+              disabled={isExportingLabels}
+              className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50 active:scale-95 text-white px-3 py-1.5 rounded-lg font-bold uppercase text-[11px] tracking-wider shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
+              title="Generar hoja de etiquetas adhesivas de corte y mecanizado con código QR y cantos"
+            >
+              {isExportingLabels ? (
+                <Loader2 size={14} className="animate-spin text-white" />
+              ) : (
+                <QrCode size={14} />
+              )}
+              <span>Etiquetas QR</span>
+            </button>
+
+            {/* Botón Industria 4.0: Exportar Paquete DXF para CNC */}
+            <button 
+              onClick={handleExportAllDxf}
+              disabled={isExportingDxf}
+              className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 active:scale-95 text-white px-3 py-1.5 rounded-lg font-bold uppercase text-[11px] tracking-wider shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
+              title="Descargar paquete ZIP con subcarpetas por mueble y archivos DXF con capas CNC para centros de corte"
+            >
+              {isExportingDxf ? (
+                <Loader2 size={14} className="animate-spin text-white" />
+              ) : (
+                <Cpu size={14} />
+              )}
+              <span>DXF CNC</span>
+            </button>
+
+            {/* Botón CAD/BIM: Exportar Paquete 3D & OpenBIM (.OBJ, .IFC, .DXF 3D, .ZIP) */}
+            <button 
+              onClick={() => setIsBimModalOpen(true)}
+              className="bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white px-3 py-1.5 rounded-lg font-bold uppercase text-[11px] tracking-wider shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
+              title="Descargar paquete de modelado 3D y OpenBIM (.OBJ, .IFC, .DXF 3D y .ZIP) para Revit, SketchUp, Archicad y Blender"
+            >
+              <Box size={14} />
+              <span>Pack 3D / BIM</span>
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-orange-500/10 border border-orange-500/30 text-orange-300 text-xs font-semibold">
+              <FileText size={14} className="text-orange-400" />
+              <span>Vista de Consulta Técnica</span>
+              <span className="text-[10px] text-slate-400 font-normal hidden sm:inline">(Archivos CAD/CAM, CNC y despieces de taller reservados para Fábrica)</span>
+            </div>
+          </div>
+        )}
 
         {/* Lado Derecho: Comercial, Imprimir y Cerrar */}
         <div className="flex items-center gap-2">
           {/* Botón Comercial: Cotización Dual B2B & Retail */}
-          <button 
-            onClick={() => setIsB2BQuoteOpen(true)}
-            className="bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 active:scale-95 text-white px-3.5 py-1.5 rounded-lg font-bold uppercase text-[11px] tracking-wider shadow-md flex items-center gap-1.5 transition-all cursor-pointer border border-amber-400/30"
-            title="Abrir cotizador comercial B2B & Retail con desglose de costos y márgenes"
-          >
-            <DollarSign size={14} />
-            <span>Cotización B2B / Retail</span>
-          </button>
+          {canAccessIndustrialOutputs && (
+            <button 
+              onClick={() => setIsB2BQuoteOpen(true)}
+              className="bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 active:scale-95 text-white px-3.5 py-1.5 rounded-lg font-bold uppercase text-[11px] tracking-wider shadow-md flex items-center gap-1.5 transition-all cursor-pointer border border-amber-400/30"
+              title="Abrir cotizador comercial B2B & Retail con desglose de costos y márgenes"
+            >
+              <DollarSign size={14} />
+              <span>Cotización B2B / Retail</span>
+            </button>
+          )}
 
           {/* Botón: Personalizar Datos de Proyecto y Cliente */}
           <button 

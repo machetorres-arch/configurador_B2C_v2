@@ -48,7 +48,7 @@ export function AdminBackofficeModal({
   const { fetchTenantData, materials, hardware, projects: cloudProjects } = useTenantDataStore();
   const isCloud = isSupabaseConfigured();
 
-  const isFreeUser = currentUser?.role === 'free_user' || supabaseUser?.role === 'free_user';
+  const isFreeUser = currentUser?.role === 'free_user' || supabaseUser?.role === 'free_user' || currentUser?.role === 'designer' || supabaseUser?.role === 'designer';
   const isSuperAdmin = !isFreeUser && !supabaseUser?.tenant_id && (!currentUser || currentUser.role === 'superadmin');
   const isProvider = !isFreeUser && !isSuperAdmin;
   const currentTenantId = supabaseUser?.tenant_id || currentUser?.tenant_id || '';

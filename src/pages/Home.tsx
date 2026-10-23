@@ -56,7 +56,7 @@ export function Home({ onNavigate }: { onNavigate: (route: 'closet' | 'kitchen' 
                 <div className="p-1 bg-orange-500/30 rounded-md text-orange-400">
                   <ShieldCheck size={14} />
                 </div>
-                <span>{currentUser?.role === 'free_user' ? 'Mis Proyectos' : 'Backoffice'}</span>
+                <span>{currentUser?.role === 'free_user' || currentUser?.role === 'designer' || supabaseUser?.role === 'designer' || supabaseUser?.role === 'free_user' ? 'Mis Proyectos' : 'Backoffice'}</span>
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" title="Sesión activa" />
               </button>
 
