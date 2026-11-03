@@ -53,49 +53,64 @@ export function CountertopConfigModal({ isOpen, onClose, isLight: isLightProp }:
   const adminTextures = useAdminStore((s) => s.textures);
 
   const fullCatalog = useMemo(() => {
-    // 1. Tomar texturas de cubiertas activas y aprobadas del adminStore
+    // 1. Tomar texturas de cubiertas activas y aprobadas del adminStore (piedras, sinterizados y HPL compacto de cubiertas)
     const stoneTextures = (adminTextures || [])
       .filter((t) => t.active && (t.approvalStatus === 'approved' || !t.approvalStatus))
       .filter((t) => {
         const cat = t.category;
         const n = (t.name || '').toLowerCase();
         const b = (t.brand || t.providerName || '').toLowerCase();
-        return cat === 'piedras_marmoles' || n.includes('qstone') || b.includes('qstone') || b.includes('sysprotec');
+        return (
+          cat === 'piedras_marmoles' ||
+          (cat as string) === 'cubiertas_hpl' ||
+          n.includes('qstone') ||
+          b.includes('qstone') ||
+          b.includes('sysprotec') ||
+          (b.includes('abet') && t.thicknessMm === 8)
+        );
       });
 
-    if (stoneTextures.length > 0) {
-      return stoneTextures.map((t) => {
-        const isSintered =
-          t.name.toLowerCase().includes('sinteriz') ||
+    const adminMapped = stoneTextures.map((t) => {
+      const isHpl =
+        (t.category as string) === 'cubiertas_hpl' ||
+        t.thicknessMm === 8 ||
+        (t.brand && t.brand.toLowerCase().includes('abet')) ||
+        (t.name && t.name.toLowerCase().includes('hpl'));
+      const isSintered =
+        !isHpl &&
+        (t.name.toLowerCase().includes('sinteriz') ||
           (t.finish && t.finish.toLowerCase().includes('sinteriz')) ||
-          (t.thicknessMm === 12 || t.name.includes('12'));
-        const thickness = t.thicknessMm || (isSintered ? 12 : (t.name.includes('20') ? 20 : 18));
-        return {
-          id: t.id,
-          code: t.code || 'QS-CUSTOM',
-          name: t.name,
-          materialType: isSintered ? ('sinterizado' as const) : ('quarzo' as const),
-          thicknessMm: (thickness === 12 || thickness === 18 || thickness === 20 ? thickness : 18) as 12 | 18 | 20,
-          priceM2Clp: t.priceM2Clp || Math.round((t.priceSheetClp || 280000) / 3.965) || 280000,
-          sheetWidthMm: 3200,
-          sheetHeightMm: 1600,
-          colorHex: t.url && t.url.startsWith('#') ? t.url : '#F5F5F7',
-          textureUrl: (t.url && !t.url.startsWith('#')) ? t.url : ((t.previewUrl && !t.previewUrl.startsWith('#')) ? t.previewUrl : undefined),
-          finish: t.finish || 'Pulido Seda',
-          description: `${t.brand || 'SYSPROTEC (QSTONE)'} - ${t.finish || 'Formato Placa'}`,
-          active: true,
-        };
-      });
-    }
+          t.thicknessMm === 12 ||
+          t.name.includes('12'));
+      const thickness = t.thicknessMm || (isHpl ? 8 : isSintered ? 12 : t.name.includes('20') ? 20 : 18);
+      return {
+        id: t.id,
+        code: t.code || (isHpl ? 'ABET-CUSTOM' : 'QS-CUSTOM'),
+        name: t.name,
+        materialType: isHpl ? ('hpl_abet' as const) : isSintered ? ('sinterizado' as const) : ('quarzo' as const),
+        thicknessMm: (thickness === 8 || thickness === 12 || thickness === 18 || thickness === 20 ? thickness : 18) as 8 | 12 | 18 | 20,
+        priceM2Clp: t.priceM2Clp || Math.round((t.priceSheetClp || 280000) / (isHpl ? 3.965 : 5.12)) || 185000,
+        sheetWidthMm: isHpl ? 3050 : 3200,
+        sheetHeightMm: isHpl ? 1300 : 1600,
+        colorHex: t.url && t.url.startsWith('#') ? t.url : '#F5F5F7',
+        textureUrl: t.url && !t.url.startsWith('#') ? t.url : t.previewUrl && !t.previewUrl.startsWith('#') ? t.previewUrl : undefined,
+        finish: t.finish || (isHpl ? 'Compacto 8mm' : 'Pulido Seda'),
+        description: `${t.brand || (isHpl ? 'ABET LAMINATI' : 'SYSPROTEC (QSTONE)')} - ${t.finish || 'Formato Placa'}`,
+        active: true,
+      };
+    });
 
-    return qstoneCatalog.filter((p) => p.active !== false);
+    // Combinar con qstoneCatalog para garantizar disponibilidad de Abet Laminati HPL 8mm y catálogo base
+    const adminIds = new Set(adminMapped.map((p) => p.id));
+    const catalogExtras = qstoneCatalog.filter((p) => p.active !== false && !adminIds.has(p.id));
+    return [...adminMapped, ...catalogExtras];
   }, [adminTextures, qstoneCatalog]);
 
   const [activeTab, setActiveTab] = useState<'material' | 'dimensions' | 'appliances' | 'nesting'>('material');
   const [furnitureTypeTab, setFurnitureTypeTab] = useState<'base' | 'island'>('base');
   const [selectedRunTab, setSelectedRunTab] = useState<string>('all');
   const [applianceError, setApplianceError] = useState<string | null>(null);
-  const [materialFilter, setMaterialFilter] = useState<'all' | 'quarzo' | 'sinterizado'>('all');
+  const [materialFilter, setMaterialFilter] = useState<'all' | 'quarzo' | 'sinterizado' | 'hpl_abet'>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
   const updateRunOverride = (runId: string, partial: Partial<CountertopRunOverride>) => {
@@ -192,7 +207,30 @@ export function CountertopConfigModal({ isOpen, onClose, isLight: isLightProp }:
   if (!isOpen) return null;
 
   const handleSelectProduct = (productId: string) => {
-    setCountertopConfig({ selectedProductId: productId, enabled: true });
+    const prod = fullCatalog.find((p) => p.id === productId);
+    const isHpl8mm = prod && (prod.thicknessMm === 8 || prod.materialType === 'hpl_abet');
+    if (isHpl8mm) {
+      const overrides = countertopConfig.runOverrides;
+      const cleanedOverrides: Record<string, CountertopRunOverride> = {};
+      if (overrides) {
+        for (const k of Object.keys(overrides)) {
+          const runOv = overrides[k];
+          if (runOv) {
+            cleanedOverrides[k] = { ...runOv, regruesoCm: 0 };
+          }
+        }
+      }
+      setCountertopConfig({
+        selectedProductId: productId,
+        enabled: true,
+        regruesoCm: 0,
+        baseRegruesoCm: 0,
+        islandRegruesoCm: 0,
+        ...(overrides ? { runOverrides: cleanedOverrides } : {}),
+      });
+    } else {
+      setCountertopConfig({ selectedProductId: productId, enabled: true });
+    }
   };
 
   const handleSinkChange = (sinkId: SinkModelId) => {
@@ -446,6 +484,17 @@ export function CountertopConfigModal({ isOpen, onClose, isLight: isLightProp }:
                   >
                     Sinterizado ({fullCatalog.filter((p) => p.materialType === 'sinterizado').length})
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setMaterialFilter('hpl_abet')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition whitespace-nowrap cursor-pointer ${
+                      materialFilter === 'hpl_abet'
+                        ? 'bg-emerald-600 text-white font-bold shadow'
+                        : isLight ? 'text-slate-600 hover:bg-slate-100' : 'text-slate-300 hover:bg-slate-800'
+                    }`}
+                  >
+                    HPL 8mm Abet ({fullCatalog.filter((p) => p.materialType === 'hpl_abet').length})
+                  </button>
                 </div>
 
                 <div className="relative">
@@ -486,6 +535,7 @@ export function CountertopConfigModal({ isOpen, onClose, isLight: isLightProp }:
                   {filteredCatalog.map((product) => {
                     const isSelected = countertopConfig.selectedProductId === product.id;
                     const isSintered = product.materialType === 'sinterizado';
+                    const isHpl = product.materialType === 'hpl_abet' || product.thicknessMm === 8;
 
                     return (
                       <div
@@ -532,16 +582,20 @@ export function CountertopConfigModal({ isOpen, onClose, isLight: isLightProp }:
                               }`}>
                                 <span
                                   className={`px-1.5 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider ${
-                                    isSintered
+                                    isHpl
                                       ? isLight
-                                        ? 'bg-purple-100 text-purple-700 border border-purple-200'
-                                        : 'bg-purple-900/60 text-purple-300 border border-purple-700'
-                                      : isLight
-                                        ? 'bg-cyan-100 text-cyan-800 border border-cyan-200'
-                                        : 'bg-cyan-900/60 text-cyan-300 border border-cyan-700'
+                                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                        : 'bg-emerald-900/60 text-emerald-300 border border-emerald-700'
+                                      : isSintered
+                                        ? isLight
+                                          ? 'bg-purple-100 text-purple-700 border border-purple-200'
+                                          : 'bg-purple-900/60 text-purple-300 border border-purple-700'
+                                        : isLight
+                                          ? 'bg-cyan-100 text-cyan-800 border border-cyan-200'
+                                          : 'bg-cyan-900/60 text-cyan-300 border border-cyan-700'
                                   }`}
                                 >
-                                  {isSintered ? 'Sinterizado' : 'Cuarzo'}
+                                  {isHpl ? 'HPL 8mm Abet' : isSintered ? 'Sinterizado' : 'Cuarzo'}
                                 </span>
                                 <span>{product.thicknessMm} mm</span>
                                 <span>• Cod: {product.code}</span>
@@ -561,7 +615,7 @@ export function CountertopConfigModal({ isOpen, onClose, isLight: isLightProp }:
                           isLight ? 'border-slate-100' : 'border-slate-700/50'
                         }`}>
                           <span className={isLight ? 'text-slate-600 font-medium' : 'text-slate-400'}>
-                            {isSintered ? 'Requiere Tapa Melamina Completa' : 'Sistema Barras 10 cm'}
+                            {isHpl ? 'Canto Simple 8mm (Sin Regrueso Frontal)' : isSintered ? 'Requiere Tapa Melamina Completa' : 'Sistema Barras 10 cm'}
                           </span>
                           <span className={isLight ? 'text-slate-400' : 'text-slate-500'}>
                             Formato: {(product.sheetWidthMm / 10).toFixed(0)}x{(product.sheetHeightMm / 10).toFixed(0)} cm ({( (product.sheetWidthMm * product.sheetHeightMm) / 1000000 ).toFixed(2)} m²)
@@ -745,41 +799,65 @@ export function CountertopConfigModal({ isOpen, onClose, isLight: isLightProp }:
                     </div>
 
                     {/* Regrueso Frontal para esta cubierta */}
-                    <div className={`rounded-xl p-4 border ${
-                      isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-800/40 border-slate-700'
-                    }`}>
-                      <div className="flex items-center justify-between mb-2">
-                        <label className={`text-sm font-semibold flex items-center gap-2 ${
-                          isLight ? 'text-slate-900' : 'text-white'
+                    {(() => {
+                      const isHpl8mm = selectedProduct?.thicknessMm === 8 || selectedProduct?.materialType === 'hpl_abet';
+                      return (
+                        <div className={`rounded-xl p-4 border ${
+                          isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-800/40 border-slate-700'
                         }`}>
-                          <span>Regrueso Frontal (Faldón) en Cubierta #{runIndex}</span>
-                          <span className={`text-xs font-bold px-2 py-0.5 rounded border ${
-                            isLight ? 'text-amber-800 bg-amber-100 border-amber-200' : 'text-amber-400 bg-amber-400/10 border-amber-400/30'
-                          }`}>
-                            {effectiveRegrueso} cm
-                          </span>
-                        </label>
-                      </div>
-                      <p className={`text-xs mb-3 ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                        Modifica de forma exclusiva el faldón de esta cubierta. Se incluye automáticamente en los remates y voladizos.
-                      </p>
-                      <div className="grid grid-cols-6 gap-2">
-                        {[0, 1, 2, 3, 4, 5].map((val) => (
-                          <button
-                            key={val}
-                            type="button"
-                            onClick={() => updateRunOverride(currentRun.id, { regruesoCm: val })}
-                            className={`py-2 px-3 rounded-lg text-xs font-semibold border transition cursor-pointer ${
-                              effectiveRegrueso === val
-                                ? isLight ? 'bg-orange-500 text-white border-orange-600 shadow-sm font-bold' : 'bg-amber-500 text-slate-950 border-amber-400 font-bold shadow-md'
-                                : isLight ? 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100' : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
-                            }`}
-                          >
-                            {val === 0 ? '0 cm' : `${val} cm`}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
+                          <div className="flex items-center justify-between mb-2">
+                            <label className={`text-sm font-semibold flex items-center gap-2 ${
+                              isLight ? 'text-slate-900' : 'text-white'
+                            }`}>
+                              <span>Regrueso Frontal (Faldón) en Cubierta #{runIndex}</span>
+                              <span className={`text-xs font-bold px-2 py-0.5 rounded border ${
+                                isHpl8mm
+                                  ? isLight ? 'text-emerald-800 bg-emerald-100 border-emerald-300' : 'text-emerald-400 bg-emerald-950/40 border-emerald-500/30'
+                                  : isLight ? 'text-amber-800 bg-amber-100 border-amber-200' : 'text-amber-400 bg-amber-400/10 border-amber-400/30'
+                              }`}>
+                                {isHpl8mm ? '0 cm (Canto simple)' : `${effectiveRegrueso} cm`}
+                              </span>
+                            </label>
+                          </div>
+                          {isHpl8mm ? (
+                            <div className={`p-2.5 rounded-lg text-xs border flex items-center gap-2 mb-2 ${
+                              isLight ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-emerald-950/30 border-emerald-500/30 text-emerald-300'
+                            }`}>
+                              <ShieldCheck className="w-4 h-4 shrink-0 text-emerald-600" />
+                              <span>
+                                <strong>HPL 8mm (Abet Laminati):</strong> Canto simple macizo de 8 mm sin regrueso frontal. Los respaldos posteriores de muro sí están operativos.
+                              </span>
+                            </div>
+                          ) : (
+                            <p className={`text-xs mb-3 ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                              Modifica de forma exclusiva el faldón de esta cubierta. Se incluye automáticamente en los remates y voladizos.
+                            </p>
+                          )}
+                          <div className="grid grid-cols-6 gap-2">
+                            {[0, 1, 2, 3, 4, 5].map((val) => {
+                              const disabled = isHpl8mm && val > 0;
+                              return (
+                                <button
+                                  key={val}
+                                  type="button"
+                                  disabled={disabled}
+                                  onClick={() => !disabled && updateRunOverride(currentRun.id, { regruesoCm: val })}
+                                  className={`py-2 px-3 rounded-lg text-xs font-semibold border transition cursor-pointer ${
+                                    (isHpl8mm ? val === 0 : effectiveRegrueso === val)
+                                      ? isLight ? 'bg-orange-500 text-white border-orange-600 shadow-sm font-bold' : 'bg-amber-500 text-slate-950 border-amber-400 font-bold shadow-md'
+                                      : disabled
+                                      ? isLight ? 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed opacity-50' : 'bg-slate-900/40 text-slate-600 border-slate-800 cursor-not-allowed opacity-40'
+                                      : isLight ? 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100' : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                                  }`}
+                                >
+                                  {val === 0 ? '0 cm' : `${val} cm`}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })()}
 
                     {/* Voladizos y Laterales para esta cubierta */}
                     <div className={`rounded-xl p-4 border ${
@@ -1008,100 +1086,126 @@ export function CountertopConfigModal({ isOpen, onClose, isLight: isLightProp }:
               {selectedRunTab === 'all' && (
                 <>
               {/* Regrueso delantero (Faldón) */}
-              <div className={`rounded-xl p-4 border transition-colors ${
-                isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-800/40 border-slate-700'
-              }`}>
-                <div className="flex items-center justify-between mb-2">
-                  <label className={`text-sm font-semibold flex items-center gap-2 ${
-                    isLight ? 'text-slate-900' : 'text-white'
+              {(() => {
+                const isHpl8mm = selectedProduct?.thicknessMm === 8 || selectedProduct?.materialType === 'hpl_abet';
+                return (
+                  <div className={`rounded-xl p-4 border transition-colors ${
+                    isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-800/40 border-slate-700'
                   }`}>
-                    <span>Regrueso Frontal (Faldón Delantero)</span>
-                    <span className={`text-xs font-bold px-2 py-0.5 rounded border ${
-                      isLight ? 'text-amber-800 bg-amber-100 border-amber-200' : 'text-amber-400 bg-amber-400/10 border-amber-400/30'
-                    }`}>
-                      {countertopConfig.regruesoCm} cm
-                    </span>
-                  </label>
-                  <span className={`text-xs ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>Rango: 0 a 5 cm (paso 1 cm)</span>
-                </div>
-                <p className={`text-xs mb-2 ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                  El regrueso crea un frente visualmente robusto. Modifica y deduce automáticamente la altura de puertas y frentes de cajón para garantizar una apertura ergonómica y despejada bajo la cubierta.
-                </p>
-
-                {golaSystem !== 'none' && (
-                  <div className={`mb-3 px-3 py-2 rounded-lg text-[11px] flex items-center justify-between border ${
-                    isLight
-                      ? 'bg-amber-50 border-amber-200 text-amber-900'
-                      : 'bg-amber-500/10 border-amber-500/30 text-amber-300'
-                  }`}>
-                    <span>
-                      <strong>Riel Gola activo ({golaSystem === 'black' ? 'Negro' : 'Aluminio'}):</strong> Regrueso máximo permitido{' '}
-                      <strong>{Number(((selectedProduct?.thicknessMm || 20) / 10 + 2.0).toFixed(1))} cm</strong> (Espesor {(selectedProduct?.thicknessMm || 20) / 10} cm + 2 cm).
-                    </span>
-                  </div>
-                )}
-
-                <div className="grid grid-cols-6 gap-2">
-                  {[0, 1, 2, 3, 4, 5].map((val) => {
-                    const stoneThicknessCm = (selectedProduct?.thicknessMm || 20) / 10;
-                    const isBlocked = golaSystem !== 'none' && val > stoneThicknessCm + 2.0;
-
-                    return (
-                      <button
-                        key={val}
-                        onClick={() => {
-                          if (isBlocked) {
-                            setGolaIncompatibilityAlert({
-                              isOpen: true,
-                              regruesoCm: val,
-                              stoneThicknessCm,
-                              attemptedAction: 'regrueso',
-                            });
-                            return;
-                          }
-                          setCountertopConfig({ regruesoCm: val });
-                        }}
-                        className={`py-2 px-3 rounded-lg text-xs font-semibold border transition relative cursor-pointer ${
-                          countertopConfig.regruesoCm === val
-                            ? isLight ? 'bg-orange-500 text-white border-orange-600 shadow-sm' : 'bg-amber-500 text-slate-950 border-amber-400 shadow-md'
-                            : isBlocked
-                            ? isLight ? 'bg-red-50 text-slate-400 border-dashed border-red-300 hover:border-amber-400' : 'bg-slate-900/60 text-slate-500 border-dashed border-red-500/40 hover:border-amber-400 hover:text-amber-300'
-                            : isLight ? 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 hover:text-slate-900' : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
-                        }`}
-                        title={isBlocked ? `Incompatible con Riel Gola (excede ${stoneThicknessCm + 2} cm)` : undefined}
-                      >
-                        {val === 0 ? 'Sin faldón (0 cm)' : `${val} cm`}
-                        {isBlocked && (
-                          <span className={`block text-[9px] font-normal mt-0.5 ${isLight ? 'text-red-500' : 'text-red-400'}`}>
-                            Bloquea Gola
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {countertopConfig.regruesoCm > 0 && (
-                  <div className={`mt-3 pt-3 border-t flex items-center justify-between ${
-                    isLight ? 'border-slate-100' : 'border-slate-700/60'
-                  }`}>
-                    <label className="flex items-center gap-2 text-xs font-medium cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={countertopConfig.regruesoOnOverhangSides !== false}
-                        onChange={(e) => setCountertopConfig({ regruesoOnOverhangSides: e.target.checked })}
-                        className="rounded text-amber-500"
-                      />
-                      <span className={isLight ? 'text-slate-800' : 'text-slate-200'}>
-                        Aplicar faldón/regrueso en bordes laterales y voladizos libres
+                    <div className="flex items-center justify-between mb-2">
+                      <label className={`text-sm font-semibold flex items-center gap-2 ${
+                        isLight ? 'text-slate-900' : 'text-white'
+                      }`}>
+                        <span>Regrueso Frontal (Faldón Delantero)</span>
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded border ${
+                          isHpl8mm
+                            ? isLight ? 'text-emerald-800 bg-emerald-100 border-emerald-300' : 'text-emerald-400 bg-emerald-950/40 border-emerald-500/30'
+                            : isLight ? 'text-amber-800 bg-amber-100 border-amber-200' : 'text-amber-400 bg-amber-400/10 border-amber-400/30'
+                        }`}>
+                          {isHpl8mm ? '0 cm (Canto simple)' : `${countertopConfig.regruesoCm} cm`}
+                        </span>
+                      </label>
+                      <span className={`text-xs ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                        {isHpl8mm ? 'Sin regrueso frontal' : 'Rango: 0 a 5 cm (paso 1 cm)'}
                       </span>
-                    </label>
-                    <span className={`text-[11px] ${isLight ? 'text-slate-400' : 'text-slate-500'}`}>
-                      Remate ingletado 90°
-                    </span>
+                    </div>
+
+                    {isHpl8mm ? (
+                      <div className={`p-3 rounded-lg text-xs border flex items-center gap-2.5 mb-3 ${
+                        isLight ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-emerald-950/30 border-emerald-500/30 text-emerald-200'
+                      }`}>
+                        <ShieldCheck className="w-4 h-4 shrink-0 text-emerald-600" />
+                        <span>
+                          <strong>Cubierta HPL 8 mm (Abet Laminati):</strong> Canto simple macizo de 8 mm sin regrueso frontal. Los <strong>respaldos y zócalos posteriores</strong> sí están disponibles y operativos.
+                        </span>
+                      </div>
+                    ) : (
+                      <p className={`text-xs mb-2 ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                        El regrueso crea un frente visualmente robusto. Modifica y deduce automáticamente la altura de puertas y frentes de cajón para garantizar una apertura ergonómica y despejada bajo la cubierta.
+                      </p>
+                    )}
+
+                    {!isHpl8mm && golaSystem !== 'none' && (
+                      <div className={`mb-3 px-3 py-2 rounded-lg text-[11px] flex items-center justify-between border ${
+                        isLight
+                          ? 'bg-amber-50 border-amber-200 text-amber-900'
+                          : 'bg-amber-500/10 border-amber-500/30 text-amber-300'
+                      }`}>
+                        <span>
+                          <strong>Riel Gola activo ({golaSystem === 'black' ? 'Negro' : 'Aluminio'}):</strong> Regrueso máximo permitido{' '}
+                          <strong>{Number(((selectedProduct?.thicknessMm || 20) / 10 + 2.0).toFixed(1))} cm</strong> (Espesor {(selectedProduct?.thicknessMm || 20) / 10} cm + 2 cm).
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-6 gap-2">
+                      {[0, 1, 2, 3, 4, 5].map((val) => {
+                        const disabled = isHpl8mm && val > 0;
+                        const stoneThicknessCm = (selectedProduct?.thicknessMm || 20) / 10;
+                        const isBlocked = !isHpl8mm && golaSystem !== 'none' && val > stoneThicknessCm + 2.0;
+
+                        return (
+                          <button
+                            key={val}
+                            disabled={disabled}
+                            onClick={() => {
+                              if (disabled) return;
+                              if (isBlocked) {
+                                setGolaIncompatibilityAlert({
+                                  isOpen: true,
+                                  regruesoCm: val,
+                                  stoneThicknessCm,
+                                  attemptedAction: 'regrueso',
+                                });
+                                return;
+                              }
+                              setCountertopConfig({ regruesoCm: val });
+                            }}
+                            className={`py-2 px-3 rounded-lg text-xs font-semibold border transition relative cursor-pointer ${
+                              (isHpl8mm ? val === 0 : countertopConfig.regruesoCm === val)
+                                ? isLight ? 'bg-orange-500 text-white border-orange-600 shadow-sm font-bold' : 'bg-amber-500 text-slate-950 border-amber-400 font-bold shadow-md'
+                                : disabled
+                                ? isLight ? 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed opacity-50' : 'bg-slate-900/40 text-slate-600 border-slate-800 cursor-not-allowed opacity-40'
+                                : isBlocked
+                                ? isLight ? 'bg-red-50 text-slate-400 border-dashed border-red-300 hover:border-amber-400' : 'bg-slate-900/60 text-slate-500 border-dashed border-red-500/40 hover:border-amber-400 hover:text-amber-300'
+                                : isLight ? 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 hover:text-slate-900' : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                            }`}
+                            title={isBlocked ? `Incompatible con Riel Gola (excede ${stoneThicknessCm + 2} cm)` : undefined}
+                          >
+                            {val === 0 ? 'Sin faldón (0 cm)' : `${val} cm`}
+                            {isBlocked && (
+                              <span className={`block text-[9px] font-normal mt-0.5 ${isLight ? 'text-red-500' : 'text-red-400'}`}>
+                                Bloquea Gola
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {!isHpl8mm && countertopConfig.regruesoCm > 0 && (
+                      <div className={`mt-3 pt-3 border-t flex items-center justify-between ${
+                        isLight ? 'border-slate-100' : 'border-slate-700/60'
+                      }`}>
+                        <label className="flex items-center gap-2 text-xs font-medium cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={countertopConfig.regruesoOnOverhangSides !== false}
+                            onChange={(e) => setCountertopConfig({ regruesoOnOverhangSides: e.target.checked })}
+                            className="rounded text-amber-500"
+                          />
+                          <span className={isLight ? 'text-slate-800' : 'text-slate-200'}>
+                            Aplicar faldón/regrueso en bordes laterales y voladizos libres
+                          </span>
+                        </label>
+                        <span className={`text-[11px] ${isLight ? 'text-slate-400' : 'text-slate-500'}`}>
+                          Remate ingletado 90°
+                        </span>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
+                );
+              })()}
 
               {/* Selector de Tipo de Mueble: Base vs Isla */}
               <div className={`p-1.5 rounded-xl border flex items-center gap-1.5 transition-colors ${

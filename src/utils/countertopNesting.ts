@@ -1129,9 +1129,11 @@ export function generateCountertopPieces(
     const prefix = isIsland ? 'ISL' : 'BASE';
     const override = config.runOverrides?.[run.id];
 
-    const runRegruesoCm = override?.regruesoCm !== undefined
+    const isHpl8mm = product.thicknessMm === 8 || product.materialType === 'hpl_abet';
+    const rawRegruesoCm = override?.regruesoCm !== undefined
       ? override.regruesoCm
       : (isIsland ? (config.islandRegruesoCm ?? config.regruesoCm) : (config.baseRegruesoCm ?? config.regruesoCm));
+    const runRegruesoCm = isHpl8mm ? 0 : rawRegruesoCm;
 
     const runBacksplashMode = override?.backsplashMode !== undefined
       ? override.backsplashMode

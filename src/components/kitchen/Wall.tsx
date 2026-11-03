@@ -1,14 +1,16 @@
-import React, { useRef, useMemo } from 'react';
+import React, { useRef, useMemo, useState, useEffect } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { WallType, useKitchenStore } from '../../store/kitchenStore';
+import { useAdminStore } from '../../store/adminStore';
 import { useStore } from '../../store';
 import { Edges, Line, Text, Billboard } from '@react-three/drei';
 import { getWallInwardNormal } from '../../utils/kitchenCollision';
 import { ArchitecturalDoor } from './ArchitecturalDoor';
 import { ArchitecturalWindow } from './ArchitecturalWindow';
+import { getWallLabel } from '../../utils/roomGeometry';
 
-export function Wall({ id, start, end, thickness, height, isInterior }: WallType & { id?: string }) {
+export function Wall({ id, start, end, thickness, height, isInterior, index }: WallType & { id?: string; index?: number }) {
    const length = Math.hypot(end[0] - start[0], end[1] - start[1]);
    const cx = (start[0] + end[0]) / 2;
    const cz = (start[1] + end[1]) / 2;
@@ -25,6 +27,106 @@ export function Wall({ id, start, end, thickness, height, isInterior }: WallType
    const setActiveWall = useKitchenStore((s) => s.setActiveWall);
    const setDraggingWallId = useKitchenStore((s) => s.setDraggingWallId);
    const toolMode = useKitchenStore((s) => s.toolMode);
+   const spaceDecoration = useKitchenStore((s) => s.spaceDecoration);
+   const supplies = useAdminStore((s) => s.supplies);
+   const activeDecoWallId = useKitchenStore((s) => s.activeDecoWallId);
+   const setActiveDecoWallId = useKitchenStore((s) => s.setActiveDecoWallId);
+   const isWallDecoTabOpen = useKitchenStore((s) => s.isWallDecoTabOpen);
+
+   // Obtener acabado decorativo específico asignado a este muro en el menú Deco
+   const wallDeco = useMemo(() => {
+      if (!id || !spaceDecoration?.wallDecorations) return undefined;
+      // 1. Coincidencia exacta de ID
+      if (spaceDecoration.wallDecorations[id]) {
+         return spaceDecoration.wallDecorations[id];
+      }
+      // 2. Coincidencia por índice numérico (ej: wall_0_v1_v2 <-> wall_v_0 <-> wall_0)
+      const idMatch = id.match(/wall_v?_?(\d+)/i) || id.match(/\d+/);
+      if (idMatch) {
+         const idx = idMatch[1] || idMatch[0];
+         for (const [key, val] of Object.entries(spaceDecoration.wallDecorations)) {
+            const keyMatch = key.match(/wall_v?_?(\d+)/i) || key.match(/\d+/);
+            if (keyMatch && (keyMatch[1] || keyMatch[0]) === idx) {
+               return val;
+            }
+         }
+      }
+      return undefined;
+   }, [id, spaceDecoration]);
+
+   const activeSupply = useMemo(() => {
+      if (!wallDeco?.supplyId) return undefined;
+      return supplies?.find((s) => s.id === wallDeco.supplyId);
+   }, [wallDeco, supplies]);
+
+   const effectiveDecoImage = wallDeco?.imageUrl || activeSupply?.imageUrl;
+   const isHexOrColor = Boolean(
+      effectiveDecoImage &&
+      (effectiveDecoImage.startsWith('#') || effectiveDecoImage.startsWith('rgb'))
+   );
+
+   const [wallTexture, setWallTexture] = useState<THREE.Texture | null>(null);
+
+   useEffect(() => {
+      if (!effectiveDecoImage || isHexOrColor) {
+         if (wallTexture) {
+            wallTexture.dispose();
+            setWallTexture(null);
+         }
+         return;
+      }
+
+      let isMounted = true;
+      const loader = new THREE.TextureLoader();
+      loader.load(
+         effectiveDecoImage,
+         (tex) => {
+            if (!isMounted) {
+               tex.dispose();
+               return;
+            }
+            tex.wrapS = THREE.RepeatWrapping;
+            tex.wrapT = THREE.RepeatWrapping;
+            tex.repeat.set(Math.max(1, length / 100), Math.max(1, height / 100));
+            tex.needsUpdate = true;
+            setWallTexture(tex);
+         },
+         undefined,
+         () => {
+            if (isMounted) setWallTexture(null);
+         }
+      );
+
+      return () => {
+         isMounted = false;
+      };
+   }, [effectiveDecoImage, isHexOrColor, length, height]);
+
+   const wall3DColor = wallTexture
+      ? '#ffffff'
+      : (isHexOrColor && effectiveDecoImage ? effectiveDecoImage : wallColor);
+
+   // Cálculo de índice y letra normalizada del muro (A, B, C, D, E...)
+   const wallIndex = useMemo(() => {
+      if (index !== undefined) return index;
+      const idMatch = id?.match(/wall_v?_?(\d+)/i) || id?.match(/\d+/);
+      return idMatch ? parseInt(idMatch[1] || idMatch[0], 10) : 0;
+   }, [index, id]);
+
+   const wallLabel = useMemo(() => getWallLabel(wallIndex), [wallIndex]);
+
+   const isThisDecoWallSelected = useMemo(() => {
+      if (!activeDecoWallId || !id) return false;
+      if (activeDecoWallId === id) return true;
+      const idMatch = id.match(/wall_v?_?(\d+)/i) || id.match(/\d+/);
+      const activeMatch = activeDecoWallId.match(/wall_v?_?(\d+)/i) || activeDecoWallId.match(/\d+/);
+      if (idMatch && activeMatch && (idMatch[1] || idMatch[0]) === (activeMatch[1] || activeMatch[0])) {
+         return true;
+      }
+      return false;
+   }, [id, activeDecoWallId]);
+
+   const isHighlightedInDeco = isWallDecoTabOpen && isThisDecoWallSelected;
 
    // Solo los muros creados por el usuario (interiores) son interactivos y seleccionables.
    // Los muros perimetrales exteriores quedan protegidos.
@@ -50,8 +152,11 @@ export function Wall({ id, start, end, thickness, height, isInterior }: WallType
    const wallSegments = useMemo(() => {
       if (wallOpenings.length === 0) return null;
 
-      const effectiveColor = viewMode === '2d' ? '#334155' : wallColor;
-      const effectiveEdgeColor = viewMode === '2d' ? '#0f172a' : '#94a3b8';
+      const effectiveColor = isWallSelected
+         ? (viewMode === '2d' ? '#ea580c' : '#fb923c')
+         : (viewMode === '2d' ? '#334155' : wall3DColor);
+      const effectiveMap = viewMode === '2d' ? null : wallTexture;
+      const effectiveEdgeColor = isWallSelected ? '#f97316' : (viewMode === '2d' ? '#0f172a' : '#94a3b8');
 
       // Sort openings along local Z (centerZ = -offset)
       const sorted = [...wallOpenings]
@@ -81,7 +186,7 @@ export function Wall({ id, start, end, thickness, height, isInterior }: WallType
             elements.push(
                <mesh key={`solid-${idx}`} position={[0, 0, segCenterZ]} castShadow receiveShadow>
                   <boxGeometry args={[thickness, height, segLen]} />
-                  <meshStandardMaterial color={effectiveColor} roughness={0.85} metalness={0.05} />
+                  <meshStandardMaterial color={effectiveColor} map={effectiveMap} roughness={0.85} metalness={0.05} />
                   <Edges scale={1} threshold={15} color={effectiveEdgeColor} />
                </mesh>
             );
@@ -96,7 +201,7 @@ export function Wall({ id, start, end, thickness, height, isInterior }: WallType
                elements.push(
                   <mesh key={`under-${idx}`} position={[0, -height / 2 + op.elev / 2, opCenterZ]} castShadow receiveShadow>
                      <boxGeometry args={[thickness, op.elev, opLen]} />
-                     <meshStandardMaterial color={effectiveColor} roughness={0.85} metalness={0.05} />
+                     <meshStandardMaterial color={effectiveColor} map={effectiveMap} roughness={0.85} metalness={0.05} />
                      <Edges scale={1} threshold={15} color={effectiveEdgeColor} />
                   </mesh>
                );
@@ -108,7 +213,7 @@ export function Wall({ id, start, end, thickness, height, isInterior }: WallType
                elements.push(
                   <mesh key={`over-${idx}`} position={[0, height / 2 - topSpace / 2, opCenterZ]} castShadow receiveShadow>
                      <boxGeometry args={[thickness, topSpace, opLen]} />
-                     <meshStandardMaterial color={effectiveColor} roughness={0.85} metalness={0.05} />
+                     <meshStandardMaterial color={effectiveColor} map={effectiveMap} roughness={0.85} metalness={0.05} />
                      <Edges scale={1} threshold={15} color={effectiveEdgeColor} />
                   </mesh>
                );
@@ -125,14 +230,14 @@ export function Wall({ id, start, end, thickness, height, isInterior }: WallType
          elements.push(
             <mesh key="solid-tail" position={[0, 0, segCenterZ]} castShadow receiveShadow>
                <boxGeometry args={[thickness, height, segLen]} />
-               <meshStandardMaterial color={effectiveColor} roughness={0.85} metalness={0.05} />
+               <meshStandardMaterial color={effectiveColor} map={effectiveMap} roughness={0.85} metalness={0.05} />
                <Edges scale={1} threshold={15} color={effectiveEdgeColor} />
             </mesh>
          );
       }
 
       return elements;
-   }, [wallOpenings, length, thickness, height, wallColor, viewMode]);
+   }, [wallOpenings, length, thickness, height, wallColor, viewMode, isWallSelected, wall3DColor, wallTexture]);
 
    // Vector normal hacia el interior de la habitación
    const inwardNormal = useMemo(() => {
@@ -227,17 +332,22 @@ export function Wall({ id, start, end, thickness, height, isInterior }: WallType
              e.stopPropagation();
              setActiveWall(id);
            }
+           if (isWallDecoTabOpen && id) {
+             e.stopPropagation();
+             setActiveDecoWallId(id);
+           }
          }}
        >
          {wallOpenings.length === 0 ? (
            <mesh name="wall" castShadow receiveShadow>
              <boxGeometry args={[thickness, height, length]} />
              <meshStandardMaterial 
-               color={isWallSelected ? (viewMode === '2d' ? '#ea580c' : '#fb923c') : (viewMode === '2d' ? '#334155' : wallColor)} 
+               color={isWallSelected ? (viewMode === '2d' ? '#ea580c' : '#fb923c') : (viewMode === '2d' ? '#334155' : wall3DColor)} 
+               map={viewMode === '2d' ? null : wallTexture} 
                roughness={0.85} 
                metalness={0.05} 
              />
-             <Edges scale={1} threshold={15} color={isWallSelected ? '#f97316' : (viewMode === '2d' ? '#0f172a' : '#94a3b8')} />
+             <Edges scale={1} threshold={15} color={isWallSelected || isHighlightedInDeco ? '#f97316' : (viewMode === '2d' ? '#0f172a' : '#94a3b8')} />
            </mesh>
          ) : (
            <group name="segmentedWall">
@@ -246,7 +356,7 @@ export function Wall({ id, start, end, thickness, height, isInterior }: WallType
          )}
 
          {/* Visual outline and bounding highlight when wall is selected */}
-         {isWallSelected && (
+         {(isWallSelected || isHighlightedInDeco) && (
            <group position={[0, 0, 0]}>
              <mesh position={[0, 0, 0]}>
                <boxGeometry args={[thickness + 1.2, height + 1.2, length + 1.2]} />
@@ -359,6 +469,82 @@ export function Wall({ id, start, end, thickness, height, isInterior }: WallType
              </mesh>
              <Text position={[0, 4, 0]} fontSize={isWallSelected ? 8.5 : 7} color="#f97316" anchorX="center" anchorY="middle" fontWeight="bold" outlineWidth={0.5} outlineColor="#000000" material-depthTest={false} material-toneMapped={false} renderOrder={1000}>
                {isWallSelected ? `${Math.round(length)} cm · Esp: ${thickness} cm` : `${Math.round(length)} cm`}
+             </Text>
+           </Billboard>
+         </group>
+       )}
+
+       {/* Rótulo 3D identificador de muro (A, B, C...) activo en menú Deco Muros */}
+       {isWallDecoTabOpen && viewMode !== '2d' && (
+         <group 
+           position={[0, height / 2 + 18, 0]} 
+           renderOrder={1002}
+           onClick={(e) => {
+             e.stopPropagation();
+             if (id) setActiveDecoWallId(id);
+           }}
+         >
+           {/* Poste / Línea conectora hacia el centro superior del muro */}
+           <Line 
+             points={[[0, 0, 0], [0, -18, 0]]} 
+             color={isThisDecoWallSelected ? '#f97316' : '#64748b'} 
+             lineWidth={isThisDecoWallSelected ? 3 : 1.5} 
+             depthTest={false} 
+             renderOrder={1002} 
+           />
+           
+           {/* Viñeta técnica flotante orientada siempre a la cámara */}
+           <Billboard follow={true}>
+             {/* Placa de fondo */}
+             <mesh position={[0, 0, 0]} renderOrder={1003}>
+               <planeGeometry args={[isThisDecoWallSelected ? 34 : 26, isThisDecoWallSelected ? 20 : 16]} />
+               <meshBasicMaterial 
+                 color={isThisDecoWallSelected ? '#f97316' : '#090d16'} 
+                 transparent 
+                 opacity={isThisDecoWallSelected ? 0.98 : 0.88} 
+                 depthTest={false} 
+               />
+             </mesh>
+
+             {/* Borde sutil para muro no seleccionado */}
+             {!isThisDecoWallSelected && (
+               <Edges 
+                 scale={1} 
+                 color="#475569" 
+                 renderOrder={1004} 
+               />
+             )}
+
+             {/* Letra principal normalizada del muro (A, B, C, D...) */}
+             <Text 
+               position={[0, isThisDecoWallSelected ? 2.5 : 2, 0.05]} 
+               fontSize={isThisDecoWallSelected ? 10.5 : 8.5} 
+               color={isThisDecoWallSelected ? '#000000' : '#ffffff'} 
+               anchorX="center" 
+               anchorY="middle" 
+               fontWeight="bold" 
+               outlineWidth={isThisDecoWallSelected ? 0 : 0.3} 
+               outlineColor="#000000" 
+               material-depthTest={false} 
+               material-toneMapped={false} 
+               renderOrder={1005}
+             >
+               {wallLabel}
+             </Text>
+
+             {/* Subtítulo indicando número de muro */}
+             <Text 
+               position={[0, isThisDecoWallSelected ? -5.5 : -4.5, 0.05]} 
+               fontSize={isThisDecoWallSelected ? 4.4 : 3.6} 
+               color={isThisDecoWallSelected ? '#18181b' : '#94a3b8'} 
+               anchorX="center" 
+               anchorY="middle" 
+               fontWeight="bold" 
+               material-depthTest={false} 
+               material-toneMapped={false} 
+               renderOrder={1005}
+             >
+               {`MURO ${wallIndex + 1}`}
              </Text>
            </Billboard>
          </group>

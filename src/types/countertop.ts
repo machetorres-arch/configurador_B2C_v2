@@ -1,14 +1,14 @@
-export type CountertopMaterialType = 'quarzo' | 'sinterizado';
+export type CountertopMaterialType = 'quarzo' | 'sinterizado' | 'hpl_abet';
 
 export interface QstoneProductItem {
   id: string;
   code: string;
   name: string;
   materialType: CountertopMaterialType;
-  thicknessMm: 12 | 18 | 20;
+  thicknessMm: 8 | 12 | 18 | 20;
   priceM2Clp: number;
-  sheetWidthMm: number; // 3200
-  sheetHeightMm: number; // 1600
+  sheetWidthMm: number; // 3200 o 3050 (Abet)
+  sheetHeightMm: number; // 1600 o 1300 (Abet)
   colorHex: string;
   textureUrl?: string;
   finish: string;
@@ -234,6 +234,96 @@ export const DEFAULT_QSTONE_CATALOG: QstoneProductItem[] = [
     colorHex: '#90A4AE',
     finish: 'Texturado Piedra Caliza',
     description: 'Piedra caliza gris texturada antibacteriana 12mm. Proveedor SYSPROTEC.',
+    active: true
+  },
+
+  // 3. Cubiertas HPL Compacto Abet Laminati (8 mm - Formato Placa 130 x 305 cm)
+  {
+    id: 'abet-broccato-8',
+    code: 'ABET-BR-2831-8MM',
+    name: 'Abet Laminati HPL Broccato 2831 8mm',
+    materialType: 'hpl_abet',
+    thicknessMm: 8,
+    priceM2Clp: 185000,
+    sheetWidthMm: 3050,
+    sheetHeightMm: 1300,
+    colorHex: '#3A3F47',
+    textureUrl: '/textures/abet-broccato-2831.svg',
+    finish: 'Longline Mate / Compacto 8mm',
+    description: 'HPL Compacto 8mm de autor Broccato. Formato 130x305 cm. Canto simple sin regrueso frontal.',
+    active: true
+  },
+  {
+    id: 'abet-fiore-pop-8',
+    code: 'ABET-FP-2824-8MM',
+    name: 'Abet Laminati HPL Fiore Pop 2824 8mm',
+    materialType: 'hpl_abet',
+    thicknessMm: 8,
+    priceM2Clp: 185000,
+    sheetWidthMm: 3050,
+    sheetHeightMm: 1300,
+    colorHex: '#F0EBE1',
+    textureUrl: '/textures/abet-fiore-pop-2824.svg',
+    finish: 'Longline Satin / Compacto 8mm',
+    description: 'HPL Compacto 8mm de autor Fiore Pop. Formato 130x305 cm. Canto simple sin regrueso frontal.',
+    active: true
+  },
+  {
+    id: 'abet-bacterio-8',
+    code: 'ABET-BAC-8MM',
+    name: 'Abet Laminati HPL Bacterio 8mm',
+    materialType: 'hpl_abet',
+    thicknessMm: 8,
+    priceM2Clp: 185000,
+    sheetWidthMm: 3050,
+    sheetHeightMm: 1300,
+    colorHex: '#FFFFFF',
+    textureUrl: '/textures/abet-bacterio.svg',
+    finish: 'Memphis Design / Compacto 8mm',
+    description: 'HPL Compacto 8mm diseño Memphis Bacterio Ettore Sottsass. Formato 130x305 cm. Sin regrueso frontal.',
+    active: true
+  },
+  {
+    id: 'abet-terrazzo-8',
+    code: 'ABET-TER-8MM',
+    name: 'Abet Laminati HPL Terrazzo 8mm',
+    materialType: 'hpl_abet',
+    thicknessMm: 8,
+    priceM2Clp: 185000,
+    sheetWidthMm: 3050,
+    sheetHeightMm: 1300,
+    colorHex: '#E5DFD7',
+    textureUrl: '/textures/abet-terrazzo.svg',
+    finish: 'Climb Piedra / Compacto 8mm',
+    description: 'HPL Compacto 8mm diseño pétreo Terrazzo. Formato 130x305 cm. Sin regrueso frontal.',
+    active: true
+  },
+  {
+    id: 'abet-bianco-polare-8',
+    code: 'ABET-BP-410-8MM',
+    name: 'Abet Laminati HPL Bianco Polare 8mm',
+    materialType: 'hpl_abet',
+    thicknessMm: 8,
+    priceM2Clp: 165000,
+    sheetWidthMm: 3050,
+    sheetHeightMm: 1300,
+    colorHex: '#FFFFFF',
+    finish: 'Sei Satinado / Compacto 8mm',
+    description: 'HPL Compacto 8mm monocapa núcleo sólido blanco polar. Formato 130x305 cm. Sin regrueso frontal.',
+    active: true
+  },
+  {
+    id: 'abet-nero-assoluto-8',
+    code: 'ABET-NA-421-8MM',
+    name: 'Abet Laminati HPL Nero Assoluto 8mm',
+    materialType: 'hpl_abet',
+    thicknessMm: 8,
+    priceM2Clp: 165000,
+    sheetWidthMm: 3050,
+    sheetHeightMm: 1300,
+    colorHex: '#1A1A1A',
+    finish: 'Sei-Due Mate / Compacto 8mm',
+    description: 'HPL Compacto 8mm núcleo sólido negro absoluto anti-huellas. Formato 130x305 cm. Sin regrueso frontal.',
     active: true
   }
 ];

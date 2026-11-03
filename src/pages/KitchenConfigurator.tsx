@@ -28,6 +28,8 @@ import { useSupabaseAuthStore } from '../store/supabaseAuthStore';
 import { exportKitchenCommercialPdf } from '../utils/kitchenCommercialPdfGenerator';
 import { HANDLE_CATALOG } from '../types/handle';
 
+import { DecorationSection } from '../components/kitchen/DecorationSection';
+
 const sectionTitle = "text-xs uppercase tracking-wider text-orange-400 font-bold mb-3 mt-4 first:mt-0";
 const labelClass = "text-xs uppercase tracking-wider text-slate-300 font-semibold";
 const btnClass = "w-full py-2 px-3 bg-white/5 border border-white/10 rounded-lg text-center cursor-pointer hover:border-orange-500/50 hover:bg-white/10 transition-colors text-xs font-medium text-slate-300";
@@ -229,8 +231,8 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
   const [isBimModalOpen, setIsBimModalOpen] = useState(false);
   const [isExportingLabels, setIsExportingLabels] = useState(false);
   const [leftTab, setLeftTab] = useState<'modules' | 'placed'>('modules');
-  const [rightTab, setRightTab] = useState<'module' | 'materials' | 'engineering' | 'mep'>('module');
-  const [activeMobileTab, setActiveMobileTab] = useState<'catalog' | 'module' | 'materials' | 'engineering' | 'mep' | 'scene'>('catalog');
+  const [rightTab, setRightTab] = useState<'module' | 'materials' | 'engineering' | 'mep' | 'decoration'>('module');
+  const [activeMobileTab, setActiveMobileTab] = useState<'catalog' | 'module' | 'materials' | 'engineering' | 'mep' | 'scene' | 'decoration'>('catalog');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showIndividualMaterial, setShowIndividualMaterial] = useState(false);
   const globalState = useStore();
@@ -558,21 +560,6 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
             </button>
           </div>
 
-          {/* Botón Acceso Rápido Cotas */}
-          <button
-            onClick={globalState.toggleDimensions}
-            className={`flex items-center gap-1 px-2 py-1 rounded-lg border text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
-              globalState.showDimensions
-                ? 'bg-orange-500 text-black border-orange-600'
-                : isLight
-                  ? 'bg-white border-slate-300 text-slate-700'
-                  : 'bg-white/5 border-white/10 text-slate-300'
-            }`}
-            title="Alternar Cotas"
-          >
-            <Ruler size={13} className={globalState.showDimensions ? 'text-black' : 'text-orange-500'} />
-            <span className="hidden xs:inline">Cotas</span>
-          </button>
 
           {/* Undo / Redo */}
           <div className="flex items-center gap-1">
@@ -652,21 +639,6 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
             </button>
           </div>
 
-          {/* Botón Acceso Rápido Cotas */}
-          <button
-            onClick={globalState.toggleDimensions}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
-              globalState.showDimensions
-                ? 'bg-orange-500 text-black border-orange-600 shadow-[0_0_12px_rgba(249,115,22,0.35)]'
-                : isLight
-                  ? 'bg-white hover:bg-slate-100 border-slate-300 text-slate-700 shadow-sm'
-                  : 'bg-white/5 hover:bg-white/10 border-white/10 text-slate-300'
-            }`}
-            title={globalState.showDimensions ? 'Ocultar Cotas y Medidas' : 'Mostrar Cotas y Medidas (Módulos, Corridas y Muros)'}
-          >
-            <Ruler size={14} className={globalState.showDimensions ? 'text-black' : 'text-orange-500'} />
-            <span>{globalState.showDimensions ? 'Cotas: ON' : 'Cotas'}</span>
-          </button>
 
           {/* Botones Deshacer y Rehacer (Undo / Redo) */}
           <div className="flex items-center gap-1.5">
@@ -1274,46 +1246,6 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
           <div className={`w-full lg:flex-1 h-[45vh] sm:h-[48vh] lg:h-full shrink-0 min-w-0 relative transition-colors order-1 lg:order-2 ${isLight ? 'bg-[#e2e8f0]' : 'bg-[#111]'}`}>
             <KitchenScene theme={theme} />
 
-            {/* Widget flotante de estado y control de Cotas en el Canvas */}
-            <div className="absolute top-3 right-3 sm:top-4 sm:right-4 z-10 flex items-center gap-1.5 sm:gap-2">
-              <button
-                onClick={globalState.toggleDimensions}
-                className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl backdrop-blur-md border text-xs font-bold uppercase tracking-wider transition-all shadow-lg cursor-pointer ${
-                  globalState.showDimensions
-                    ? 'bg-orange-500/90 text-black border-orange-400 shadow-[0_0_15px_rgba(249,115,22,0.35)]'
-                    : isLight
-                      ? 'bg-white/90 border-slate-300 text-slate-700 hover:bg-white hover:text-slate-900'
-                      : 'bg-zinc-900/80 border-white/10 text-slate-300 hover:bg-zinc-800 hover:text-white'
-                }`}
-                title="Alternar visibilidad de cotas técnicas (módulos, muros y distancias)"
-              >
-                <Ruler size={14} className={globalState.showDimensions ? 'text-black' : 'text-orange-500'} />
-                <span>{globalState.showDimensions ? `Cotas (Niv ${globalState.dimensionLevel})` : 'Cotas: OFF'}</span>
-              </button>
-
-              {globalState.showDimensions && (
-                <div className={`flex items-center gap-1 p-1 rounded-xl backdrop-blur-md border shadow-lg ${
-                  isLight ? 'bg-white/95 border-slate-300' : 'bg-zinc-900/90 border-white/10'
-                }`}>
-                  {[1, 2, 3, 4, 5, 6].map((lvl) => (
-                    <button
-                      key={lvl}
-                      onClick={() => globalState.setDimensionLevel(lvl)}
-                      className={`w-6 h-6 rounded-lg text-[10px] font-mono font-bold transition-all cursor-pointer ${
-                        globalState.dimensionLevel === lvl
-                          ? 'bg-orange-500 text-black shadow-xs font-black'
-                          : isLight
-                            ? 'text-slate-600 hover:bg-slate-200'
-                            : 'text-zinc-400 hover:bg-white/10 hover:text-white'
-                      }`}
-                      title={`${lvl}. ${DIMENSION_LEVEL_DATA[lvl]?.title || ''} - ${DIMENSION_LEVEL_DATA[lvl]?.desc || ''}`}
-                    >
-                      {lvl}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
 
             {toolMode === 'draw_wall' && (
               <div className={`absolute bottom-3 sm:bottom-6 left-1/2 -translate-x-1/2 backdrop-blur-md px-4 sm:px-6 py-2 sm:py-3 rounded-full border text-[10px] sm:text-xs font-semibold pointer-events-none uppercase tracking-wider max-w-[90%] text-center ${
@@ -1438,7 +1370,7 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
       isLight ? 'bg-white/95 border-slate-200 shadow-slate-200 text-slate-800' : 'bg-black/70 border-white/10 text-slate-200'
     }`}>
       {/* Selector de Pestañas Superior (Desktop >= lg) */}
-      <div className={`hidden lg:grid grid-cols-4 border-b p-1.5 gap-1 shrink-0 transition-colors ${
+      <div className={`hidden lg:grid grid-cols-5 border-b p-1.5 gap-1 shrink-0 transition-colors ${
         isLight ? 'border-slate-200 bg-slate-50' : 'border-white/10 bg-black/60'
       }`}>
         <button
@@ -1517,10 +1449,32 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
             </span>
           )}
         </button>
+        <button
+          onClick={() => {
+            if (activeCabinetId) setActiveCabinet(null);
+            if (activeArchElementId) setActiveArchElement(null);
+            if (activeWallId) setActiveWall(null);
+            setRightTab('decoration');
+          }}
+          className={`flex items-center justify-center gap-1 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
+            rightTab === 'decoration'
+              ? 'bg-orange-500 text-black shadow-[0_0_12px_rgba(249,115,22,0.25)]'
+              : isLight
+                ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
+                : 'text-slate-400 hover:text-white hover:bg-white/5'
+          }`}
+          title="Decoración & Remodelación Espacial"
+        >
+          <Sparkles size={13} />
+          <span>Deco</span>
+        </button>
       </div>
 
       {/* Contenido Scrollable según Pestaña */}
       <div className="flex-1 overflow-y-auto p-5 custom-scrollbar">
+        {rightTab === 'decoration' && (
+          <DecorationSection theme={theme} />
+        )}
         {rightTab === 'module' && (
           <div>
             {activeWallId && activeWall ? (

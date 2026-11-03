@@ -109,20 +109,31 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
   }, [roomBounds.width, roomBounds.height, size.width, size.height]);
 
   useEffect(() => {
-    if (is2D && camera) {
-      camera.position.set(roomBounds.centerX, 1000, roomBounds.centerZ);
-      camera.up.set(0, 0, -1);
-      camera.lookAt(roomBounds.centerX, 0, roomBounds.centerZ);
-      if ((camera as any).isOrthographicCamera) {
-        (camera as THREE.OrthographicCamera).zoom = ideal2DZoom;
+    if (camera) {
+      camera.far = 40000;
+      if (is2D) {
+        camera.position.set(roomBounds.centerX, 1500, roomBounds.centerZ);
+        camera.up.set(0, 0, -1);
+        camera.lookAt(roomBounds.centerX, 0, roomBounds.centerZ);
+        if ((camera as any).isOrthographicCamera) {
+          (camera as THREE.OrthographicCamera).zoom = ideal2DZoom;
+        }
+        if (controls2dRef.current) {
+          controls2dRef.current.target.set(roomBounds.centerX, 0, roomBounds.centerZ);
+          controls2dRef.current.update();
+        }
       }
       camera.updateProjectionMatrix();
-      if (controls2dRef.current) {
-        controls2dRef.current.target.set(roomBounds.centerX, 0, roomBounds.centerZ);
-        controls2dRef.current.update();
-      }
     }
   }, [is2D, roomBounds.centerX, roomBounds.centerZ, ideal2DZoom, camera]);
+
+  const dynamicGroundSize = React.useMemo(() => {
+    const baseW = Math.max(roomBounds.width || 500, 500);
+    const baseH = Math.max(roomBounds.height || 400, 400);
+    const maxDim = Math.max(baseW, baseH);
+    return Math.max(15000, maxDim * 4);
+  }, [roomBounds.width, roomBounds.height]);
+
   const groundPlaneMath = React.useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), []);
   const intersectPoint = React.useMemo(() => new THREE.Vector3(), []);
 
@@ -1260,23 +1271,32 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
             minPolarAngle={0} 
             maxPolarAngle={Math.PI / 2 - 0.05} 
             target={[0, 30, 0]}
+            maxDistance={40000}
+            minDistance={5}
           />
         );
       })()}
 
       <group name="kitchenGroup">
-        {/* Ground Plane (fondo exterior separado verticalmente para evitar z-fighting) */}
+        {/* Ground Plane (fondo exterior separado verticalmente para evitar z-fighting, ampliado a 200m x 200m) */}
         <mesh name="groundPlane" rotation={[-Math.PI/2, 0, 0]} position={[0, -1, 0]} receiveShadow onPointerDown={handlePointerDown}>
-          <planeGeometry args={[3000, 3000]} />
+          <planeGeometry args={[20000, 20000]} />
           <meshStandardMaterial color={isLight ? '#cbd5e1' : '#1e2022'} roughness={0.9} />
         </mesh>
         
         {is2D && (
-          <Grid position={[0, 0.1, 0]} args={[2000, 2000]} infiniteGrid fadeDistance={1500} sectionColor={isLight ? '#94a3b8' : '#666'} cellColor={isLight ? '#cbd5e1' : '#333'} />
+          <Grid 
+            position={[0, 0.1, 0]} 
+            args={[20000, 20000]} 
+            infiniteGrid 
+            fadeDistance={10000} 
+            sectionColor={isLight ? '#94a3b8' : '#666'} 
+            cellColor={isLight ? '#cbd5e1' : '#333'} 
+          />
         )}
 
         <RoomFloorAndDimensions onPointerDown={handlePointerDown} />
-        {effectiveWalls.map(wall => <Wall key={wall.id} {...wall} />)}
+        {effectiveWalls.map((wall, idx) => <Wall key={wall.id} {...wall} index={idx} />)}
         <React.Suspense fallback={null}>
           {cabinets.map((cab, idx) => {
             if (toolMode === 'move_active' && cab.id === useKitchenStore.getState().activeCabinetId) return null;
@@ -1428,6 +1448,7 @@ export function KitchenScene({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
   return (
     <Canvas 
       shadows={{ type: THREE.PCFSoftShadowMap }}
+      camera={{ far: 40000 }}
       gl={{ 
         antialias: true, 
         powerPreference: 'high-performance',

@@ -47,9 +47,10 @@ interface ProjectsManagerTabProps {
 }
 
 export function ProjectsManagerTab({ onLoadProjectToModule, isFreeUserMode = false }: ProjectsManagerTabProps) {
-  const { projects, saveProject, updateProject, renameProject, duplicateProject, deleteProject, clearAllProjects, syncCloudProjects, currentUser, accessLogs } = useAdminStore();
+  const { projects, saveProject, updateProject, renameProject, duplicateProject, deleteProject, clearAllProjects, syncCloudProjects, currentUser, accessLogs, themeMode } = useAdminStore();
+  const isLight = themeMode === 'light';
   const { user: supabaseUser, tenant: supabaseTenant } = useSupabaseAuthStore();
-  const { saveProjectToCloud } = useTenantDataStore();
+  const { saveProjectToCloud, deleteProjectFromCloud } = useTenantDataStore();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedType, setSelectedType] = useState<'all' | ProjectType>('all');
@@ -220,9 +221,16 @@ export function ProjectsManagerTab({ onLoadProjectToModule, isFreeUserMode = fal
     }
   };
 
-  const handleDelete = (id: string, name: string) => {
+  const handleDelete = async (id: string, name: string) => {
     if (window.confirm(`¿Confirmas eliminar permanentemente el proyecto "${name}"?`)) {
       deleteProject(id);
+      if (supabaseUser && supabaseTenant) {
+        try {
+          await deleteProjectFromCloud(id);
+        } catch (e) {
+          console.warn('Error eliminando proyecto de la nube:', e);
+        }
+      }
       showNotification('Proyecto eliminado.', 'info');
     }
   };
@@ -485,23 +493,33 @@ export function ProjectsManagerTab({ onLoadProjectToModule, isFreeUserMode = fal
       {/* Vista de Usuario Gratuito vs Superadministrador */}
       {isFreeUserMode ? (
         /* Banner de Bienvenida Usuario Gratuito */
-        <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div
+          className={`border rounded-2xl p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-colors ${
+            isLight
+              ? 'bg-white border-zinc-200 shadow-sm text-zinc-900'
+              : 'bg-zinc-900/90 border-zinc-800 text-white'
+          }`}
+        >
           <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <h3 className="text-base sm:text-lg font-bold text-white">
+              <h3 className={`text-base sm:text-lg font-bold ${isLight ? 'text-zinc-900' : 'text-white'}`}>
                 Mis Proyectos Guardados
               </h3>
-              <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-orange-500/20 text-orange-400 border border-orange-500/30">
+              <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-orange-500/20 text-orange-500 border border-orange-500/30">
                 {currentUser?.rubro || 'Diseñador'}
               </span>
             </div>
-            <p className="text-xs text-slate-400 max-w-2xl">
+            <p className={`text-xs max-w-2xl ${isLight ? 'text-zinc-600' : 'text-slate-400'}`}>
               Diseña libremente con todas las funciones del configurador 3D. Desde este panel puedes revisar tus diseños, abrir en 3D, descargar tu cotización comercial en PDF y solicitar la fabricación.
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <span className="px-3.5 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-slate-300 font-semibold flex items-center gap-2">
-              <FolderKanban size={15} className="text-orange-400" />
+            <span
+              className={`px-3.5 py-2 border rounded-xl text-xs font-semibold flex items-center gap-2 ${
+                isLight ? 'bg-zinc-100 border-zinc-200 text-zinc-800' : 'bg-zinc-950 border-zinc-800 text-slate-300'
+              }`}
+            >
+              <FolderKanban size={15} className="text-orange-500" />
               <span>{scopedProjects.length} {scopedProjects.length === 1 ? 'Proyecto' : 'Proyectos'}</span>
             </span>
           </div>
@@ -509,12 +527,14 @@ export function ProjectsManagerTab({ onLoadProjectToModule, isFreeUserMode = fal
       ) : (
         /* Superadmin: Selector de Pestañas (Proyectos vs Registro de Accesos) */
         <div className="space-y-4">
-          <div className="flex items-center gap-2 border-b border-zinc-800 pb-3">
+          <div className={`flex items-center gap-2 border-b pb-3 ${isLight ? 'border-zinc-200' : 'border-zinc-800'}`}>
             <button
               onClick={() => setAdminSubTab('projects')}
               className={`px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
                 adminSubTab === 'projects'
                   ? 'bg-orange-500 text-white shadow-md shadow-orange-500/20'
+                  : isLight
+                  ? 'bg-zinc-200/80 text-zinc-700 hover:text-zinc-900'
                   : 'bg-zinc-900 text-slate-400 hover:text-white'
               }`}
             >
@@ -526,6 +546,8 @@ export function ProjectsManagerTab({ onLoadProjectToModule, isFreeUserMode = fal
               className={`px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
                 adminSubTab === 'access_logs'
                   ? 'bg-orange-500 text-white shadow-md shadow-orange-500/20'
+                  : isLight
+                  ? 'bg-zinc-200/80 text-zinc-700 hover:text-zinc-900'
                   : 'bg-zinc-900 text-slate-400 hover:text-white'
               }`}
             >
@@ -537,35 +559,65 @@ export function ProjectsManagerTab({ onLoadProjectToModule, isFreeUserMode = fal
           {adminSubTab === 'projects' && (
             /* Summary KPI Strip */
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div className="bg-zinc-900/80 border border-zinc-800 rounded-xl p-3">
-                <div className="text-[10px] uppercase font-bold text-zinc-400">Total en Cartera</div>
-                <div className="text-xl font-extrabold text-white mt-0.5">{totalProjectsCount}</div>
-                <div className="text-[10px] text-zinc-500 font-mono">${(totalDesignedVolumeClp / 1000000).toFixed(2)}M CLP est.</div>
-              </div>
-
-              <div className="bg-zinc-900/80 border border-emerald-500/30 rounded-xl p-3">
-                <div className="text-[10px] uppercase font-bold text-emerald-400 flex items-center justify-between">
-                  <span>Ventas Cerradas</span>
-                  <span className="text-[9px] bg-emerald-500/20 px-1.5 py-0.2 rounded font-mono font-bold">{conversionRate}% conv.</span>
+              <div
+                className={`border rounded-xl p-3.5 transition-colors ${
+                  isLight ? 'bg-white border-zinc-200 shadow-sm' : 'bg-zinc-900/80 border-zinc-800'
+                }`}
+              >
+                <div className={`text-[10px] uppercase font-bold ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                  Total en Cartera
                 </div>
-                <div className="text-xl font-extrabold text-emerald-400 mt-0.5">{soldProjects.length}</div>
-                <div className="text-[10px] text-emerald-300/80 font-mono">${(soldVolumeClp / 1000000).toFixed(2)}M CLP real</div>
+                <div className={`text-xl font-extrabold mt-0.5 ${isLight ? 'text-zinc-900' : 'text-white'}`}>
+                  {totalProjectsCount}
+                </div>
+                <div className={`text-[10px] font-mono ${isLight ? 'text-zinc-500' : 'text-zinc-500'}`}>
+                  ${(totalDesignedVolumeClp / 1000000).toFixed(2)}M CLP est.
+                </div>
               </div>
 
-              <div className="bg-zinc-900/80 border border-blue-500/20 rounded-xl p-3">
-                <div className="text-[10px] uppercase font-bold text-blue-400">En Diseño / Borrador</div>
-                <div className="text-xl font-extrabold text-blue-400 mt-0.5">
+              <div
+                className={`border rounded-xl p-3.5 transition-colors ${
+                  isLight ? 'bg-emerald-500/5 border-emerald-500/30 shadow-sm' : 'bg-zinc-900/80 border-emerald-500/30'
+                }`}
+              >
+                <div className="text-[10px] uppercase font-bold text-emerald-500 flex items-center justify-between">
+                  <span>Ventas Cerradas</span>
+                  <span className="text-[9px] bg-emerald-500/20 px-1.5 py-0.2 rounded font-mono font-bold text-emerald-600 dark:text-emerald-300">
+                    {conversionRate}% conv.
+                  </span>
+                </div>
+                <div className="text-xl font-extrabold text-emerald-600 dark:text-emerald-400 mt-0.5">{soldProjects.length}</div>
+                <div className="text-[10px] text-emerald-600/80 dark:text-emerald-300/80 font-mono">
+                  ${(soldVolumeClp / 1000000).toFixed(2)}M CLP real
+                </div>
+              </div>
+
+              <div
+                className={`border rounded-xl p-3.5 transition-colors ${
+                  isLight ? 'bg-blue-500/5 border-blue-500/30 shadow-sm' : 'bg-zinc-900/80 border-blue-500/20'
+                }`}
+              >
+                <div className="text-[10px] uppercase font-bold text-blue-500">En Diseño / Borrador</div>
+                <div className="text-xl font-extrabold text-blue-600 dark:text-blue-400 mt-0.5">
                   {projects.filter((p) => !p.status || p.status === 'designed').length}
                 </div>
-                <div className="text-[10px] text-zinc-500 font-mono">Demanda potencial</div>
+                <div className={`text-[10px] font-mono ${isLight ? 'text-zinc-500' : 'text-zinc-500'}`}>
+                  Demanda potencial
+                </div>
               </div>
 
-              <div className="bg-zinc-900/80 border border-amber-500/20 rounded-xl p-3">
-                <div className="text-[10px] uppercase font-bold text-amber-400">Cotizados / En Taller</div>
-                <div className="text-xl font-extrabold text-amber-400 mt-0.5">
+              <div
+                className={`border rounded-xl p-3.5 transition-colors ${
+                  isLight ? 'bg-amber-500/5 border-amber-500/30 shadow-sm' : 'bg-zinc-900/80 border-amber-500/20'
+                }`}
+              >
+                <div className="text-[10px] uppercase font-bold text-amber-500">Cotizados / En Taller</div>
+                <div className="text-xl font-extrabold text-amber-600 dark:text-amber-400 mt-0.5">
                   {projects.filter((p) => p.status === 'quoted' || p.status === 'in_production').length}
                 </div>
-                <div className="text-[10px] text-zinc-500 font-mono">En negociación / taller</div>
+                <div className={`text-[10px] font-mono ${isLight ? 'text-zinc-500' : 'text-zinc-500'}`}>
+                  En negociación / taller
+                </div>
               </div>
             </div>
           )}
@@ -575,31 +627,55 @@ export function ProjectsManagerTab({ onLoadProjectToModule, isFreeUserMode = fal
       {!isFreeUserMode && adminSubTab === 'access_logs' ? (
         /* Superadmin: Tabla de Registro de Accesos al Configurador */
         <div className="space-y-4">
-          <div className="bg-zinc-900/80 p-4 rounded-xl border border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div
+            className={`p-4 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2 transition-colors ${
+              isLight ? 'bg-white border-zinc-200 shadow-sm' : 'bg-zinc-900/80 border-zinc-800'
+            }`}
+          >
             <div>
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              <h3 className={`text-sm font-bold flex items-center gap-2 ${isLight ? 'text-zinc-900' : 'text-white'}`}>
                 <Activity size={16} className="text-orange-500" />
                 Registro de Ingresos al Configurador
               </h3>
-              <p className="text-xs text-zinc-400">
+              <p className={`text-xs ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>
                 Auditoría en tiempo real de cada diseñador, arquitecto o mueblista que ingresa al configurador 3D.
               </p>
             </div>
-            <div className="text-xs text-zinc-400 font-mono bg-zinc-950 px-3 py-1.5 rounded-lg border border-zinc-800 shrink-0">
-              Total Ingresos: <strong className="text-orange-400">{accessLogs.length}</strong>
+            <div
+              className={`text-xs font-mono px-3 py-1.5 rounded-lg border shrink-0 ${
+                isLight ? 'bg-zinc-100 border-zinc-200 text-zinc-700' : 'bg-zinc-950 border-zinc-800 text-zinc-400'
+              }`}
+            >
+              Total Ingresos: <strong className="text-orange-500 font-bold">{accessLogs.length}</strong>
             </div>
           </div>
 
           {accessLogs.length === 0 ? (
-            <div className="p-12 text-center bg-zinc-900/40 border border-zinc-800 rounded-2xl">
-              <Activity size={40} className="mx-auto text-zinc-600 mb-3" />
-              <p className="text-sm font-semibold text-slate-400">No hay registros de ingresos aún.</p>
-              <p className="text-xs text-zinc-600 mt-1">Cada vez que un usuario ingrese al configurador quedará trazado con su información de contacto y rubro.</p>
+            <div
+              className={`p-12 text-center border rounded-2xl ${
+                isLight ? 'bg-white border-zinc-200 shadow-sm' : 'bg-zinc-900/40 border-zinc-800'
+              }`}
+            >
+              <Activity size={40} className={`mx-auto mb-3 ${isLight ? 'text-zinc-400' : 'text-zinc-600'}`} />
+              <p className={`text-sm font-semibold ${isLight ? 'text-zinc-700' : 'text-slate-400'}`}>
+                No hay registros de ingresos aún.
+              </p>
+              <p className={`text-xs mt-1 ${isLight ? 'text-zinc-500' : 'text-zinc-600'}`}>
+                Cada vez que un usuario ingrese al configurador quedará trazado con su información de contacto y rubro.
+              </p>
             </div>
           ) : (
-            <div className="overflow-x-auto rounded-xl border border-zinc-800 shadow-xl">
+            <div
+              className={`overflow-x-auto rounded-xl border shadow-sm ${
+                isLight ? 'border-zinc-200 bg-white' : 'border-zinc-800 shadow-xl'
+              }`}
+            >
               <table className="w-full text-left text-xs">
-                <thead className="bg-zinc-950 text-zinc-400 font-bold uppercase tracking-wider text-[10px] border-b border-zinc-800">
+                <thead
+                  className={`font-bold uppercase tracking-wider text-[10px] border-b ${
+                    isLight ? 'bg-zinc-100 text-zinc-700 border-zinc-200' : 'bg-zinc-950 text-zinc-400 border-zinc-800'
+                  }`}
+                >
                   <tr>
                     <th className="py-3 px-4">Fecha y Hora</th>
                     <th className="py-3 px-4">Usuario / Diseñador</th>
@@ -610,30 +686,33 @@ export function ProjectsManagerTab({ onLoadProjectToModule, isFreeUserMode = fal
                     <th className="py-3 px-4">Módulo</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-zinc-800 bg-zinc-900/60">
+                <tbody className={`divide-y ${isLight ? 'divide-zinc-200 bg-white' : 'divide-zinc-800 bg-zinc-900/60'}`}>
                   {accessLogs.map((log) => (
-                    <tr key={log.id} className="hover:bg-zinc-800/40 transition-colors">
-                      <td className="py-3 px-4 font-mono text-zinc-400 whitespace-nowrap">
+                    <tr
+                      key={log.id}
+                      className={`transition-colors ${isLight ? 'hover:bg-zinc-50' : 'hover:bg-zinc-800/40'}`}
+                    >
+                      <td className={`py-3 px-4 font-mono whitespace-nowrap ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>
                         {new Date(log.timestamp).toLocaleString('es-CL')}
                       </td>
-                      <td className="py-3 px-4 font-semibold text-white whitespace-nowrap">
+                      <td className={`py-3 px-4 font-semibold whitespace-nowrap ${isLight ? 'text-zinc-900' : 'text-white'}`}>
                         {log.userName}
                       </td>
-                      <td className="py-3 px-4 text-slate-300">
+                      <td className={`py-3 px-4 ${isLight ? 'text-zinc-600' : 'text-slate-300'}`}>
                         {log.userEmail}
                       </td>
-                      <td className="py-3 px-4 font-mono text-emerald-400 whitespace-nowrap">
+                      <td className="py-3 px-4 font-mono text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
                         {log.userPhone || '-'}
                       </td>
                       <td className="py-3 px-4">
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-orange-500/10 text-orange-400 border border-orange-500/20">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20">
                           {log.userRubro || 'Diseñador'}
                         </span>
                       </td>
-                      <td className="py-3 px-4 text-zinc-400">
+                      <td className={`py-3 px-4 ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>
                         {[log.userCity, log.userCommune].filter(Boolean).join(', ') || '-'}
                       </td>
-                      <td className="py-3 px-4 font-medium text-slate-200">
+                      <td className={`py-3 px-4 font-medium ${isLight ? 'text-zinc-800' : 'text-slate-200'}`}>
                         {log.module}
                       </td>
                     </tr>
@@ -646,22 +725,34 @@ export function ProjectsManagerTab({ onLoadProjectToModule, isFreeUserMode = fal
       ) : (
         <>
           {/* Action & Filter Bar */}
-          <div className="space-y-3 bg-zinc-900/80 p-4 rounded-xl border border-zinc-800">
+          <div
+            className={`space-y-3 p-4 rounded-xl border transition-colors ${
+              isLight ? 'bg-white border-zinc-200 shadow-sm' : 'bg-zinc-900/80 border-zinc-800'
+            }`}
+          >
             <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
               {/* Search */}
               <div className="relative flex-1">
-                <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Search size={16} className={`absolute left-3.5 top-1/2 -translate-y-1/2 ${isLight ? 'text-zinc-400' : 'text-slate-400'}`} />
                 <input
                   type="text"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   placeholder="Buscar por proyecto, cliente, N° OT o descripción..."
-                  className="w-full pl-10 pr-4 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-orange-500"
+                  className={`w-full pl-10 pr-4 py-2 border rounded-lg text-xs focus:outline-none focus:border-orange-500 transition-colors ${
+                    isLight
+                      ? 'bg-zinc-50 border-zinc-300 text-zinc-900 placeholder:text-zinc-400'
+                      : 'bg-zinc-950 border-zinc-800 text-white placeholder:text-zinc-600'
+                  }`}
                 />
               </div>
 
               {/* Type Tabs */}
-              <div className="flex items-center gap-1 bg-zinc-950 p-1 rounded-lg border border-zinc-800 overflow-x-auto">
+              <div
+                className={`flex items-center gap-1 p-1 rounded-lg border overflow-x-auto ${
+                  isLight ? 'bg-zinc-100 border-zinc-200' : 'bg-zinc-950 border-zinc-800'
+                }`}
+              >
                 {[
                   { id: 'all', label: 'Todos' },
                   { id: 'kitchen', label: 'Cocinas' },
@@ -677,6 +768,8 @@ export function ProjectsManagerTab({ onLoadProjectToModule, isFreeUserMode = fal
                     className={`px-3 py-1.5 rounded-md text-[11px] font-semibold transition-all whitespace-nowrap cursor-pointer ${
                       selectedType === tab.id
                         ? 'bg-orange-500 text-white shadow'
+                        : isLight
+                        ? 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200'
                         : 'text-slate-400 hover:text-slate-200 hover:bg-zinc-900'
                     }`}
                   >
@@ -695,7 +788,7 @@ export function ProjectsManagerTab({ onLoadProjectToModule, isFreeUserMode = fal
                         showNotification('Todos los proyectos han sido eliminados.');
                       }
                     }}
-                    className="px-3 py-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 hover:text-red-300 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                    className="px-3 py-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-500 hover:text-red-600 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer"
                     title="Eliminar todos los proyectos y partir desde cero"
                   >
                     <Trash2 size={14} />
@@ -707,7 +800,9 @@ export function ProjectsManagerTab({ onLoadProjectToModule, isFreeUserMode = fal
                   <button
                     onClick={handleManualSync}
                     disabled={isSyncing}
-                    className="px-3 py-2 bg-zinc-950 border border-sky-500/30 text-sky-400 hover:text-sky-300 hover:bg-sky-500/10 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                    className={`px-3 py-2 border text-sky-500 hover:bg-sky-500/10 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                      isLight ? 'bg-white border-sky-300' : 'bg-zinc-950 border-sky-500/30'
+                    }`}
                     title="Sincronizar proyectos con base de datos en la nube"
                   >
                     <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />
@@ -727,8 +822,8 @@ export function ProjectsManagerTab({ onLoadProjectToModule, isFreeUserMode = fal
 
             {/* Pipeline Status Filter Pills (Only for Superadmin) */}
             {!isFreeUserMode && (
-              <div className="flex items-center gap-2 pt-2 border-t border-zinc-800/80 overflow-x-auto text-xs">
-                <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider shrink-0 flex items-center gap-1">
+              <div className={`flex items-center gap-2 pt-2 border-t overflow-x-auto text-xs ${isLight ? 'border-zinc-200' : 'border-zinc-800/80'}`}>
+                <span className={`text-[11px] font-bold uppercase tracking-wider shrink-0 flex items-center gap-1 ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>
                   <Filter size={12} /> Pipeline:
                 </span>
                 {[
@@ -743,7 +838,11 @@ export function ProjectsManagerTab({ onLoadProjectToModule, isFreeUserMode = fal
                     onClick={() => setSelectedStatus(st.id as any)}
                     className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                       selectedStatus === st.id
-                        ? 'bg-zinc-100 text-zinc-950 font-bold shadow'
+                        ? isLight
+                          ? 'bg-zinc-900 text-white font-bold shadow'
+                          : 'bg-zinc-100 text-zinc-950 font-bold shadow'
+                        : isLight
+                        ? 'bg-zinc-100 text-zinc-600 hover:text-zinc-900 border border-zinc-200'
                         : 'bg-zinc-950 text-zinc-400 hover:text-white border border-zinc-800'
                     }`}
                   >
@@ -758,17 +857,19 @@ export function ProjectsManagerTab({ onLoadProjectToModule, isFreeUserMode = fal
           {isCreatingNew && (
             <form
               onSubmit={handleCreateNewProject}
-              className="p-5 bg-zinc-900/90 border border-orange-500/40 rounded-xl space-y-4 animate-in fade-in duration-200"
+              className={`p-5 border border-orange-500/40 rounded-xl space-y-4 animate-in fade-in duration-200 ${
+                isLight ? 'bg-white shadow-lg' : 'bg-zinc-900/90'
+              }`}
             >
-              <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
-                <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+              <div className={`flex items-center justify-between border-b pb-3 ${isLight ? 'border-zinc-200' : 'border-zinc-800'}`}>
+                <h3 className={`text-sm font-bold uppercase tracking-wider flex items-center gap-2 ${isLight ? 'text-zinc-900' : 'text-white'}`}>
                   <FolderKanban size={18} className="text-orange-500" />
                   Guardar Nuevo Proyecto en Base de Datos
                 </h3>
                 <button
                   type="button"
                   onClick={() => setIsCreatingNew(false)}
-                  className="text-slate-400 hover:text-white"
+                  className={isLight ? 'text-zinc-500 hover:text-zinc-900' : 'text-slate-400 hover:text-white'}
                 >
                   <X size={16} />
                 </button>
@@ -776,11 +877,13 @@ export function ProjectsManagerTab({ onLoadProjectToModule, isFreeUserMode = fal
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Módulo / Tipo</label>
+                  <label className={`block text-[10px] uppercase font-bold mb-1 ${isLight ? 'text-zinc-500' : 'text-slate-400'}`}>Módulo / Tipo</label>
                   <select
                     value={newType}
                     onChange={(e) => setNewType(e.target.value as ProjectType)}
-                    className="w-full p-2 bg-zinc-950 border border-zinc-700 rounded-lg text-xs text-white focus:border-orange-500 focus:outline-none"
+                    className={`w-full p-2 border rounded-lg text-xs focus:border-orange-500 focus:outline-none ${
+                      isLight ? 'bg-zinc-50 border-zinc-300 text-zinc-900' : 'bg-zinc-950 border-zinc-700 text-white'
+                    }`}
                   >
                     <option value="kitchen">Cocina Planificador 2D/3D</option>
                     <option value="closet">Clóset Paramétrico Modular</option>
@@ -792,37 +895,43 @@ export function ProjectsManagerTab({ onLoadProjectToModule, isFreeUserMode = fal
                 </div>
 
                 <div>
-                  <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Nombre del Proyecto</label>
+                  <label className={`block text-[10px] uppercase font-bold mb-1 ${isLight ? 'text-zinc-500' : 'text-slate-400'}`}>Nombre del Proyecto</label>
                   <input
                     type="text"
                     required
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
                     placeholder="Ej. Casa Molco Lago Ranco"
-                    className="w-full p-2 bg-zinc-950 border border-zinc-700 rounded-lg text-xs text-white placeholder:text-zinc-600 focus:border-orange-500 focus:outline-none"
+                    className={`w-full p-2 border rounded-lg text-xs focus:border-orange-500 focus:outline-none ${
+                      isLight ? 'bg-zinc-50 border-zinc-300 text-zinc-900 placeholder:text-zinc-400' : 'bg-zinc-950 border-zinc-700 text-white placeholder:text-zinc-600'
+                    }`}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Cliente / Referencia</label>
+                  <label className={`block text-[10px] uppercase font-bold mb-1 ${isLight ? 'text-zinc-500' : 'text-slate-400'}`}>Cliente / Referencia</label>
                   <input
                     type="text"
                     value={newClient}
                     onChange={(e) => setNewClient(e.target.value)}
                     placeholder="Ej. Inmobiliaria Sur / Particular"
-                    className="w-full p-2 bg-zinc-950 border border-zinc-700 rounded-lg text-xs text-white placeholder:text-zinc-600 focus:border-orange-500 focus:outline-none"
+                    className={`w-full p-2 border rounded-lg text-xs focus:border-orange-500 focus:outline-none ${
+                      isLight ? 'bg-zinc-50 border-zinc-300 text-zinc-900 placeholder:text-zinc-400' : 'bg-zinc-950 border-zinc-700 text-white placeholder:text-zinc-600'
+                    }`}
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Descripción Técnica</label>
+                <label className={`block text-[10px] uppercase font-bold mb-1 ${isLight ? 'text-zinc-500' : 'text-slate-400'}`}>Descripción Técnica</label>
                 <input
                   type="text"
                   value={newDescription}
                   onChange={(e) => setNewDescription(e.target.value)}
                   placeholder="Especificaciones, ubicación o notas de cubicación..."
-                  className="w-full p-2 bg-zinc-950 border border-zinc-700 rounded-lg text-xs text-white placeholder:text-zinc-600 focus:border-orange-500 focus:outline-none"
+                  className={`w-full p-2 border rounded-lg text-xs focus:border-orange-500 focus:outline-none ${
+                    isLight ? 'bg-zinc-50 border-zinc-300 text-zinc-900 placeholder:text-zinc-400' : 'bg-zinc-950 border-zinc-700 text-white placeholder:text-zinc-600'
+                  }`}
                 />
               </div>
 
@@ -830,7 +939,9 @@ export function ProjectsManagerTab({ onLoadProjectToModule, isFreeUserMode = fal
                 <button
                   type="button"
                   onClick={() => setIsCreatingNew(false)}
-                  className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-slate-300 text-xs font-semibold rounded-lg"
+                  className={`px-4 py-2 text-xs font-semibold rounded-lg ${
+                    isLight ? 'bg-zinc-200 text-zinc-700 hover:bg-zinc-300' : 'bg-zinc-800 text-slate-300 hover:bg-zinc-700'
+                  }`}
                 >
                   Cancelar
                 </button>
@@ -847,10 +958,10 @@ export function ProjectsManagerTab({ onLoadProjectToModule, isFreeUserMode = fal
           {/* Projects List */}
           <div className="space-y-3">
             {filteredProjects.length === 0 ? (
-              <div className="p-12 text-center bg-zinc-900/40 border border-zinc-800 rounded-2xl">
-                <FolderKanban size={40} className="mx-auto text-zinc-600 mb-3" />
-                <p className="text-sm font-semibold text-slate-400">No se encontraron proyectos guardados.</p>
-                <p className="text-xs text-zinc-600 mt-1">
+              <div className={`p-12 text-center border rounded-2xl ${isLight ? 'bg-white border-zinc-200' : 'bg-zinc-900/40 border-zinc-800'}`}>
+                <FolderKanban size={40} className="mx-auto text-zinc-400 mb-3" />
+                <p className={`text-sm font-semibold ${isLight ? 'text-zinc-700' : 'text-slate-400'}`}>No se encontraron proyectos guardados.</p>
+                <p className={`text-xs mt-1 ${isLight ? 'text-zinc-500' : 'text-zinc-600'}`}>
                   {isFreeUserMode
                     ? 'Diseña tu primera cocina en 3D y pulsa "Guardar Proyecto" para verla aquí.'
                     : 'Guarda un nuevo proyecto o ajusta el filtro de búsqueda.'}
@@ -860,7 +971,11 @@ export function ProjectsManagerTab({ onLoadProjectToModule, isFreeUserMode = fal
               filteredProjects.map((proj) => (
                 <div
                   key={proj.id}
-                  className="group bg-zinc-900/90 border border-zinc-800 hover:border-zinc-700 rounded-xl p-4 transition-all hover:bg-zinc-900 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 shadow-sm"
+                  className={`group border rounded-xl p-4 transition-all flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 shadow-sm ${
+                    isLight
+                      ? 'bg-white border-zinc-200 hover:border-orange-400 text-zinc-900'
+                      : 'bg-zinc-900/90 border-zinc-800 hover:border-zinc-700 text-white'
+                  }`}
                 >
                   {/* Left Info with Thumbnail Preview */}
                   <div className="flex items-start gap-4 flex-1 min-w-0">
@@ -914,7 +1029,7 @@ export function ProjectsManagerTab({ onLoadProjectToModule, isFreeUserMode = fal
                             </button>
                           </div>
                         ) : (
-                          <h4 className="text-sm font-bold text-white tracking-tight truncate flex items-center gap-2">
+                          <h4 className={`text-sm font-bold tracking-tight truncate flex items-center gap-2 ${isLight ? 'text-zinc-900' : 'text-white'}`}>
                             {proj.name}
                             <button
                               onClick={() => handleStartEdit(proj)}
@@ -927,25 +1042,27 @@ export function ProjectsManagerTab({ onLoadProjectToModule, isFreeUserMode = fal
                         )}
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-400">
-                        <span className="flex items-center gap-1 text-slate-300">
+                      <div className={`flex flex-wrap items-center gap-3 text-[11px] ${isLight ? 'text-zinc-600' : 'text-slate-400'}`}>
+                        <span className={`flex items-center gap-1 ${isLight ? 'text-zinc-700' : 'text-slate-300'}`}>
                           <User size={12} className="text-zinc-500" />
-                          Cliente: <strong className="text-slate-200">{proj.client || 'General'}</strong>
+                          Cliente: <strong className={isLight ? 'text-zinc-900' : 'text-slate-200'}>{proj.client || 'General'}</strong>
                         </span>
                         <span className="flex items-center gap-1">
                           <Calendar size={12} className="text-zinc-500" />
                           {proj.date}
                         </span>
-                        <span className="text-orange-400/90 font-mono font-semibold">
+                        <span className="text-orange-500 font-mono font-semibold">
                           Est. ${proj.totalCostEstimateClp?.toLocaleString('es-CL') || '0'} CLP
                         </span>
 
                         {/* Superadmin: Trazabilidad de quién diseñó este proyecto */}
                         {!isFreeUserMode && proj.userName && (
-                          <span className="flex items-center gap-1 text-[11px] text-zinc-300 bg-zinc-950 px-2 py-0.5 rounded border border-zinc-800">
-                            <User size={11} className="text-orange-400" />
-                            Diseñó: <strong className="text-white">{proj.userName}</strong>
-                            {proj.userRubro && <span className="text-orange-400">({proj.userRubro})</span>}
+                          <span className={`flex items-center gap-1 text-[11px] px-2 py-0.5 rounded border ${
+                            isLight ? 'bg-zinc-100 border-zinc-300 text-zinc-800' : 'bg-zinc-950 border-zinc-800 text-zinc-300'
+                          }`}>
+                            <User size={11} className="text-orange-500" />
+                            Diseñó: <strong className={isLight ? 'text-zinc-900' : 'text-white'}>{proj.userName}</strong>
+                            {proj.userRubro && <span className="text-orange-500">({proj.userRubro})</span>}
                             {proj.userPhone && ` • Tel: ${proj.userPhone}`}
                             {proj.userCity && ` • ${proj.userCity}`}
                           </span>
@@ -1014,7 +1131,9 @@ export function ProjectsManagerTab({ onLoadProjectToModule, isFreeUserMode = fal
                       <select
                         value={proj.status || 'designed'}
                         onChange={(e) => handleChangeStatus(proj, e.target.value as any)}
-                        className="py-1.5 px-2 bg-zinc-950 border border-zinc-700 text-xs rounded-lg text-slate-300 font-medium focus:border-orange-500 focus:outline-none cursor-pointer"
+                        className={`py-1.5 px-2 border text-xs rounded-lg font-medium focus:border-orange-500 focus:outline-none cursor-pointer ${
+                          isLight ? 'bg-zinc-100 border-zinc-300 text-zinc-900' : 'bg-zinc-950 border-zinc-700 text-slate-300'
+                        }`}
                         title="Cambiar estado del proyecto en el pipeline"
                       >
                         <option value="designed">✏ Diseñado</option>
@@ -1038,7 +1157,11 @@ export function ProjectsManagerTab({ onLoadProjectToModule, isFreeUserMode = fal
                       {/* Open in Configurator */}
                       <button
                         onClick={() => handleOpenInConfigurator(proj)}
-                        className="px-3 py-1.5 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors cursor-pointer"
+                        className={`px-3 py-1.5 border rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors cursor-pointer ${
+                          isLight
+                            ? 'bg-emerald-50 hover:bg-emerald-100 border-emerald-300 text-emerald-700'
+                            : 'bg-emerald-500/15 hover:bg-emerald-500/25 border-emerald-500/30 text-emerald-300'
+                        }`}
                         title="Abrir y editar en el configurador 3D"
                       >
                         <Play size={13} /> Cargar en 3D
@@ -1047,34 +1170,48 @@ export function ProjectsManagerTab({ onLoadProjectToModule, isFreeUserMode = fal
                       {/* Commercial PDF Download */}
                       <button
                         onClick={() => handleDownloadCommercialPdf(proj)}
-                        className="px-2.5 py-1.5 bg-orange-500/15 hover:bg-orange-500/25 border border-orange-500/30 text-orange-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                        className={`px-2.5 py-1.5 border rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                          isLight
+                            ? 'bg-orange-50 hover:bg-orange-100 border-orange-300 text-orange-700'
+                            : 'bg-orange-500/15 hover:bg-orange-500/25 border-orange-500/30 text-orange-300'
+                        }`}
                         title="Descargar Ficha y Cotización Comercial en PDF"
                       >
-                        <FileText size={14} className="text-orange-400" /> PDF Comercial
+                        <FileText size={14} className={isLight ? 'text-orange-600' : 'text-orange-400'} /> PDF Comercial
                       </button>
 
                       {/* Technical Factory PDF Download */}
                       <button
                         onClick={() => handleDownloadPdf(proj)}
-                        className="px-2.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                        className={`px-2.5 py-1.5 border rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                          isLight
+                            ? 'bg-zinc-100 hover:bg-zinc-200 border-zinc-300 text-zinc-800'
+                            : 'bg-zinc-800 hover:bg-zinc-700 border-zinc-700 text-slate-200'
+                        }`}
                         title="Descargar Ficha Técnica de Fábrica en PDF"
                       >
-                        <FileText size={14} className="text-zinc-400" /> Ficha Técnica
+                        <FileText size={14} className={isLight ? 'text-zinc-600' : 'text-zinc-400'} /> Ficha Técnica
                       </button>
 
                       {/* Direct Excel Download */}
                       <button
                         onClick={() => handleDownloadExcel(proj)}
-                        className="px-2.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                        className={`px-2.5 py-1.5 border rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                          isLight
+                            ? 'bg-zinc-100 hover:bg-zinc-200 border-zinc-300 text-zinc-800'
+                            : 'bg-zinc-800 hover:bg-zinc-700 border-zinc-700 text-slate-200'
+                        }`}
                         title="Descargar Planilla de Materiales en Excel"
                       >
-                        <FileSpreadsheet size={14} className="text-emerald-400" /> Excel
+                        <FileSpreadsheet size={14} className={isLight ? 'text-emerald-600' : 'text-emerald-400'} /> Excel
                       </button>
 
                       {/* Duplicate */}
                       <button
                         onClick={() => handleDuplicate(proj.id)}
-                        className="p-1.5 bg-zinc-800/80 hover:bg-zinc-700 text-slate-400 hover:text-white rounded-lg transition-colors cursor-pointer"
+                        className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                          isLight ? 'bg-zinc-100 hover:bg-zinc-200 text-zinc-600 hover:text-zinc-900 border border-zinc-200' : 'bg-zinc-800/80 hover:bg-zinc-700 text-slate-400 hover:text-white'
+                        }`}
                         title="Duplicar proyecto"
                       >
                         <Copy size={14} />
@@ -1083,7 +1220,9 @@ export function ProjectsManagerTab({ onLoadProjectToModule, isFreeUserMode = fal
                       {/* Delete */}
                       <button
                         onClick={() => handleDelete(proj.id, proj.name)}
-                        className="p-1.5 bg-zinc-800/80 hover:bg-red-500/20 text-slate-400 hover:text-red-400 rounded-lg transition-colors cursor-pointer"
+                        className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                          isLight ? 'bg-zinc-100 hover:bg-red-50 text-zinc-500 hover:text-red-600 border border-zinc-200' : 'bg-zinc-800/80 hover:bg-red-500/20 text-slate-400 hover:text-red-400'
+                        }`}
                         title="Eliminar proyecto"
                       >
                         <Trash2 size={14} />

@@ -181,6 +181,8 @@ function getInitialTenants(): ProviderTenantItem[] {
 }
 
 export function UsersAndProvidersTab() {
+  const { themeMode } = useAdminStore();
+  const isLight = themeMode === 'light';
   const isCloud = isSupabaseConfigured();
   const currentSupabaseUser = useSupabaseAuthStore((state) => state.user);
 
@@ -664,13 +666,19 @@ export function UsersAndProvidersTab() {
       )}
 
       {/* Control Header & Sub-Tabs */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-zinc-900/80 p-4 rounded-2xl border border-zinc-800">
+      <div
+        className={`flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 rounded-2xl border transition-colors ${
+          isLight ? 'bg-white border-zinc-200 shadow-sm' : 'bg-zinc-900/80 border-zinc-800'
+        }`}
+      >
         <div className="flex items-center gap-2">
           <button
             onClick={() => setSubTab('users')}
             className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer ${
               subTab === 'users'
                 ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20'
+                : isLight
+                ? 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200 hover:text-zinc-900'
                 : 'bg-zinc-800 text-slate-300 hover:bg-zinc-700 hover:text-white'
             }`}
           >
@@ -683,6 +691,8 @@ export function UsersAndProvidersTab() {
             className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer ${
               subTab === 'providers'
                 ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20'
+                : isLight
+                ? 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200 hover:text-zinc-900'
                 : 'bg-zinc-800 text-slate-300 hover:bg-zinc-700 hover:text-white'
             }`}
           >
@@ -746,26 +756,34 @@ export function UsersAndProvidersTab() {
       </div>
 
       {/* Filter & Search Bar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-zinc-900/40 p-3 rounded-xl border border-zinc-800/80 text-xs">
+      <div
+        className={`flex flex-col sm:flex-row items-center justify-between gap-3 p-3 rounded-xl border text-xs transition-colors ${
+          isLight ? 'bg-white border-zinc-200 shadow-sm' : 'bg-zinc-900/40 border-zinc-800/80'
+        }`}
+      >
         <div className="relative w-full sm:w-80">
-          <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500" />
+          <Search size={15} className={`absolute left-3.5 top-1/2 -translate-y-1/2 ${isLight ? 'text-zinc-400' : 'text-zinc-500'}`} />
           <input
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder={subTab === 'users' ? 'Buscar por correo, nombre o empresa...' : 'Buscar por nombre, correo o ciudad...'}
-            className="w-full pl-9 pr-4 py-2 bg-zinc-900 border border-zinc-700/80 rounded-xl text-white placeholder:text-zinc-500 focus:outline-none focus:border-orange-500"
+            className={`w-full pl-9 pr-4 py-2 border rounded-xl focus:outline-none focus:border-orange-500 ${
+              isLight ? 'bg-zinc-50 border-zinc-300 text-zinc-900 placeholder:text-zinc-400' : 'bg-zinc-900 border-zinc-700/80 text-white placeholder:text-zinc-500'
+            }`}
           />
         </div>
 
         {subTab === 'users' && (
           <div className="flex items-center gap-2 w-full sm:w-auto">
             <Filter size={14} className="text-zinc-500" />
-            <span className="text-zinc-400">Rol:</span>
+            <span className={isLight ? 'text-zinc-600' : 'text-zinc-400'}>Rol:</span>
             <select
               value={roleFilter}
               onChange={(e) => setRoleFilter(e.target.value)}
-              className="bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-slate-200 focus:outline-none focus:border-orange-500"
+              className={`border rounded-lg px-3 py-1.5 focus:outline-none focus:border-orange-500 ${
+                isLight ? 'bg-zinc-50 border-zinc-300 text-zinc-900' : 'bg-zinc-900 border-zinc-700 text-slate-200'
+              }`}
             >
               <option value="all">Todos los Roles</option>
               <option value="superadmin">Superadmin</option>
@@ -779,10 +797,12 @@ export function UsersAndProvidersTab() {
 
       {/* TAB 1: USUARIOS */}
       {subTab === 'users' && (
-        <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden">
+        <div className={`border rounded-2xl overflow-hidden shadow-sm ${isLight ? 'bg-white border-zinc-200' : 'bg-zinc-900/60 border-zinc-800'}`}>
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs text-slate-300">
-              <thead className="bg-zinc-900 border-b border-zinc-800 text-zinc-400 uppercase font-mono text-[10px] tracking-wider">
+            <table className={`w-full text-left text-xs ${isLight ? 'text-zinc-800' : 'text-slate-300'}`}>
+              <thead className={`border-b uppercase font-mono text-[10px] tracking-wider ${
+                isLight ? 'bg-zinc-100 border-zinc-200 text-zinc-600' : 'bg-zinc-900 border-zinc-800 text-zinc-400'
+              }`}>
                 <tr>
                   <th className="py-3.5 px-4">Usuario / Nombre</th>
                   <th className="py-3.5 px-4">Empresa / Proveedor</th>
@@ -808,8 +828,8 @@ export function UsersAndProvidersTab() {
                             {user.full_name?.charAt(0) || user.email.charAt(0)}
                           </div>
                           <div>
-                            <div className="font-semibold text-white">{user.full_name}</div>
-                            <div className="text-[11px] text-zinc-400 font-mono flex items-center gap-1">
+                            <div className={`font-bold text-xs ${isLight ? 'text-zinc-900' : 'text-white'}`}>{user.full_name}</div>
+                            <div className={`text-xs font-mono flex items-center gap-1 ${isLight ? 'text-zinc-600' : 'text-zinc-400'}`}>
                               <Mail size={11} /> {user.email}
                             </div>
                           </div>
@@ -817,7 +837,7 @@ export function UsersAndProvidersTab() {
                       </td>
 
                       <td className="py-3.5 px-4">
-                        <div className="flex items-center gap-1.5 text-slate-300 font-medium">
+                        <div className={`flex items-center gap-1.5 font-medium ${isLight ? 'text-zinc-800' : 'text-slate-300'}`}>
                           <Building size={13} className="text-zinc-500 shrink-0" />
                           <span>{user.tenant_name || 'Sin Empresa Asignada'}</span>
                         </div>
@@ -827,12 +847,12 @@ export function UsersAndProvidersTab() {
                         <span
                           className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider border ${
                             user.role === 'superadmin'
-                              ? 'bg-purple-500/15 border-purple-500/30 text-purple-300'
+                              ? 'bg-purple-500/15 border-purple-500/30 text-purple-700 dark:text-purple-300'
                               : user.role === 'tenant_admin'
-                              ? 'bg-orange-500/15 border-orange-500/30 text-orange-400'
+                              ? 'bg-orange-500/15 border-orange-500/30 text-orange-700 dark:text-orange-400'
                               : user.role === 'designer'
-                              ? 'bg-blue-500/15 border-blue-500/30 text-blue-300'
-                              : 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
+                              ? 'bg-blue-500/15 border-blue-500/30 text-blue-700 dark:text-blue-300'
+                              : 'bg-emerald-500/15 border-emerald-500/30 text-emerald-700 dark:text-emerald-300'
                           }`}
                         >
                           <Shield size={10} />
@@ -846,7 +866,7 @@ export function UsersAndProvidersTab() {
                         </span>
                       </td>
 
-                      <td className="py-3.5 px-4 font-mono text-[11px] text-zinc-400">
+                      <td className={`py-3.5 px-4 font-mono text-xs ${isLight ? 'text-zinc-600' : 'text-zinc-400'}`}>
                         <div className="flex items-center gap-1">
                           <Clock size={12} />
                           {user.created_at}
@@ -854,8 +874,8 @@ export function UsersAndProvidersTab() {
                       </td>
 
                       <td className="py-3.5 px-4 text-center">
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-full text-[10px] font-bold">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Activo
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 rounded-full text-[10px] font-bold">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Activo
                         </span>
                       </td>
 
@@ -867,7 +887,11 @@ export function UsersAndProvidersTab() {
                               setNewPasswordValue('Robfu2026@');
                               setIsResetPassModalOpen(true);
                             }}
-                            className="px-2.5 py-1.5 bg-zinc-800 hover:bg-orange-500/20 border border-zinc-700 hover:border-orange-500/40 text-slate-300 hover:text-orange-400 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                            className={`px-2.5 py-1.5 border rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                              isLight
+                                ? 'bg-zinc-100 hover:bg-orange-500/10 border-zinc-300 hover:border-orange-500/40 text-zinc-800 hover:text-orange-600'
+                                : 'bg-zinc-800 hover:bg-orange-500/20 border-zinc-700 hover:border-orange-500/40 text-slate-300 hover:text-orange-400'
+                            }`}
                             title="Restablecer o cambiar contraseña"
                           >
                             <KeyRound size={13} />

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Printer, Download, X, HelpCircle, FileText, CheckCircle2, Loader2, QrCode, Cpu, FileSpreadsheet, DollarSign, Edit3, Box } from 'lucide-react';
 import { useStore } from '../store';
 import { useKitchenStore, CabinetType } from '../store/kitchenStore';
-import { analyzeRoomWalls } from '../utils/roomGeometry';
+import { analyzeRoomWalls, calculatePolygonArea } from '../utils/roomGeometry';
 import { getCabinetBox2D } from '../utils/kitchenCollision';
 import { Part } from '../utils/manufacturing';
 import { generateKitchenPartsList, generateKitchenHardwareList, HARDWARE_SPECS, getResolvedCabinetShelfElevations, isCabinetWithDoors, isCabinetWithSplitDoors, isHplFinish } from '../utils/kitchenManufacturing';
@@ -44,6 +44,22 @@ export function KitchenBlueprint() {
   const [isEditingInfo, setIsEditingInfo] = useState(false);
   const [tempProjectName, setTempProjectName] = useState(projectName);
   const [tempClientName, setTempClientName] = useState(clientName);
+
+  // Captura de alta fidelidad del Canvas 3D de la escena activa (se refresca al abrir planos o cambiar muebles)
+  const [snapshot3D, setSnapshot3D] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (state.isPrinting) {
+      try {
+        const canvas = document.querySelector('canvas');
+        if (canvas) {
+          setSnapshot3D(canvas.toDataURL('image/png'));
+        }
+      } catch (e) {
+        console.warn('No se pudo capturar snapshot 3D del configurador:', e);
+      }
+    }
+  }, [state.isPrinting, kState.cabinets]);
 
   if (!state.isPrinting) return null;
 
@@ -361,6 +377,76 @@ export function KitchenBlueprint() {
     });
   });
 
+  const roomVertices = kState.roomConfig?.vertices || [];
+  const wallSegments = roomVertices.length >= 3 ? analyzeRoomWalls(roomVertices) : [];
+
+  // Calcular gabinetes proyectados en cada muro para las elevaciones
+  const activeWallsData = wallSegments.map(wall => {
+    const S = wall.start;
+    const E = wall.end;
+    const L = wall.length;
+    if (L < 1) return { wall, cabinetsOnWall: [] };
+
+    const ux = (E.x - S.x) / L;
+    const uy = (E.y - S.y) / L;
+    const nx = -uy;
+    const ny = ux;
+
+    const cabsOnWall = realCabinets.map(cab => {
+      const box = getCabinetBox2D(cab);
+      const ts = box.corners.map(([cx, cz]) => (cx - S.x) * ux + (cz - S.y) * uy);
+      const ds = box.corners.map(([cx, cz]) => Math.abs((cx - S.x) * nx + (cz - S.y) * ny));
+
+      const tMin = Math.min(...ts);
+      const tMax = Math.max(...ts);
+      const dMin = Math.min(...ds);
+
+      if (dMin <= 75 && tMax >= -10 && tMin <= L + 10) {
+        return {
+          cab,
+          t: (tMin + tMax) / 2,
+          offsetMm: Math.round(tMin * 10),
+          widthMm: Math.round((tMax - tMin) * 10),
+          heightMm: Math.round(cab.height * 10),
+          yBottomMm: Math.round((cab.position[1] - cab.height / 2) * 10),
+        };
+      }
+      return null;
+    }).filter(Boolean) as {
+      cab: CabinetType;
+      t: number;
+      offsetMm: number;
+      widthMm: number;
+      heightMm: number;
+      yBottomMm: number;
+    }[];
+
+    cabsOnWall.sort((a, b) => a.t - b.t);
+    return { wall, cabinetsOnWall: cabsOnWall };
+  });
+
+  let wallsWithCabs = activeWallsData.filter(w => w.cabinetsOnWall.length > 0);
+
+  if (wallsWithCabs.length === 0 && wallSegments.length > 0) {
+    const mainWall = wallSegments[0];
+    let runningOffsetMm = 100;
+    const cabsOnMain = realCabinets.map(cab => {
+      const item = {
+        cab,
+        t: runningOffsetMm / 10 + cab.width / 2,
+        offsetMm: runningOffsetMm,
+        widthMm: Math.round(cab.width * 10),
+        heightMm: Math.round(cab.height * 10),
+        yBottomMm: Math.round((cab.position[1] - cab.height / 2) * 10),
+      };
+      runningOffsetMm += Math.round(cab.width * 10);
+      return item;
+    });
+    wallsWithCabs = [{ wall: mainWall, cabinetsOnWall: cabsOnMain }];
+  }
+
+  const extraArchPages = Math.max(0, Math.ceil((wallsWithCabs.length - 2) / 2));
+
   const ctBOM = generateCountertopPieces(kState.cabinets, kState.countertopConfig, kState.qstoneCatalog, kState.islandBackConfig, kState.walls, kState.architecturalElements, kState.roomConfig);
   const stonePagesCount = (kState.countertopConfig?.enabled && ctBOM && ctBOM.pieces.length > 0) ? ctBOM.slabsLayout.length : 0;
   const hasMepPage = kState.mepPoints && kState.mepPoints.length > 0;
@@ -370,7 +456,7 @@ export function KitchenBlueprint() {
   const BOM_ITEMS_PER_PAGE = 15;
   const bomPagesCount = Math.max(1, Math.ceil(hardwareList.length / BOM_ITEMS_PER_PAGE));
 
-  const totalDocPages = 1 + mepPagesCount + printPages.length + boardResults.length + stonePagesCount + bomPagesCount;
+  const totalDocPages = 1 + extraArchPages + mepPagesCount + printPages.length + boardResults.length + stonePagesCount + bomPagesCount;
 
   const getCabinetTypeName = (cab: CabinetType) => {
     if (cab.type === 'wall') return 'MUEBLE AÉREO / MURAL';
@@ -425,37 +511,56 @@ export function KitchenBlueprint() {
     const isNarrowPiece = isBarraAmarre || pw < 280;
 
     const isFrontPiece = part.name.includes("Puerta") || part.name.includes("Frente") || part.name.includes("Panel Ciego") || part.name.includes("Tapa");
-    const isThickEdge = isFrontPiece ? (state.edgeBandingThicknessFronts || 2.0) >= 1.0 : (state.edgeBandingThicknessCabinets || 0.5) >= 1.0;
+    const edgeThickVal = isFrontPiece ? (state.edgeBandingThicknessFronts || 2.0) : (state.edgeBandingThicknessCabinets || 0.5);
+    const isThickEdge = edgeThickVal >= 1.0;
     const edgeColor = isThickEdge ? "#e11d48" : "#f97316";
 
-    const COLOR_MAGENTA = "#c026d3"; // Cotas Generales de Corte (Magenta puro alta saturación)
-    const COLOR_MINIFIX = "#15803d"; // Perforación Minifix Ø15/Ø8
-    const COLOR_TARUGO = "#b91c1c";  // Perforación Tarugo Ø8x30
-    const COLOR_SPAX = "#1d4ed8";    // Perforación Tornillo Spax Ø5
-    const COLOR_DETALLE = "#1e40af"; // Cotas de Ejes y Perforaciones (Azul técnico alto contraste)
-    const COLOR_CANAL = "#7e22ce";   // Canal Durolac
+    // Deducción exacta de tapacanto para la medida neta de corte de la plancha / sustrato
+    const leftEdgeDeduct = part.edgeL1 ? edgeThickVal : 0;
+    const rightEdgeDeduct = part.edgeL2 ? edgeThickVal : 0;
+    const topEdgeDeduct = part.edgeW1 ? edgeThickVal : 0;
+    const bottomEdgeDeduct = part.edgeW2 ? edgeThickVal : 0;
+
+    const pwCutVal = pw - leftEdgeDeduct - rightEdgeDeduct;
+    const plCutVal = pl - topEdgeDeduct - bottomEdgeDeduct;
+    const pwCut = Number(pwCutVal.toFixed(1));
+    const plCut = Number(plCutVal.toFixed(1));
+
+    const COLOR_RED_TOTAL = "#dc2626"; // Cota Exterior Roja: Medida Total Final con Tapacanto
+    const COLOR_BLUE_CUT = "#1d4ed8";  // Cota Interior Azul: Medida Neta de Corte de Plancha
+    const COLOR_MINIFIX = "#15803d";  // Perforación Minifix Ø15/Ø8
+    const COLOR_TARUGO = "#b91c1c";   // Perforación Tarugo Ø8x30
+    const COLOR_SPAX = "#1d4ed8";     // Perforación Tornillo Spax Ø5
+    const COLOR_DETALLE = "#1e40af";  // Cotas de Ejes y Perforaciones (Azul técnico alto contraste)
+    const COLOR_CANAL = "#7e22ce";    // Canal Durolac
 
     // CÁLCULO RIGUROSO DE PADDINGS PARA EVITAR CORTES DE COTAS Y TEXTOS EN A3
     const padT = hasTopMachining 
-      ? (isMinifix ? Math.max(88, Math.round(vMax * 0.18)) : Math.max(72, Math.round(vMax * 0.14))) 
-      : Math.max(42, Math.round(vMax * 0.08));
+      ? (isMinifix ? Math.max(105, Math.round(vMax * 0.20)) : Math.max(90, Math.round(vMax * 0.16))) 
+      : Math.max(75, Math.round(vMax * 0.12));
 
     const padL = hasLeftMachining 
-      ? Math.max(88, Math.round(vMax * 0.18)) 
-      : Math.max(42, Math.round(vMax * 0.08));
+      ? Math.max(105, Math.round(vMax * 0.20)) 
+      : Math.max(75, Math.round(vMax * 0.12));
 
-    // Espacio inferior (padB): cotas de detalle + Cota General + Altura de texto
+    // Espacio inferior (padB): cotas de detalle + Altura de texto
     const distB = isLateral ? Math.max(58, Math.round(vMax * 0.12)) : Math.max(48, Math.round(vMax * 0.10));
     const cotaBottomY = pl + distB;
     const padB = (cotaBottomY - pl) + fSizeCotaHoriz * 1.4 + 18;
 
-    // Espacio derecho (padR): Cota General Vertical + Texto Rotado
+    // Espacio derecho (padR): Cotas de detalle / vertical + Texto Rotado
     const distR = Math.max(48, Math.round(vMax * 0.10));
     const cotaRightX = pw + distR;
     const padR = (cotaRightX - pw) + fSizeCotaVert * 1.4 + 18;
 
     const viewBoxW = pw + padL + padR;
     const viewBoxH = pl + padT + padB;
+
+    // Posiciones relativas para doble cota superior e izquierda
+    const cotaTopRedY = Math.max(52, Math.round(padT * 0.72));
+    const cotaTopBlueY = Math.max(24, Math.round(padT * 0.36));
+    const cotaLeftRedX = Math.max(52, Math.round(padL * 0.72));
+    const cotaLeftBlueX = Math.max(24, Math.round(padL * 0.36));
 
     return (
       <svg 
@@ -500,18 +605,19 @@ export function KitchenBlueprint() {
           </g>
         )}
 
-        {/* 3. Cota General Horizontal Inferior (Magenta) - Nítida con Halo Blanco Antidesenfoque */}
-        <g>
-          <line x1={0} y1={cotaBottomY} x2={pw} y2={cotaBottomY} stroke={COLOR_MAGENTA} strokeWidth={strokeMed} />
-          <line x1={0} y1={pl + 3} x2={0} y2={cotaBottomY + 6} stroke={COLOR_MAGENTA} strokeWidth={strokeThin} strokeDasharray="4,2" />
-          <line x1={pw} y1={pl + 3} x2={pw} y2={cotaBottomY + 6} stroke={COLOR_MAGENTA} strokeWidth={strokeThin} strokeDasharray="4,2" />
-          <line x1={-5} y1={cotaBottomY + 5} x2={5} y2={cotaBottomY - 5} stroke={COLOR_MAGENTA} strokeWidth={strokeMed * 1.5} />
-          <line x1={pw - 5} y1={cotaBottomY + 5} x2={pw + 5} y2={cotaBottomY - 5} stroke={COLOR_MAGENTA} strokeWidth={strokeMed * 1.5} />
+        {/* 3. COTA SUPERIOR DE ANCHO: DOBLE COTA (ROJA EXTERIOR = MEDIDA TOTAL CON TAPACANTO, AZUL INTERIOR = MEDIDA CORTE PLANCHA) */}
+        <g key="cota-top-horizontal">
+          {/* Cota Exterior Roja (Total con Tapacanto) */}
+          <line x1={0} y1={-cotaTopRedY} x2={pw} y2={-cotaTopRedY} stroke={COLOR_RED_TOTAL} strokeWidth={strokeMed} />
+          <line x1={0} y1={-2} x2={0} y2={-cotaTopRedY - 6} stroke={COLOR_RED_TOTAL} strokeWidth={strokeThin} strokeDasharray="3,2" />
+          <line x1={pw} y1={-2} x2={pw} y2={-cotaTopRedY - 6} stroke={COLOR_RED_TOTAL} strokeWidth={strokeThin} strokeDasharray="3,2" />
+          <line x1={-5} y1={-cotaTopRedY + 5} x2={5} y2={-cotaTopRedY - 5} stroke={COLOR_RED_TOTAL} strokeWidth={strokeMed * 1.5} />
+          <line x1={pw - 5} y1={-cotaTopRedY + 5} x2={pw + 5} y2={-cotaTopRedY - 5} stroke={COLOR_RED_TOTAL} strokeWidth={strokeMed * 1.5} />
           <text 
             x={pw / 2} 
-            y={cotaBottomY + fSizeCotaHoriz * 0.95 + 4} 
+            y={-cotaTopRedY - 6} 
             fontSize={fSizeCotaHoriz} 
-            fill={COLOR_MAGENTA} 
+            fill={COLOR_RED_TOTAL} 
             stroke="#ffffff"
             strokeWidth={haloWidth}
             paintOrder="stroke fill"
@@ -523,20 +629,44 @@ export function KitchenBlueprint() {
           >
             {pw}
           </text>
+
+          {/* Cota Interior Azul (Corte de Plancha / Sustrato) */}
+          <line x1={0} y1={-cotaTopBlueY} x2={pw} y2={-cotaTopBlueY} stroke={COLOR_BLUE_CUT} strokeWidth={strokeMed} />
+          <line x1={0} y1={-2} x2={0} y2={-cotaTopBlueY - 4} stroke={COLOR_BLUE_CUT} strokeWidth={strokeThin} />
+          <line x1={pw} y1={-2} x2={pw} y2={-cotaTopBlueY - 4} stroke={COLOR_BLUE_CUT} strokeWidth={strokeThin} />
+          <line x1={-4} y1={-cotaTopBlueY + 4} x2={4} y2={-cotaTopBlueY - 4} stroke={COLOR_BLUE_CUT} strokeWidth={strokeMed * 1.3} />
+          <line x1={pw - 4} y1={-cotaTopBlueY + 4} x2={pw + 4} y2={-cotaTopBlueY - 4} stroke={COLOR_BLUE_CUT} strokeWidth={strokeMed * 1.3} />
+          <text 
+            x={pw / 2} 
+            y={-cotaTopBlueY - 5} 
+            fontSize={Math.round(fSizeCotaHoriz * 0.9)} 
+            fill={COLOR_BLUE_CUT} 
+            stroke="#ffffff"
+            strokeWidth={haloWidth}
+            paintOrder="stroke fill"
+            strokeLinejoin="round"
+            fontWeight="800" 
+            fontFamily="monospace"
+            textAnchor="middle"
+            textRendering="geometricPrecision"
+          >
+            {pwCut}
+          </text>
         </g>
 
-        {/* 4. Cota General Vertical Derecha (Magenta) - Nítida con Halo Blanco */}
-        <g>
-          <line x1={cotaRightX} y1={0} x2={cotaRightX} y2={pl} stroke={COLOR_MAGENTA} strokeWidth={strokeMed} />
-          <line x1={pw + 3} y1={0} x2={cotaRightX + 6} y2={0} stroke={COLOR_MAGENTA} strokeWidth={strokeThin} strokeDasharray="4,2" />
-          <line x1={pw + 3} y1={pl} x2={cotaRightX + 6} y2={pl} stroke={COLOR_MAGENTA} strokeWidth={strokeThin} strokeDasharray="4,2" />
-          <line x1={cotaRightX - 5} y1={5} x2={cotaRightX + 5} y2={-5} stroke={COLOR_MAGENTA} strokeWidth={strokeMed * 1.5} />
-          <line x1={cotaRightX - 5} y1={pl + 5} x2={cotaRightX + 5} y2={pl - 5} stroke={COLOR_MAGENTA} strokeWidth={strokeMed * 1.5} />
+        {/* 4. COTA IZQUIERDA DE LARGO: DOBLE COTA (ROJA EXTERIOR = MEDIDA TOTAL CON TAPACANTO, AZUL INTERIOR = MEDIDA CORTE PLANCHA) */}
+        <g key="cota-left-vertical">
+          {/* Cota Exterior Roja (Total con Tapacanto) */}
+          <line x1={-cotaLeftRedX} y1={0} x2={-cotaLeftRedX} y2={pl} stroke={COLOR_RED_TOTAL} strokeWidth={strokeMed} />
+          <line x1={-2} y1={0} x2={-cotaLeftRedX - 6} y2={0} stroke={COLOR_RED_TOTAL} strokeWidth={strokeThin} strokeDasharray="3,2" />
+          <line x1={-2} y1={pl} x2={-cotaLeftRedX - 6} y2={pl} stroke={COLOR_RED_TOTAL} strokeWidth={strokeThin} strokeDasharray="3,2" />
+          <line x1={-cotaLeftRedX - 5} y1={5} x2={-cotaLeftRedX + 5} y2={-5} stroke={COLOR_RED_TOTAL} strokeWidth={strokeMed * 1.5} />
+          <line x1={-cotaLeftRedX - 5} y1={pl + 5} x2={-cotaLeftRedX + 5} y2={pl - 5} stroke={COLOR_RED_TOTAL} strokeWidth={strokeMed * 1.5} />
           <text 
-            x={cotaRightX + fSizeCotaVert * 0.95 + 4} 
+            x={-cotaLeftRedX - 8} 
             y={pl / 2} 
             fontSize={fSizeCotaVert} 
-            fill={COLOR_MAGENTA} 
+            fill={COLOR_RED_TOTAL} 
             stroke="#ffffff"
             strokeWidth={haloWidth}
             paintOrder="stroke fill"
@@ -545,9 +675,33 @@ export function KitchenBlueprint() {
             fontFamily="monospace"
             textAnchor="middle"
             textRendering="geometricPrecision"
-            transform={`rotate(90 ${cotaRightX + fSizeCotaVert * 0.95 + 4} ${pl / 2})`}
+            transform={`rotate(-90 ${-cotaLeftRedX - 8} ${pl / 2})`}
           >
             {pl}
+          </text>
+
+          {/* Cota Interior Azul (Corte de Plancha / Sustrato) */}
+          <line x1={-cotaLeftBlueX} y1={0} x2={-cotaLeftBlueX} y2={pl} stroke={COLOR_BLUE_CUT} strokeWidth={strokeMed} />
+          <line x1={-2} y1={0} x2={-cotaLeftBlueX - 4} y2={0} stroke={COLOR_BLUE_CUT} strokeWidth={strokeThin} />
+          <line x1={-2} y1={pl} x2={-cotaLeftBlueX - 4} y2={pl} stroke={COLOR_BLUE_CUT} strokeWidth={strokeThin} />
+          <line x1={-cotaLeftBlueX - 4} y1={4} x2={-cotaLeftBlueX + 4} y2={-4} stroke={COLOR_BLUE_CUT} strokeWidth={strokeMed * 1.3} />
+          <line x1={-cotaLeftBlueX - 4} y1={pl + 4} x2={-cotaLeftBlueX + 4} y2={pl - 4} stroke={COLOR_BLUE_CUT} strokeWidth={strokeMed * 1.3} />
+          <text 
+            x={-cotaLeftBlueX - 6} 
+            y={pl / 2} 
+            fontSize={Math.round(fSizeCotaVert * 0.9)} 
+            fill={COLOR_BLUE_CUT} 
+            stroke="#ffffff"
+            strokeWidth={haloWidth}
+            paintOrder="stroke fill"
+            strokeLinejoin="round"
+            fontWeight="800" 
+            fontFamily="monospace"
+            textAnchor="middle"
+            textRendering="geometricPrecision"
+            transform={`rotate(-90 ${-cotaLeftBlueX - 6} ${pl / 2})`}
+          >
+            {plCut}
           </text>
         </g>
 
@@ -1431,13 +1585,13 @@ export function KitchenBlueprint() {
                     
                     {/* Gola C se ubica entre 35 + drH_1d1dr y 35 + drH_1d1dr + 40 */}
                     
-                    {/* Puerta Inferior con diagonal de apertura */}
+                    {/* Puerta Inferior con diagonal de apertura (Base en bisagras izq, vértice en tirador der) */}
                     {(() => {
                       const yDoorT = 35 + drH_1d1dr + 40;
                       const yDoorMid = (yDoorT + bodyH) / 2;
                       return (
                         <g>
-                          <path d={`M 0 ${yDoorMid} L ${cabW} ${yDoorT} L ${cabW} ${bodyH} Z`} fill="none" stroke="#c026d3" strokeWidth={strokeElev * 0.8} strokeDasharray="4,4" />
+                          <path d={`M 0 ${yDoorT} L ${cabW} ${yDoorMid} L 0 ${bodyH}`} fill="none" stroke="#c026d3" strokeWidth={strokeElev * 0.8} strokeDasharray="4,4" />
                           <text x={cabW / 2} y={yDoorMid + 6} fontSize={Math.max(15, fSizeElev * 0.45)} fill="#c026d3" fontWeight="bold" textAnchor="middle" fontFamily="monospace">Puerta</text>
                         </g>
                       );
@@ -1447,7 +1601,7 @@ export function KitchenBlueprint() {
                   <g>
                     <line x1={0} y1={150} x2={cabW} y2={150} stroke="#0f172a" strokeWidth={strokeElev * 0.8} />
                     <text x={cabW / 2} y={90} fontSize={Math.max(15, fSizeElev * 0.45)} fill="#64748b" textAnchor="middle" fontFamily="monospace">Cajón 1</text>
-                    <path d={`M 0 ${(150 + bodyH) / 2} L ${cabW} 150 L ${cabW} ${bodyH} Z`} fill="none" stroke="#c026d3" strokeWidth={strokeElev * 0.8} strokeDasharray="4,4" />
+                    <path d={`M 0 150 L ${cabW} ${(150 + bodyH) / 2} L 0 ${bodyH}`} fill="none" stroke="#c026d3" strokeWidth={strokeElev * 0.8} strokeDasharray="4,4" />
                   </g>
                 )
               ) : cab.variant === 'spice_rack' ? (
@@ -1461,8 +1615,8 @@ export function KitchenBlueprint() {
                   return (
                     <g>
                       <line x1={cabW / 2} y1={yDoorT} x2={cabW / 2} y2={bodyH} stroke="#0f172a" strokeWidth={strokeElev} />
-                      <path d={`M 0 ${yDoorMid} L ${cabW / 2} ${yDoorT} L ${cabW / 2} ${bodyH} Z`} fill="none" stroke="#c026d3" strokeWidth={strokeElev * 0.8} strokeDasharray="4,4" />
-                      <path d={`M ${cabW} ${yDoorMid} L ${cabW / 2} ${yDoorT} L ${cabW / 2} ${bodyH} Z`} fill="none" stroke="#c026d3" strokeWidth={strokeElev * 0.8} strokeDasharray="4,4" />
+                      <path d={`M 0 ${yDoorT} L ${cabW / 2} ${yDoorMid} L 0 ${bodyH}`} fill="none" stroke="#c026d3" strokeWidth={strokeElev * 0.8} strokeDasharray="4,4" />
+                      <path d={`M ${cabW} ${yDoorT} L ${cabW / 2} ${yDoorMid} L ${cabW} ${bodyH}`} fill="none" stroke="#c026d3" strokeWidth={strokeElev * 0.8} strokeDasharray="4,4" />
                     </g>
                   );
                 })()
@@ -1531,8 +1685,8 @@ export function KitchenBlueprint() {
                 })()
               ) : (cab.variant === 'tall_1_door' || (cab.variant && (cab.variant.includes('1_door') || cab.variant.includes('larga')))) ? (
                 <g>
-                  {/* Despensa 1 Puerta Larga completa */}
-                  <path d={`M 0 ${bodyH / 2} L ${cabW} 0 L ${cabW} ${bodyH} Z`} fill="none" stroke="#c026d3" strokeWidth={strokeElev * 0.8} strokeDasharray="4,4" />
+                  {/* Despensa 1 Puerta Larga completa (Base en bisagras izq, vértice en tirador der) */}
+                  <path d={`M 0 0 L ${cabW} ${bodyH / 2} L 0 ${bodyH}`} fill="none" stroke="#c026d3" strokeWidth={strokeElev * 0.8} strokeDasharray="4,4" />
                   <text x={cabW / 2} y={bodyH / 2 + 6} fontSize={Math.max(14, fSizeElev * 0.42)} fill="#c026d3" fontWeight="bold" textAnchor="middle" fontFamily="monospace">Puerta Larga</text>
                 </g>
               ) : isTall ? (
@@ -1557,8 +1711,8 @@ export function KitchenBlueprint() {
                         />
                       )}
                       <line x1={0} y1={yLowerDoorTop} x2={cabW} y2={yLowerDoorTop} strokeWidth={strokeElev} />
-                      <path d={`M 0 ${(yLowerDoorTop + bodyH) / 2} L ${cabW} ${yLowerDoorTop} L ${cabW} ${bodyH} Z`} fill="none" stroke="#c026d3" strokeWidth={strokeElev * 0.8} strokeDasharray="4,4" />
-                      <path d={`M 0 ${ySplit / 2} L ${cabW} 0 L ${cabW} ${ySplit} Z`} fill="none" stroke="#c026d3" strokeWidth={strokeElev * 0.8} strokeDasharray="4,4" />
+                      <path d={`M 0 ${yLowerDoorTop} L ${cabW} ${(yLowerDoorTop + bodyH) / 2} L 0 ${bodyH}`} fill="none" stroke="#c026d3" strokeWidth={strokeElev * 0.8} strokeDasharray="4,4" />
+                      <path d={`M 0 0 L ${cabW} ${ySplit / 2} L 0 ${ySplit}`} fill="none" stroke="#c026d3" strokeWidth={strokeElev * 0.8} strokeDasharray="4,4" />
                       <text x={cabW / 2} y={(yLowerDoorTop + bodyH) / 2 + 5} fontSize={Math.max(13, fSizeElev * 0.38)} fill="#c026d3" fontWeight="bold" textAnchor="middle" fontFamily="monospace">Puerta Inferior</text>
                       <text x={cabW / 2} y={ySplit / 2 + 5} fontSize={Math.max(13, fSizeElev * 0.38)} fill="#c026d3" fontWeight="bold" textAnchor="middle" fontFamily="monospace">Puerta Superior</text>
                     </g>
@@ -1569,10 +1723,142 @@ export function KitchenBlueprint() {
                   const yDoorT = isBaseGola ? 35 : 0;
                   const yDoorMid = (yDoorT + bodyH) / 2;
                   return (
-                    <path d={`M 0 ${yDoorMid} L ${cabW} ${yDoorT} L ${cabW} ${bodyH} Z`} fill="none" stroke="#c026d3" strokeWidth={strokeElev * 0.8} strokeDasharray="4,4" />
+                    <path d={`M 0 ${yDoorT} L ${cabW} ${yDoorMid} L 0 ${bodyH}`} fill="none" stroke="#c026d3" strokeWidth={strokeElev * 0.8} strokeDasharray="4,4" />
                   );
                 })()
               )}
+
+              {/* Tiradores Técnicos en Vista Frontal (cuando no sea Gola) */}
+              {!isBaseGola && kState.golaSystem === 'none' && (() => {
+                const hConfig = cab.handleConfig || kState.handleConfig;
+                if (!hConfig || hConfig.model === 'none') return null;
+                const hLen = hConfig.lengthMm || 128;
+                const hThick = 14;
+                const hColor = hConfig.color === 'black' ? '#09090b' : (hConfig.color === 'gold' ? '#b45309' : '#334155');
+                const isUpperCab = cab.type === 'wall';
+                const vHandleY = isUpperCab ? (bodyH - 45 - hLen) : 45;
+
+                if (cab.variant === '4_drawers') {
+                  const dH = bodyH / 4;
+                  return (
+                    <g key="front-handles">
+                      {[0, 1, 2, 3].map(di => (
+                        <rect
+                          key={`drw-h-${di}`}
+                          x={cabW / 2 - hLen / 2}
+                          y={di * dH + dH * 0.35 - hThick / 2}
+                          width={hLen}
+                          height={hThick}
+                          rx={2}
+                          fill={hColor}
+                          stroke="#0f172a"
+                          strokeWidth={strokeElev * 0.6}
+                        />
+                      ))}
+                    </g>
+                  );
+                } else if (cab.variant === '2_pot_drawers' || cab.variant === 'sink_u_drawer') {
+                  const dH = bodyH / 2;
+                  return (
+                    <g key="front-handles">
+                      {[0, 1].map(di => (
+                        <rect
+                          key={`pot-h-${di}`}
+                          x={cabW / 2 - hLen / 2}
+                          y={di * dH + dH * 0.35 - hThick / 2}
+                          width={hLen}
+                          height={hThick}
+                          rx={2}
+                          fill={hColor}
+                          stroke="#0f172a"
+                          strokeWidth={strokeElev * 0.6}
+                        />
+                      ))}
+                    </g>
+                  );
+                } else if (cab.variant === '1_door_1_drawer') {
+                  return (
+                    <g key="front-handles">
+                      <rect
+                        x={cabW / 2 - hLen / 2}
+                        y={150 * 0.35 - hThick / 2}
+                        width={hLen}
+                        height={hThick}
+                        rx={2}
+                        fill={hColor}
+                        stroke="#0f172a"
+                        strokeWidth={strokeElev * 0.6}
+                      />
+                      <rect
+                        x={cabW - 45 - hThick}
+                        y={150 + 45}
+                        width={hThick}
+                        height={hLen}
+                        rx={2}
+                        fill={hColor}
+                        stroke="#0f172a"
+                        strokeWidth={strokeElev * 0.6}
+                      />
+                    </g>
+                  );
+                } else if (cab.variant === '2_doors' || cab.variant === 'wall_2_doors' || cab.variant === 'tall_2_doors') {
+                  return (
+                    <g key="front-handles">
+                      <rect
+                        x={cabW / 2 - 25 - hThick}
+                        y={vHandleY}
+                        width={hThick}
+                        height={hLen}
+                        rx={2}
+                        fill={hColor}
+                        stroke="#0f172a"
+                        strokeWidth={strokeElev * 0.6}
+                      />
+                      <rect
+                        x={cabW / 2 + 25}
+                        y={vHandleY}
+                        width={hThick}
+                        height={hLen}
+                        rx={2}
+                        fill={hColor}
+                        stroke="#0f172a"
+                        strokeWidth={strokeElev * 0.6}
+                      />
+                    </g>
+                  );
+                } else if (isTall) {
+                  return (
+                    <g key="front-handles">
+                      <rect
+                        x={cabW - 45 - hThick}
+                        y={Math.round(bodyH * 0.45)}
+                        width={hThick}
+                        height={hLen}
+                        rx={2}
+                        fill={hColor}
+                        stroke="#0f172a"
+                        strokeWidth={strokeElev * 0.6}
+                      />
+                    </g>
+                  );
+                } else {
+                  // 1 puerta estándar
+                  return (
+                    <g key="front-handles">
+                      <rect
+                        x={cabW - 45 - hThick}
+                        y={vHandleY}
+                        width={hThick}
+                        height={hLen}
+                        rx={2}
+                        fill={hColor}
+                        stroke="#0f172a"
+                        strokeWidth={strokeElev * 0.6}
+                      />
+                    </g>
+                  );
+                }
+              })()}
 
               {/* Repisas Interiores en Vista Frontal */}
               {isCabinetWithDoors(cab) && (() => {
@@ -1669,7 +1955,7 @@ export function KitchenBlueprint() {
                     <g>
                       <rect x={latX + bodyDMm - 26} y={0} width={26} height={58} fill="#fef3c7" stroke="#d97706" strokeWidth={strokeElev} strokeDasharray="3,2" />
                       <path 
-                        d={`M ${latX + bodyDMm - 1} 0 L ${latX + bodyDMm - 26} 0 L ${latX + bodyDMm - 26} 38 Q ${latX + bodyDMm - 26} 55 ${latX + bodyDMm - 13} 55 Q ${latX + bodyDMm - 3.5} 55 ${latX + bodyDMm - 3.5} 33 L ${latX + bodyDMm - 5} 33 Q ${latX + bodyDMm - 5} 53.5 ${latX + bodyDMm - 13} 53.5 Q ${latX + bodyDMm - 24.5} 53.5 ${latX + bodyDMm - 24.5} 38 L ${latX + bodyDMm - 24.5} 1.5 L ${latX + bodyDMm - 1} 1.5 Z`} 
+                        d={`M ${latX + bodyDMm} 0 L ${latX + bodyDMm - 26} 0 L ${latX + bodyDMm - 26} 43 Q ${latX + bodyDMm - 26} 53 ${latX + bodyDMm - 14} 53 L ${latX + bodyDMm - 4} 53 L ${latX + bodyDMm - 4} 56 L ${latX + bodyDMm - 2.5} 56 L ${latX + bodyDMm - 2.5} 51.5 L ${latX + bodyDMm - 14} 51.5 Q ${latX + bodyDMm - 24} 51.5 ${latX + bodyDMm - 24} 43 L ${latX + bodyDMm - 24} 2 L ${latX + bodyDMm} 2 Z`} 
                         fill={golaColorHex} 
                         stroke="#0f172a" 
                         strokeWidth={strokeElev * 0.8} 
@@ -1688,7 +1974,7 @@ export function KitchenBlueprint() {
                     <g>
                       <rect x={latX + bodyDMm - 26} y={golaCY_lat - 34} width={26} height={68} fill="#fef3c7" stroke="#d97706" strokeWidth={strokeElev} strokeDasharray="3,2" />
                       <path 
-                        d={`M ${latX + bodyDMm - 3.5} ${golaCY_lat - 28} Q ${latX + bodyDMm - 9} ${golaCY_lat - 14} ${latX + bodyDMm - 26} ${golaCY_lat - 24} L ${latX + bodyDMm - 26} ${golaCY_lat + 24} Q ${latX + bodyDMm - 9} ${golaCY_lat + 14} ${latX + bodyDMm - 3.5} ${golaCY_lat + 28} L ${latX + bodyDMm - 5} ${golaCY_lat + 28} Q ${latX + bodyDMm - 10} ${golaCY_lat + 15.5} ${latX + bodyDMm - 24.5} ${golaCY_lat + 24} L ${latX + bodyDMm - 24.5} ${golaCY_lat - 24} Q ${latX + bodyDMm - 10} ${golaCY_lat - 15.5} ${latX + bodyDMm - 5} ${golaCY_lat - 28} Z`} 
+                        d={`M ${latX + bodyDMm} ${golaCY_lat - 26} L ${latX + bodyDMm - 22} ${golaCY_lat - 26} Q ${latX + bodyDMm - 25} ${golaCY_lat - 26} ${latX + bodyDMm - 25} ${golaCY_lat - 23} L ${latX + bodyDMm - 25} ${golaCY_lat + 23} Q ${latX + bodyDMm - 25} ${golaCY_lat + 26} ${latX + bodyDMm - 22} ${golaCY_lat + 26} L ${latX + bodyDMm} ${golaCY_lat + 26} L ${latX + bodyDMm} ${golaCY_lat + 23.5} L ${latX + bodyDMm - 20} ${golaCY_lat + 23.5} Q ${latX + bodyDMm - 22.5} ${golaCY_lat + 23.5} ${latX + bodyDMm - 22.5} ${golaCY_lat + 21} L ${latX + bodyDMm - 22.5} ${golaCY_lat - 21} Q ${latX + bodyDMm - 22.5} ${golaCY_lat - 23.5} ${latX + bodyDMm - 20} ${golaCY_lat - 23.5} L ${latX + bodyDMm} ${golaCY_lat - 23.5} Z`} 
                         fill={golaColorHex} 
                         stroke="#0f172a" 
                         strokeWidth={strokeElev * 0.8} 
@@ -2110,6 +2396,892 @@ export function KitchenBlueprint() {
     );
   };
 
+  /**
+   * Renderizado Paramétrico Vectorial SVG de Elevación de Muro e Isla (ISO 128 / DIN 68881)
+   * Soporta escala única y modo apilado vertical ordenado para múltiples muros.
+   */
+  const renderWallElevationSVG = (
+    wallData: { wall: any; cabinetsOnWall: any[] },
+    includeIsland: boolean,
+    isStacked: boolean
+  ) => {
+    const wall = wallData.wall;
+    const cabs = wallData.cabinetsOnWall;
+    const wallLenMm = Math.max(1200, Math.round(wall.length * 10));
+
+    // Calcular el rango activo real ocupado por los muebles en este muro para ajustar el encuadre
+    let minCabOffset = 0;
+    let maxCabOffset = wallLenMm;
+    if (cabs.length > 0) {
+      minCabOffset = Math.min(...cabs.map(c => c.offsetMm));
+      maxCabOffset = Math.max(...cabs.map(c => c.offsetMm + c.widthMm));
+    }
+
+    // Agregar un margen técnico holgado de 200 mm a cada lado (restringido a [0, wallLenMm])
+    const viewStartMm = minCabOffset < 250 ? 0 : Math.max(0, minCabOffset - 200);
+    const viewEndMm = (wallLenMm - maxCabOffset) < 250 ? wallLenMm : Math.min(wallLenMm, maxCabOffset + 200);
+    const effectiveWallLenMm = Math.max(800, viewEndMm - viewStartMm);
+
+    const islandCabs = includeIsland ? realCabinets.filter(c => c.type === 'island') : [];
+    const hasIsland = islandCabs.length > 0;
+    const islandTotalWidthMm = islandCabs.reduce((acc, c) => acc + Math.round(c.width * 10), 0);
+
+    const svgW = 700;
+    const svgH = isStacked ? 150 : 300;
+    const groundY = isStacked ? 124 : 265;
+    const padTop = isStacked ? 18 : 32;
+    const maxH = 2320;
+    const socleHMm = (kState.socleHeight ?? 10) * 10;
+
+    let elevScale: number;
+    let wallStartX: number;
+    let wallDrawW: number;
+    let islStartX = 0;
+    let islDrawW = 0;
+    let sepMidX = 0;
+
+    if (hasIsland) {
+      const padLeft = isStacked ? 32 : 44;
+      const padRight = isStacked ? 28 : 36;
+      const sepMm = isStacked ? 350 : 450;
+      const totalMm = effectiveWallLenMm + sepMm + islandTotalWidthMm;
+      const availW = svgW - padLeft - padRight;
+      const scaleX = availW / totalMm;
+      const scaleY = (groundY - padTop) / maxH;
+      elevScale = Math.min(scaleX, scaleY);
+
+      wallDrawW = effectiveWallLenMm * elevScale;
+      islDrawW = islandTotalWidthMm * elevScale;
+      const sepPx = Math.max(20, sepMm * elevScale);
+      const totalDrawW = wallDrawW + sepPx + islDrawW;
+
+      const groupStartX = Math.max(padLeft, (svgW - totalDrawW) / 2);
+      wallStartX = groupStartX;
+      islStartX = wallStartX + wallDrawW + sepPx;
+      sepMidX = wallStartX + wallDrawW + sepPx / 2;
+    } else {
+      const padLeft = isStacked ? 34 : 45;
+      const padRight = isStacked ? 34 : 45;
+      const availW = svgW - padLeft - padRight;
+      const scaleX = availW / effectiveWallLenMm;
+      const scaleY = (groundY - padTop) / maxH;
+      elevScale = Math.min(scaleX, scaleY);
+
+      wallDrawW = effectiveWallLenMm * elevScale;
+      wallStartX = (svgW - wallDrawW) / 2;
+    }
+
+    const socleScaleH = socleHMm * elevScale;
+
+    return (
+      <svg viewBox={`0 0 ${svgW} ${svgH}`} className={`w-full h-full ${isStacked ? 'max-h-[160px]' : 'max-h-[325px]'}`}>
+        {/* Línea de Suelo (+0.00) Acotada al Ancho Útil de los Muebles */}
+        <line
+          x1={Math.max(8, wallStartX - 15)}
+          y1={groundY}
+          x2={hasIsland ? Math.min(svgW - 8, islStartX + islDrawW + 15) : Math.min(svgW - 8, wallStartX + wallDrawW + 15)}
+          y2={groundY}
+          stroke="#0f172a"
+          strokeWidth={isStacked ? "1" : "1.2"}
+        />
+        <text
+          x={Math.max(12, wallStartX - 10)}
+          y={groundY + (isStacked ? 9 : 11)}
+          fontSize={isStacked ? "5.5" : "6.5"}
+          fill="#64748b"
+          fontWeight="bold"
+        >
+          0.00 N.P.T.
+        </text>
+
+        {/* Título de Sección Muro */}
+        <text
+          x={wallStartX + wallDrawW / 2}
+          y={groundY - 2200 * elevScale - (isStacked ? 7 : 16)}
+          fontSize={isStacked ? "6" : "6.5"}
+          fontWeight="bold"
+          fill="#0f172a"
+          textAnchor="middle"
+          letterSpacing="0.4"
+        >
+          ELEVACIÓN MURO {wall.label}
+        </text>
+
+        {/* Muro Trasero de Fondo */}
+        <rect
+          x={wallStartX}
+          y={groundY - 2200 * elevScale}
+          width={wallDrawW}
+          height={2200 * elevScale}
+          fill="#f8fafc"
+          stroke="#cbd5e1"
+          strokeWidth="0.8"
+        />
+
+        {/* Zócalo General del Muro */}
+        <rect
+          x={wallStartX}
+          y={groundY - socleScaleH}
+          width={wallDrawW}
+          height={socleScaleH}
+          fill="#f1f5f9"
+          stroke="#cbd5e1"
+          strokeWidth="0.6"
+        />
+
+        {/* Módulos en la Elevación del Muro */}
+        {cabs.map((cItem, ci) => {
+          const cab = cItem.cab;
+          const isTall = cab.type === 'tall';
+          const isWall = cab.type === 'wall';
+          const isBase = cab.type === 'base' || cab.type === 'island';
+          const hasSocle = isBase || isTall;
+
+          const legsHMm = hasSocle ? socleHMm : 0;
+          const legsH = legsHMm * elevScale;
+
+          const cLeftX = wallStartX + Math.max(0, (cItem.offsetMm - viewStartMm) * elevScale);
+          const cW = cItem.widthMm * elevScale;
+          const cH = cItem.heightMm * elevScale;
+          const cBottomY = groundY - (cItem.yBottomMm * elevScale);
+          const cTopY = hasSocle ? (groundY - cH) : (cBottomY - cH);
+          const bodyH = hasSocle ? (cH - legsH) : cH;
+          const bodyBottomY = cTopY + bodyH;
+
+          return (
+            <g key={`front-cab-${ci}`}>
+              {/* Zócalo y Patas Regulables */}
+              {hasSocle && legsH > 0 && (
+                <g>
+                  <rect
+                    x={cLeftX}
+                    y={bodyBottomY}
+                    width={cW}
+                    height={legsH}
+                    fill="#e2e8f0"
+                    stroke="#475569"
+                    strokeWidth="0.8"
+                  />
+                  <rect
+                    x={cLeftX + Math.max(2.5, cW * 0.08)}
+                    y={bodyBottomY}
+                    width={Math.max(2, cW * 0.04)}
+                    height={legsH}
+                    fill="#94a3b8"
+                    stroke="#475569"
+                    strokeWidth="0.4"
+                  />
+                  <rect
+                    x={cLeftX + cW - Math.max(2.5, cW * 0.08) - Math.max(2, cW * 0.04)}
+                    y={bodyBottomY}
+                    width={Math.max(2, cW * 0.04)}
+                    height={legsH}
+                    fill="#94a3b8"
+                    stroke="#475569"
+                    strokeWidth="0.4"
+                  />
+                </g>
+              )}
+
+              {/* Casco Principal del Módulo */}
+              <rect
+                x={cLeftX}
+                y={cTopY}
+                width={cW}
+                height={bodyH}
+                fill="#ffffff"
+                stroke="#0f172a"
+                strokeWidth={isStacked ? "1" : "1.2"}
+              />
+
+              {/* Cubierta de Trabajo (+0.90) con Respaldo en Rojo */}
+              {isBase && (
+                <g>
+                  <rect
+                    x={cLeftX - 1}
+                    y={cTopY - (isStacked ? 3 : 4)}
+                    width={cW + 2}
+                    height={isStacked ? 3 : 4}
+                    fill="#fecdd3"
+                    stroke="#e11d48"
+                    strokeWidth="0.8"
+                  />
+                </g>
+              )}
+
+              {/* Frentes, Cajones, Puertas y Tiradores Técnicos */}
+              {(() => {
+                const hConfig = cab.handleConfig || kState.handleConfig;
+                const isGolaActive = kState.golaSystem !== 'none';
+                const showHandles = !isGolaActive && hConfig && hConfig.model !== 'none';
+                const hLen = Math.max(3.0, (hConfig?.lengthMm ?? 128) * elevScale);
+                const hThick = Math.max(1.0, 14 * elevScale);
+                const hColor = hConfig?.color === 'black' ? '#09090b' : (hConfig?.color === 'gold' ? '#b45309' : '#334155');
+                const handleEdgeOffset = Math.max(2.0, 45 * elevScale);
+
+                const vHandleY = isWall
+                  ? (bodyBottomY - handleEdgeOffset - hLen)
+                  : isTall
+                  ? (groundY - 1050 * elevScale - hLen / 2)
+                  : (cTopY + handleEdgeOffset);
+
+                const isRightmost = ci === cabs.length - 1;
+                const handleOnLeft = isRightmost;
+
+                if (cab.variant === '4_drawers') {
+                  const dH = bodyH / 4;
+                  return (
+                    <g>
+                      <g stroke="#0f172a" strokeWidth={isStacked ? "0.5" : "0.7"}>
+                        <line x1={cLeftX} y1={cTopY + dH} x2={cLeftX + cW} y2={cTopY + dH} />
+                        <line x1={cLeftX} y1={cTopY + dH * 2} x2={cLeftX + cW} y2={cTopY + dH * 2} />
+                        <line x1={cLeftX} y1={cTopY + dH * 3} x2={cLeftX + cW} y2={cTopY + dH * 3} />
+                      </g>
+                      {showHandles && [0, 1, 2, 3].map(di => (
+                        <rect
+                          key={`drw-h-${di}`}
+                          x={cLeftX + cW / 2 - hLen / 2}
+                          y={cTopY + di * dH + dH * 0.35 - hThick / 2}
+                          width={hLen}
+                          height={hThick}
+                          rx={0.5}
+                          fill={hColor}
+                          stroke="#0f172a"
+                          strokeWidth="0.3"
+                        />
+                      ))}
+                    </g>
+                  );
+                } else if (cab.variant === '2_pot_drawers' || cab.variant === 'sink_u_drawer') {
+                  const dH = bodyH / 2;
+                  return (
+                    <g>
+                      <g stroke="#0f172a" strokeWidth={isStacked ? "0.5" : "0.7"}>
+                        <line x1={cLeftX} y1={cTopY + dH} x2={cLeftX + cW} y2={cTopY + dH} />
+                      </g>
+                      {showHandles && [0, 1].map(di => (
+                        <rect
+                          key={`pot-h-${di}`}
+                          x={cLeftX + cW / 2 - hLen / 2}
+                          y={cTopY + di * dH + dH * 0.35 - hThick / 2}
+                          width={hLen}
+                          height={hThick}
+                          rx={0.5}
+                          fill={hColor}
+                          stroke="#0f172a"
+                          strokeWidth="0.3"
+                        />
+                      ))}
+                    </g>
+                  );
+                } else if (cab.variant === '1_door_1_drawer') {
+                  const drwH = Math.min(bodyH * 0.25, 150 * elevScale);
+                  const doorTop = cTopY + drwH;
+                  const doorMidY = (doorTop + bodyBottomY) / 2;
+                  const handleX = handleOnLeft
+                    ? (cLeftX + handleEdgeOffset)
+                    : (cLeftX + cW - handleEdgeOffset - hThick);
+                  return (
+                    <g>
+                      <line x1={cLeftX} y1={doorTop} x2={cLeftX + cW} y2={doorTop} stroke="#0f172a" strokeWidth={isStacked ? "0.5" : "0.7"} />
+                      {handleOnLeft ? (
+                        <path d={`M ${cLeftX + cW} ${doorTop} L ${cLeftX} ${doorMidY} L ${cLeftX + cW} ${bodyBottomY}`} fill="none" stroke="#c026d3" strokeWidth={isStacked ? "0.5" : "0.6"} strokeDasharray="3,2" />
+                      ) : (
+                        <path d={`M ${cLeftX} ${doorTop} L ${cLeftX + cW} ${doorMidY} L ${cLeftX} ${bodyBottomY}`} fill="none" stroke="#c026d3" strokeWidth={isStacked ? "0.5" : "0.6"} strokeDasharray="3,2" />
+                      )}
+                      {showHandles && (
+                        <>
+                          <rect
+                            x={cLeftX + cW / 2 - hLen / 2}
+                            y={cTopY + drwH * 0.4 - hThick / 2}
+                            width={hLen}
+                            height={hThick}
+                            rx={0.5}
+                            fill={hColor}
+                            stroke="#0f172a"
+                            strokeWidth="0.3"
+                          />
+                          <rect
+                            x={handleX}
+                            y={doorTop + handleEdgeOffset}
+                            width={hThick}
+                            height={hLen}
+                            rx={0.5}
+                            fill={hColor}
+                            stroke="#0f172a"
+                            strokeWidth="0.3"
+                          />
+                        </>
+                      )}
+                    </g>
+                  );
+                } else if (cab.variant === '2_doors' || cab.variant === 'wall_2_doors' || cab.variant === 'tall_2_doors') {
+                  const doorMidY = isTall ? (groundY - 1050 * elevScale) : (cTopY + bodyH / 2);
+                  const centerSplit = cLeftX + cW / 2;
+                  const gapSplit = Math.max(1.2, 20 * elevScale);
+                  return (
+                    <g>
+                      <line x1={centerSplit} y1={cTopY} x2={centerSplit} y2={bodyBottomY} stroke="#0f172a" strokeWidth={isStacked ? "0.5" : "0.7"} />
+                      <path d={`M ${cLeftX} ${cTopY} L ${centerSplit} ${doorMidY} L ${cLeftX} ${bodyBottomY}`} fill="none" stroke="#c026d3" strokeWidth={isStacked ? "0.5" : "0.6"} strokeDasharray="3,2" />
+                      <path d={`M ${cLeftX + cW} ${cTopY} L ${centerSplit} ${doorMidY} L ${cLeftX + cW} ${bodyBottomY}`} fill="none" stroke="#c026d3" strokeWidth={isStacked ? "0.5" : "0.6"} strokeDasharray="3,2" />
+                      {showHandles && (
+                        <>
+                          <rect
+                            x={centerSplit - gapSplit - hThick}
+                            y={vHandleY}
+                            width={hThick}
+                            height={hLen}
+                            rx={0.5}
+                            fill={hColor}
+                            stroke="#0f172a"
+                            strokeWidth="0.3"
+                          />
+                          <rect
+                            x={centerSplit + gapSplit}
+                            y={vHandleY}
+                            width={hThick}
+                            height={hLen}
+                            rx={0.5}
+                            fill={hColor}
+                            stroke="#0f172a"
+                            strokeWidth="0.3"
+                          />
+                        </>
+                      )}
+                    </g>
+                  );
+                } else if (cab.variant === 'tall_split_2_doors') {
+                  const splitH = Math.min(bodyH * 0.35, 700 * elevScale);
+                  const ySplit = bodyBottomY - splitH;
+                  const handleX = handleOnLeft
+                    ? (cLeftX + handleEdgeOffset)
+                    : (cLeftX + cW - handleEdgeOffset - hThick);
+
+                  const upperMidY = (cTopY + ySplit) / 2;
+                  const lowerMidY = (ySplit + bodyBottomY) / 2;
+
+                  return (
+                    <g>
+                      <line x1={cLeftX} y1={ySplit} x2={cLeftX + cW} y2={ySplit} stroke="#0f172a" strokeWidth={isStacked ? "0.5" : "0.7"} />
+                      {handleOnLeft ? (
+                        <>
+                          <path d={`M ${cLeftX + cW} ${cTopY} L ${cLeftX} ${upperMidY} L ${cLeftX + cW} ${ySplit}`} fill="none" stroke="#c026d3" strokeWidth={isStacked ? "0.5" : "0.6"} strokeDasharray="3,2" />
+                          <path d={`M ${cLeftX + cW} ${ySplit} L ${cLeftX} ${lowerMidY} L ${cLeftX + cW} ${bodyBottomY}`} fill="none" stroke="#c026d3" strokeWidth={isStacked ? "0.5" : "0.6"} strokeDasharray="3,2" />
+                        </>
+                      ) : (
+                        <>
+                          <path d={`M ${cLeftX} ${cTopY} L ${cLeftX + cW} ${upperMidY} L ${cLeftX} ${ySplit}`} fill="none" stroke="#c026d3" strokeWidth={isStacked ? "0.5" : "0.6"} strokeDasharray="3,2" />
+                          <path d={`M ${cLeftX} ${ySplit} L ${cLeftX + cW} ${lowerMidY} L ${cLeftX} ${bodyBottomY}`} fill="none" stroke="#c026d3" strokeWidth={isStacked ? "0.5" : "0.6"} strokeDasharray="3,2" />
+                        </>
+                      )}
+                      {showHandles && (
+                        <>
+                          <rect
+                            x={handleX}
+                            y={ySplit - handleEdgeOffset - hLen}
+                            width={hThick}
+                            height={hLen}
+                            rx={0.5}
+                            fill={hColor}
+                            stroke="#0f172a"
+                            strokeWidth="0.3"
+                          />
+                          <rect
+                            x={handleX}
+                            y={ySplit + handleEdgeOffset}
+                            width={hThick}
+                            height={hLen}
+                            rx={0.5}
+                            fill={hColor}
+                            stroke="#0f172a"
+                            strokeWidth="0.3"
+                          />
+                        </>
+                      )}
+                    </g>
+                  );
+                } else if (cab.variant === 'tall_terminal_shelves' || cab.variant === 'tall_open') {
+                  const shelfCount = 4;
+                  return (
+                    <g>
+                      {Array.from({ length: shelfCount }).map((_, sIdx) => {
+                        const shelfY = cTopY + (bodyH / (shelfCount + 1)) * (sIdx + 1);
+                        return (
+                          <line
+                            key={`term-elev-shelf-${sIdx}`}
+                            x1={cLeftX + 2}
+                            y1={shelfY}
+                            x2={cLeftX + cW - 2}
+                            y2={shelfY}
+                            stroke="#64748b"
+                            strokeWidth={isStacked ? "0.6" : "0.8"}
+                            strokeDasharray="3,2"
+                          />
+                        );
+                      })}
+                      <text
+                        x={cLeftX + cW / 2}
+                        y={cTopY + bodyH / 2}
+                        fontSize={isStacked ? "4" : "5"}
+                        fill="#64748b"
+                        fontWeight="bold"
+                        textAnchor="middle"
+                        letterSpacing="0.4"
+                        transform={`rotate(-90 ${cLeftX + cW / 2} ${cTopY + bodyH / 2})`}
+                      >
+                        REPISAS APERTURA LATERAL
+                      </text>
+                    </g>
+                  );
+                } else if (isTall && (cab.variant?.includes('oven') || cab.variant === 'tall_oven_micro' || cab.variant === 'tall_oven_vent')) {
+                  const lowerDoorH = Math.min(bodyH * 0.35, 700 * elevScale);
+                  const ovenH = Math.min(bodyH * 0.30, 600 * elevScale);
+                  const microH = Math.min(bodyH * 0.18, 380 * elevScale);
+                  
+                  const yLowerSplit = bodyBottomY - lowerDoorH;
+                  const yOvenTop = yLowerSplit - ovenH;
+                  const yMicroTop = yOvenTop - microH;
+                  const upperDoorH = yMicroTop - cTopY;
+                  
+                  const handleX = handleOnLeft
+                    ? (cLeftX + handleEdgeOffset)
+                    : (cLeftX + cW - handleEdgeOffset - hThick);
+                  const lowerDoorMidY = (yLowerSplit + bodyBottomY) / 2;
+                  const upperDoorMidY = (cTopY + yMicroTop) / 2;
+
+                  return (
+                    <g>
+                      <line x1={cLeftX} y1={yLowerSplit} x2={cLeftX + cW} y2={yLowerSplit} stroke="#0f172a" strokeWidth={isStacked ? "0.6" : "0.8"} />
+                      {handleOnLeft ? (
+                        <path d={`M ${cLeftX + cW} ${yLowerSplit} L ${cLeftX} ${lowerDoorMidY} L ${cLeftX + cW} ${bodyBottomY}`} fill="none" stroke="#c026d3" strokeWidth={isStacked ? "0.5" : "0.6"} strokeDasharray="3,2" />
+                      ) : (
+                        <path d={`M ${cLeftX} ${yLowerSplit} L ${cLeftX + cW} ${lowerDoorMidY} L ${cLeftX} ${bodyBottomY}`} fill="none" stroke="#c026d3" strokeWidth={isStacked ? "0.5" : "0.6"} strokeDasharray="3,2" />
+                      )}
+                      {showHandles && (
+                        <rect
+                          x={handleX}
+                          y={yLowerSplit + handleEdgeOffset}
+                          width={hThick}
+                          height={hLen}
+                          rx={0.5}
+                          fill={hColor}
+                          stroke="#0f172a"
+                          strokeWidth="0.3"
+                        />
+                      )}
+
+                      <rect
+                        x={cLeftX + 2}
+                        y={yOvenTop + 1}
+                        width={cW - 4}
+                        height={ovenH - 2}
+                        fill="#1e293b"
+                        stroke="#0f172a"
+                        strokeWidth={isStacked ? "0.6" : "0.8"}
+                      />
+                      <rect
+                        x={cLeftX + 4}
+                        y={yOvenTop + 3}
+                        width={cW - 8}
+                        height={ovenH - 6}
+                        fill="#0f172a"
+                        stroke="#475569"
+                        strokeWidth="0.4"
+                      />
+                      <text
+                        x={cLeftX + cW / 2}
+                        y={yOvenTop + ovenH / 2 + 2}
+                        fontSize={isStacked ? "4.2" : "5"}
+                        fontWeight="bold"
+                        fill="#94a3b8"
+                        stroke="none"
+                        textAnchor="middle"
+                      >
+                        HORNO 60cm
+                      </text>
+
+                      <line x1={cLeftX} y1={yMicroTop} x2={cLeftX + cW} y2={yMicroTop} stroke="#0f172a" strokeWidth={isStacked ? "0.6" : "0.8"} />
+                      <rect
+                        x={cLeftX + 2}
+                        y={yMicroTop + 1}
+                        width={cW - 4}
+                        height={microH - 2}
+                        fill="#334155"
+                        stroke="#0f172a"
+                        strokeWidth={isStacked ? "0.6" : "0.8"}
+                      />
+                      <text
+                        x={cLeftX + cW / 2}
+                        y={yMicroTop + microH / 2 + 2}
+                        fontSize={isStacked ? "4" : "4.8"}
+                        fontWeight="bold"
+                        fill="#cbd5e1"
+                        stroke="none"
+                        textAnchor="middle"
+                      >
+                        MICROONDAS
+                      </text>
+
+                      {upperDoorH > 8 && (
+                        <>
+                          {handleOnLeft ? (
+                            <path d={`M ${cLeftX + cW} ${cTopY} L ${cLeftX} ${upperDoorMidY} L ${cLeftX + cW} ${yMicroTop}`} fill="none" stroke="#c026d3" strokeWidth={isStacked ? "0.5" : "0.6"} strokeDasharray="3,2" />
+                          ) : (
+                            <path d={`M ${cLeftX} ${cTopY} L ${cLeftX + cW} ${upperDoorMidY} L ${cLeftX} ${yMicroTop}`} fill="none" stroke="#c026d3" strokeWidth={isStacked ? "0.5" : "0.6"} strokeDasharray="3,2" />
+                          )}
+                          {showHandles && (
+                            <rect
+                              x={handleX}
+                              y={yMicroTop - handleEdgeOffset - hLen}
+                              width={hThick}
+                              height={hLen}
+                              rx={0.5}
+                              fill={hColor}
+                              stroke="#0f172a"
+                              strokeWidth="0.3"
+                            />
+                          )}
+                        </>
+                      )}
+                    </g>
+                  );
+                } else {
+                  const doorMidY = isTall ? (groundY - 1050 * elevScale) : (cTopY + bodyH / 2);
+                  const handleX = handleOnLeft
+                    ? (cLeftX + handleEdgeOffset)
+                    : (cLeftX + cW - handleEdgeOffset - hThick);
+
+                  return (
+                    <g>
+                      {handleOnLeft ? (
+                        <path d={`M ${cLeftX + cW} ${cTopY} L ${cLeftX} ${doorMidY} L ${cLeftX + cW} ${bodyBottomY}`} fill="none" stroke="#c026d3" strokeWidth={isStacked ? "0.5" : "0.6"} strokeDasharray="3,2" />
+                      ) : (
+                        <path d={`M ${cLeftX} ${cTopY} L ${cLeftX + cW} ${doorMidY} L ${cLeftX} ${bodyBottomY}`} fill="none" stroke="#c026d3" strokeWidth={isStacked ? "0.5" : "0.6"} strokeDasharray="3,2" />
+                      )}
+                      {showHandles && (
+                        <rect
+                          x={handleX}
+                          y={vHandleY}
+                          width={hThick}
+                          height={hLen}
+                          rx={0.5}
+                          fill={hColor}
+                          stroke="#0f172a"
+                          strokeWidth="0.3"
+                        />
+                      )}
+                    </g>
+                  );
+                }
+              })()}
+
+              {/* Cota de Ancho del Módulo */}
+              <g stroke="#000" strokeWidth={isStacked ? "0.5" : "0.6"}>
+                <line x1={cLeftX} y1={cTopY - (isStacked ? 4 : 6)} x2={cLeftX + cW} y2={cTopY - (isStacked ? 4 : 6)} />
+                <line x1={cLeftX} y1={cTopY - (isStacked ? 7 : 10)} x2={cLeftX} y2={cTopY - (isStacked ? 1 : 2)} />
+                <line x1={cLeftX + cW} y1={cTopY - (isStacked ? 7 : 10)} x2={cLeftX + cW} y2={cTopY - (isStacked ? 1 : 2)} />
+                <text x={cLeftX + cW / 2} y={cTopY - (isStacked ? 5 : 8)} fontSize={isStacked ? "5.5" : "6.5"} fontWeight="bold" fill="#000" stroke="none" textAnchor="middle">
+                  {cItem.widthMm}
+                </text>
+              </g>
+            </g>
+          );
+        })}
+
+        {/* Cota de Altura Total Muro a la Izquierda (h=2200) */}
+        <g stroke="#c026d3" strokeWidth={isStacked ? "0.6" : "0.7"}>
+          <line x1={wallStartX - (isStacked ? 7 : 10)} y1={groundY} x2={wallStartX - (isStacked ? 7 : 10)} y2={groundY - 2200 * elevScale} />
+          <line x1={wallStartX - (isStacked ? 10 : 14)} y1={groundY} x2={wallStartX - (isStacked ? 4 : 6)} y2={groundY} />
+          <line x1={wallStartX - (isStacked ? 10 : 14)} y1={groundY - 2200 * elevScale} x2={wallStartX - (isStacked ? 4 : 6)} y2={groundY - 2200 * elevScale} />
+          <text
+            x={wallStartX - (isStacked ? 12 : 16)}
+            y={groundY - 1100 * elevScale}
+            fontSize={isStacked ? "5.5" : "7"}
+            fontWeight="bold"
+            fill="#c026d3"
+            stroke="none"
+            textAnchor="end"
+          >
+            2200
+          </text>
+        </g>
+
+        {/* Cota Total Longitud del Muro al Pie */}
+        <g stroke="#0f172a" strokeWidth={isStacked ? "0.6" : "0.7"}>
+          <line x1={wallStartX} y1={groundY + (isStacked ? 13 : 18)} x2={wallStartX + wallDrawW} y2={groundY + (isStacked ? 13 : 18)} />
+          <line x1={wallStartX} y1={groundY + (isStacked ? 10 : 14)} x2={wallStartX} y2={groundY + (isStacked ? 16 : 22)} />
+          <line x1={wallStartX + wallDrawW} y1={groundY + (isStacked ? 10 : 14)} x2={wallStartX + wallDrawW} y2={groundY + (isStacked ? 16 : 22)} />
+          <text
+            x={wallStartX + wallDrawW / 2}
+            y={groundY + (isStacked ? 21 : 28)}
+            fontSize={isStacked ? "6" : "7"}
+            fontWeight="bold"
+            fill="#0f172a"
+            stroke="none"
+            textAnchor="middle"
+          >
+            {effectiveWallLenMm}
+          </text>
+        </g>
+
+        {/* ======================================================== */}
+        {/* ELEVACIÓN ISLA (SI EXISTE Y ESTÁ ACTIVA EN ESTA VISTA)   */}
+        {/* ======================================================== */}
+        {hasIsland && (() => {
+          const islTotalH = 900;
+          const islScaleH = islTotalH * elevScale;
+          const cTopH = 20 * elevScale;
+          const islBodyH = (islTotalH - socleHMm - 20) * elevScale;
+          const bodyH = islBodyH;
+          const bodyTopY = groundY - islScaleH + cTopH;
+          const bodyBottomY = groundY - socleScaleH;
+          const islTopY = groundY - islScaleH;
+
+          let currentIslX = islStartX;
+
+          return (
+            <g key="elev-island-group">
+              {/* Línea divisoria arquitectónica discontinua */}
+              <line
+                x1={sepMidX}
+                y1={groundY - 2200 * elevScale}
+                x2={sepMidX}
+                y2={groundY + 15}
+                stroke="#cbd5e1"
+                strokeWidth="0.8"
+                strokeDasharray="4,3"
+              />
+
+              {/* Título Elevación Isla */}
+              <text
+                x={islStartX + islDrawW / 2}
+                y={islTopY - (isStacked ? 7 : 14)}
+                fontSize={isStacked ? "5.5" : "6.5"}
+                fontWeight="bold"
+                fill="#d97706"
+                textAnchor="middle"
+                letterSpacing="0.4"
+              >
+                ELEVACIÓN ISLA
+              </text>
+
+              {/* Zócalo General Isla */}
+              <rect
+                x={islStartX}
+                y={bodyBottomY}
+                width={islDrawW}
+                height={socleScaleH}
+                fill="#e2e8f0"
+                stroke="#cbd5e1"
+                strokeWidth="0.6"
+              />
+
+              {/* Módulos Isla */}
+              {islandCabs.map((cab, ii) => {
+                const cWMm = Math.round(cab.width * 10);
+                const cW = cWMm * elevScale;
+                const cLeftX = currentIslX;
+                currentIslX += cW;
+
+                const hConfig = cab.handleConfig || kState.handleConfig;
+                const isGolaActive = kState.golaSystem !== 'none';
+                const showHandles = !isGolaActive && hConfig && hConfig.model !== 'none';
+                const hLen = Math.max(3.0, (hConfig?.lengthMm ?? 128) * elevScale);
+                const hThick = Math.max(1.0, 14 * elevScale);
+                const hColor = hConfig?.color === 'black' ? '#09090b' : (hConfig?.color === 'gold' ? '#b45309' : '#334155');
+
+                return (
+                  <g key={`isl-side-cab-${ii}`}>
+                    {/* Patas de refuerzo */}
+                    <rect
+                      x={cLeftX + Math.max(2, cW * 0.08)}
+                      y={bodyBottomY}
+                      width={Math.max(2, cW * 0.04)}
+                      height={socleScaleH}
+                      fill="#94a3b8"
+                      stroke="#475569"
+                      strokeWidth="0.4"
+                    />
+                    <rect
+                      x={cLeftX + cW - Math.max(2, cW * 0.08) - Math.max(2, cW * 0.04)}
+                      y={bodyBottomY}
+                      width={Math.max(2, cW * 0.04)}
+                      height={socleScaleH}
+                      fill="#94a3b8"
+                      stroke="#475569"
+                      strokeWidth="0.4"
+                    />
+
+                    {/* Casco Principal Isla */}
+                    <rect
+                      x={cLeftX}
+                      y={bodyTopY}
+                      width={cW}
+                      height={bodyH}
+                      fill="#ffffff"
+                      stroke="#0f172a"
+                      strokeWidth={isStacked ? "0.9" : "1.1"}
+                    />
+
+                    {/* Frentes de Cajones / Puertas */}
+                    {(() => {
+                      const v = (cab.variant || '').toLowerCase();
+                      const dCount = (cab as any).drawersCount || 0;
+
+                      if (v.includes('4_drawer') || v.includes('4_caj') || v === 'island_4_drawers' || v === '4_drawers' || v === 'place_island_4_drawers' || dCount === 4) {
+                        const dH = bodyH / 4;
+                        return (
+                          <g>
+                            {[1, 2, 3].map(di => (
+                              <line key={`drw-${di}`} x1={cLeftX} y1={bodyTopY + dH * di} x2={cLeftX + cW} y2={bodyTopY + dH * di} stroke="#0f172a" strokeWidth={isStacked ? "0.5" : "0.7"} />
+                            ))}
+                            {showHandles && [0, 1, 2, 3].map(di => (
+                              <rect
+                                key={`drw-h-${di}`}
+                                x={cLeftX + cW / 2 - hLen / 2}
+                                y={bodyTopY + di * dH + dH * 0.35 - hThick / 2}
+                                width={hLen}
+                                height={hThick}
+                                rx={0.5}
+                                fill={hColor}
+                                stroke="#0f172a"
+                                strokeWidth="0.3"
+                              />
+                            ))}
+                          </g>
+                        );
+                      } else if (v.includes('2_drawers_1_pot') || v.includes('2_caj_1_oll') || v.includes('1_pot') || v === 'island_2_drawers_1_pot' || v === '2_drawers_1_pot' || v === 'place_island_2_drawers_1_pot') {
+                        const d1 = bodyH * 0.25;
+                        const d2 = bodyH * 0.50;
+                        return (
+                          <g>
+                            <line x1={cLeftX} y1={bodyTopY + d1} x2={cLeftX + cW} y2={bodyTopY + d1} stroke="#0f172a" strokeWidth={isStacked ? "0.5" : "0.7"} />
+                            <line x1={cLeftX} y1={bodyTopY + d2} x2={cLeftX + cW} y2={bodyTopY + d2} stroke="#0f172a" strokeWidth={isStacked ? "0.5" : "0.7"} />
+                            {showHandles && (
+                              <>
+                                <rect x={cLeftX + cW / 2 - hLen / 2} y={bodyTopY + d1 * 0.35} width={hLen} height={hThick} rx={0.5} fill={hColor} stroke="#0f172a" strokeWidth="0.3" />
+                                <rect x={cLeftX + cW / 2 - hLen / 2} y={bodyTopY + d1 + (d2 - d1) * 0.35} width={hLen} height={hThick} rx={0.5} fill={hColor} stroke="#0f172a" strokeWidth="0.3" />
+                                <rect x={cLeftX + cW / 2 - hLen / 2} y={bodyTopY + d2 + (bodyH - d2) * 0.35} width={hLen} height={hThick} rx={0.5} fill={hColor} stroke="#0f172a" strokeWidth="0.3" />
+                              </>
+                            )}
+                          </g>
+                        );
+                      } else if (v.includes('2_pot') || v.includes('pot_drawer') || v.includes('2_drawer') || v.includes('2_caj') || v === 'place_island' || v === 'island_2_pot_drawers' || v === '2_pot_drawers' || dCount === 2) {
+                        const dH = bodyH / 2;
+                        return (
+                          <g>
+                            <line x1={cLeftX} y1={bodyTopY + dH} x2={cLeftX + cW} y2={bodyTopY + dH} stroke="#0f172a" strokeWidth={isStacked ? "0.5" : "0.7"} />
+                            {showHandles && [0, 1].map(di => (
+                              <rect
+                                key={`pot-h-${di}`}
+                                x={cLeftX + cW / 2 - hLen / 2}
+                                y={bodyTopY + di * dH + dH * 0.35 - hThick / 2}
+                                width={hLen}
+                                height={hThick}
+                                rx={0.5}
+                                fill={hColor}
+                                stroke="#0f172a"
+                                strokeWidth="0.3"
+                              />
+                            ))}
+                          </g>
+                        );
+                      } else if (v.includes('1_door') || v.includes('1_puerta') || v === 'island_1_door' || v === 'place_island_1_door') {
+                        const doorMidY = bodyTopY + bodyH / 2;
+                        return (
+                          <g>
+                            <path d={`M ${cLeftX} ${bodyTopY} L ${cLeftX + cW} ${doorMidY} L ${cLeftX} ${bodyBottomY}`} fill="none" stroke="#c026d3" strokeWidth={isStacked ? "0.5" : "0.6"} strokeDasharray="3,2" />
+                            {showHandles && (
+                              <rect
+                                x={cLeftX + cW - 6 - hThick}
+                                y={bodyTopY + 6}
+                                width={hThick}
+                                height={hLen}
+                                rx={0.5}
+                                fill={hColor}
+                                stroke="#0f172a"
+                                strokeWidth="0.3"
+                              />
+                            )}
+                          </g>
+                        );
+                      } else {
+                        const centerSplit = cLeftX + cW / 2;
+                        const doorMidY = bodyTopY + bodyH / 2;
+                        return (
+                          <g>
+                            <line x1={centerSplit} y1={bodyTopY} x2={centerSplit} y2={bodyBottomY} stroke="#0f172a" strokeWidth={isStacked ? "0.5" : "0.7"} />
+                            <path d={`M ${cLeftX} ${bodyTopY} L ${centerSplit} ${doorMidY} L ${cLeftX} ${bodyBottomY}`} fill="none" stroke="#c026d3" strokeWidth={isStacked ? "0.5" : "0.6"} strokeDasharray="3,2" />
+                            <path d={`M ${cLeftX + cW} ${bodyTopY} L ${centerSplit} ${doorMidY} L ${cLeftX + cW} ${bodyBottomY}`} fill="none" stroke="#c026d3" strokeWidth={isStacked ? "0.5" : "0.6"} strokeDasharray="3,2" />
+                            {showHandles && (
+                              <>
+                                <rect x={centerSplit - 3 - hThick} y={bodyTopY + 6} width={hThick} height={hLen} rx={0.5} fill={hColor} stroke="#0f172a" strokeWidth="0.3" />
+                                <rect x={centerSplit + 3} y={bodyTopY + 6} width={hThick} height={hLen} rx={0.5} fill={hColor} stroke="#0f172a" strokeWidth="0.3" />
+                              </>
+                            )}
+                          </g>
+                        );
+                      }
+                    })()}
+
+                    {/* Cota individual de ancho del módulo isla */}
+                    <g stroke="#000" strokeWidth={isStacked ? "0.5" : "0.6"}>
+                      <line x1={cLeftX} y1={bodyTopY - (isStacked ? 4 : 6)} x2={cLeftX + cW} y2={bodyTopY - (isStacked ? 4 : 6)} />
+                      <line x1={cLeftX} y1={bodyTopY - (isStacked ? 7 : 10)} x2={cLeftX} y2={bodyTopY - (isStacked ? 1 : 2)} />
+                      <line x1={cLeftX + cW} y1={bodyTopY - (isStacked ? 7 : 10)} x2={cLeftX + cW} y2={bodyTopY - (isStacked ? 1 : 2)} />
+                      <text x={cLeftX + cW / 2} y={bodyTopY - (isStacked ? 5 : 8)} fontSize={isStacked ? "5" : "6"} fontWeight="bold" fill="#000" stroke="none" textAnchor="middle">
+                        {cWMm}
+                      </text>
+                    </g>
+                  </g>
+                );
+              })}
+
+              {/* Cubierta Isla Continua (+0.90) con Respaldo en Rojo */}
+              <rect
+                x={islStartX - 2}
+                y={islTopY}
+                width={islDrawW + 4}
+                height={cTopH}
+                fill="#fecdd3"
+                stroke="#e11d48"
+                strokeWidth="0.8"
+              />
+
+              {/* Cota Total Ancho Isla Inferior */}
+              <g stroke="#000" strokeWidth={isStacked ? "0.6" : "0.7"}>
+                <line x1={islStartX} y1={groundY + (isStacked ? 13 : 18)} x2={islStartX + islDrawW} y2={groundY + (isStacked ? 13 : 18)} />
+                <line x1={islStartX} y1={groundY + (isStacked ? 10 : 14)} x2={islStartX} y2={groundY + (isStacked ? 16 : 22)} />
+                <line x1={islStartX + islDrawW} y1={groundY + (isStacked ? 10 : 14)} x2={islStartX + islDrawW} y2={groundY + (isStacked ? 16 : 22)} />
+                <text x={islStartX + islDrawW / 2} y={groundY + (isStacked ? 21 : 28)} fontSize={isStacked ? "6" : "7"} fontWeight="bold" fill="#000" stroke="none" textAnchor="middle">
+                  {islandTotalWidthMm}
+                </text>
+              </g>
+
+              {/* Cota Altura Isla (900 mm) a la Derecha */}
+              <g stroke="#e11d48" strokeWidth={isStacked ? "0.5" : "0.6"}>
+                <line x1={islStartX + islDrawW + (isStacked ? 4 : 6)} y1={groundY} x2={islStartX + islDrawW + (isStacked ? 4 : 6)} y2={islTopY} />
+                <line x1={islStartX + islDrawW + (isStacked ? 2 : 3)} y1={groundY} x2={islStartX + islDrawW + (isStacked ? 6 : 9)} y2={groundY} />
+                <line x1={islStartX + islDrawW + (isStacked ? 2 : 3)} y1={islTopY} x2={islStartX + islDrawW + (isStacked ? 6 : 9)} y2={islTopY} />
+                <text
+                  x={islStartX + islDrawW + (isStacked ? 8 : 11)}
+                  y={groundY - islTotalH / 2 + 2}
+                  fontSize={isStacked ? "4.5" : "5.5"}
+                  fontWeight="bold"
+                  fill="#e11d48"
+                  stroke="none"
+                  textAnchor="start"
+                >
+                  900
+                </text>
+              </g>
+            </g>
+          );
+        })()}
+      </svg>
+    );
+  };
+
   return (
     <div className="fixed inset-0 z-[100] bg-neutral-800 text-black flex flex-col overflow-hidden">
       {/* Header Superior Fijo Integrado (Opción 1) */}
@@ -2414,500 +3586,892 @@ export function KitchenBlueprint() {
         const toSvgX = (xCm: number) => offsetX + (xCm - minX) * scale2D;
         const toSvgY = (yCm: number) => offsetY + (yCm - minY) * scale2D;
 
-        // Calcular gabinetes proyectados en cada muro para las elevaciones
-        const activeWallsData = wallSegments.map(wall => {
-          const S = wall.start;
-          const E = wall.end;
-          const L = wall.length;
-          if (L < 1) return { wall, cabinetsOnWall: [] };
+        // Proyección Axonométrica Isométrica a 30° (Norma ISO 5456-3)
+        const isoCos = 0.866; // cos(30°)
+        const isoSin = 0.5;   // sin(30°)
+        const projectIso = (xCm: number, yCm: number, zCm: number) => {
+          return {
+            x: (xCm - zCm) * isoCos,
+            y: -yCm + (xCm + zCm) * isoSin * 0.7,
+          };
+        };
 
-          const ux = (E.x - S.x) / L;
-          const uy = (E.y - S.y) / L;
-          const nx = -uy;
-          const ny = ux;
-
-          const cabsOnWall = realCabinets.map(cab => {
-            const cx = cab.position[0];
-            const cz = cab.position[2];
-
-            // Distancia a lo largo del muro (desde start)
-            const t = (cx - S.x) * ux + (cz - S.y) * uy;
-            // Distancia perpendicular al eje del muro
-            const d = Math.abs((cx - S.x) * nx + (cz - S.y) * ny);
-
-            // Umbral de proximidad al muro
-            if (d <= cab.depth + 60 && t >= -cab.width / 2 - 10 && t <= L + cab.width / 2 + 10) {
-              return {
-                cab,
-                t,
-                offsetMm: Math.round((t - cab.width / 2) * 10),
-                widthMm: Math.round(cab.width * 10),
-                heightMm: Math.round(cab.height * 10),
-                yBottomMm: Math.round((cab.position[1] - cab.height / 2) * 10),
-              };
-            }
-            return null;
-          }).filter(Boolean) as {
-            cab: CabinetType;
-            t: number;
-            offsetMm: number;
-            widthMm: number;
-            heightMm: number;
-            yBottomMm: number;
-          }[];
-
-          // Ordenar gabinetes por su posición a lo largo del muro
-          cabsOnWall.sort((a, b) => a.t - b.t);
-
-          return { wall, cabinetsOnWall: cabsOnWall };
+        // Bounding box en espacio isométrico para encuadre automático
+        let isoMinX = Infinity, isoMaxX = -Infinity, isoMinY = Infinity, isoMaxY = -Infinity;
+        vertices.forEach(v => {
+          const pt0 = projectIso(v.x, 0, v.y);
+          const ptH = projectIso(v.x, 220, v.y);
+          isoMinX = Math.min(isoMinX, pt0.x, ptH.x);
+          isoMaxX = Math.max(isoMaxX, pt0.x, ptH.x);
+          isoMinY = Math.min(isoMinY, pt0.y, ptH.y);
+          isoMaxY = Math.max(isoMaxY, pt0.y, ptH.y);
         });
-
-        // Filtrar ÚNICAMENTE los muros que tienen muebles colocados (cero vistas en blanco)
-        let wallsWithCabs = activeWallsData.filter(w => w.cabinetsOnWall.length > 0);
-
-        // Si ningún muro tiene muebles detectados por proximidad, asociar los muebles al muro principal
-        if (wallsWithCabs.length === 0 && wallSegments.length > 0) {
-          const mainWall = wallSegments[0];
-          let runningOffsetMm = 100;
-          const cabsOnMain = realCabinets.map(cab => {
-            const item = {
-              cab,
-              t: runningOffsetMm / 10 + cab.width / 2,
-              offsetMm: runningOffsetMm,
-              widthMm: Math.round(cab.width * 10),
-              heightMm: Math.round(cab.height * 10),
-              yBottomMm: Math.round((cab.position[1] - cab.height / 2) * 10),
-            };
-            runningOffsetMm += Math.round(cab.width * 10);
-            return item;
-          });
-          wallsWithCabs = [{ wall: mainWall, cabinetsOnWall: cabsOnMain }];
+        realCabinets.forEach(c => {
+          const pt = projectIso(c.position[0], c.position[1] + c.height / 2, c.position[2]);
+          isoMinX = Math.min(isoMinX, pt.x - 40);
+          isoMaxX = Math.max(isoMaxX, pt.x + 40);
+          isoMinY = Math.min(isoMinY, pt.y - 40);
+          isoMaxY = Math.max(isoMaxY, pt.y + 40);
+        });
+        if (!isFinite(isoMinX)) {
+          isoMinX = -250; isoMaxX = 250; isoMinY = -220; isoMaxY = 120;
         }
-
-        // Mostrar solo los muros con muebles reales (máximo 3 para la lámina)
-        const displayWalls = wallsWithCabs.slice(0, 3);
-        const colSpanClass = displayWalls.length === 1 ? 'col-span-12' : displayWalls.length === 2 ? 'col-span-6' : 'col-span-4';
+        const isoPad = 25;
+        isoMinX -= isoPad; isoMaxX += isoPad; isoMinY -= isoPad; isoMaxY += isoPad;
+        const isoSpanX = Math.max(120, isoMaxX - isoMinX);
+        const isoSpanY = Math.max(100, isoMaxY - isoMinY);
+        const isoSvgW = 540;
+        const isoSvgH = 290;
+        const isoScale = Math.min(isoSvgW / isoSpanX, isoSvgH / isoSpanY);
+        const isoOffX = (isoSvgW - isoSpanX * isoScale) / 2;
+        const isoOffY = (isoSvgH - isoSpanY * isoScale) / 2;
+        const toIsoSvg = (xCm: number, yCm: number, zCm: number) => {
+          const p = projectIso(xCm, yCm, zCm);
+          return {
+            x: isoOffX + (p.x - isoMinX) * isoScale,
+            y: isoOffY + (p.y - isoMinY) * isoScale,
+          };
+        };
 
         return (
           <div className="blueprint-page border border-black/30 flex flex-col justify-between p-6 pb-28 bg-white relative overflow-hidden font-sans select-none">
             
-            {/* ENCABEZADO SUPERIOR */}
+            {/* ENCABEZADO SUPERIOR TÉCNICO */}
             <div className="flex justify-between items-start h-[34px] border-b-2 border-slate-900 pb-1 mb-1">
               <div>
                 <div className="text-[14px] font-black text-slate-900 tracking-tight uppercase leading-none font-sans flex items-center gap-2">
                   <span>PROYECTO COCINA MODULAR ARQUIFY</span>
                 </div>
                 <div className="text-[10px] font-bold text-slate-600 tracking-tight uppercase mt-0.5 leading-none">
-                  PLANTA GENERAL Y ELEVACIONES ({realCabinets.length} {realCabinets.length === 1 ? 'MÓDULO' : 'MÓDULOS'})
+                  LÁMINA 1: VISTAS GENERALES DE ARQUITECTURA (PLANTA, FRONTAL, LATERAL, ISOMÉTRICA)
                 </div>
               </div>
               <div className="text-right text-[9px] text-slate-500 font-mono font-medium">
-                ARQUIFY CAD / SISTEMA INTERIORISMO CORPORATIVO
+                ARQUIFY CAD / NORMAS ISO 128 - DIN 68881
               </div>
             </div>
 
-            {/* SECTOR SUPERIOR: VISTA PLANTA GENERAL (ARQUITECTURA) - ALTO CONTROLADO 290px */}
-            <div className="w-full h-[290px] border-b border-slate-300 pb-2 relative flex flex-col items-center justify-center">
-              <div className="absolute top-1 left-1 z-10">
-                <span className="text-[8.5px] font-bold text-slate-800 uppercase tracking-wider bg-white/95 border border-slate-300 px-2.5 py-0.5 rounded shadow-2xs">
-                  VISTA PLANTA GENERAL (ARQUITECTURA)
-                </span>
-              </div>
-                <svg viewBox={`0 0 ${svgW} ${svgH}`} className="w-full h-full max-h-[280px]">
-                  {/* Polígono de Suelo de la Habitación */}
-                  {vertices.length >= 3 && (
-                    <polygon
-                      points={vertices.map(v => `${toSvgX(v.x)},${toSvgY(v.y)}`).join(' ')}
-                      fill="#ffffff"
-                      stroke="#1e293b"
-                      strokeWidth="4.5"
-                      strokeLinejoin="miter"
-                    />
-                  )}
+            {/* ESTRUCTURA ORDENADA DE 2 FILAS (FILA SUPERIOR 3 VISTAS + FILA INFERIOR ELEVACIONES) */}
+            <div className="flex-1 flex flex-col gap-2.5 overflow-hidden my-1">
 
-                  {/* Cotas y Muros Perimetrales */}
-                  {(() => {
-                    const roomCenterSvgX = vertices.length > 0 ? toSvgX(vertices.reduce((sum, v) => sum + v.x, 0) / vertices.length) : svgW / 2;
-                    const roomCenterSvgY = vertices.length > 0 ? toSvgY(vertices.reduce((sum, v) => sum + v.y, 0) / vertices.length) : svgH / 2;
+              {/* FILA SUPERIOR: 1. PLANTA GENERAL (2D), 4. PERSPECTIVA 3D ISOMÉTRICA, 3. SECCIÓN / VISTA LATERAL */}
+              <div className="grid grid-cols-12 gap-2.5 h-[300px] shrink-0">
 
-                    return wallSegments.map((wall, wIdx) => {
-                      const x1 = toSvgX(wall.start.x);
-                      const y1 = toSvgY(wall.start.y);
-                      const x2 = toSvgX(wall.end.x);
-                      const y2 = toSvgY(wall.end.y);
-                      const mx = (x1 + x2) / 2;
-                      const my = (y1 + y2) / 2;
+                {/* 1. VISTA DE PLANTA GENERAL (ARQUITECTURA) */}
+                <div className="col-span-4 border border-slate-300 p-2 rounded flex flex-col justify-between bg-white relative h-full overflow-hidden">
+                  <div className="flex justify-between items-center mb-1 border-b border-slate-200 pb-0.5 shrink-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-4 h-4 rounded-full bg-slate-900 text-white font-bold text-[8px] flex items-center justify-center">1</span>
+                      <span className="text-[8.5px] font-black text-slate-900 tracking-wider uppercase">
+                        VISTA DE PLANTA GENERAL
+                      </span>
+                    </div>
+                    <span className="text-[7.5px] font-mono text-slate-500">ÁREA: {calculatePolygonArea(vertices)} m²</span>
+                  </div>
 
-                      // Vector normal exterior para la cota
-                      const dx = x2 - x1;
-                      const dy = y2 - y1;
-                      const len = Math.hypot(dx, dy);
-                      let normX = len > 0 ? -dy / len : 0;
-                      let normY = len > 0 ? dx / len : 0;
-
-                      // Forzar dirección exterior respecto al centro geométrico del recinto
-                      const toCenterX = roomCenterSvgX - mx;
-                      const toCenterY = roomCenterSvgY - my;
-                      if (normX * toCenterX + normY * toCenterY > 0) {
-                        normX = -normX;
-                        normY = -normY;
-                      }
-
-                      const cotaDist = 16;
-                      const cx1 = x1 + normX * cotaDist;
-                      const cy1 = y1 + normY * cotaDist;
-                      const cx2 = x2 + normX * cotaDist;
-                      const cy2 = y2 + normY * cotaDist;
-                      const cmx = mx + normX * (cotaDist + 4);
-                      const cmy = my + normY * (cotaDist + 4);
-
-                    return (
-                      <g key={wIdx}>
-                        {/* Línea de Cota Exterior Total */}
-                        <line x1={cx1} y1={cy1} x2={cx2} y2={cy2} stroke="#334155" strokeWidth="0.8" />
-                        <line x1={cx1 - normX * 3.5} y1={cy1 - normY * 3.5} x2={cx1 + normX * 3.5} y2={cy1 + normY * 3.5} stroke="#334155" strokeWidth="0.8" />
-                        <line x1={cx2 - normX * 3.5} y1={cy2 - normY * 3.5} x2={cx2 + normX * 3.5} y2={cy2 + normY * 3.5} stroke="#334155" strokeWidth="0.8" />
-                        <text
-                          x={cmx}
-                          y={cmy + 3}
-                          fontSize="7.5"
-                          fontWeight="bold"
-                          fill="#0f172a"
-                          textAnchor="middle"
-                        >
-                          {Math.round(wall.length * 10)}
-                        </text>
-
-                        {/* Símbolo de Muro / Vista (Ⓐ, Ⓑ, Ⓒ...) con flecha hacia el interior */}
-                        <g transform={`translate(${mx - normX * 14}, ${my - normY * 14})`}>
-                          <circle cx="0" cy="0" r="7" fill="#ffffff" stroke="#16a34a" strokeWidth="1.2" />
-                          <text x="0" y="2.5" fontSize="7.5" fontWeight="bold" fill="#16a34a" textAnchor="middle">
-                            {wall.label}
-                          </text>
-                        </g>
-                      </g>
-                    );
-                  });
-                })()}
-
-                  {/* Renderizado de MUEBLES REALES en Planta con Sub-Cotas */}
-                  {realCabinets.map((cab, cIdx) => {
-                    const box = getCabinetBox2D(cab);
-                    const svgCorners = box.corners.map(([cx, cz]) => [toSvgX(cx), toSvgY(cz)]);
-                    const pointsStr = svgCorners.map(([sx, sy]) => `${sx},${sy}`).join(' ');
-
-                    const isWall = cab.type === 'wall';
-                    const isTall = cab.type === 'tall';
-                    const isIsland = cab.type === 'island';
-                    const centerSvgX = toSvgX(cab.position[0]);
-                    const centerSvgY = toSvgY(cab.position[2]);
-
-                    // Etiqueta técnica según tipología
-                    let label = `M.B ${Math.round(cab.width * 10)}`;
-                    if (isWall) label = `M.A ${Math.round(cab.width * 10)}`;
-                    else if (cab.type === 'closet' || cab.variant?.startsWith('closet_')) label = `CLÓSET ${Math.round(cab.width * 10)}`;
-                    else if (isTall) label = `TORRE ${Math.round(cab.width * 10)}`;
-                    else if (isIsland) label = `ISLA ${Math.round(cab.width * 10)}`;
-                    else if (cab.variant === '4_drawers' || cab.variant === '2_pot_drawers') label = `CAJ ${Math.round(cab.width * 10)}`;
-
-                    return (
-                      <g key={cIdx}>
-                        {/* Polígono del Módulo */}
+                  <div className="flex-1 flex items-center justify-center overflow-hidden">
+                    <svg viewBox={`0 0 ${svgW} ${svgH}`} className="w-full h-full max-h-[260px]">
+                      {/* Polígono de Suelo de la Habitación */}
+                      {vertices.length >= 3 && (
                         <polygon
-                          points={pointsStr}
-                          fill={isWall ? '#ffffff' : (isTall || cab.type === 'closet') ? '#f8fafc' : '#ffffff'}
-                          stroke={isWall ? '#64748b' : '#0f172a'}
-                          strokeWidth={isWall ? '1' : '1.3'}
-                          strokeDasharray={isWall ? '3,2' : undefined}
+                          points={vertices.map(v => `${toSvgX(v.x)},${toSvgY(v.y)}`).join(' ')}
+                          fill="#ffffff"
+                          stroke="#1e293b"
+                          strokeWidth="4"
+                          strokeLinejoin="miter"
                         />
+                      )}
 
-                        {/* Si es Torre / Despensa o Clóset: Diagonales normadas DIN/ISO */}
-                        {(isTall || cab.type === 'closet' || cab.variant?.startsWith('closet_')) && svgCorners.length === 4 && (
-                          <g stroke="#94a3b8" strokeWidth="0.6" strokeDasharray="2,2">
-                            <line x1={svgCorners[0][0]} y1={svgCorners[0][1]} x2={svgCorners[2][0]} y2={svgCorners[2][1]} />
-                            <line x1={svgCorners[1][0]} y1={svgCorners[1][1]} x2={svgCorners[3][0]} y2={svgCorners[3][1]} />
-                          </g>
-                        )}
+                      {/* Cotas y Muros Perimetrales */}
+                      {(() => {
+                        const roomCenterSvgX = vertices.length > 0 ? toSvgX(vertices.reduce((sum, v) => sum + v.x, 0) / vertices.length) : svgW / 2;
+                        const roomCenterSvgY = vertices.length > 0 ? toSvgY(vertices.reduce((sum, v) => sum + v.y, 0) / vertices.length) : svgH / 2;
 
-                        {/* Etiqueta del Módulo */}
-                        <text
-                          x={centerSvgX}
-                          y={centerSvgY + 2.5}
-                          fontSize="6.5"
-                          fontWeight="bold"
-                          fill={isWall ? '#64748b' : '#16a34a'}
-                          textAnchor="middle"
-                        >
-                          {label}
-                        </text>
-                      </g>
-                    );
-                  })}
-                </svg>
-              </div>
+                        return wallSegments.map((wall, wIdx) => {
+                          const x1 = toSvgX(wall.start.x);
+                          const y1 = toSvgY(wall.start.y);
+                          const x2 = toSvgX(wall.end.x);
+                          const y2 = toSvgY(wall.end.y);
+                          const mx = (x1 + x2) / 2;
+                          const my = (y1 + y2) / 2;
 
-            {/* SECTOR MEDIO E INFERIOR: VISTAS FRONTALES DE LOS MUROS ACTIVOS - ESCALA UNIFICADA ISO/DIN */}
-            <div className="grid grid-cols-12 gap-3 flex-1 pt-1.5 pb-1 items-stretch overflow-hidden">
-              {(() => {
-                const isSingle = displayWalls.length === 1;
-                // Viewbox de elevación adaptativo para llenar la cuadrícula armónicamente
-                const elevW = isSingle ? 750 : displayWalls.length === 2 ? 460 : 360;
-                const elevH = 260;
-                const elevPadX = isSingle ? 50 : 35;
-                const elevPadY = 20;
-                const groundY = elevH - 35;
-                const maxH = 2400; // mm
+                          const dx = x2 - x1;
+                          const dy = y2 - y1;
+                          const len = Math.hypot(dx, dy);
+                          let normX = len > 0 ? -dy / len : 0;
+                          let normY = len > 0 ? dx / len : 0;
 
-                // Escala Única Normalizada (Norma ISO 128 / DIN) para mantener rigurosa correspondencia geométrica en todas las vistas
-                const maxWallLenMm = Math.max(1200, ...displayWalls.map(w => Math.round(w.wall.length * 10)));
-                const commonElevScaleX = (elevW - elevPadX * 2) / maxWallLenMm;
-                const commonElevScaleY = (groundY - elevPadY) / maxH;
-                const commonElevScale = Math.min(commonElevScaleX, commonElevScaleY);
+                          const toCenterX = roomCenterSvgX - mx;
+                          const toCenterY = roomCenterSvgY - my;
+                          if (normX * toCenterX + normY * toCenterY > 0) {
+                            normX = -normX;
+                            normY = -normY;
+                          }
 
-                return displayWalls.map((wData, wIdx) => {
-                  const wall = wData.wall;
-                  const cabs = wData.cabinetsOnWall;
-                  const wallLenMm = Math.max(1200, Math.round(wall.length * 10));
-                  const elevScale = commonElevScale;
+                          const cotaDist = 15;
+                          const cx1 = x1 + normX * cotaDist;
+                          const cy1 = y1 + normY * cotaDist;
+                          const cx2 = x2 + normX * cotaDist;
+                          const cy2 = y2 + normY * cotaDist;
+                          const cmx = mx + normX * (cotaDist + 4);
+                          const cmy = my + normY * (cotaDist + 4);
 
-                  const wallDrawW = wallLenMm * elevScale;
-                  const wallStartX = (elevW - wallDrawW) / 2;
-                  const socleHMm = (kState.socleHeight ?? 10) * 10;
-                  const socleScaleH = socleHMm * elevScale;
+                          return (
+                            <g key={wIdx}>
+                              <line x1={cx1} y1={cy1} x2={cx2} y2={cy2} stroke="#334155" strokeWidth="0.8" />
+                              <line x1={cx1 - normX * 3} y1={cy1 - normY * 3} x2={cx1 + normX * 3} y2={cy1 + normY * 3} stroke="#334155" strokeWidth="0.8" />
+                              <line x1={cx2 - normX * 3} y1={cy2 - normY * 3} x2={cx2 + normX * 3} y2={cy2 + normY * 3} stroke="#334155" strokeWidth="0.8" />
+                              <text
+                                x={cmx}
+                                y={cmy + 3}
+                                fontSize="7.5"
+                                fontWeight="bold"
+                                fill="#0f172a"
+                                textAnchor="middle"
+                              >
+                                {Math.round(wall.length * 10)}
+                              </text>
 
-                  return (
-                    <div key={wIdx} className={`${colSpanClass} border border-slate-200 p-2.5 rounded flex flex-col justify-between bg-white relative h-full`}>
-                      <div className="flex justify-between items-center mb-1 border-b border-slate-200 pb-0.5">
-                        <div className="flex items-center gap-1.5">
-                          <span className="w-4 h-4 rounded-full border border-green-600 text-green-600 font-bold text-[8px] flex items-center justify-center">
-                            {wall.label}
-                          </span>
-                          <span className="text-[8.5px] font-black text-slate-900 tracking-wider">
-                            VISTA FRONTAL {wall.label}
-                          </span>
-                        </div>
-                        <span className="text-[7.5px] font-mono text-slate-500">L = {wallLenMm} mm</span>
-                      </div>
-
-                      {/* Dibujo Elevación SVG Dinámica con Escala Común Normalizada */}
-                      <div className="flex-1 flex items-center justify-center overflow-hidden py-1">
-                        <svg viewBox={`0 0 ${elevW} ${elevH}`} className="w-full h-full max-h-[380px]">
-                          {/* Línea de Suelo (+0.00) */}
-                          <line x1="8" y1={groundY} x2={elevW - 8} y2={groundY} stroke="#0f172a" strokeWidth="1.2" />
-                          <text x="10" y={groundY + 10} fontSize="7" fill="#64748b">0.00</text>
-
-                          {/* Muro Trasero de Fondo */}
-                          <rect
-                            x={wallStartX}
-                            y={groundY - 2200 * elevScale}
-                            width={wallDrawW}
-                            height={2200 * elevScale}
-                            fill="#f8fafc"
-                            stroke="#cbd5e1"
-                            strokeWidth="0.8"
-                          />
-
-                          {/* Línea de Zócalo General de Muro (h = socleHMm) */}
-                          <rect
-                            x={wallStartX}
-                            y={groundY - socleScaleH}
-                            width={wallDrawW}
-                            height={socleScaleH}
-                            fill="#f1f5f9"
-                            stroke="#cbd5e1"
-                            strokeWidth="0.6"
-                          />
-
-                          {/* Renderizado de los Módulos Reales en la Elevación */}
-                          {cabs.map((cItem, ci) => {
-                            const cab = cItem.cab;
-                            const isTall = cab.type === 'tall';
-                            const isWall = cab.type === 'wall';
-                            const isBase = cab.type === 'base' || cab.type === 'island';
-                            const hasSocle = isBase || isTall;
-
-                            const legsHMm = hasSocle ? socleHMm : 0;
-                            const legsH = legsHMm * elevScale;
-
-                            const cLeftX = wallStartX + Math.max(0, cItem.offsetMm * elevScale);
-                            const cW = cItem.widthMm * elevScale;
-                            const cH = cItem.heightMm * elevScale;
-                            const cBottomY = groundY - (cItem.yBottomMm * elevScale);
-                            const cTopY = hasSocle ? (groundY - cH) : (cBottomY - cH);
-                            const bodyH = hasSocle ? (cH - legsH) : cH;
-                            const bodyBottomY = cTopY + bodyH;
-
-                            return (
-                              <g key={ci}>
-                                {/* Zócalo y Patas Regulables bajo el Módulo (Norma ISO/DIN) */}
-                                {hasSocle && legsH > 0 && (
-                                  <g>
-                                    {/* Franja de zócalo continuo bajo el mueble */}
-                                    <rect
-                                      x={cLeftX}
-                                      y={bodyBottomY}
-                                      width={cW}
-                                      height={legsH}
-                                      fill="#e2e8f0"
-                                      stroke="#475569"
-                                      strokeWidth="0.8"
-                                    />
-                                    {/* Patas técnicas retranqueadas */}
-                                    <rect
-                                      x={cLeftX + Math.max(2.5, cW * 0.08)}
-                                      y={bodyBottomY}
-                                      width={Math.max(2, cW * 0.04)}
-                                      height={legsH}
-                                      fill="#94a3b8"
-                                      stroke="#475569"
-                                      strokeWidth="0.4"
-                                    />
-                                    <rect
-                                      x={cLeftX + cW - Math.max(2.5, cW * 0.08) - Math.max(2, cW * 0.04)}
-                                      y={bodyBottomY}
-                                      width={Math.max(2, cW * 0.04)}
-                                      height={legsH}
-                                      fill="#94a3b8"
-                                      stroke="#475569"
-                                      strokeWidth="0.4"
-                                    />
-                                  </g>
-                                )}
-
-                                {/* Caja Principal del Módulo (Casco) */}
-                                <rect
-                                  x={cLeftX}
-                                  y={cTopY}
-                                  width={cW}
-                                  height={bodyH}
-                                  fill="#ffffff"
-                                  stroke="#0f172a"
-                                  strokeWidth="1.2"
-                                />
-
-                              {/* Si es Base: Cubierta Superior (+0.90) con Respaldo en Rojo */}
-                              {isBase && (
-                                <g>
-                                  <rect
-                                    x={cLeftX - 1}
-                                    y={cTopY - 4}
-                                    width={cW + 2}
-                                    height={4}
-                                    fill="#fecdd3"
-                                    stroke="#e11d48"
-                                    strokeWidth="0.8"
-                                  />
-                                </g>
-                              )}
-
-                              {/* Detalles de Frentes / Puertas / Cajones sobre el cuerpo del mueble */}
-                              {cab.variant === '4_drawers' ? (
-                                <g stroke="#0f172a" strokeWidth="0.7">
-                                  <line x1={cLeftX} y1={cTopY + bodyH * 0.25} x2={cLeftX + cW} y2={cTopY + bodyH * 0.25} />
-                                  <line x1={cLeftX} y1={cTopY + bodyH * 0.5} x2={cLeftX + cW} y2={cTopY + bodyH * 0.5} />
-                                  <line x1={cLeftX} y1={cTopY + bodyH * 0.75} x2={cLeftX + cW} y2={cTopY + bodyH * 0.75} />
-                                </g>
-                              ) : cab.variant === '2_pot_drawers' ? (
-                                <g stroke="#0f172a" strokeWidth="0.7">
-                                  <line x1={cLeftX} y1={cTopY + bodyH * 0.5} x2={cLeftX + cW} y2={cTopY + bodyH * 0.5} />
-                                </g>
-                              ) : cab.variant === '2_doors' || cab.variant === 'wall_2_doors' || cab.variant === 'tall_2_doors' ? (
-                                <g stroke="#0f172a" strokeWidth="0.7">
-                                  <line x1={cLeftX + cW / 2} y1={cTopY} x2={cLeftX + cW / 2} y2={bodyBottomY} />
-                                  {/* Diagonales de apertura */}
-                                  <path d={`M ${cLeftX} ${cTopY + bodyH / 2} L ${cLeftX + cW / 2} ${cTopY} L ${cLeftX + cW / 2} ${bodyBottomY} Z`} fill="none" stroke="#c026d3" strokeWidth="0.6" />
-                                  <path d={`M ${cLeftX + cW} ${cTopY + bodyH / 2} L ${cLeftX + cW / 2} ${cTopY} L ${cLeftX + cW / 2} ${bodyBottomY} Z`} fill="none" stroke="#c026d3" strokeWidth="0.6" />
-                                </g>
-                              ) : isTall ? (
-                                <g stroke="#0f172a" strokeWidth="0.7">
-                                  <line x1={cLeftX} y1={cTopY + bodyH * 0.3} x2={cLeftX + cW} y2={cTopY + bodyH * 0.3} />
-                                  <line x1={cLeftX} y1={cTopY + bodyH * 0.7} x2={cLeftX + cW} y2={cTopY + bodyH * 0.7} />
-                                </g>
-                              ) : (
-                                <g>
-                                  {/* Puerta 1 hoja con diagonal */}
-                                  <path d={`M ${cLeftX} ${cTopY + bodyH / 2} L ${cLeftX + cW} ${cTopY} L ${cLeftX + cW} ${bodyBottomY} Z`} fill="none" stroke="#c026d3" strokeWidth="0.6" />
-                                </g>
-                              )}
-
-                              {/* Cota de Ancho del Módulo */}
-                              <g stroke="#000" strokeWidth="0.6">
-                                <line x1={cLeftX} y1={cTopY - 6} x2={cLeftX + cW} y2={cTopY - 6} />
-                                <line x1={cLeftX} y1={cTopY - 10} x2={cLeftX} y2={cTopY - 2} />
-                                <line x1={cLeftX + cW} y1={cTopY - 10} x2={cLeftX + cW} y2={cTopY - 2} />
-                                <text x={cLeftX + cW / 2} y={cTopY - 8} fontSize="7" fontWeight="bold" fill="#000" stroke="none" textAnchor="middle">
-                                  {cItem.widthMm}
+                              {/* Símbolo de Muro / Vista (Ⓐ, Ⓑ, Ⓒ...) */}
+                              <g transform={`translate(${mx - normX * 13}, ${my - normY * 13})`}>
+                                <circle cx="0" cy="0" r="6.5" fill="#ffffff" stroke="#16a34a" strokeWidth="1.2" />
+                                <text x="0" y="2.5" fontSize="7" fontWeight="bold" fill="#16a34a" textAnchor="middle">
+                                  {wall.label}
                                 </text>
                               </g>
                             </g>
                           );
-                        })}
+                        });
+                      })()}
 
-                        {/* Cota de Altura Total Muro a la Izquierda (h=2200) */}
-                        <g stroke="#c026d3" strokeWidth="0.7">
-                          <line x1={wallStartX - 10} y1={groundY} x2={wallStartX - 10} y2={groundY - 2200 * elevScale} />
-                          <line x1={wallStartX - 14} y1={groundY} x2={wallStartX - 6} y2={groundY} />
-                          <line x1={wallStartX - 14} y1={groundY - 2200 * elevScale} x2={wallStartX - 6} y2={groundY - 2200 * elevScale} />
-                          <text
-                            x={wallStartX - 16}
-                            y={groundY - 1100 * elevScale}
-                            fontSize="7.5"
-                            fontWeight="bold"
-                            fill="#c026d3"
-                            stroke="none"
-                            textAnchor="middle"
-                            transform={`rotate(-90 ${wallStartX - 16} ${groundY - 1100 * elevScale})`}
-                          >
-                            2200
-                          </text>
-                        </g>
+                      {/* Módulos en Planta con Sub-Cotas y Diagonales ISO */}
+                      {realCabinets.map((cab, cIdx) => {
+                        const box = getCabinetBox2D(cab);
+                        const svgCorners = box.corners.map(([cx, cz]) => [toSvgX(cx), toSvgY(cz)]);
+                        const pointsStr = svgCorners.map(([sx, sy]) => `${sx},${sy}`).join(' ');
 
-                        {/* Cota de Altura de Zócalo a la Izquierda */}
-                        <g stroke="#475569" strokeWidth="0.6">
-                          <line x1={wallStartX - 3} y1={groundY} x2={wallStartX - 3} y2={groundY - socleScaleH} />
-                          <line x1={wallStartX - 5.5} y1={groundY} x2={wallStartX - 0.5} y2={groundY} />
-                          <line x1={wallStartX - 5.5} y1={groundY - socleScaleH} x2={wallStartX - 0.5} y2={groundY - socleScaleH} />
-                          <text
-                            x={wallStartX - 6}
-                            y={groundY - socleScaleH / 2 + 2}
-                            fontSize="5.5"
-                            fontWeight="bold"
-                            fill="#334155"
-                            stroke="none"
-                            textAnchor="end"
-                          >
-                            {socleHMm}
-                          </text>
-                        </g>
+                        const isWall = cab.type === 'wall';
+                        const isTall = cab.type === 'tall';
+                        const isIsland = cab.type === 'island';
+                        const centerSvgX = toSvgX(cab.position[0]);
+                        const centerSvgY = toSvgY(cab.position[2]);
 
-                        {/* Indicador de Nivel +0.90 Cubierta y Nivel Zócalo */}
-                        <text x={wallStartX + wallDrawW + 6} y={groundY - 900 * elevScale + 3} fontSize="6" fill="#e11d48" fontWeight="bold">
-                          +0.90
-                        </text>
-                        <text x={wallStartX + wallDrawW + 6} y={groundY - socleScaleH + 2} fontSize="5" fill="#475569" fontWeight="bold">
-                          +{(socleHMm / 1000).toFixed(2)}
-                        </text>
+                        let label = `M.B ${Math.round(cab.width * 10)}`;
+                        if (isWall) label = `M.A ${Math.round(cab.width * 10)}`;
+                        else if (cab.type === 'closet' || cab.variant?.startsWith('closet_')) label = `CLÓSET ${Math.round(cab.width * 10)}`;
+                        else if (isTall) label = `TORRE ${Math.round(cab.width * 10)}`;
+                        else if (isIsland) label = `ISLA ${Math.round(cab.width * 10)}`;
+                        else if (cab.variant === '4_drawers' || cab.variant === '2_pot_drawers') label = `CAJ ${Math.round(cab.width * 10)}`;
 
-                        {/* Cota de Largo Total del Muro Inferior */}
-                        <g stroke="#000" strokeWidth="0.7">
-                          <line x1={wallStartX} y1={groundY + 18} x2={wallStartX + wallDrawW} y2={groundY + 18} />
-                          <line x1={wallStartX} y1={groundY + 14} x2={wallStartX} y2={groundY + 22} />
-                          <line x1={wallStartX + wallDrawW} y1={groundY + 14} x2={wallStartX + wallDrawW} y2={groundY + 22} />
-                          <text x={wallStartX + wallDrawW / 2} y={groundY + 28} fontSize="7.5" fontWeight="bold" fill="#000" stroke="none" textAnchor="middle">
-                            {wallLenMm}
-                          </text>
-                        </g>
-                      </svg>
-                    </div>
+                        return (
+                          <g key={cIdx}>
+                            <polygon
+                              points={pointsStr}
+                              fill={isWall ? '#ffffff' : (isTall || cab.type === 'closet') ? '#f8fafc' : '#ffffff'}
+                              stroke={isWall ? '#64748b' : '#0f172a'}
+                              strokeWidth={isWall ? '1' : '1.3'}
+                              strokeDasharray={isWall ? '3,2' : undefined}
+                            />
 
-                    <div className="text-[7px] text-slate-500 border-t border-slate-100 pt-0.5 flex justify-between">
-                      <span>Zócalo H={socleHMm} mm | Murales con puertas y anclajes</span>
-                      <span className="font-bold text-slate-700">Costados {getColorName(state.doorColor)}</span>
-                    </div>
+                            {(isTall || cab.type === 'closet' || cab.variant?.startsWith('closet_')) && svgCorners.length === 4 && (
+                              <g stroke="#94a3b8" strokeWidth="0.6" strokeDasharray="2,2">
+                                <line x1={svgCorners[0][0]} y1={svgCorners[0][1]} x2={svgCorners[2][0]} y2={svgCorners[2][1]} />
+                                <line x1={svgCorners[1][0]} y1={svgCorners[1][1]} x2={svgCorners[3][0]} y2={svgCorners[3][1]} />
+                              </g>
+                            )}
+
+                            <text
+                              x={centerSvgX}
+                              y={centerSvgY + 2.5}
+                              fontSize="6.5"
+                              fontWeight="bold"
+                              fill={isWall ? '#64748b' : '#16a34a'}
+                              textAnchor="middle"
+                            >
+                              {label}
+                            </text>
+                          </g>
+                        );
+                      })}
+                    </svg>
                   </div>
-                );
-              });
-            })()}
+                </div>
+
+                {/* 4. VISTA ISOMÉTRICA 3D / RENDER CONFIGURADOR */}
+                <div className="col-span-5 border border-slate-300 p-2 rounded flex flex-col justify-between bg-white relative h-full overflow-hidden">
+                  <div className="flex justify-between items-center mb-1 border-b border-slate-200 pb-0.5 shrink-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-4 h-4 rounded-full bg-slate-900 text-white font-bold text-[8px] flex items-center justify-center">4</span>
+                      <span className="text-[8.5px] font-black text-slate-900 tracking-wider uppercase">
+                        VISTA 3D PERSPECTIVA CONFIGURADOR
+                      </span>
+                    </div>
+                    <span className="text-[7.5px] font-mono text-slate-500">{realCabinets.length} MÓDULOS</span>
+                  </div>
+
+                  <div className="flex-1 flex items-center justify-center overflow-hidden">
+                    {snapshot3D ? (
+                      <div className="w-full h-full flex items-center justify-center p-0.5 bg-slate-50/40 rounded overflow-hidden">
+                        <img
+                          src={snapshot3D}
+                          alt="Vista 3D Real del Configurador"
+                          className="max-h-[250px] w-auto max-w-full object-contain rounded select-none"
+                        />
+                      </div>
+                    ) : (
+                      <svg viewBox={`0 0 ${isoSvgW} ${isoSvgH}`} className="w-full h-full max-h-[250px]">
+                      {/* Suelo en perspectiva isométrica */}
+                      {vertices.length >= 3 && (
+                        <polygon
+                          points={vertices.map(v => {
+                            const p = toIsoSvg(v.x, 0, v.y);
+                            return `${p.x},${p.y}`;
+                          }).join(' ')}
+                          fill="#f8fafc"
+                          stroke="#cbd5e1"
+                          strokeWidth="1.2"
+                        />
+                      )}
+
+                      {/* Muros de Fondo en perspectiva isométrica (Muro A y Muro D) */}
+                      {(() => {
+                        const wallA = wallSegments[0];
+                        const wallD = wallSegments[wallSegments.length - 1];
+                        return (
+                          <g>
+                            {wallA && (() => {
+                              const p1 = toIsoSvg(wallA.start.x, 0, wallA.start.y);
+                              const p2 = toIsoSvg(wallA.end.x, 0, wallA.end.y);
+                              const p3 = toIsoSvg(wallA.end.x, 240, wallA.end.y);
+                              const p4 = toIsoSvg(wallA.start.x, 240, wallA.start.y);
+                              return (
+                                <polygon
+                                  points={`${p1.x},${p1.y} ${p2.x},${p2.y} ${p3.x},${p3.y} ${p4.x},${p4.y}`}
+                                  fill="#f1f5f9"
+                                  stroke="#cbd5e1"
+                                  strokeWidth="0.8"
+                                />
+                              );
+                            })()}
+                            {wallD && (() => {
+                              const p1 = toIsoSvg(wallD.start.x, 0, wallD.start.y);
+                              const p2 = toIsoSvg(wallD.end.x, 0, wallD.end.y);
+                              const p3 = toIsoSvg(wallD.end.x, 240, wallD.end.y);
+                              const p4 = toIsoSvg(wallD.start.x, 240, wallD.start.y);
+                              return (
+                                <polygon
+                                  points={`${p1.x},${p1.y} ${p2.x},${p2.y} ${p3.x},${p3.y} ${p4.x},${p4.y}`}
+                                  fill="#e2e8f0"
+                                  stroke="#cbd5e1"
+                                  strokeWidth="0.8"
+                                />
+                              );
+                            })()}
+                          </g>
+                        );
+                      })()}
+
+                      {/* Módulos 3D Isométricos ordenados de atrás hacia adelante */}
+                      {(() => {
+                        const sortedCabs = [...realCabinets].sort((a, b) => {
+                          return (a.position[0] + a.position[2]) - (b.position[0] + b.position[2]);
+                        });
+
+                        return sortedCabs.map((cab, idx) => {
+                          const isBase = cab.type === 'base' || cab.type === 'island';
+                          const isTall = cab.type === 'tall';
+                          const isWall = cab.type === 'wall';
+                          const hasSocle = isBase || isTall;
+
+                          const isTerminalShelves = cab.variant === 'tall_terminal_shelves' || cab.variant === 'tall_open';
+                          const isOvenTower = isTall && (cab.variant?.includes('oven') || cab.variant === 'tall_oven_micro' || cab.variant === 'tall_oven_vent');
+
+                          const box = getCabinetBox2D(cab);
+                          const isRotated = Math.abs(Number(cab.rotation) || 0) > 0.1;
+                          let x0 = cab.position[0] - cab.width / 2;
+                          let x1 = cab.position[0] + cab.width / 2;
+                          let z0 = cab.position[2] - cab.depth / 2;
+                          let z1 = cab.position[2] + cab.depth / 2;
+
+                          if (isRotated && box.corners.length === 4) {
+                            x0 = Math.min(...box.corners.map(c => c[0]));
+                            x1 = Math.max(...box.corners.map(c => c[0]));
+                            z0 = Math.min(...box.corners.map(c => c[1]));
+                            z1 = Math.max(...box.corners.map(c => c[1]));
+                          }
+
+                          const yFloor = cab.position[1] - cab.height / 2;
+                          const yTop = cab.position[1] + cab.height / 2;
+                          const yBodyBottom = hasSocle ? (yFloor + 10) : yFloor;
+
+                          // 8 vértices isométricos del cuerpo
+                          const b00 = toIsoSvg(x0, yBodyBottom, z0);
+                          const b10 = toIsoSvg(x1, yBodyBottom, z0);
+                          const b11 = toIsoSvg(x1, yBodyBottom, z1);
+                          const b01 = toIsoSvg(x0, yBodyBottom, z1);
+
+                          const t00 = toIsoSvg(x0, yTop, z0);
+                          const t10 = toIsoSvg(x1, yTop, z0);
+                          const t11 = toIsoSvg(x1, yTop, z1);
+                          const t01 = toIsoSvg(x0, yTop, z1);
+
+                          const hConfig = cab.handleConfig || kState.handleConfig;
+                          const isGolaActive = kState.golaSystem !== 'none';
+                          const showHandle = !isTerminalShelves && !isGolaActive && hConfig && hConfig.model !== 'none';
+
+                          return (
+                            <g key={`iso-cab-${idx}`}>
+                              {/* Zócalo isométrico */}
+                              {hasSocle && (
+                                <g>
+                                  <polygon
+                                    points={`${toIsoSvg(x0, yFloor, z1).x},${toIsoSvg(x0, yFloor, z1).y} ${toIsoSvg(x1, yFloor, z1).x},${toIsoSvg(x1, yFloor, z1).y} ${b11.x},${b11.y} ${b01.x},${b01.y}`}
+                                    fill="#cbd5e1"
+                                    stroke="#475569"
+                                    strokeWidth="0.6"
+                                  />
+                                </g>
+                              )}
+
+                              {/* Cara Lateral Derecha (Visible en Isométrica) */}
+                              <polygon
+                                points={`${b01.x},${b01.y} ${b11.x},${b11.y} ${t11.x},${t11.y} ${t01.x},${t01.y}`}
+                                fill={isTerminalShelves ? '#f8fafc' : '#ffffff'}
+                                stroke="#0f172a"
+                                strokeWidth="0.9"
+                              />
+
+                              {/* Repisas visibles en la cara lateral abierta si es Torre Terminal */}
+                              {isTerminalShelves && (
+                                <g stroke="#0f172a" strokeWidth="0.8">
+                                  {[1, 2, 3, 4, 5].map(sIdx => {
+                                    const yS = yBodyBottom + (cab.height - 10) * (sIdx / 6);
+                                    const ps0 = toIsoSvg(x0, yS, z1);
+                                    const ps1 = toIsoSvg(x1, yS, z1);
+                                    return <line key={`iso-term-sh-${sIdx}`} x1={ps0.x} y1={ps0.y} x2={ps1.x} y2={ps1.y} />;
+                                  })}
+                                </g>
+                              )}
+
+                              {/* Cara Frontal (Frentes de Puertas / Cajones / Panel Lateral si es Perpendicular) */}
+                              <polygon
+                                points={`${b00.x},${b00.y} ${b01.x},${b01.y} ${t01.x},${t01.y} ${t00.x},${t00.y}`}
+                                fill="#f8fafc"
+                                stroke="#0f172a"
+                                strokeWidth="1.1"
+                              />
+
+                              {/* Cara Superior / Cubierta de Trabajo */}
+                              <polygon
+                                points={`${t00.x},${t00.y} ${t10.x},${t10.y} ${t11.x},${t11.y} ${t01.x},${t01.y}`}
+                                fill={isBase ? '#fecdd3' : '#f1f5f9'}
+                                stroke={isBase ? '#e11d48' : '#0f172a'}
+                                strokeWidth={isBase ? '1.2' : '0.8'}
+                              />
+
+                              {/* Detalles de Frentes en cara frontal */}
+                              {cab.variant === '4_drawers' && (
+                                <g stroke="#0f172a" strokeWidth="0.6">
+                                  {[1, 2, 3].map(di => {
+                                    const yD = yBodyBottom + (cab.height - 10) * (di / 4);
+                                    const pd0 = toIsoSvg(x0, yD, z0);
+                                    const pd1 = toIsoSvg(x0, yD, z1);
+                                    return <line key={di} x1={pd0.x} y1={pd0.y} x2={pd1.x} y2={pd1.y} />;
+                                  })}
+                                </g>
+                              )}
+                              {(cab.variant === '2_pot_drawers' || cab.variant === 'sink_u_drawer') && (
+                                <g stroke="#0f172a" strokeWidth="0.6">
+                                  {(() => {
+                                    const yD = yBodyBottom + (cab.height - 10) / 2;
+                                    const pd0 = toIsoSvg(x0, yD, z0);
+                                    const pd1 = toIsoSvg(x0, yD, z1);
+                                    return <line x1={pd0.x} y1={pd0.y} x2={pd1.x} y2={pd1.y} />;
+                                  })()}
+                                </g>
+                              )}
+                              {cab.variant === 'tall_split_2_doors' && (
+                                <g stroke="#0f172a" strokeWidth="0.7">
+                                  {(() => {
+                                    const ySplit = yBodyBottom + 70;
+                                    const pd0 = toIsoSvg(x0, ySplit, z0);
+                                    const pd1 = toIsoSvg(x0, ySplit, z1);
+                                    return <line x1={pd0.x} y1={pd0.y} x2={pd1.x} y2={pd1.y} strokeDasharray="3,2" />;
+                                  })()}
+                                </g>
+                              )}
+                              {isOvenTower && (
+                                <g stroke="#0f172a" strokeWidth="0.8">
+                                  {(() => {
+                                    const yOven1 = yBodyBottom + 70;
+                                    const yOven2 = yOven1 + 60;
+                                    const yMicro2 = yOven2 + 38;
+                                    const po1_0 = toIsoSvg(x0, yOven1, z0);
+                                    const po1_1 = toIsoSvg(x0, yOven1, z1);
+                                    const po2_0 = toIsoSvg(x0, yOven2, z0);
+                                    const po2_1 = toIsoSvg(x0, yOven2, z1);
+                                    const pm2_0 = toIsoSvg(x0, yMicro2, z0);
+                                    const pm2_1 = toIsoSvg(x0, yMicro2, z1);
+                                    return (
+                                      <>
+                                        <line x1={po1_0.x} y1={po1_0.y} x2={po1_1.x} y2={po1_1.y} />
+                                        <line x1={po2_0.x} y1={po2_0.y} x2={po2_1.x} y2={po2_1.y} />
+                                        <line x1={pm2_0.x} y1={pm2_0.y} x2={pm2_1.x} y2={pm2_1.y} />
+                                      </>
+                                    );
+                                  })()}
+                                </g>
+                              )}
+                              {(cab.variant === '2_doors' || cab.variant === 'wall_2_doors' || cab.variant === 'tall_2_doors') && (
+                                <g stroke="#0f172a" strokeWidth="0.7">
+                                  {(() => {
+                                    const midZ = (z0 + z1) / 2;
+                                    const pd0 = toIsoSvg(x0, yBodyBottom, midZ);
+                                    const pd1 = toIsoSvg(x0, yTop, midZ);
+                                    return <line x1={pd0.x} y1={pd0.y} x2={pd1.x} y2={pd1.y} />;
+                                  })()}
+                                </g>
+                              )}
+
+                              {/* Tiradores isométricos (nunca en repisas terminales) */}
+                              {showHandle && (
+                                <g stroke="#0f172a" strokeWidth="1.2">
+                                  {(() => {
+                                    const hY = isWall ? (yBodyBottom + 12) : isTall ? (yBodyBottom + 85) : (yTop - 12);
+                                    const hz = z1 - 6;
+                                    const ph1 = toIsoSvg(x0, hY - 3, hz);
+                                    const ph2 = toIsoSvg(x0, hY + 3, hz);
+                                    return <line x1={ph1.x} y1={ph1.y} x2={ph2.x} y2={ph2.y} />;
+                                  })()}
+                                </g>
+                              )}
+
+                              {/* Etiqueta de Ancho o Nombre Técnico */}
+                              <text
+                                x={(t00.x + t11.x) / 2}
+                                y={(t00.y + t11.y) / 2}
+                                fontSize="5.5"
+                                fontWeight="bold"
+                                fill="#0f172a"
+                                textAnchor="middle"
+                              >
+                                {isTerminalShelves ? 'REPISAS' : Math.round(cab.width * 10)}
+                              </text>
+                            </g>
+                          );
+                        });
+                      })()}
+                    </svg>
+                    )}
+                  </div>
+                </div>
+
+                {/* 3. VISTA ELEVACIÓN LATERAL (CORTE / PERFIL TÉCNICO A-A') */}
+                <div className="col-span-3 border border-slate-300 p-2 rounded flex flex-col justify-between bg-white relative h-full overflow-hidden">
+                  <div className="flex justify-between items-center mb-1 border-b border-slate-200 pb-0.5 shrink-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-4 h-4 rounded-full bg-slate-900 text-white font-bold text-[8px] flex items-center justify-center">3</span>
+                      <span className="text-[8.5px] font-black text-slate-900 tracking-wider uppercase">
+                        VISTA LATERAL
+                      </span>
+                    </div>
+                    <span className="text-[7.5px] font-mono text-slate-500">CORTE A-A'</span>
+                  </div>
+
+                  <div className="flex-1 flex items-center justify-center overflow-hidden py-1">
+                    {(() => {
+                      const latW = 350;
+                      const latH = 280;
+                      const groundY = latH - 35;
+                      const scale = (groundY - 25) / 2400; // ~0.091 px/mm
+
+                      const hasIsland = realCabinets.some(c => c.type === 'island');
+                      const wallX = hasIsland ? 30 : 65;
+                      const wallThick = 15;
+                      const baseDepth = 600 * scale;
+                      const baseH = 780 * scale;
+                      const socleH = 100 * scale;
+                      const socleRecess = 50 * scale;
+                      const topOverhang = 25 * scale;
+                      const topH = 20 * scale;
+
+                      const wallCabDepth = 350 * scale;
+                      const wallCabH = 700 * scale;
+                      const wallCabY = groundY - 2200 * scale;
+
+                      const islandGapMm = 950;
+                      const islandX = wallX + baseDepth + topOverhang + islandGapMm * scale;
+                      const islandDepth = 600 * scale;
+
+                      return (
+                        <svg viewBox={`0 0 ${latW} ${latH}`} className="w-full h-full max-h-[250px]">
+                          {/* Línea de Suelo (+0.00) */}
+                          <line x1="15" y1={groundY} x2={latW - 15} y2={groundY} stroke="#0f172a" strokeWidth="1.2" />
+                          <text x="18" y={groundY + 11} fontSize="6.5" fill="#64748b" fontWeight="bold">0.00 N.P.T.</text>
+
+                          {/* Muro Seccionado con Rayado de Albañilería ISO */}
+                          <rect
+                            x={wallX - wallThick}
+                            y={groundY - 2350 * scale}
+                            width={wallThick}
+                            height={2350 * scale}
+                            fill="#f1f5f9"
+                            stroke="#334155"
+                            strokeWidth="1"
+                          />
+                          {/* Tramas diagonales de muro seccionado */}
+                          {Array.from({ length: 14 }).map((_, i) => {
+                            const yP = groundY - 2300 * scale + i * (160 * scale);
+                            return (
+                              <line
+                                key={`hatch-${i}`}
+                                x1={wallX - wallThick}
+                                y1={yP}
+                                x2={wallX}
+                                y2={yP - 10}
+                                stroke="#94a3b8"
+                                strokeWidth="0.6"
+                              />
+                            );
+                          })}
+
+                          {/* Perfil Fantasma Torre Despensa (F=600, H=2200) */}
+                          <rect
+                            x={wallX}
+                            y={groundY - 2200 * scale}
+                            width={baseDepth}
+                            height={2100 * scale}
+                            fill="none"
+                            stroke="#cbd5e1"
+                            strokeWidth="0.8"
+                            strokeDasharray="3,3"
+                          />
+                          <text
+                            x={wallX + baseDepth / 2}
+                            y={groundY - 1850 * scale}
+                            fontSize="5.5"
+                            fill="#94a3b8"
+                            fontWeight="bold"
+                            textAnchor="middle"
+                          >
+                            LÍNEA TORRE (F=600)
+                          </text>
+
+                          {/* Zócalo y Pata Regulable Retranqueada */}
+                          <rect
+                            x={wallX + socleRecess}
+                            y={groundY - socleH}
+                            width={baseDepth - socleRecess}
+                            height={socleH}
+                            fill="#e2e8f0"
+                            stroke="#475569"
+                            strokeWidth="0.8"
+                          />
+                          <rect
+                            x={wallX + socleRecess + 6}
+                            y={groundY - socleH}
+                            width={6}
+                            height={socleH}
+                            fill="#94a3b8"
+                            stroke="#475569"
+                            strokeWidth="0.4"
+                          />
+
+                          {/* Cuerpo Módulo Base (F=600, H=780) */}
+                          <rect
+                            x={wallX}
+                            y={groundY - socleH - baseH}
+                            width={baseDepth}
+                            height={baseH}
+                            fill="#ffffff"
+                            stroke="#0f172a"
+                            strokeWidth="1.2"
+                          />
+                          {/* Puerta frontal en lateral derecho */}
+                          <line
+                            x1={wallX + baseDepth}
+                            y1={groundY - socleH - baseH}
+                            x2={wallX + baseDepth}
+                            y2={groundY - socleH}
+                            stroke="#0f172a"
+                            strokeWidth="1.4"
+                          />
+                          {/* Tirador perfil en extremo superior */}
+                          <rect
+                            x={wallX + baseDepth}
+                            y={groundY - socleH - baseH + 4}
+                            width={3}
+                            height={12}
+                            fill="#0f172a"
+                            rx={0.5}
+                          />
+
+                          {/* Cubierta de Trabajo (+0.90) con Voladizo de 25mm */}
+                          <rect
+                            x={wallX}
+                            y={groundY - 900 * scale}
+                            width={baseDepth + topOverhang}
+                            height={topH}
+                            fill="#fecdd3"
+                            stroke="#e11d48"
+                            strokeWidth="1"
+                          />
+                          <text
+                            x={wallX + (baseDepth + topOverhang) / 2}
+                            y={groundY - 900 * scale - 4}
+                            fontSize="5.5"
+                            fill="#e11d48"
+                            fontWeight="bold"
+                            textAnchor="middle"
+                          >
+                            CUBIERTA 625 mm
+                          </text>
+
+                          {/* Espacio Entre-Mueble (600 mm libre) */}
+                          <g stroke="#94a3b8" strokeWidth="0.6">
+                            <line x1={wallX + 10} y1={groundY - 900 * scale} x2={wallX + 10} y2={groundY - 1500 * scale} strokeDasharray="2,2" />
+                            <line x1={wallX + 6} y1={groundY - 900 * scale} x2={wallX + 14} y2={groundY - 900 * scale} />
+                            <line x1={wallX + 6} y1={groundY - 1500 * scale} x2={wallX + 14} y2={groundY - 1500 * scale} />
+                            <text
+                              x={wallX + 18}
+                              y={groundY - 1200 * scale + 2}
+                              fontSize="5.5"
+                              fill="#64748b"
+                              fontWeight="bold"
+                            >
+                              600
+                            </text>
+                          </g>
+
+                          {/* Módulo Mural / Aéreo (F=350, H=700) */}
+                          <rect
+                            x={wallX}
+                            y={wallCabY}
+                            width={wallCabDepth}
+                            height={wallCabH}
+                            fill="#ffffff"
+                            stroke="#0f172a"
+                            strokeWidth="1.2"
+                          />
+                          <line
+                            x1={wallX + wallCabDepth}
+                            y1={wallCabY}
+                            x2={wallX + wallCabDepth}
+                            y2={wallCabY + wallCabH}
+                            stroke="#0f172a"
+                            strokeWidth="1.4"
+                          />
+                          {/* Tirador en extremo inferior del aéreo */}
+                          <rect
+                            x={wallX + wallCabDepth}
+                            y={wallCabY + wallCabH - 16}
+                            width={3}
+                            height={12}
+                            fill="#0f172a"
+                            rx={0.5}
+                          />
+
+                          {/* Cotas de Profundidad Normadas (Superior e Inferior) */}
+                          {/* Cota Mural (350) */}
+                          <g stroke="#000" strokeWidth="0.6">
+                            <line x1={wallX} y1={wallCabY - 6} x2={wallX + wallCabDepth} y2={wallCabY - 6} />
+                            <line x1={wallX} y1={wallCabY - 10} x2={wallX} y2={wallCabY - 2} />
+                            <line x1={wallX + wallCabDepth} y1={wallCabY - 10} x2={wallX + wallCabDepth} y2={wallCabY - 2} />
+                            <text x={wallX + wallCabDepth / 2} y={wallCabY - 8} fontSize="6" fontWeight="bold" fill="#000" stroke="none" textAnchor="middle">
+                              350
+                            </text>
+                          </g>
+
+                          {/* Cota Base (600) */}
+                          <g stroke="#000" strokeWidth="0.6">
+                            <line x1={wallX} y1={groundY + 16} x2={wallX + baseDepth} y2={groundY + 16} />
+                            <line x1={wallX} y1={groundY + 12} x2={wallX} y2={groundY + 20} />
+                            <line x1={wallX + baseDepth} y1={groundY + 12} x2={wallX + baseDepth} y2={groundY + 20} />
+                            <text x={wallX + baseDepth / 2} y={groundY + 24} fontSize="6.5" fontWeight="bold" fill="#000" stroke="none" textAnchor="middle">
+                              600
+                            </text>
+                          </g>
+
+                          {/* SECCIÓN ISLA CENTRAL (SI EXISTEN MUEBLES ISLA) */}
+                          {hasIsland && (
+                            <g>
+                              {/* Zócalo y Patas Isla */}
+                              <rect
+                                x={islandX + socleRecess}
+                                y={groundY - socleH}
+                                width={islandDepth - socleRecess * 2}
+                                height={socleH}
+                                fill="#e2e8f0"
+                                stroke="#475569"
+                                strokeWidth="0.8"
+                              />
+                              <rect
+                                x={islandX + socleRecess + 6}
+                                y={groundY - socleH}
+                                width={6}
+                                height={socleH}
+                                fill="#94a3b8"
+                                stroke="#475569"
+                                strokeWidth="0.4"
+                              />
+                              <rect
+                                x={islandX + islandDepth - socleRecess - 12}
+                                y={groundY - socleH}
+                                width={6}
+                                height={socleH}
+                                fill="#94a3b8"
+                                stroke="#475569"
+                                strokeWidth="0.4"
+                              />
+
+                              {/* Cuerpo Módulo Isla (F=600, H=780) */}
+                              <rect
+                                x={islandX}
+                                y={groundY - socleH - baseH}
+                                width={islandDepth}
+                                height={baseH}
+                                fill="#ffffff"
+                                stroke="#0f172a"
+                                strokeWidth="1.2"
+                              />
+                              <line
+                                x1={islandX + islandDepth}
+                                y1={groundY - socleH - baseH}
+                                x2={islandX + islandDepth}
+                                y2={groundY - socleH}
+                                stroke="#0f172a"
+                                strokeWidth="1.4"
+                              />
+                              <rect
+                                x={islandX + islandDepth}
+                                y={groundY - socleH - baseH + 4}
+                                width={3}
+                                height={12}
+                                fill="#0f172a"
+                                rx={0.5}
+                              />
+                              <text
+                                x={islandX + islandDepth / 2}
+                                y={groundY - socleH - baseH / 2}
+                                fontSize="5.5"
+                                fill="#64748b"
+                                fontWeight="bold"
+                                textAnchor="middle"
+                              >
+                                ISLA
+                              </text>
+
+                              {/* Cubierta Isla (+0.90) con Voladizo */}
+                              <rect
+                                x={islandX - topOverhang}
+                                y={groundY - 900 * scale}
+                                width={islandDepth + topOverhang * 2}
+                                height={topH}
+                                fill="#fecdd3"
+                                stroke="#e11d48"
+                                strokeWidth="1"
+                              />
+
+                              {/* Cota de Profundidad Isla (600) */}
+                              <g stroke="#000" strokeWidth="0.6">
+                                <line x1={islandX} y1={groundY + 16} x2={islandX + islandDepth} y2={groundY + 16} />
+                                <line x1={islandX} y1={groundY + 12} x2={islandX} y2={groundY + 20} />
+                                <line x1={islandX + islandDepth} y1={groundY + 12} x2={islandX + islandDepth} y2={groundY + 20} />
+                                <text x={islandX + islandDepth / 2} y={groundY + 24} fontSize="6.5" fontWeight="bold" fill="#000" stroke="none" textAnchor="middle">
+                                  600
+                                </text>
+                              </g>
+                            </g>
+                          )}
+
+                          {/* Niveles Arquitectónicos a la Derecha */}
+                          {[
+                            { yMm: 2200, label: '+2.20', color: '#0284c7' },
+                            { yMm: 1500, label: '+1.50', color: '#64748b' },
+                            { yMm: 900, label: '+0.90', color: '#e11d48' },
+                            { yMm: 100, label: '+0.10', color: '#475569' },
+                            { yMm: 0, label: '0.00', color: '#0f172a' },
+                          ].map(lvl => {
+                            const yP = groundY - lvl.yMm * scale;
+                            const lxStart = hasIsland ? (islandX + islandDepth + topOverhang + 4) : (wallX + baseDepth + topOverhang + 4);
+                            const lxEnd = lxStart + 10;
+                            return (
+                              <g key={`lvl-${lvl.yMm}`}>
+                                <circle cx={lxStart} cy={yP} r={1} fill={lvl.color} />
+                                <line x1={lxStart} y1={yP} x2={lxEnd} y2={yP} stroke={lvl.color} strokeWidth="0.6" />
+                                <text x={lxEnd + 2} y={yP + 2} fontSize="5" fontWeight="bold" fill={lvl.color}>
+                                  {lvl.label}
+                                </text>
+                              </g>
+                            );
+                          })}
+                        </svg>
+                      );
+                    })()}
+                  </div>
+                </div>
+
+              </div>
+
+              {/* FILA INFERIOR: 2. VISTAS DE ELEVACIONES ARQUITECTÓNICAS (MUROS AMUEBLADOS DIVIDIDOS EN ZONAS ACOTADAS) */}
+              <div className="flex-1 min-h-[350px] border border-slate-300 p-2 rounded flex flex-col justify-between bg-white relative overflow-hidden">
+                {(() => {
+                  const islandCabs = realCabinets.filter(c => c.type === 'island');
+                  const islandTotalWidthMm = islandCabs.reduce((acc, c) => acc + Math.round(c.width * 10), 0);
+                  const sheetWalls = wallsWithCabs.slice(0, 2);
+                  const isStacked = sheetWalls.length > 1;
+
+                  return (
+                    <>
+                      <div className="flex justify-between items-center mb-1 border-b border-slate-200 pb-0.5 shrink-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-4 h-4 rounded-full bg-slate-900 text-white font-bold text-[8px] flex items-center justify-center">2</span>
+                          <div className="flex items-center gap-1">
+                            {sheetWalls.map((wItem, idx) => (
+                              <span key={idx} className="w-3.5 h-3.5 rounded-full border border-green-600 bg-green-50 text-green-700 font-bold text-[7px] flex items-center justify-center">
+                                {wItem.wall.label}
+                              </span>
+                            ))}
+                          </div>
+                          <span className="text-[8.5px] font-black text-slate-900 tracking-wider uppercase">
+                            VISTAS DE ELEVACIÓN Y DETALLE DE MUROS ({sheetWalls.map(w => `MURO ${w.wall.label}`).join(' & ')}{islandCabs.length > 0 ? ' & ELEVACIÓN ISLA' : ''})
+                          </span>
+                        </div>
+                        <span className="text-[7.5px] font-mono text-slate-500">
+                          {sheetWalls.map(w => `L(${w.wall.label}) = ${Math.max(1200, Math.round(w.wall.length * 10))} mm`).join(' | ')} {islandCabs.length > 0 ? `| ISLA = ${islandTotalWidthMm} mm` : ''} | ESCALA UNIFICADA ISO
+                        </span>
+                      </div>
+
+                      <div className="flex-1 flex flex-row gap-2.5 items-stretch overflow-hidden py-0.5">
+                        {sheetWalls.map((wItem, wIdx) => {
+                          const showIsland = wIdx === 0 && islandCabs.length > 0;
+                          return (
+                            <div key={wIdx} className="flex-1 min-w-0 border border-slate-200 p-1.5 rounded flex flex-col justify-between bg-white relative overflow-hidden">
+                              <div className="flex justify-between items-center mb-0.5 border-b border-slate-100 pb-0.5 shrink-0">
+                                <div className="flex items-center gap-1">
+                                  <span className="w-3.5 h-3.5 rounded-full border border-green-600 bg-green-50 text-green-700 font-bold text-[7px] flex items-center justify-center">
+                                    {wItem.wall.label}
+                                  </span>
+                                  <span className="text-[8px] font-black text-slate-900 tracking-wider uppercase">
+                                    ELEVACIÓN MURO {wItem.wall.label} {showIsland ? '+ ISLA' : ''}
+                                  </span>
+                                </div>
+                                <span className="text-[7px] font-mono text-slate-500">
+                                  L = {Math.max(1200, Math.round(wItem.wall.length * 10))} mm
+                                </span>
+                              </div>
+                              <div className="flex-1 flex items-center justify-center overflow-hidden py-0.5">
+                                {renderWallElevationSVG(wItem, showIsland, false)}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+
             </div>
 
             {/* VIÑETA ARQUITECTÓNICA INFERIOR ESTANDARIZADA (EN LA BASE EXACTA DE LA HOJA) */}
@@ -2915,7 +4479,7 @@ export function KitchenBlueprint() {
               pageNum={1} 
               title="PROYECTO COCINA MODULAR ARQUIFY" 
               identTag="PL-01" 
-              customContent="PLANTA GENERAL Y ELEVACIONES" 
+              customContent="PLANTA, FRONTAL, LATERAL E ISOMÉTRICA" 
               sheetType="architectural"
             />
 
@@ -2923,14 +4487,73 @@ export function KitchenBlueprint() {
         );
       })()}
 
+      {/* LÁMINA DE CONTINUACIÓN DE ELEVACIONES DE ARQUITECTURA (SI HAY 3 O MÁS MUROS AMUEBLADOS) */}
+      {extraArchPages > 0 && Array.from({ length: extraArchPages }).map((_, extraIdx) => {
+        const extraWalls = wallsWithCabs.slice(2 + extraIdx * 2, 4 + extraIdx * 2);
+        const pageNum = 2 + extraIdx;
+        const sheetLetter = String.fromCharCode(66 + extraIdx); // B, C...
+
+        return (
+          <div key={`arch-cont-${extraIdx}`} className="blueprint-page border border-black/30 flex flex-col justify-between p-6 pb-28 bg-white relative overflow-hidden font-sans select-none">
+            <div className="flex justify-between items-start h-[34px] border-b-2 border-slate-900 pb-1 mb-1">
+              <div>
+                <div className="text-[14px] font-black text-slate-900 tracking-tight uppercase leading-none font-sans flex items-center gap-2">
+                  <span>PROYECTO COCINA MODULAR ARQUIFY</span>
+                </div>
+                <div className="text-[10px] font-bold text-slate-600 tracking-tight uppercase mt-0.5 leading-none">
+                  LÁMINA 1-{sheetLetter}: ELEVACIONES GENERALES DE ARQUITECTURA ({extraWalls.map(w => `MURO ${w.wall.label}`).join(' & ')})
+                </div>
+              </div>
+              <div className="text-right text-[9px] text-slate-500 font-mono font-medium">
+                <span>ARQUIFY CAD / NORMAS ISO 128 - DIN 68881</span>
+              </div>
+            </div>
+
+            <div className="flex-1 flex flex-row gap-3 mt-1 mb-1 overflow-hidden items-stretch">
+              {extraWalls.map((wItem, wIdx) => (
+                <div key={wIdx} className="flex-1 min-w-0 border border-slate-300 p-2 rounded flex flex-col justify-between bg-white relative">
+                  <div className="flex justify-between items-center mb-1 border-b border-slate-200 pb-0.5 shrink-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-4 h-4 rounded-full bg-slate-900 text-white font-bold text-[8px] flex items-center justify-center">
+                        2.{3 + extraIdx * 2 + wIdx}
+                      </span>
+                      <span className="w-3.5 h-3.5 rounded-full border border-green-600 bg-green-50 text-green-700 font-bold text-[7px] flex items-center justify-center">
+                        {wItem.wall.label}
+                      </span>
+                      <span className="text-[8.5px] font-black text-slate-900 tracking-wider uppercase">
+                        VISTA ELEVACIÓN FRONTAL (MURO {wItem.wall.label})
+                      </span>
+                    </div>
+                    <span className="text-[7.5px] font-mono text-slate-500">
+                      L = {Math.max(1200, Math.round(wItem.wall.length * 10))} mm | ESCALA UNIFICADA ISO
+                    </span>
+                  </div>
+                  <div className="flex-1 flex items-center justify-center overflow-hidden py-1">
+                    {renderWallElevationSVG(wItem, false, false)}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <BlueprintTitleBlock 
+              pageNum={pageNum} 
+              title={`PROYECTO COCINA MODULAR ARQUIFY (ELEVACIONES ${extraWalls.map(w => `MURO ${w.wall.label}`).join(' & ')})`} 
+              identTag={`PL-01${sheetLetter}`} 
+              customContent={`CONTINUACIÓN ELEVACIONES DE ARQUITECTURA (${extraWalls.map(w => `MURO ${w.wall.label}`).join(', ')})`} 
+              sheetType="architectural"
+            />
+          </div>
+        );
+      })}
+
       {/* LÁMINA TÉCNICA DE INSTALACIONES MEP (AGUA, DESAGÜE, GAS, FUERZA) */}
       {hasMepPage && (
-        <KitchenMepBlueprintSheet pageNum={2} />
+        <KitchenMepBlueprintSheet pageNum={2 + extraArchPages} />
       )}
 
       {/* 2. LÁMINAS TÉCNICAS DE FABRICACIÓN POR MÓDULO (Estilo Plano de Referencia) */}
       {printPages.map((page, pIdx) => {
-        const pageNum = pIdx + 2 + mepPagesCount;
+        const pageNum = pIdx + 2 + extraArchPages + mepPagesCount;
         const cab = page.cab;
 
         // Escala consistente para el despiece de piezas del módulo
@@ -3147,7 +4770,7 @@ export function KitchenBlueprint() {
 
       {/* 3. PLANOS DE OPTIMIZACIÓN DE CORTE (NESTING) */}
       {boardResults.map((board, bIndex) => {
-        const pageNum = 1 + mepPagesCount + printPages.length + bIndex + 1;
+        const pageNum = 1 + extraArchPages + mepPagesCount + printPages.length + bIndex + 1;
 
         return (
           <div key={'board-' + bIndex} className="blueprint-page border border-black/10 flex flex-col justify-between p-8 pb-32 bg-white relative">
@@ -3259,7 +4882,7 @@ export function KitchenBlueprint() {
 
       {/* 3.1. PLANOS DE OPTIMIZACIÓN DE CORTE EN PLANCHA QSTONE (3200 x 1600 mm) */}
       {kState.countertopConfig?.enabled && ctBOM && ctBOM.slabsLayout.map((slab, sIndex) => {
-        const pageNum = 1 + mepPagesCount + printPages.length + boardResults.length + sIndex + 1;
+        const pageNum = 1 + extraArchPages + mepPagesCount + printPages.length + boardResults.length + sIndex + 1;
         const bType = kState.countertopConfig.buildingType === 'edificio' ? 'Edificio (máx 2000 mm)' : 'Casa (máx 2500 mm)';
 
         return (
@@ -3426,7 +5049,7 @@ export function KitchenBlueprint() {
           bomChunks.push([]);
         }
 
-        const baseBomPageNum = 1 + mepPagesCount + printPages.length + boardResults.length + stonePagesCount;
+        const baseBomPageNum = 1 + extraArchPages + mepPagesCount + printPages.length + boardResults.length + stonePagesCount;
 
         return bomChunks.map((chunk, bomIdx) => {
           const currentPageNum = baseBomPageNum + bomIdx + 1;

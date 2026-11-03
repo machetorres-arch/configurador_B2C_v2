@@ -68,19 +68,23 @@ export function ProviderAnalyticsTab({
   return (
     <div className="space-y-6">
       {/* 1. Global Navigation & Sub-Tab Bar */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-zinc-900/90 border border-zinc-800 p-4 rounded-2xl">
+      <div
+        className={`flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 rounded-2xl border transition-colors ${
+          isLight ? 'bg-white border-zinc-200 shadow-sm' : 'bg-zinc-900/90 border-zinc-800'
+        }`}
+      >
         <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-orange-500/10 border border-orange-500/30 text-orange-400 rounded-xl">
+          <div className="p-2.5 bg-orange-500/10 border border-orange-500/30 text-orange-500 rounded-xl">
             <BarChart3 size={22} />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-base font-bold text-white">KitchStudio Supplier Intelligence</h2>
-              <span className="px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold rounded-full flex items-center gap-1">
+              <h2 className={`text-base font-bold ${isLight ? 'text-zinc-900' : 'text-white'}`}>KitchStudio Supplier Intelligence</h2>
+              <span className="px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/30 text-emerald-500 text-[10px] font-bold rounded-full flex items-center gap-1">
                 <ShieldCheck size={11} /> Telemetría Verificada
               </span>
             </div>
-            <p className="text-xs text-zinc-400">
+            <p className={`text-xs ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>
               {providerName} • Hub Central Santiago (Plantas Quilicura, San Joaquín y Huechuraba)
             </p>
           </div>
@@ -89,13 +93,21 @@ export function ProviderAnalyticsTab({
         {/* Global Controls: Provider + Currency + Units */}
         <div className="flex flex-wrap items-center gap-2.5">
           {/* Currency Toggle */}
-          <div className="flex items-center bg-zinc-950 border border-zinc-800 p-0.5 rounded-xl text-xs font-bold font-mono">
+          <div
+            className={`flex items-center p-0.5 rounded-xl text-xs font-bold font-mono border ${
+              isLight ? 'bg-zinc-100 border-zinc-200' : 'bg-zinc-950 border-zinc-800'
+            }`}
+          >
             {(['CLP', 'UF', 'USD'] as const).map((c) => (
               <button
                 key={c}
                 onClick={() => setCurrency(c)}
                 className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
-                  currency === c ? 'bg-orange-500 text-white' : 'text-zinc-400 hover:text-white'
+                  currency === c
+                    ? 'bg-orange-500 text-white'
+                    : isLight
+                    ? 'text-zinc-600 hover:text-zinc-900'
+                    : 'text-zinc-400 hover:text-white'
                 }`}
               >
                 {c === 'CLP' ? 'CLP ($)' : c}
@@ -104,13 +116,21 @@ export function ProviderAnalyticsTab({
           </div>
 
           {/* Unit Toggle */}
-          <div className="flex items-center bg-zinc-950 border border-zinc-800 p-0.5 rounded-xl text-xs font-bold font-mono">
+          <div
+            className={`flex items-center p-0.5 rounded-xl text-xs font-bold font-mono border ${
+              isLight ? 'bg-zinc-100 border-zinc-200' : 'bg-zinc-950 border-zinc-800'
+            }`}
+          >
             {(['m2', 'planchas'] as const).map((u) => (
               <button
                 key={u}
                 onClick={() => setUnitMetric(u)}
                 className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
-                  unitMetric === u ? 'bg-orange-500 text-white' : 'text-zinc-400 hover:text-white'
+                  unitMetric === u
+                    ? 'bg-orange-500 text-white'
+                    : isLight
+                    ? 'text-zinc-600 hover:text-zinc-900'
+                    : 'text-zinc-400 hover:text-white'
                 }`}
               >
                 {u}
@@ -124,7 +144,9 @@ export function ProviderAnalyticsTab({
               <select
                 value={selectedProviderId}
                 onChange={(e) => setSelectedProviderId(e.target.value)}
-                className="py-1.5 px-3 bg-zinc-950 border border-zinc-700 rounded-xl text-xs text-white font-bold focus:outline-none focus:border-orange-500 cursor-pointer"
+                className={`py-1.5 px-3 border rounded-xl text-xs font-bold focus:outline-none focus:border-orange-500 cursor-pointer ${
+                  isLight ? 'bg-zinc-50 border-zinc-300 text-zinc-900' : 'bg-zinc-950 border-zinc-700 text-white'
+                }`}
               >
                 {providers.map((p) => (
                   <option key={p.id} value={p.id}>
@@ -138,12 +160,18 @@ export function ProviderAnalyticsTab({
       </div>
 
       {/* 2. Sub-Tab Pills Navigation */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 bg-zinc-950/80 p-1.5 border border-zinc-800 rounded-2xl">
+      <div
+        className={`flex items-center gap-1.5 overflow-x-auto pb-1 p-1.5 border rounded-2xl transition-colors ${
+          isLight ? 'bg-white border-zinc-200 shadow-sm' : 'bg-zinc-950/80 border-zinc-800'
+        }`}
+      >
         <button
           onClick={() => setActiveSubTab('resumen')}
           className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all shrink-0 cursor-pointer ${
             activeSubTab === 'resumen'
               ? 'bg-orange-500 text-white shadow-md'
+              : isLight
+              ? 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
               : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
           }`}
         >
@@ -156,6 +184,8 @@ export function ProviderAnalyticsTab({
           className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all shrink-0 cursor-pointer ${
             activeSubTab === 'materiales'
               ? 'bg-orange-500 text-white shadow-md'
+              : isLight
+              ? 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
               : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
           }`}
         >
@@ -168,12 +198,14 @@ export function ProviderAnalyticsTab({
           className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all shrink-0 cursor-pointer ${
             activeSubTab === 'huella_verde'
               ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20'
+              : isLight
+              ? 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
               : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
           }`}
         >
-          <Leaf size={15} className="text-emerald-400" />
+          <Leaf size={15} className="text-emerald-500" />
           <span>Huella de Carbono & ESG</span>
-          <span className="px-1.5 py-0.2 bg-emerald-950 text-emerald-300 border border-emerald-500/30 text-[9px] font-extrabold rounded uppercase">
+          <span className="px-1.5 py-0.2 bg-emerald-500/10 text-emerald-600 border border-emerald-500/30 text-[9px] font-extrabold rounded uppercase">
             Scope 1-3
           </span>
         </button>
@@ -183,6 +215,8 @@ export function ProviderAnalyticsTab({
           className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all shrink-0 cursor-pointer ${
             activeSubTab === 'geografica'
               ? 'bg-orange-500 text-white shadow-md'
+              : isLight
+              ? 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
               : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
           }`}
         >
@@ -195,6 +229,8 @@ export function ProviderAnalyticsTab({
           className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all shrink-0 cursor-pointer ${
             activeSubTab === 'prediccion'
               ? 'bg-orange-500 text-white shadow-md'
+              : isLight
+              ? 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
               : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
           }`}
         >

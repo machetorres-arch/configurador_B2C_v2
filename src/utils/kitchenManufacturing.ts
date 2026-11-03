@@ -529,6 +529,7 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
     const ctConfig = kState.countertopConfig;
     const selectedProduct = kState.qstoneCatalog?.find(p => p.id === ctConfig?.selectedProductId);
     const requiresFullTop = ctConfig?.enabled && selectedProduct?.materialType === 'sinterizado';
+    const isDurolacBack = cab.backMaterial === 'durolac' || cab.backThickness === 3 || (!cab.backMaterial && !cab.backThickness && (!cab.backColor || cab.backColor === '#FFFFFF' || cab.backColor === '#f8fafc'));
 
     if (cab.type === 'base' || cab.type === 'island') {
         if (requiresFullTop) {
@@ -546,21 +547,9 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
                 notes: 'Tapa continua completa para soporte homogéneo de cubierta sinterizada 12mm'
             });
         } else {
-            // Barras superior delantera y trasera tradicionales (para cuarzo o sin cubierta)
+            // Barra superior delantera para apoyo de cubierta
             parts.push({
-                name: `Barra Frontal ${cabName}`,
-                moduleId: cab.id,
-                moduleIndex: index,
-                qty: 1,
-                length: innerW * 10,
-                width: 10 * 10, // 10 cm width
-                thickness: thickness * 10,
-                material: cab.structureColor || state.structureColor,
-                edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false
-            });
-            // Barra trasera
-            parts.push({
-                name: `Barra Trasera ${cabName}`,
+                name: `Barra Frontal Superior ${cabName}`,
                 moduleId: cab.id,
                 moduleIndex: index,
                 qty: 1,
@@ -587,8 +576,78 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
         });
     }
 
+    // 3.1 Barras de Refuerzo Traseras (únicamente si el material de la trasera es Durolac)
+    if (isDurolacBack && cab.type !== 'closet') {
+      if (cab.type === 'base' || cab.type === 'island' || cab.type === 'wall') {
+        parts.push({
+          name: `Barra Refuerzo Trasera Superior ${cabName}`,
+          moduleId: cab.id,
+          moduleIndex: index,
+          qty: 1,
+          length: innerW * 10,
+          width: 10 * 10,
+          thickness: thickness * 10,
+          material: cab.structureColor || state.structureColor,
+          edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
+          notes: 'Amarre posterior de refuerzo para trasera Durolac (superior)'
+        });
+        parts.push({
+          name: `Barra Refuerzo Trasera Inferior ${cabName}`,
+          moduleId: cab.id,
+          moduleIndex: index,
+          qty: 1,
+          length: innerW * 10,
+          width: 10 * 10,
+          thickness: thickness * 10,
+          material: cab.structureColor || state.structureColor,
+          edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
+          notes: 'Amarre posterior de refuerzo para trasera Durolac (inferior)'
+        });
+      } else if (cab.type === 'tall') {
+        if (cab.variant === 'tall_oven_vent') {
+          parts.push({
+            name: `Barra Refuerzo Trasera ${cabName}`,
+            moduleId: cab.id,
+            moduleIndex: index,
+            qty: 4,
+            length: innerW * 10,
+            width: 10 * 10,
+            thickness: thickness * 10,
+            material: cab.structureColor || state.structureColor,
+            edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
+            notes: '4 barras de refuerzo traseras (extremos superior/inferior + justo arriba/abajo de perforación de ventilación)'
+          });
+        } else if (cabH < 150) {
+          parts.push({
+            name: `Barra Refuerzo Trasera ${cabName}`,
+            moduleId: cab.id,
+            moduleIndex: index,
+            qty: 3,
+            length: innerW * 10,
+            width: 10 * 10,
+            thickness: thickness * 10,
+            material: cab.structureColor || state.structureColor,
+            edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
+            notes: '3 barras de refuerzo traseras ubicadas de manera uniforme (Despensa < 150cm con trasera Durolac)'
+          });
+        } else {
+          parts.push({
+            name: `Barra Refuerzo Trasera ${cabName}`,
+            moduleId: cab.id,
+            moduleIndex: index,
+            qty: 4,
+            length: innerW * 10,
+            width: 10 * 10,
+            thickness: thickness * 10,
+            material: cab.structureColor || state.structureColor,
+            edgeL1: true, edgeL2: false, edgeW1: false, edgeW2: false,
+            notes: '4 barras de refuerzo traseras ubicadas de manera uniforme (Despensa alta con trasera Durolac)'
+          });
+        }
+      }
+    }
+
     // 4. Fondo (Back panel)
-    const isDurolacBack = cab.backMaterial === 'durolac' || cab.backThickness === 3 || (!cab.backMaterial && !cab.backThickness && (!cab.backColor || cab.backColor === '#FFFFFF' || cab.backColor === '#f8fafc'));
     const backThickMm = cab.backThickness || (isDurolacBack ? 3 : (cab.backMaterial === 'melamina' || cab.backMaterial === 'hpl' ? Math.round(thickness * 10) : 3));
     const backMaterialName = isDurolacBack
       ? 'Durolac Blanco 3mm'
@@ -1725,6 +1784,14 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
         }
     } else if (cab.variant === '1_door' || cab.variant === 'wall_1_door' || cab.variant === 'tall_1_door') {
         // Restricción técnica: Mueble base 1_door y despensa tall_1_door mantienen 1 sola puerta (máx 600mm) sin duplicar
+        const isGola = (kState.golaSystem === 'aluminum' || kState.golaSystem === 'black') && (cab.type === 'base' || cab.type === 'island');
+        const ctConfig = kState.countertopConfig;
+        const regruesoCm = (ctConfig?.enabled && (cab.type === 'base' || cab.type === 'island'))
+            ? (cab.type === 'island' ? (ctConfig.islandRegruesoCm ?? ctConfig.regruesoCm ?? 0) : (ctConfig.baseRegruesoCm ?? ctConfig.regruesoCm ?? 0))
+            : 0;
+        const regruesoDeduction = isGola ? Math.max(0, regruesoCm - 3.5) : regruesoCm;
+        const rawDoorH = isGola ? (cabH - 3.5 - gap * 2) : (cabH - regruesoDeduction - gap * 2);
+
         const doorLeaves = (cab.variant === '1_door' || cab.variant === 'tall_1_door') ? 1 : (w > 60 ? 2 : 1);
         const doorW = doorLeaves === 2 ? ((w - gap * 3) / 2) * 10 : (w - gap * 2) * 10;
         parts.push({
@@ -1732,14 +1799,22 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
             moduleId: cab.id,
             moduleIndex: index,
             qty: doorLeaves,
-            length: (cabH - gap*2) * 10,
+            length: Number((rawDoorH * 10).toFixed(1)),
             width: Number(doorW.toFixed(1)),
             thickness: thickness * 10,
             material: frontMat,
             edgeL1: true, edgeL2: true, edgeW1: true, edgeW2: true,
-            notes: doorLeaves === 2 ? 'Módulo > 60cm subdividido en 2 hojas (máx 600mm)' : undefined
+            notes: (doorLeaves === 2 ? 'Módulo > 60cm subdividido en 2 hojas (máx 600mm)' : 'Puerta batiente') + (isGola ? ' (Descuento 35mm p/ Riel Gola L x175)' : '')
         });
     } else if (cab.variant === '2_doors' || cab.variant === 'tall_2_doors') {
+        const isGola = (kState.golaSystem === 'aluminum' || kState.golaSystem === 'black') && (cab.type === 'base' || cab.type === 'island');
+        const ctConfig = kState.countertopConfig;
+        const regruesoCm = (ctConfig?.enabled && (cab.type === 'base' || cab.type === 'island'))
+            ? (cab.type === 'island' ? (ctConfig.islandRegruesoCm ?? ctConfig.regruesoCm ?? 0) : (ctConfig.baseRegruesoCm ?? ctConfig.regruesoCm ?? 0))
+            : 0;
+        const regruesoDeduction = isGola ? Math.max(0, regruesoCm - 3.5) : regruesoCm;
+        const rawDoorH = isGola ? (cabH - 3.5 - gap * 2) : (cabH - regruesoDeduction - gap * 2);
+
         const doorLeaves = Math.max(2, Math.ceil(w / 60));
         const totalCanteria = (doorLeaves + 1) * gap;
         const doorW = ((w - totalCanteria) / doorLeaves) * 10;
@@ -1748,12 +1823,12 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
             moduleId: cab.id,
             moduleIndex: index,
             qty: doorLeaves,
-            length: (cabH - gap*2) * 10,
+            length: Number((rawDoorH * 10).toFixed(1)),
             width: Number(doorW.toFixed(1)),
             thickness: thickness * 10,
             material: frontMat,
             edgeL1: true, edgeL2: true, edgeW1: true, edgeW2: true,
-            notes: `${doorLeaves} hojas batientes (ancho <= 600mm)`
+            notes: `${doorLeaves} hojas batientes (ancho <= 600mm)` + (isGola ? ' (Descuento 35mm p/ Riel Gola L x175)' : '')
         });
     } else if (cab.variant === 'tall_split_2_doors') {
         const isGola = useKitchenStore.getState().golaSystem !== 'none';
@@ -2046,8 +2121,8 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
                 moduleId: cab.id,
                 moduleIndex: index,
                 qty: 1,
-                length: (w - gap*2) * 10,
-                width: doorH * 10,
+                length: Number((doorH * 10).toFixed(1)),
+                width: Number(((w - gap * 2) * 10).toFixed(1)),
                 thickness: thickness * 10,
                 material: frontMat,
                 edgeL1: true, edgeL2: true, edgeW1: true, edgeW2: true,

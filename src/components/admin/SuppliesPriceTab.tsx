@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   DollarSign,
   Search,
@@ -19,7 +19,10 @@ import {
   Plus,
   Trash2,
   Building,
-  PackageCheck
+  PackageCheck,
+  Upload,
+  Palette,
+  Image as ImageIcon
 } from 'lucide-react';
 import { useAdminStore, SupplyItem, SupplyCategory } from '../../store/adminStore';
 
@@ -29,12 +32,57 @@ interface SuppliesPriceTabProps {
   isSuperAdmin?: boolean;
 }
 
+function compressImageFile(file: File, maxDim = 800, quality = 0.85): Promise<string> {
+  return new Promise((resolve) => {
+    if (file.type === 'image/svg+xml' || file.name.toLowerCase().endsWith('.svg')) {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve((e.target?.result as string) || '');
+      reader.readAsDataURL(file);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', quality));
+        } else {
+          resolve((e.target?.result as string) || '');
+        }
+      };
+      img.onerror = () => resolve((e.target?.result as string) || '');
+      img.src = (e.target?.result as string) || '';
+    };
+    reader.onerror = () => resolve('');
+    reader.readAsDataURL(file);
+  });
+}
+
 export function SuppliesPriceTab({
   currentProviderId,
   currentProviderName,
   isSuperAdmin = true
 }: SuppliesPriceTabProps) {
-  const { supplies, updateSupplyPrice, updateSupply, addSupply, deleteSupply, resetSuppliesToDefault } = useAdminStore();
+  const { supplies, updateSupplyPrice, updateSupply, addSupply, deleteSupply, resetSuppliesToDefault, themeMode } = useAdminStore();
+  const isLight = themeMode === 'light';
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<'all' | SupplyCategory>('all');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -60,6 +108,12 @@ export function SuppliesPriceTab({
   );
   const [newNotes, setNewNotes] = useState('');
 
+  const [newUnitFormat, setNewUnitFormat] = useState<'caja' | 'galon' | 'tinaja' | 'rollo' | 'metro_lineal' | 'unidad'>('unidad');
+  const [newCoverageM2, setNewCoverageM2] = useState<number>(1);
+  const [newCommissionPercent, setNewCommissionPercent] = useState<number>(20);
+  const [newProviderNetPrice, setNewProviderNetPrice] = useState<number>(10000);
+  const [newImageUrl, setNewImageUrl] = useState<string>('');
+
   const categories: { id: 'all' | SupplyCategory; label: string; icon: any }[] = [
     { id: 'all', label: 'Todos los Insumos', icon: Filter },
     { id: 'cubiertas_qstone', label: 'Cubiertas Qstone', icon: Sparkles },
@@ -67,6 +121,14 @@ export function SuppliesPriceTab({
     { id: 'herrajes', label: 'Herrajes & Cantos', icon: Wrench },
     { id: 'madera', label: 'Madera & Enchapados', icon: Trees },
     { id: 'fijaciones_sellantes', label: 'Fijaciones & Sellos', icon: DollarSign },
+    { id: 'pisos', label: 'Pisos', icon: Home },
+    { id: 'muros', label: 'Muros / Papel Mural / Pintura', icon: Layers },
+    { id: 'cortinas', label: 'Cortinas', icon: Home },
+    { id: 'ventanas', label: 'Ventanas', icon: Building },
+    { id: 'puertas', label: 'Puertas', icon: Home },
+    { id: 'focos', label: 'Focos & Iluminación', icon: Sparkles },
+    { id: 'rodones_burletes', label: 'Rodones & Burletes', icon: Wrench },
+    { id: 'marqueteria', label: 'Marquetería de Muros y Cielo', icon: PackageCheck },
   ];
 
   const isMySupply = (s: SupplyItem) => {
@@ -164,6 +226,27 @@ export function SuppliesPriceTab({
     }
   };
 
+  const [isProcessingImage, setIsProcessingImage] = useState(false);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setIsProcessingImage(true);
+      const dataUrl = await compressImageFile(file, 800, 0.85);
+      if (dataUrl) {
+        setNewImageUrl(dataUrl);
+        showToast('Foto cargada con éxito.');
+      }
+    } catch (err) {
+      console.error('Error al procesar la imagen:', err);
+      alert('Error al leer el archivo de imagen.');
+    } finally {
+      setIsProcessingImage(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
   const handleCreateSupply = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newName.trim() || !newCode.trim()) {
@@ -171,13 +254,22 @@ export function SuppliesPriceTab({
       return;
     }
 
+    const netPrice = Math.max(0, Number(newProviderNetPrice) || Number(newPrice));
+    const commPct = Math.max(0, Number(newCommissionPercent) || 0);
+    const calculatedFinalPrice = Math.round(netPrice * (1 + commPct / 100));
+
     addSupply({
       category: newCategory,
       name: newName.trim(),
       code: newCode.trim().toUpperCase(),
-      spec: newSpec.trim() || 'Especificación estándar de taller',
+      spec: newSpec.trim() || 'Especificación estándar',
       unit: newUnit.trim() || 'Unid.',
-      priceClp: Math.max(0, Number(newPrice)),
+      priceClp: calculatedFinalPrice,
+      providerNetPriceClp: netPrice,
+      commissionPercentage: commPct,
+      unitFormat: newUnitFormat,
+      coveragePerUnitM2: Math.max(0.1, Number(newCoverageM2) || 1),
+      imageUrl: newImageUrl.trim(),
       supplier: isProvider ? (currentProviderName || 'Mi Empresa') : (newSupplier.trim() || 'Proveedor General'),
       stockRef: Math.max(0, Number(newStock) || 0),
       providerId: currentProviderId,
@@ -192,6 +284,7 @@ export function SuppliesPriceTab({
     setNewPrice(180000);
     setNewStock(50);
     setNewNotes('');
+    setNewImageUrl('');
     showToast(`Producto "${newName}" agregado al catálogo con éxito.`);
   };
 
@@ -207,6 +300,8 @@ export function SuppliesPriceTab({
         return <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded text-[9px] font-bold uppercase">Madera</span>;
       case 'fijaciones_sellantes':
         return <span className="px-2 py-0.5 bg-purple-500/10 text-purple-400 border border-purple-500/20 rounded text-[9px] font-bold uppercase">Fijaciones/Sellos</span>;
+      default:
+        return <span className="px-2 py-0.5 bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 rounded text-[9px] font-bold uppercase">{cat}</span>;
     }
   };
 
@@ -221,20 +316,26 @@ export function SuppliesPriceTab({
       )}
 
       {/* Info Notice */}
-      <div className="p-4 bg-orange-500/10 border border-orange-500/30 rounded-xl flex items-start justify-between gap-4 text-xs">
+      <div
+        className={`p-4 border rounded-xl flex items-start justify-between gap-4 text-xs transition-colors ${
+          isLight
+            ? 'bg-orange-500/10 border-orange-200 text-zinc-900 shadow-sm'
+            : 'bg-orange-500/10 border-orange-500/30 text-white'
+        }`}
+      >
         <div className="flex items-start gap-2.5">
           {isProvider ? (
-            <Building size={18} className="text-orange-400 shrink-0 mt-0.5" />
+            <Building size={18} className="text-orange-500 shrink-0 mt-0.5" />
           ) : (
-            <DollarSign size={18} className="text-orange-400 shrink-0 mt-0.5" />
+            <DollarSign size={18} className="text-orange-500 shrink-0 mt-0.5" />
           )}
           <div>
-            <p className="font-bold text-white">
+            <p className={`font-bold ${isLight ? 'text-zinc-900' : 'text-white'}`}>
               {isProvider
                 ? `Catálogo de Productos y Precios: ${currentProviderName || 'Mi Empresa'}`
                 : 'Impacto en Presupuestos y Cubicaciones'}
             </p>
-            <p className="text-slate-400 text-[11px] mt-0.5">
+            <p className={`text-[11px] mt-0.5 ${isLight ? 'text-zinc-600' : 'text-slate-400'}`}>
               {isProvider
                 ? 'Gestiona directamente los valores de venta, disponibilidad de stock en bodega y especificaciones técnicas de tus insumos comercializados.'
                 : 'Cualquier cambio de costo unitario impacta inmediatamente en las estimaciones de costo, planillas Excel de fabricación y reportes técnicos de todos los módulos.'}
@@ -261,7 +362,9 @@ export function SuppliesPriceTab({
           {isSuperAdmin && (
             <button
               onClick={handleResetDefaults}
-              className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-slate-300 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 shrink-0 transition-colors cursor-pointer"
+              className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 shrink-0 transition-colors cursor-pointer ${
+                isLight ? 'bg-zinc-200 hover:bg-zinc-300 text-zinc-700' : 'bg-zinc-800 hover:bg-zinc-700 text-slate-300'
+              }`}
               title="Restaurar precios iniciales"
             >
               <RotateCcw size={13} /> Restaurar Fábrica
@@ -271,20 +374,30 @@ export function SuppliesPriceTab({
       </div>
 
       {/* Filter and Search */}
-      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 bg-zinc-900/80 p-4 rounded-xl border border-zinc-800">
+      <div
+        className={`flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 p-4 rounded-xl border transition-colors ${
+          isLight ? 'bg-white border-zinc-200 shadow-sm' : 'bg-zinc-900/80 border-zinc-800'
+        }`}
+      >
         <div className="relative flex-1">
-          <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+          <Search size={16} className={`absolute left-3.5 top-1/2 -translate-y-1/2 ${isLight ? 'text-zinc-400' : 'text-slate-400'}`} />
           <input
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Buscar por código, nombre de insumo, proveedor o especificación..."
-            className="w-full pl-10 pr-4 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-orange-500"
+            className={`w-full pl-10 pr-4 py-2 border rounded-lg text-xs focus:outline-none focus:border-orange-500 ${
+              isLight ? 'bg-zinc-50 border-zinc-300 text-zinc-900 placeholder:text-zinc-400' : 'bg-zinc-950 border-zinc-800 text-white placeholder:text-zinc-600'
+            }`}
           />
         </div>
 
         {/* Category Pills */}
-        <div className="flex items-center gap-1 bg-zinc-950 p-1 rounded-lg border border-zinc-800 overflow-x-auto">
+        <div
+          className={`flex items-center gap-1 p-1 rounded-lg border overflow-x-auto ${
+            isLight ? 'bg-zinc-100 border-zinc-200' : 'bg-zinc-950 border-zinc-800'
+          }`}
+        >
           {categories.map((cat) => {
             const Icon = cat.icon;
             return (
@@ -294,6 +407,8 @@ export function SuppliesPriceTab({
                 className={`px-3 py-1.5 rounded-md text-[11px] font-semibold flex items-center gap-1.5 transition-all whitespace-nowrap ${
                   selectedCategory === cat.id
                     ? 'bg-orange-500 text-white shadow'
+                    : isLight
+                    ? 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200'
                     : 'text-slate-400 hover:text-slate-200 hover:bg-zinc-900'
                 }`}
               >
@@ -306,10 +421,12 @@ export function SuppliesPriceTab({
       </div>
 
       {/* Supplies Table */}
-      <div className="bg-zinc-900/90 border border-zinc-800 rounded-xl overflow-hidden shadow-sm">
+      <div className={`border rounded-xl overflow-hidden shadow-sm ${isLight ? 'bg-white border-zinc-200' : 'bg-zinc-900/90 border-zinc-800'}`}>
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-zinc-950/80 border-b border-zinc-800 text-slate-400 font-bold uppercase text-[10px] tracking-wider">
+          <table className={`w-full text-left text-xs ${isLight ? 'text-zinc-800' : 'text-slate-300'}`}>
+            <thead className={`border-b font-bold uppercase text-[10px] tracking-wider ${
+              isLight ? 'bg-zinc-100 border-zinc-200 text-zinc-600' : 'bg-zinc-950/80 border-zinc-800 text-slate-400'
+            }`}>
               <tr>
                 <th className="p-3.5 pl-4">Código & Insumo</th>
                 <th className="p-3.5">Categoría</th>
@@ -321,7 +438,7 @@ export function SuppliesPriceTab({
                 <th className="p-3.5 text-center">Acciones</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-800/60">
+            <tbody className={`divide-y ${isLight ? 'divide-zinc-200' : 'divide-zinc-800/60'}`}>
               {filteredSupplies.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="p-8 text-center text-slate-500">
@@ -339,30 +456,57 @@ export function SuppliesPriceTab({
                     <tr key={item.id} className="hover:bg-zinc-800/30 transition-colors">
                       {/* Name & Code */}
                       <td className="p-3.5 pl-4 font-semibold text-white">
-                        <div className="font-mono text-[10px] text-orange-400 font-bold">{item.code}</div>
-                        <div className="text-xs text-slate-200">{item.name}</div>
+                        <div className="flex items-center gap-3">
+                          {item.imageUrl ? (
+                            item.imageUrl.startsWith('#') ? (
+                              <div
+                                className="w-8 h-8 rounded-lg shrink-0 border border-white/20 shadow-sm flex items-center justify-center"
+                                style={{ backgroundColor: item.imageUrl }}
+                                title={`Color: ${item.imageUrl}`}
+                              />
+                            ) : (
+                              <img
+                                src={item.imageUrl}
+                                alt={item.name}
+                                className="w-8 h-8 rounded-lg object-cover shrink-0 border border-white/20 shadow-sm"
+                              />
+                            )
+                          ) : (
+                            <div className={`w-8 h-8 rounded-lg shrink-0 border flex items-center justify-center ${
+                              isLight ? 'bg-zinc-100 border-zinc-200 text-zinc-600' : 'bg-zinc-800/80 border-zinc-700/50 text-zinc-500'
+                            }`}>
+                              <ImageIcon size={14} className="opacity-60" />
+                            </div>
+                          )}
+                          <div>
+                            <div className="font-mono text-[10px] text-orange-500 font-bold">{item.code}</div>
+                            <div className={`text-xs font-semibold ${isLight ? 'text-zinc-900' : 'text-slate-200'}`}>{item.name}</div>
+                          </div>
+                        </div>
                       </td>
 
                       {/* Category */}
                       <td className="p-3.5 whitespace-nowrap">{getCategoryBadge(item.category)}</td>
 
                       {/* Spec */}
-                      <td className="p-3.5 text-slate-400 text-[11px] max-w-xs">{item.spec}</td>
+                      <td className={`p-3.5 text-xs max-w-xs ${isLight ? 'text-zinc-600' : 'text-slate-400'}`}>{item.spec}</td>
 
                       {/* Unit */}
-                      <td className="p-3.5 text-slate-300 font-mono text-[11px] whitespace-nowrap">{item.unit}</td>
+                      <td className={`p-3.5 font-mono text-xs whitespace-nowrap ${isLight ? 'text-zinc-700' : 'text-slate-300'}`}>{item.unit}</td>
 
                       {/* Supplier */}
-                      <td className="p-3.5 text-slate-400 text-[11px]">
+                      <td className="p-3.5 text-xs">
                         {isEditing && isSuperAdmin ? (
                           <input
                             type="text"
                             value={editSupplier}
                             onChange={(e) => setEditSupplier(e.target.value)}
-                            className="p-1 bg-zinc-950 border border-orange-500 rounded text-xs text-white w-full"
+                            className={`p-1.5 border-2 border-orange-500 rounded-lg text-xs font-bold w-full focus:outline-none ${
+                              isLight ? 'bg-white text-zinc-900 shadow-sm' : 'bg-zinc-950 text-white'
+                            }`}
                           />
                         ) : (
-                          <span className="font-medium text-slate-300">{item.supplier}</span>
+                          <span className={`font-medium ${isLight ? 'text-zinc-800' : 'text-slate-300'}`}>{item.supplier}</span>
                         )}
                       </td>
 
@@ -375,15 +519,17 @@ export function SuppliesPriceTab({
                               min="0"
                               value={editStock}
                               onChange={(e) => setEditStock(Number(e.target.value))}
-                              className="p-1 w-20 bg-zinc-950 border border-orange-500 rounded text-xs text-center text-white font-mono font-bold"
+                              className={`p-1.5 w-20 border-2 border-orange-500 rounded-lg text-xs text-center font-mono font-bold focus:outline-none ${
+                                isLight ? 'bg-white text-zinc-900 shadow-sm' : 'bg-zinc-950 text-white'
+                              }`}
                             />
                           </div>
                         ) : (
                           <span
-                            className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-mono font-bold border ${
+                            className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-mono font-bold border ${
                               isLowStock
-                                ? 'bg-amber-500/15 border-amber-500/30 text-amber-400'
-                                : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                                ? 'bg-amber-500/15 border-amber-500/30 text-amber-600 dark:text-amber-400'
+                                : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400'
                             }`}
                             title={isLowStock ? 'Stock bajo' : 'Stock en niveles óptimos'}
                           >
@@ -397,19 +543,21 @@ export function SuppliesPriceTab({
                       <td className="p-3.5 text-right font-mono font-bold whitespace-nowrap">
                         {isEditing ? (
                           <div className="flex items-center justify-end gap-1">
-                            <span className="text-zinc-500">$</span>
+                            <span className={isLight ? 'text-zinc-700 font-bold' : 'text-zinc-500'}>$</span>
                             <input
                               type="number"
                               min="0"
                               step="50"
                               value={editPrice}
                               onChange={(e) => setEditPrice(Number(e.target.value))}
-                              className="p-1 w-28 bg-zinc-950 border border-orange-500 rounded text-xs text-right text-orange-400 font-bold"
+                              className={`p-1.5 w-28 border-2 border-orange-500 rounded-lg text-xs text-right font-mono font-bold focus:outline-none ${
+                                isLight ? 'bg-white text-orange-600 shadow-sm' : 'bg-zinc-950 text-orange-400'
+                              }`}
                             />
                           </div>
                         ) : (
-                          <span className="text-white text-sm">
-                            ${item.priceClp.toLocaleString('es-CL')} <span className="text-[10px] text-zinc-500">CLP</span>
+                          <span className={`text-sm font-bold ${isLight ? 'text-zinc-900' : 'text-white'}`}>
+                            ${item.priceClp.toLocaleString('es-CL')} <span className={`text-[10px] ${isLight ? 'text-zinc-500' : 'text-zinc-500'}`}>CLP</span>
                           </span>
                         )}
                       </td>
@@ -437,7 +585,11 @@ export function SuppliesPriceTab({
                           <div className="flex items-center justify-center gap-1.5">
                             <button
                               onClick={() => handleStartEdit(item)}
-                              className="px-2.5 py-1 bg-zinc-800/80 hover:bg-orange-500/20 text-slate-300 hover:text-orange-400 border border-zinc-700/60 rounded-md text-[11px] font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                              className={`px-2.5 py-1 border rounded-md text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer ${
+                                isLight
+                                  ? 'bg-zinc-100 hover:bg-orange-500/10 text-zinc-800 hover:text-orange-600 border-zinc-300'
+                                  : 'bg-zinc-800/80 hover:bg-orange-500/20 text-slate-300 hover:text-orange-400 border-zinc-700/60'
+                              }`}
                             >
                               <Edit2 size={12} /> Editar
                             </button>
@@ -516,6 +668,14 @@ export function SuppliesPriceTab({
                     <option value="herrajes">Herrajes & Accesorios</option>
                     <option value="madera">Madera & Enchapados</option>
                     <option value="fijaciones_sellantes">Fijaciones & Sellos</option>
+                    <option value="pisos">Pisos (Porcelanato, Flotante, Madera)</option>
+                    <option value="muros">Muros (Pintura, Papel Mural, Revestimientos)</option>
+                    <option value="cortinas">Cortinas</option>
+                    <option value="ventanas">Ventanas</option>
+                    <option value="puertas">Puertas</option>
+                    <option value="focos">Focos & Iluminación</option>
+                    <option value="rodones_burletes">Rodones & Burletes</option>
+                    <option value="marqueteria">Marquetería de Muros y Cielo</option>
                   </select>
                 </div>
 
@@ -551,7 +711,46 @@ export function SuppliesPriceTab({
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div>
                   <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider mb-1.5">
-                    Precio Venta ($ CLP)
+                    Precio Neto Proveedor ($)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="500"
+                    required
+                    value={newProviderNetPrice}
+                    onChange={(e) => {
+                      const net = Number(e.target.value);
+                      setNewProviderNetPrice(net);
+                      setNewPrice(Math.round(net * (1 + newCommissionPercent / 100)));
+                    }}
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-amber-400 font-bold focus:outline-none focus:border-amber-500 font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider mb-1.5">
+                    % Ganancia Arquify
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="1"
+                    required
+                    value={newCommissionPercent}
+                    onChange={(e) => {
+                      const comm = Number(e.target.value);
+                      setNewCommissionPercent(comm);
+                      setNewPrice(Math.round(newProviderNetPrice * (1 + comm / 100)));
+                    }}
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-orange-400 font-bold focus:outline-none focus:border-amber-500 font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider mb-1.5">
+                    Precio Venta Final ($ CLP)
                   </label>
                   <input
                     type="number"
@@ -560,7 +759,7 @@ export function SuppliesPriceTab({
                     required
                     value={newPrice}
                     onChange={(e) => setNewPrice(Number(e.target.value))}
-                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-emerald-400 font-bold focus:outline-none focus:border-amber-500"
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-emerald-400 font-extrabold focus:outline-none focus:border-amber-500 font-mono"
                   />
                 </div>
 
@@ -577,7 +776,134 @@ export function SuppliesPriceTab({
                     className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-sky-400 font-bold focus:outline-none focus:border-amber-500 font-mono"
                   />
                 </div>
+              </div>
 
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider mb-1.5">
+                    Formato Comercial de Venta
+                  </label>
+                  <select
+                    value={newUnitFormat}
+                    onChange={(e) => setNewUnitFormat(e.target.value as any)}
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
+                  >
+                    <option value="caja">Caja (Pisos / Porcelanato)</option>
+                    <option value="tinaja">Tinaja (Pintura 5G)</option>
+                    <option value="galon">Galón (Pintura / Sellos)</option>
+                    <option value="rollo">Rollo (Papel Mural)</option>
+                    <option value="metro_lineal">Metro Lineal (Rodones / Marquetería)</option>
+                    <option value="unidad">Unidad (Cortinas / Focos / Ventanas / Puertas)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider mb-1.5">
+                    Rendimiento por Formato (m²)
+                  </label>
+                  <input
+                    type="number"
+                    min="0.1"
+                    step="0.1"
+                    value={newCoverageM2}
+                    onChange={(e) => setNewCoverageM2(Number(e.target.value))}
+                    placeholder="Ej: 1.44 m²/caja o 5.3 m²/rollo"
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-amber-300 font-bold focus:outline-none focus:border-amber-500 font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* Sección de Foto de Producto o Muestra de Color */}
+              <div className="p-3.5 bg-zinc-950/90 border border-zinc-800 rounded-xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <ImageIcon size={14} className="text-amber-400" /> Foto de Producto o Tono / Muestra de Color
+                  </label>
+                  {newImageUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setNewImageUrl('')}
+                      className="text-[10px] text-rose-400 hover:text-rose-300 flex items-center gap-1 cursor-pointer transition-colors"
+                    >
+                      <Trash2 size={11} /> Quitar Foto/Color
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-center gap-3">
+                  {/* Vista Previa */}
+                  <div className="w-16 h-16 rounded-xl border border-zinc-700/80 bg-zinc-900 flex items-center justify-center overflow-hidden shrink-0 shadow-inner relative">
+                    {newImageUrl ? (
+                      newImageUrl.startsWith('#') ? (
+                        <div
+                          className="w-full h-full flex flex-col items-center justify-center text-[9px] font-mono font-bold text-white p-1 text-center"
+                          style={{ backgroundColor: newImageUrl }}
+                        >
+                          <span className="bg-black/60 px-1 py-0.5 rounded text-[8px] backdrop-blur-xs">
+                            {newImageUrl}
+                          </span>
+                        </div>
+                      ) : (
+                        <img
+                          src={newImageUrl}
+                          alt="Vista previa"
+                          className="w-full h-full object-cover"
+                        />
+                      )
+                    ) : (
+                      <div className="text-center text-zinc-500 flex flex-col items-center">
+                        <ImageIcon size={20} className="mb-0.5 opacity-60" />
+                        <span className="text-[9px]">Sin foto</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Acciones de carga */}
+                  <div className="flex-1 w-full space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input
+                        type="file"
+                        ref={fileInputRef}
+                        accept="image/*"
+                        onChange={handleFileChange}
+                        className="hidden"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isProcessingImage}
+                        className="px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                      >
+                        <Upload size={13} />
+                        {isProcessingImage ? 'Procesando...' : 'Subir Foto / Archivo'}
+                      </button>
+
+                      <label className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer relative">
+                        <Palette size={13} className="text-orange-400" />
+                        <span>Elegir Tono Color</span>
+                        <input
+                          type="color"
+                          value={newImageUrl.startsWith('#') ? newImageUrl : '#8FA2A6'}
+                          onChange={(e) => setNewImageUrl(e.target.value)}
+                          className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                        />
+                      </label>
+                    </div>
+
+                    <div className="relative">
+                      <input
+                        type="text"
+                        placeholder="O escribe URL web de la imagen (https://...)"
+                        value={newImageUrl}
+                        onChange={(e) => setNewImageUrl(e.target.value)}
+                        className="w-full px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-lg text-[11px] text-white placeholder:text-zinc-600 focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider mb-1.5">
                     Unidad de Medida

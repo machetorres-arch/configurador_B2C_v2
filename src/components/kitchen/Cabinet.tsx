@@ -312,25 +312,47 @@ export function AnimatedDoor({
     ? (handleLenMm + 40) / 10
     : handleLenCm;
 
-  // Para perfiles pestaña (Oslo, CE): se montan en el canto con holgura de 8mm respecto al borde de apertura
+  // Para despensas / puertas de gran altura (> 140 cm), forzar posicionamiento en el lateral
+  const isTallPantryDoor = doorH > 140;
+
+  // Para perfiles pestaña (Oslo, CE):
+  // 1. Orientación horizontal (muebles bajo y aéreo estándar): la longitud se extiende en X sobre el canto superior/inferior.
   const pestanaMargin = 0.8;
   const effectivePestanaLen = Math.min(handleLenCm, Math.max(2, doorW - 1.6));
-  const handleXPestana = isRightHinge
+  const handleXHorizontalPestana = isRightHinge
     ? (-doorW + pestanaMargin + effectivePestanaLen / 2)
     : (doorW - pestanaMargin - effectivePestanaLen / 2);
 
-  // Para tiradores estándar (Madrid, Forza, Denver): centrados a 4.5 cm del canto de apertura
+  // 2. Orientación vertical (despensas altas / montaje lateral): la longitud se extiende en Y sobre el canto lateral.
+  // La coordenada X se fija directamente en el borde/canto lateral exterior de apertura opuesto a la bisagra.
+  const handleXVerticalPestana = isRightHinge
+    ? -doorW + 0.1
+    : doorW - 0.1;
+
+  const handleXPestana = isTallPantryDoor ? handleXVerticalPestana : handleXHorizontalPestana;
+
+  // Para tiradores de asa estándar (Madrid, Forza, Denver): centrados a 4.5 cm del canto lateral de apertura opuesto a la bisagra
   const handleXStandard = isRightHinge ? -doorW + 4.5 : doorW - 4.5;
   const handleX = isPestana ? handleXPestana : handleXStandard;
 
-  // Posicionamiento vertical acotado paramétricamente para garantizar que NUNCA sobrepase la puerta
+  // Posicionamiento vertical acotado paramétricamente para garantizar ergonomía y buena accesibilidad
   let defaultHandleY = 0;
-  if (isPestana) {
+  if (isTallPantryDoor) {
+    const minCenter = -doorH / 2 + handleTotalLenCm / 2 + 1.5;
+    const maxCenter = doorH / 2 - handleTotalLenCm / 2 - 1.5;
+
+    if (isPestana) {
+      // Perfiles tipo Oslo y CE en despensas altas: ubicados en el borde/canto lateral a una cota ergonómica de agarre de pie (~105 cm sobre el piso)
+      const ergonomicY = -5;
+      defaultHandleY = Math.max(minCenter, Math.min(maxCenter, ergonomicY));
+    } else {
+      // Tiradores de asa estándar (Denver, Forza, Madrid): alineación con la cota de agarre de las puertas inferiores adyacentes (~85-90 cm del piso)
+      const alignedWithBaseY = 70 - 0.3 - doorH / 2;
+      defaultHandleY = Math.max(minCenter, Math.min(maxCenter, alignedWithBaseY));
+    }
+  } else if (isPestana) {
     // Al ras del canto superior (mueble bajo) o inferior (mueble aéreo)
     defaultHandleY = isUpperResolved ? -doorH / 2 : doorH / 2;
-  } else if (doorH > 140) {
-    // Puertas de despensero alto
-    defaultHandleY = 0;
   } else if (isUpperResolved) {
     // Mueble aéreo: extremo inferior a 4.5 cm sobre el canto inferior
     const desiredCenter = -doorH / 2 + 4.5 + handleTotalLenCm / 2;
@@ -372,7 +394,7 @@ export function AnimatedDoor({
         <group position={[handleX, defaultHandleY, thickness]}>
           <KitchenHandle3D
             config={handleConfig}
-            orientation={isPestana ? 'horizontal' : 'vertical'}
+            orientation={(isPestana && !isTallPantryDoor) ? 'horizontal' : 'vertical'}
             isDoor={true}
             isUpper={isUpperResolved}
             thickness={thickness}
@@ -1799,11 +1821,19 @@ function CabinetBase({ id, type, variant, width, height, depth, position, rotati
             );
          };
          
+         // Parámetros geométricos para repisas interiores:
+         // Se calculan las cotas límite para que las repisas queden retranqueadas 2mm por delante del Durolac
+         // y retranqueadas 12mm por detrás de las puertas/frentes.
+         const shelfZ_front = (hasFronts ? (depth / 2 - thickness) : (depth / 2)) - 1.2;
+         const shelfZ_rear = -depth / 2 + thickness + realBackThicknessCm + 0.2;
+         const shelfDepth = Math.max(10, shelfZ_front - shelfZ_rear);
+         const shelfZ = (shelfZ_front + shelfZ_rear) / 2;
+
          const renderShelfWithJoints = (yPos: number, keySuffix: string | number) => (
             <group key={`shelf-${keySuffix}`}>
-               <Board position={[0, yPos, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(cShelves, shelfMaterial, 'shelf')} />
-               <AssemblyJoint position={[-innerW/2, yPos, 0]} length={depth - 2} axis="z" pointing="right" thickness={thickness} count={2} />
-               <AssemblyJoint position={[innerW/2, yPos, 0]} length={depth - 2} axis="z" pointing="left" thickness={thickness} count={2} />
+               <Board position={[0, yPos, shelfZ]} args={[innerW, thickness, shelfDepth]} {...parseColor(cShelves, shelfMaterial, 'shelf')} />
+               <AssemblyJoint position={[-innerW/2, yPos, shelfZ]} length={shelfDepth} axis="z" pointing="right" thickness={thickness} count={2} />
+               <AssemblyJoint position={[innerW/2, yPos, shelfZ]} length={shelfDepth} axis="z" pointing="left" thickness={thickness} count={2} />
             </group>
          );
 
@@ -1902,9 +1932,9 @@ function CabinetBase({ id, type, variant, width, height, depth, position, rotati
                   />
                   {isGola ? (
                      <group key="shelf-div">
-                        <Board position={[0, legsHeight + baseH, -1.75]} args={[innerW, thickness, depth - 5.5]} {...parseColor(cShelves, shelfMaterial, 'shelf')} />
-                        <AssemblyJoint position={[-innerW/2, legsHeight + baseH, -1.75]} length={depth - 5.5} axis="z" pointing="right" thickness={thickness} count={2} />
-                        <AssemblyJoint position={[innerW/2, legsHeight + baseH, -1.75]} length={depth - 5.5} axis="z" pointing="left" thickness={thickness} count={2} />
+                        <Board position={[0, legsHeight + baseH, shelfZ]} args={[innerW, thickness, shelfDepth]} {...parseColor(cShelves, shelfMaterial, 'shelf')} />
+                        <AssemblyJoint position={[-innerW/2, legsHeight + baseH, shelfZ]} length={shelfDepth} axis="z" pointing="right" thickness={thickness} count={2} />
+                        <AssemblyJoint position={[innerW/2, legsHeight + baseH, shelfZ]} length={shelfDepth} axis="z" pointing="left" thickness={thickness} count={2} />
                      </group>
                   ) : (
                      renderShelfWithJoints(legsHeight + baseH, 'div')
@@ -1970,15 +2000,15 @@ function CabinetBase({ id, type, variant, width, height, depth, position, rotati
                         {renderShelfWithJoints(legsHeight + elev, `oven-micro-low-${sIdx}`)}
                      </React.Fragment>
                   ))}
-                  <Board position={[0, legsHeight + baseH, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(cShelves, shelfMaterial)} />
+                  <Board position={[0, legsHeight + baseH, shelfZ]} args={[innerW, thickness, shelfDepth]} {...parseColor(cShelves, shelfMaterial)} />
                   <group position={[0, ovenY, 0]}>
                      <BuiltInOven width={innerW + 1.4} height={ovenH - 0.6} depth={depth - 4} />
                   </group>
-                  <Board position={[0, legsHeight + baseH + ovenH, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(cShelves, shelfMaterial)} />
+                  <Board position={[0, legsHeight + baseH + ovenH, shelfZ]} args={[innerW, thickness, shelfDepth]} {...parseColor(cShelves, shelfMaterial)} />
                   <group position={[0, microY, 0]}>
                      <BuiltInMicrowave width={innerW + 1.4} height={microH - 0.6} depth={depth - 4} />
                   </group>
-                  <Board position={[0, legsHeight + topStart, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(cShelves, shelfMaterial)} />
+                  <Board position={[0, legsHeight + topStart, shelfZ]} args={[innerW, thickness, shelfDepth]} {...parseColor(cShelves, shelfMaterial)} />
                   {topDoorH > 10 && (
                      <AnimatedDoor
                         position={[0, topY, frontZ]}
@@ -2036,11 +2066,11 @@ function CabinetBase({ id, type, variant, width, height, depth, position, rotati
                         {renderShelfWithJoints(legsHeight + elev, `micro-niche-low-${sIdx}`)}
                      </React.Fragment>
                   ))}
-                  <Board position={[0, nicheShelfY, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(cShelves, shelfMaterial)} />
+                  <Board position={[0, nicheShelfY, shelfZ]} args={[innerW, thickness, shelfDepth]} {...parseColor(cShelves, shelfMaterial)} />
                   <group position={[0, nicheShelfY + thickness/2, 0]}>
                      <PortableMicrowave width={innerW} height={nicheH} depth={depth - 4} />
                   </group>
-                  <Board position={[0, legsHeight + topStart, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(cShelves, shelfMaterial)} />
+                  <Board position={[0, legsHeight + topStart, shelfZ]} args={[innerW, thickness, shelfDepth]} {...parseColor(cShelves, shelfMaterial)} />
                   {topDoorH > 10 && (
                      <AnimatedDoor
                         position={[0, topY, frontZ]}
@@ -2078,8 +2108,8 @@ function CabinetBase({ id, type, variant, width, height, depth, position, rotati
                      return (
                         <React.Fragment key={`term-sh-${sIdx}`}>
                            <Board
-                              position={[0, shelfY, 0]}
-                              args={[innerW, thickness, depth - 1]}
+                              position={[0, shelfY, shelfZ]}
+                              args={[innerW, thickness, shelfDepth]}
                               {...parseColor(cShelves, shelfMaterial, `term-sh-${sIdx}`)}
                               isShelf={true}
                            />
@@ -2121,11 +2151,11 @@ function CabinetBase({ id, type, variant, width, height, depth, position, rotati
          if (effectiveVariant === 'tall_open' || (type === 'tall' && (effectiveVariant === 'open' || !effectiveVariant))) {
             return (
                <>
-                  <Board position={[0, legsHeight + cabH * 0.17, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(cShelves, shelfMaterial)} />
-                  <Board position={[0, legsHeight + cabH * 0.34, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(cShelves, shelfMaterial)} />
-                  <Board position={[0, legsHeight + cabH * 0.51, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(cShelves, shelfMaterial)} />
-                  <Board position={[0, legsHeight + cabH * 0.68, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(cShelves, shelfMaterial)} />
-                  <Board position={[0, legsHeight + cabH * 0.85, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(cShelves, shelfMaterial)} />
+                  <Board position={[0, legsHeight + cabH * 0.17, shelfZ]} args={[innerW, thickness, shelfDepth]} {...parseColor(cShelves, shelfMaterial)} />
+                  <Board position={[0, legsHeight + cabH * 0.34, shelfZ]} args={[innerW, thickness, shelfDepth]} {...parseColor(cShelves, shelfMaterial)} />
+                  <Board position={[0, legsHeight + cabH * 0.51, shelfZ]} args={[innerW, thickness, shelfDepth]} {...parseColor(cShelves, shelfMaterial)} />
+                  <Board position={[0, legsHeight + cabH * 0.68, shelfZ]} args={[innerW, thickness, shelfDepth]} {...parseColor(cShelves, shelfMaterial)} />
+                  <Board position={[0, legsHeight + cabH * 0.85, shelfZ]} args={[innerW, thickness, shelfDepth]} {...parseColor(cShelves, shelfMaterial)} />
                </>
             );
          }
@@ -2445,7 +2475,7 @@ function CabinetBase({ id, type, variant, width, height, depth, position, rotati
                      handleConfig={handleConfig}
                   />
                   {/* Divisor fijo bajo el cajón */}
-                  <Board position={[0, legsHeight + gap + doorH + gap, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(cShelves, shelfMaterial)} />
+                  {renderShelfWithJoints(legsHeight + gap + doorH + gap, '1d1dr_div')}
                   {(() => {
                      const cabObj: CabinetType = { id, type, variant, width, height, depth, position, rotation, color, shelvesCount };
                      const shelfElevations = getResolvedCabinetShelfElevations(cabObj, thickness);
@@ -2712,12 +2742,9 @@ function CabinetBase({ id, type, variant, width, height, depth, position, rotati
                      const cabObj: CabinetType = { id, type, variant, width, height, depth, position, rotation, color, shelvesCount };
                      const shelfElevations = getResolvedCabinetShelfElevations(cabObj, thickness);
                      return shelfElevations.map((elev, sIdx) => (
-                        <Board
-                           key={`cb-shelf-${sIdx}`}
-                           position={[0, legsHeight + elev, 0]}
-                           args={[innerW, thickness, depth - 4]}
-                           {...parseColor(cShelves, shelfMaterial)}
-                        />
+                        <React.Fragment key={`cb-shelf-${sIdx}`}>
+                           {renderShelfWithJoints(legsHeight + elev, `cb-shelf-${sIdx}`)}
+                        </React.Fragment>
                      ));
                   })()}
                </>
@@ -2773,12 +2800,9 @@ function CabinetBase({ id, type, variant, width, height, depth, position, rotati
                      const cabObj: CabinetType = { id, type, variant, width, height, depth, position, rotation, color, shelvesCount };
                      const shelfElevations = getResolvedCabinetShelfElevations(cabObj, thickness);
                      return shelfElevations.map((elev, sIdx) => (
-                        <Board
-                           key={`wcb-shelf-${sIdx}`}
-                           position={[0, legsHeight + elev, 0]}
-                           args={[innerW, thickness, depth - 4]}
-                           {...parseColor(cShelves, shelfMaterial)}
-                        />
+                        <React.Fragment key={`wcb-shelf-${sIdx}`}>
+                           {renderShelfWithJoints(legsHeight + elev, `wcb-shelf-${sIdx}`)}
+                        </React.Fragment>
                      ));
                   })()}
                </>
@@ -2979,8 +3003,8 @@ function CabinetBase({ id, type, variant, width, height, depth, position, rotati
                   {isGolaActive && renderGolaL()}
                   {/* Repisa interior en L continua retranqueada */}
                   <group position={[0, legsHeight + cabH / 2, 0]}>
-                     <Board position={[-15, 0, -1]} args={[width - 30 - 2, thickness, depth - 4]} {...parseColor(cShelves, shelfMaterial)} />
-                     <Board position={[29, 0, -15]} args={[30 - 2, thickness, depth - 30 - 4]} {...parseColor(cShelves, shelfMaterial)} />
+                     <Board position={[-15, 0, shelfZ]} args={[width - 30 - 2, thickness, shelfDepth]} {...parseColor(cShelves, shelfMaterial)} />
+                     <Board position={[29, 0, shelfZ - 14]} args={[30 - 2, thickness, shelfDepth - 14]} {...parseColor(cShelves, shelfMaterial)} />
                   </group>
 
                   {/* Puertas Bi-Fold Articuladas de 90° con cinemática precisa Blum */}
@@ -3204,9 +3228,9 @@ function CabinetBase({ id, type, variant, width, height, depth, position, rotati
                   })}
 
                   {/* Repisas Superiores Despensa */}
-                  <Board position={[0, legsHeight + 115, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(cShelves, shelfMaterial)} />
-                  <Board position={[0, legsHeight + 150, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(cShelves, shelfMaterial)} />
-                  <Board position={[0, legsHeight + 180, 0]} args={[innerW, thickness, depth - 2]} {...parseColor(cShelves, shelfMaterial)} />
+                  {renderShelfWithJoints(legsHeight + 115, 'tid_s1')}
+                  {renderShelfWithJoints(legsHeight + 150, 'tid_s2')}
+                  {renderShelfWithJoints(legsHeight + 180, 'tid_s3')}
                </>
             );
          }
@@ -3790,15 +3814,15 @@ function CabinetBase({ id, type, variant, width, height, depth, position, rotati
                      <Board position={[0, legsHeight + thickness/2, botZ]} args={[innerW, thickness, botDepth]} {...parseColor(cStructure, structureMaterial, 'bottom')} />
                      {effectiveVariant === 'tall_oven_vent' ? (
                         <>
-                           {/* Trasera despensa inferior */}
-                           <Board position={[0, legsHeight + (70 - thickness)/2, -depth/2 + realBackThicknessCm/2]} args={[innerW, 70 - thickness, realBackThicknessCm]} {...parseColor(cBack, backMaterial === 'durolac' ? 'melamina' : backMaterial, 'back')} />
+                           {/* Trasera despensa inferior (ranurada) */}
+                           <Board position={[0, legsHeight + (70 - thickness)/2, -depth/2 + thickness + realBackThicknessCm/2]} args={[innerW, 70 - thickness, realBackThicknessCm]} {...parseColor(cBack, backMaterial === 'durolac' ? 'melamina' : backMaterial, 'back')} />
                            {/* Trasera despensa superior (el tramo de hornos queda abierto para la chimenea de 50mm) */}
                            {cabH > 170 && (
-                              <Board position={[0, legsHeight + 168 + (cabH - 168 - thickness)/2, -depth/2 + realBackThicknessCm/2]} args={[innerW, Math.max(5, cabH - 168 - thickness), realBackThicknessCm]} {...parseColor(cBack, backMaterial === 'durolac' ? 'melamina' : backMaterial, 'back')} />
+                              <Board position={[0, legsHeight + 168 + (cabH - 168 - thickness)/2, -depth/2 + thickness + realBackThicknessCm/2]} args={[innerW, Math.max(5, cabH - 168 - thickness), realBackThicknessCm]} {...parseColor(cBack, backMaterial === 'durolac' ? 'melamina' : backMaterial, 'back')} />
                            )}
                         </>
                      ) : (
-                        <Board position={[0, legsHeight + cabH/2, -depth/2 + realBackThicknessCm/2]} args={[innerW, cabH - thickness*2, realBackThicknessCm]} {...parseColor(cBack, backMaterial === 'durolac' ? 'melamina' : backMaterial, 'back')} />
+                        <Board position={[0, legsHeight + cabH/2, -depth/2 + thickness + realBackThicknessCm/2]} args={[innerW, cabH - thickness*2, realBackThicknessCm]} {...parseColor(cBack, backMaterial === 'durolac' ? 'melamina' : backMaterial, 'back')} />
                      )}
                      
                      {/* Uniones estructurales de Base a Laterales */}
@@ -3839,8 +3863,6 @@ function CabinetBase({ id, type, variant, width, height, depth, position, rotati
                               args={[innerW, thickness, 10]} 
                               {...parseColor(cStructure, structureMaterial, 'top')} 
                            />
-                           <Board position={[0, height - 5, -depth/2 + thickness * 1.5]} args={[innerW, 10, thickness]} {...parseColor(cStructure, structureMaterial, 'top')} />
-                           {/* Amarres frontales y traseros a laterales */}
                            <AssemblyJoint 
                               position={[-innerW/2, height - thickness/2, frontRailZ]} 
                               length={10} axis="z" pointing="right" thickness={thickness} count={1} 
@@ -3852,8 +3874,6 @@ function CabinetBase({ id, type, variant, width, height, depth, position, rotati
                         </>
                      );
                   })()}
-                  <AssemblyJoint position={[-innerW/2, height - 5, -depth/2 + thickness * 1.5]} length={10} axis="y" pointing="right" thickness={thickness} count={1} />
-                  <AssemblyJoint position={[innerW/2, height - 5, -depth/2 + thickness * 1.5]} length={10} axis="y" pointing="left" thickness={thickness} count={1} />
                </>
             ) : (
                <>
@@ -3863,6 +3883,71 @@ function CabinetBase({ id, type, variant, width, height, depth, position, rotati
                   <AssemblyJoint position={[innerW/2, height - thickness/2, bodyCenterZ]} length={bodyDepth} axis="z" pointing="left" thickness={thickness} count={2} />
                </>
             )}
+
+            {/* Barras de Refuerzo Traseras (por detrás de la trasera, únicamente cuando la trasera es Durolac) */}
+            {(() => {
+               if (!isDurolacBack || isCloset) return null;
+
+               const railsY: number[] = [];
+               const backRailZ = -depth / 2 + thickness / 2;
+
+               if (type === 'base' || type === 'island' || type === 'wall') {
+                  // 2 barras de refuerzo posterior: superior e inferior
+                  railsY.push(legsHeight + cabH - 5);
+                  railsY.push(legsHeight + thickness + 5);
+               } else if (type === 'tall') {
+                  if (variant === 'tall_oven_vent') {
+                     // 4 barras: superior, inferior, y justo arriba/abajo de la perforación de ventilación (70cm y 168cm)
+                     railsY.push(legsHeight + thickness + 5);
+                     railsY.push(legsHeight + 70 - 5);
+                     if (legsHeight + 168 + 5 < legsHeight + cabH - 2) {
+                        railsY.push(legsHeight + 168 + 5);
+                     }
+                     railsY.push(legsHeight + cabH - 5);
+                  } else if (cabH < 150) {
+                     // 3 barras de refuerzo uniforme si la despensa mide menos de 150 cm
+                     railsY.push(legsHeight + thickness + 5);
+                     railsY.push(legsHeight + cabH / 2);
+                     railsY.push(legsHeight + cabH - 5);
+                  } else {
+                     // 4 barras de refuerzo uniforme para despensas estándar (>= 150 cm)
+                     railsY.push(legsHeight + thickness + 5);
+                     railsY.push(legsHeight + cabH * (1 / 3));
+                     railsY.push(legsHeight + cabH * (2 / 3));
+                     railsY.push(legsHeight + cabH - 5);
+                  }
+               }
+
+               return (
+                  <>
+                     {railsY.map((yVal, rIdx) => (
+                        <group key={`back-rail-${rIdx}`}>
+                           <Board
+                              position={[0, yVal, backRailZ]}
+                              args={[innerW, 10, thickness]}
+                              {...parseColor(cStructure, structureMaterial, `back_rail_${rIdx}`)}
+                           />
+                           <AssemblyJoint
+                              position={[-innerW / 2, yVal, backRailZ]}
+                              length={10}
+                              axis="y"
+                              pointing="right"
+                              thickness={thickness}
+                              count={1}
+                           />
+                           <AssemblyJoint
+                              position={[innerW / 2, yVal, backRailZ]}
+                              length={10}
+                              axis="y"
+                              pointing="left"
+                              thickness={thickness}
+                              count={1}
+                           />
+                        </group>
+                     ))}
+                  </>
+               );
+            })()}
             {renderFronts()}
             {renderCoverPanels()}
             </>

@@ -81,8 +81,10 @@ export function TexturesManagerTab({ currentProviderId, currentProviderName, isS
     approveTexture,
     rejectTexture,
     deleteTexture,
-    resetTexturesToDefault
+    resetTexturesToDefault,
+    themeMode
   } = useAdminStore();
+  const isLight = themeMode === 'light';
 
   const matchedProvider = useMemo(() => {
     if (!currentProviderId && !currentProviderName) return undefined;
@@ -419,13 +421,19 @@ export function TexturesManagerTab({ currentProviderId, currentProviderName, isS
       )}
 
       {/* Banner Informativo del Flujo de Proveedores */}
-      <div className="p-4 bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-transparent border border-amber-500/30 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div
+        className={`p-4 border rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4 transition-colors ${
+          isLight
+            ? 'bg-amber-500/10 border-amber-300 text-zinc-900 shadow-sm'
+            : 'bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-transparent border-amber-500/30 text-white'
+        }`}
+      >
         <div className="flex items-start gap-3">
-          <div className="p-2 bg-amber-500/20 text-amber-400 rounded-xl mt-0.5 border border-amber-500/40">
+          <div className="p-2 bg-amber-500/20 text-amber-500 rounded-xl mt-0.5 border border-amber-500/40">
             <Building size={20} />
           </div>
           <div>
-            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+            <h3 className={`text-sm font-bold flex items-center gap-2 ${isLight ? 'text-zinc-900' : 'text-white'}`}>
               Gestión de Catálogo y Terminaciones por Proveedor
               {pendingCount > 0 && (
                 <span className="px-2 py-0.5 bg-amber-500 text-black font-extrabold text-[10px] rounded-full animate-pulse">
@@ -433,20 +441,28 @@ export function TexturesManagerTab({ currentProviderId, currentProviderName, isS
                 </span>
               )}
             </h3>
-            <p className="text-xs text-zinc-400 mt-1 max-w-2xl leading-relaxed">
+            <p className={`text-xs mt-1 max-w-2xl leading-relaxed ${isLight ? 'text-zinc-600' : 'text-zinc-400'}`}>
               Los proveedores cargan sus valores de venta final y formatos. Todo nuevo diseño o cambio de precio queda{' '}
-              <strong className="text-amber-300">Pendiente de VB</strong> del Superadministrador antes de publicarse en los configuradores 3D.
+              <strong className="text-amber-600 dark:text-amber-300 font-bold">Pendiente de VB</strong> del Superadministrador antes de publicarse en los configuradores 3D.
             </p>
           </div>
         </div>
 
         {/* Botones de Estado de Aprobación */}
-        <div className="flex items-center gap-2 bg-zinc-950/80 p-1.5 rounded-xl border border-zinc-800 shrink-0">
+        <div
+          className={`flex items-center gap-2 p-1.5 rounded-xl border shrink-0 ${
+            isLight ? 'bg-white border-zinc-200' : 'bg-zinc-950/80 border-zinc-800'
+          }`}
+        >
           <button
             onClick={() => setStatusFilter('all')}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
               statusFilter === 'all'
-                ? 'bg-zinc-800 text-white shadow'
+                ? isLight
+                  ? 'bg-zinc-900 text-white shadow'
+                  : 'bg-zinc-800 text-white shadow'
+                : isLight
+                ? 'text-zinc-600 hover:text-zinc-900'
                 : 'text-zinc-400 hover:text-white'
             }`}
           >
@@ -457,7 +473,7 @@ export function TexturesManagerTab({ currentProviderId, currentProviderName, isS
             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
               statusFilter === 'pending'
                 ? 'bg-amber-500 text-black shadow font-extrabold'
-                : 'text-amber-400 hover:bg-amber-500/10'
+                : 'text-amber-500 hover:bg-amber-500/10'
             }`}
           >
             <Clock size={13} />
@@ -468,7 +484,7 @@ export function TexturesManagerTab({ currentProviderId, currentProviderName, isS
             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
               statusFilter === 'approved'
                 ? 'bg-emerald-600 text-white shadow'
-                : 'text-emerald-400 hover:bg-emerald-500/10'
+                : 'text-emerald-500 hover:bg-emerald-500/10'
             }`}
           >
             <CheckCircle2 size={13} />
@@ -478,17 +494,23 @@ export function TexturesManagerTab({ currentProviderId, currentProviderName, isS
       </div>
 
       {/* Barra de Filtros y Búsqueda */}
-      <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4 bg-zinc-900/80 p-4 rounded-xl border border-zinc-800">
+      <div
+        className={`flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4 p-4 rounded-xl border transition-colors ${
+          isLight ? 'bg-white border-zinc-200 shadow-sm' : 'bg-zinc-900/80 border-zinc-800'
+        }`}
+      >
         <div className="flex flex-col sm:flex-row items-center gap-3 flex-1">
           {/* Búsqueda */}
           <div className="relative w-full sm:w-64">
-            <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <Search size={15} className={`absolute left-3.5 top-1/2 -translate-y-1/2 ${isLight ? 'text-zinc-400' : 'text-slate-400'}`} />
             <input
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Buscar terminación o código..."
-              className="w-full pl-9 pr-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-orange-500"
+              className={`w-full pl-9 pr-3 py-2 border rounded-xl text-xs focus:outline-none focus:border-orange-500 ${
+                isLight ? 'bg-zinc-50 border-zinc-300 text-zinc-900 placeholder:text-zinc-400' : 'bg-zinc-950 border-zinc-800 text-white placeholder:text-zinc-600'
+              }`}
             />
           </div>
 
@@ -498,7 +520,9 @@ export function TexturesManagerTab({ currentProviderId, currentProviderName, isS
               <select
                 value={selectedProviderFilter}
                 onChange={(e) => setSelectedProviderFilter(e.target.value)}
-                className="w-full py-2 px-3 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-orange-500"
+                className={`w-full py-2 px-3 border rounded-xl text-xs focus:outline-none focus:border-orange-500 ${
+                  isLight ? 'bg-zinc-50 border-zinc-300 text-zinc-800' : 'bg-zinc-950 border-zinc-800 text-slate-200'
+                }`}
               >
                 <option value="all">Todos los Proveedores</option>
                 {providers.map((p) => (
@@ -508,7 +532,7 @@ export function TexturesManagerTab({ currentProviderId, currentProviderName, isS
                 ))}
               </select>
             ) : (
-              <div className="flex items-center gap-2 px-3 py-2 bg-orange-500/10 border border-orange-500/30 rounded-xl text-xs text-orange-400 font-semibold">
+              <div className="flex items-center gap-2 px-3 py-2 bg-orange-500/10 border border-orange-500/30 rounded-xl text-xs text-orange-500 font-semibold">
                 <Building size={14} className="text-orange-500 shrink-0" />
                 <span className="truncate">{matchedProvider?.name || currentProviderName || 'Mi Catálogo'}</span>
               </div>
@@ -517,7 +541,11 @@ export function TexturesManagerTab({ currentProviderId, currentProviderName, isS
         </div>
 
         {/* Filtro por Categorías */}
-        <div className="flex items-center gap-1 bg-zinc-950 p-1 rounded-xl border border-zinc-800 overflow-x-auto">
+        <div
+          className={`flex items-center gap-1 p-1 rounded-xl border overflow-x-auto ${
+            isLight ? 'bg-zinc-100 border-zinc-200' : 'bg-zinc-950 border-zinc-800'
+          }`}
+        >
           {[
             { id: 'all', label: 'Todas' },
             { id: 'maderas', label: 'Melaminas Madera' },
@@ -531,6 +559,8 @@ export function TexturesManagerTab({ currentProviderId, currentProviderName, isS
               className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all whitespace-nowrap ${
                 selectedCat === tab.id
                   ? 'bg-orange-500 text-white shadow font-bold'
+                  : isLight
+                  ? 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-zinc-900'
               }`}
             >
@@ -549,7 +579,9 @@ export function TexturesManagerTab({ currentProviderId, currentProviderName, isS
           {isSuperAdmin && (
             <button
               onClick={handleReset}
-              className="p-2 bg-zinc-800 hover:bg-zinc-700 text-slate-400 hover:text-white rounded-xl transition-colors cursor-pointer"
+              className={`p-2 rounded-xl transition-colors cursor-pointer ${
+                isLight ? 'bg-zinc-200 hover:bg-zinc-300 text-zinc-700' : 'bg-zinc-800 hover:bg-zinc-700 text-slate-400 hover:text-white'
+              }`}
               title="Restaurar catálogo de fábrica"
             >
               <RotateCcw size={16} />
@@ -1008,18 +1040,22 @@ export function TexturesManagerTab({ currentProviderId, currentProviderName, isS
           return (
             <div
               key={tex.id}
-              className={`group bg-zinc-900/90 border rounded-2xl overflow-hidden transition-all shadow-sm flex flex-col ${
+              className={`group border rounded-2xl overflow-hidden transition-all shadow-sm flex flex-col ${
                 isPending
                   ? 'border-amber-500/60 ring-1 ring-amber-500/20'
                   : isRejected
                   ? 'border-red-500/40 opacity-70'
                   : tex.active
-                  ? 'border-zinc-800 hover:border-orange-500/50'
-                  : 'border-zinc-800/40 opacity-60'
+                  ? isLight
+                    ? 'bg-white border-zinc-200 hover:border-orange-400'
+                    : 'bg-zinc-900/90 border-zinc-800 hover:border-orange-500/50'
+                  : isLight
+                  ? 'bg-zinc-100 border-zinc-200 opacity-60'
+                  : 'bg-zinc-900/40 border-zinc-800/40 opacity-60'
               }`}
             >
               {/* Preview 3D / Swatch */}
-              <div className="h-40 w-full relative overflow-hidden bg-zinc-950 flex items-center justify-center">
+              <div className={`h-40 w-full relative overflow-hidden flex items-center justify-center ${isLight ? 'bg-zinc-100' : 'bg-zinc-950'}`}>
                 {isColor ? (
                   <div className="w-full h-full" style={{ backgroundColor: tex.url }} />
                 ) : (
@@ -1060,32 +1096,32 @@ export function TexturesManagerTab({ currentProviderId, currentProviderName, isS
                 <div>
                   <div className="flex items-center justify-between gap-2 text-[10px]">
                     <div className="flex items-center gap-1.5">
-                      <span className="font-mono text-orange-400 font-bold">{tex.code}</span>
+                      <span className="font-mono text-orange-500 font-bold">{tex.code}</span>
                       {tex.thicknessMm && (
-                        <span className="px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-400 border border-orange-500/30 font-mono font-bold text-[9px]">
+                        <span className="px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-500 border border-orange-500/30 font-mono font-bold text-[9px]">
                           {tex.thicknessMm} mm
                         </span>
                       )}
                     </div>
-                    <span className="text-zinc-400 font-mono text-[10px]">{tex.sheetFormat}</span>
+                    <span className={`font-mono text-[10px] ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>{tex.sheetFormat}</span>
                   </div>
-                  <h4 className="text-sm font-bold text-white tracking-tight mt-0.5">{tex.name}</h4>
-                  <p className="text-xs text-zinc-400 mt-0.5">{tex.finish}</p>
+                  <h4 className={`text-sm font-bold tracking-tight mt-0.5 ${isLight ? 'text-zinc-900' : 'text-white'}`}>{tex.name}</h4>
+                  <p className={`text-xs mt-0.5 ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>{tex.finish}</p>
                 </div>
 
                 {/* Tarifa y Liquidación */}
-                <div className="p-2.5 bg-zinc-950/60 rounded-xl space-y-1.5 border border-zinc-800/80 text-[11px]">
+                <div className={`p-2.5 rounded-xl space-y-1.5 border text-[11px] ${isLight ? 'bg-zinc-50 border-zinc-200' : 'bg-zinc-950/60 border-zinc-800/80'}`}>
                   <div className="flex items-center justify-between">
-                    <span className="text-zinc-400">Valor Final Venta:</span>
-                    <strong className="text-white font-mono">${tex.priceSheetClp.toLocaleString('es-CL')}</strong>
+                    <span className={isLight ? 'text-zinc-600' : 'text-zinc-400'}>Valor Final Venta:</span>
+                    <strong className={`font-mono ${isLight ? 'text-zinc-900' : 'text-white'}`}>${tex.priceSheetClp.toLocaleString('es-CL')}</strong>
                   </div>
-                  <div className="flex items-center justify-between text-zinc-400">
+                  <div className={`flex items-center justify-between ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>
                     <span>Comisión Arquify ({comm}%):</span>
-                    <span className="text-amber-400 font-mono">-${Math.round((tex.priceSheetClp * comm) / 100).toLocaleString('es-CL')}</span>
+                    <span className="text-amber-500 font-mono">-${Math.round((tex.priceSheetClp * comm) / 100).toLocaleString('es-CL')}</span>
                   </div>
-                  <div className="pt-1 border-t border-zinc-800/80 flex items-center justify-between font-bold">
-                    <span className="text-emerald-400">Neto Proveedor:</span>
-                    <span className="text-emerald-300 font-mono">${net.toLocaleString('es-CL')}</span>
+                  <div className={`pt-1 border-t flex items-center justify-between font-bold ${isLight ? 'border-zinc-200' : 'border-zinc-800/80'}`}>
+                    <span className="text-emerald-600 dark:text-emerald-400">Neto Proveedor:</span>
+                    <span className="text-emerald-600 dark:text-emerald-300 font-mono">${net.toLocaleString('es-CL')}</span>
                   </div>
                 </div>
 

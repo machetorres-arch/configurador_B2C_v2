@@ -171,8 +171,9 @@ export const TexturesSection = ({
       const cat = t.category;
       const n = (t.name || '').toLowerCase();
       const b = (t.brand || t.providerName || '').toLowerCase();
-      const isStone = cat === 'piedras_marmoles' || n.includes('qstone') || b.includes('qstone') || b.includes('sysprotec');
-      return !isStone;
+      const isStone = cat === 'piedras_marmoles' || (cat as string) === 'cubiertas_hpl' || n.includes('qstone') || b.includes('qstone') || b.includes('sysprotec');
+      const isCountertopHpl = t.thicknessMm === 8 || n.includes('cubierta') || (t.category as string) === 'cubiertas_hpl';
+      return !isStone && !isCountertopHpl;
     })
     .map(t => ({
       id: t.id,

@@ -5,7 +5,7 @@ import { generateKitchenPartsList, generateKitchenHardwareList } from './kitchen
 import { generateCountertopPieces } from './countertopNesting';
 
 export interface B2BQuoteItem {
-  category: 'tableros' | 'tapacantos' | 'herrajes' | 'manufactura' | 'cubierta' | 'armado';
+  category: 'tableros' | 'tapacantos' | 'herrajes' | 'manufactura' | 'cubierta' | 'armado' | 'decoracion';
   name: string;
   detail: string;
   qty: number;
@@ -261,19 +261,162 @@ export function calculateKitchenDualQuote(customMarginPercent?: number, customAd
     });
   }
 
+  // 8.5 INSUMOS DE DECORACIÓN Y REMODELACIÓN ESPACIAL
+  let subtotalDecorationClp = 0;
+  const deco = kState.spaceDecoration;
+  if (deco) {
+    // Pisos por zona
+    if (deco.floorZones && deco.floorZones.length > 0) {
+      let totalFloorM2 = 15;
+      if (kState.roomConfig?.vertices && kState.roomConfig.vertices.length >= 3) {
+        let area = 0;
+        const vertices = kState.roomConfig.vertices;
+        for (let i = 0; i < vertices.length; i++) {
+          const j = (i + 1) % vertices.length;
+          area += vertices[i].x * vertices[j].y;
+          area -= vertices[j].x * vertices[i].y;
+        }
+        totalFloorM2 = Math.abs(area / 2) / 10000;
+      }
+
+      deco.floorZones.forEach((z) => {
+        if (!z.supplyId) return;
+        const sup = supplies.find((s) => s.id === z.supplyId);
+        if (!sup) return;
+        const zoneM2 = (totalFloorM2 * z.areaPercentage) / 100;
+        const coverage = sup.coveragePerUnitM2 || 1.44;
+        const reqQty = Math.ceil(zoneM2 / coverage);
+        const itemCost = reqQty * sup.priceClp;
+        subtotalDecorationClp += itemCost;
+
+        b2bItems.push({
+          category: 'decoracion',
+          name: `Piso: ${sup.name} (${z.name})`,
+          detail: `${zoneM2.toFixed(1)} m² de superficie (${reqQty} ${sup.unitFormat || 'cajas'})`,
+          qty: reqQty,
+          unit: sup.unitFormat || 'Cajas',
+          unitCostClp: sup.priceClp,
+          totalCostClp: itemCost,
+        });
+      });
+    }
+
+    // Muros (Agrupación de superficie total por insumo/pintura para consolidar m² y formato)
+    if (deco.wallDecorations) {
+      const effectiveWallsList = (kState.walls && kState.walls.length > 0)
+        ? kState.walls
+        : (kState.roomConfig?.vertices && kState.roomConfig.vertices.length >= 3
+            ? kState.roomConfig.vertices.map((v, i, arr) => {
+                const next = arr[(i + 1) % arr.length];
+                return {
+                  id: `wall_v_${i}`,
+                  start: [v.x, v.y] as [number, number],
+                  end: [next.x, next.y] as [number, number],
+                  thickness: kState.roomConfig.wallThickness || 20,
+                  height: kState.roomConfig.wallHeight || 240,
+                };
+              })
+            : []);
+
+      const wallGroupMap = new Map<string, { totalM2: number; wallCount: number }>();
+
+      Object.entries(deco.wallDecorations).forEach(([wallId, rawDeco]) => {
+        const wallDeco = rawDeco as { supplyId?: string };
+        if (!wallDeco || !wallDeco.supplyId) return;
+
+        const wallObj = effectiveWallsList.find((w) => w.id === wallId);
+        let wallM2 = 0;
+        if (wallObj) {
+          const dx = wallObj.end[0] - wallObj.start[0];
+          const dy = wallObj.end[1] - wallObj.start[1];
+          const lengthM = Math.hypot(dx, dy) / 100;
+          const heightM = (wallObj.height || 240) / 100;
+          let grossArea = lengthM * heightM;
+
+          const wallArchs = (kState.architecturalElements || []).filter((el) => el.wallId === wallId);
+          let openingsArea = 0;
+          wallArchs.forEach((el) => {
+            const openM2 = ((el.width || 80) / 100) * ((el.height || 200) / 100);
+            openingsArea += openM2;
+          });
+
+          wallM2 = Math.max(0, grossArea - openingsArea);
+        } else {
+          wallM2 = 7.2;
+        }
+
+        const current = wallGroupMap.get(wallDeco.supplyId) || { totalM2: 0, wallCount: 0 };
+        current.totalM2 += wallM2;
+        current.wallCount += 1;
+        wallGroupMap.set(wallDeco.supplyId, current);
+      });
+
+      wallGroupMap.forEach((groupData, supplyId) => {
+        const sup = supplies.find((s) => s.id === supplyId);
+        if (!sup) return;
+
+        const totalM2Rounded = Math.round(groupData.totalM2 * 100) / 100;
+        const coverage = sup.coveragePerUnitM2 || 10;
+        const reqQty = Math.max(1, Math.ceil(totalM2Rounded / coverage));
+        const itemCost = reqQty * sup.priceClp;
+        subtotalDecorationClp += itemCost;
+
+        const unitLabel = sup.unitFormat || 'galón';
+        const detailStr = `${totalM2Rounded} m² totales de muro (${groupData.wallCount} muro${groupData.wallCount > 1 ? 's' : ''}) • Rinde ${coverage} m²/${unitLabel}`;
+
+        b2bItems.push({
+          category: 'decoracion',
+          name: `Pintura / Muros: ${sup.name}`,
+          detail: detailStr,
+          qty: reqQty,
+          unit: unitLabel,
+          unitCostClp: sup.priceClp,
+          totalCostClp: itemCost,
+        });
+      });
+    }
+
+    // Insumos Directos (Cortinas, Ventanas, Puertas, Focos, Rodones, Marquetería)
+    const simpleItems = [
+      { id: deco.cortinasSupplyId, count: deco.cortinasCount || 1, catLabel: 'Cortinas' },
+      { id: deco.ventanasSupplyId, count: deco.ventanasCount || 1, catLabel: 'Ventana' },
+      { id: deco.puertasSupplyId, count: deco.puertasCount || 1, catLabel: 'Puerta' },
+      { id: deco.focosSupplyId, count: deco.focosCount || 4, catLabel: 'Foco LED' },
+      { id: deco.rodonesSupplyId, count: 1, catLabel: 'Rodón / Burlete' },
+      { id: deco.marqueteriaSupplyId, count: 1, catLabel: 'Marquetería de Cielo' },
+    ];
+
+    simpleItems.forEach((it) => {
+      if (!it.id) return;
+      const sup = supplies.find((s) => s.id === it.id);
+      if (!sup) return;
+      const itemCost = it.count * sup.priceClp;
+      subtotalDecorationClp += itemCost;
+
+      b2bItems.push({
+        category: 'decoracion',
+        name: `${it.catLabel}: ${sup.name}`,
+        detail: `Remodelación (${it.count} ${sup.unitFormat || 'unid.'})`,
+        qty: it.count,
+        unit: sup.unitFormat || 'Unid.',
+        unitCostClp: sup.priceClp,
+        totalCostClp: itemCost,
+      });
+    });
+  }
+
   // TOTAL B2B
-  const totalB2BNetoClp = subtotalMaterialsClp + subtotalEdgeBandingClp + subtotalHardwareClp + subtotalManufacturingClp + subtotalPreAssemblyClp + subtotalCountertopClp;
+  const totalB2BNetoClp = subtotalMaterialsClp + subtotalEdgeBandingClp + subtotalHardwareClp + subtotalManufacturingClp + subtotalPreAssemblyClp + subtotalCountertopClp + subtotalDecorationClp;
   const ivaB2BClp = Math.round(totalB2BNetoClp * 0.19);
   const totalB2BBrutoClp = totalB2BNetoClp + ivaB2BClp;
 
   // 10. GENERACIÓN DE COTIZACIÓN COMERCIAL CLIENTE FINAL (PVP)
-  // El margen del diseñador se aplica sobre el costo B2B neto
-  // PVP = Costo B2B * (1 + margin/100) + additionalFee
   const marginMultiplier = 1 + (designerMarginPercent / 100);
   const basePvpMaterialsAndMfg = Math.round((subtotalMaterialsClp + subtotalEdgeBandingClp + subtotalManufacturingClp) * marginMultiplier);
   const basePvpHardware = Math.round(subtotalHardwareClp * marginMultiplier);
   const basePvpCountertop = subtotalCountertopClp > 0 ? Math.round(subtotalCountertopClp * marginMultiplier) : 0;
   const basePvpAssembly = subtotalPreAssemblyClp > 0 ? Math.round(subtotalPreAssemblyClp * marginMultiplier) : 0;
+  const basePvpDecoration = subtotalDecorationClp > 0 ? Math.round(subtotalDecorationClp * marginMultiplier) : 0;
 
   const clientItems: ClientQuoteItem[] = [
     {
@@ -299,6 +442,16 @@ export function calculateKitchenDualQuote(customMarginPercent?: number, customAd
       title: 'Cubierta Técnica en Cuarzo / Piedra Sinterizada Qstone',
       description: `Suministro, dimensionado CNC y pulido perimetral de cubiertas según plano de distribución (${countertopDetails}).`,
       totalClp: basePvpCountertop,
+    });
+  }
+
+  if (basePvpDecoration > 0) {
+    clientItems.push({
+      id: 'pvp-deco',
+      category: 'Decoración & Remodelación Espacial',
+      title: 'Acabados de Pisos, Muros, Ventanales y Luminarias',
+      description: 'Insumos de revestimiento de pisos por zonas, papel mural/pintura por muros, cortinas, ventanas, puertas, focos LED, rodones y marquetería.',
+      totalClp: basePvpDecoration,
     });
   }
 

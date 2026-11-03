@@ -113,10 +113,41 @@ export function RoomPlannerModal() {
   // Selección de plantilla
   const handleSelectShape = (type: RoomShapeType) => {
     setSelectedShape(type);
-    const newVerts = getPresetRoomVertices(type);
-    setVertices(newVerts);
-    setIsFreehandDrawing(type === 'freeform');
+    if (type === 'freeform') {
+      setVertices([]);
+      setIsFreehandDrawing(true);
+    } else {
+      const newVerts = getPresetRoomVertices(type);
+      setVertices(newVerts);
+      setIsFreehandDrawing(false);
+    }
     setStep('edit_dimensions');
+  };
+
+  // Deshacer el último vértice en modo dibujo libre
+  const handleUndoLastVertex = () => {
+    if (vertices.length === 0) return;
+    const updated = vertices.slice(0, -1);
+    setVertices(updated);
+    if (updated.length === 0) {
+      setSelectedVertexIndex(null);
+    } else {
+      setSelectedVertexIndex(updated.length - 1);
+    }
+  };
+
+  // Limpiar todo el dibujo libre
+  const handleClearFreehand = () => {
+    setVertices([]);
+    setSelectedVertexIndex(null);
+    setIsFreehandDrawing(true);
+  };
+
+  // Finalizar y cerrar planta en modo dibujo libre
+  const handleFinishFreehand = () => {
+    if (vertices.length < 3) return;
+    setIsFreehandDrawing(false);
+    setVertices(centerVertices(vertices));
   };
 
   // Modificar longitud de una pared numéricamente manteniendo ortogonalidad estricta (90°)
@@ -508,46 +539,85 @@ export function RoomPlannerModal() {
                 </div>
 
                 {/* Herramientas de Modificación de Polígono */}
-                <div className="flex flex-col gap-2 pt-2">
-                  <div className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">Edición Poligonal</div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      onClick={handleAddVertex}
-                      className="py-2 px-2.5 bg-white hover:bg-slate-50 border border-slate-300 rounded text-xs font-bold text-slate-800 flex items-center justify-center gap-1.5 transition-colors shadow-sm"
-                    >
-                      <Plus size={14} className="text-emerald-600" />
-                      <span>Añadir Vértice</span>
-                    </button>
-                    <button
-                      onClick={handleDeleteVertex}
-                      disabled={vertices.length <= 3 || selectedVertexIndex === null}
-                      className="py-2 px-2.5 bg-white hover:bg-red-50 disabled:opacity-40 border border-slate-300 rounded text-xs font-bold text-slate-800 flex items-center justify-center gap-1.5 transition-colors shadow-sm"
-                    >
-                      <Trash2 size={14} className="text-red-500" />
-                      <span>Eliminar</span>
-                    </button>
-                  </div>
+                {selectedShape === 'freeform' && isFreehandDrawing ? (
+                  <div className="flex flex-col gap-2 pt-2 border-t border-slate-300">
+                    <div className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">Controles de Dibujo Libre</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={handleUndoLastVertex}
+                        disabled={vertices.length === 0}
+                        className="py-2 px-2.5 bg-white hover:bg-slate-100 disabled:opacity-40 border border-slate-300 rounded text-xs font-bold text-slate-800 flex items-center justify-center gap-1.5 transition-colors shadow-sm"
+                        title="Deshacer la ubicación del último punto trazado"
+                      >
+                        <RotateCcw size={14} className="text-amber-600" />
+                        <span>Deshacer Punto</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleClearFreehand}
+                        disabled={vertices.length === 0}
+                        className="py-2 px-2.5 bg-white hover:bg-red-50 disabled:opacity-40 border border-slate-300 rounded text-xs font-bold text-red-600 flex items-center justify-center gap-1.5 transition-colors shadow-sm"
+                        title="Borrar todos los puntos trazados y comenzar de nuevo"
+                      >
+                        <Trash2 size={14} />
+                        <span>Reiniciar</span>
+                      </button>
+                    </div>
 
-                  <div className="grid grid-cols-2 gap-2">
                     <button
                       type="button"
-                      onClick={handleRestoreSquares}
-                      className="py-2 px-2.5 bg-white hover:bg-amber-50 border border-slate-300 rounded text-xs font-bold text-slate-800 flex items-center justify-center gap-1.5 transition-colors shadow-sm"
-                      title="Endereza y alinea todas las paredes a 90°"
+                      onClick={handleFinishFreehand}
+                      disabled={vertices.length < 3}
+                      className="py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white font-extrabold text-xs uppercase tracking-wider rounded-lg shadow transition-colors flex items-center justify-center gap-2 mt-1"
+                      title="Cierra el perímetro trazado y permite ajustar la longitud exacta de cada muro"
                     >
-                      <LayoutGrid size={14} className="text-blue-600" />
-                      <span>Escuadras 90°</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleCenter}
-                      className="py-2 px-2.5 bg-white hover:bg-slate-50 border border-slate-300 rounded text-xs font-bold text-slate-700 flex items-center justify-center gap-1.5 transition-colors shadow-sm"
-                    >
-                      <RotateCcw size={14} />
-                      <span>Centrar</span>
+                      <Check size={16} />
+                      <span>Finalizar y Cerrar Planta ({vertices.length} Muros)</span>
                     </button>
                   </div>
-                </div>
+                ) : (
+                  <div className="flex flex-col gap-2 pt-2">
+                    <div className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">Edición Poligonal</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={handleAddVertex}
+                        className="py-2 px-2.5 bg-white hover:bg-slate-50 border border-slate-300 rounded text-xs font-bold text-slate-800 flex items-center justify-center gap-1.5 transition-colors shadow-sm"
+                      >
+                        <Plus size={14} className="text-emerald-600" />
+                        <span>Añadir Vértice</span>
+                      </button>
+                      <button
+                        onClick={handleDeleteVertex}
+                        disabled={vertices.length <= 3 || selectedVertexIndex === null}
+                        className="py-2 px-2.5 bg-white hover:bg-red-50 disabled:opacity-40 border border-slate-300 rounded text-xs font-bold text-slate-800 flex items-center justify-center gap-1.5 transition-colors shadow-sm"
+                      >
+                        <Trash2 size={14} className="text-red-500" />
+                        <span>Eliminar</span>
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={handleRestoreSquares}
+                        className="py-2 px-2.5 bg-white hover:bg-amber-50 border border-slate-300 rounded text-xs font-bold text-slate-800 flex items-center justify-center gap-1.5 transition-colors shadow-sm"
+                        title="Endereza y alinea todas las paredes a 90°"
+                      >
+                        <LayoutGrid size={14} className="text-blue-600" />
+                        <span>Escuadras 90°</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleCenter}
+                        className="py-2 px-2.5 bg-white hover:bg-slate-50 border border-slate-300 rounded text-xs font-bold text-slate-700 flex items-center justify-center gap-1.5 transition-colors shadow-sm"
+                      >
+                        <RotateCcw size={14} />
+                        <span>Centrar</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </aside>
 
@@ -561,6 +631,7 @@ export function RoomPlannerModal() {
                 onVerticesChange={(newVerts) => setVertices(newVerts)}
                 selectedVertexIndex={selectedVertexIndex}
                 onSelectVertexIndex={(idx) => setSelectedVertexIndex(idx)}
+                onFinishFreehand={handleFinishFreehand}
               />
             </main>
           </div>

@@ -28,7 +28,22 @@ export interface ProjectItem {
   thumbnail?: string;
 }
 
-export type SupplyCategory = 'melamina' | 'herrajes' | 'cubiertas_qstone' | 'madera' | 'fijaciones_sellantes';
+export type SupplyCategory = 
+  | 'melamina' 
+  | 'herrajes' 
+  | 'cubiertas_qstone' 
+  | 'madera' 
+  | 'fijaciones_sellantes'
+  | 'pisos'
+  | 'muros'
+  | 'cortinas'
+  | 'ventanas'
+  | 'puertas'
+  | 'focos'
+  | 'rodones_burletes'
+  | 'marqueteria';
+
+export type SupplyUnitFormat = 'caja' | 'galon' | 'tinaja' | 'rollo' | 'metro_lineal' | 'unidad';
 
 export interface SupplyItem {
   id: string;
@@ -42,6 +57,12 @@ export interface SupplyItem {
   stockRef?: number;
   providerId?: string;
   notes?: string;
+  // Campos de Remodelación/Decoración
+  unitFormat?: SupplyUnitFormat;
+  coveragePerUnitM2?: number; // ej: 2.15 m2 por caja, 12 m2 por galón, 5.3 m2 por rollo
+  commissionPercentage?: number; // % comisión/margen Arquify (ej: 20%)
+  providerNetPriceClp?: number; // Precio neto del proveedor
+  imageUrl?: string; // Foto del insumo cargada por el proveedor
 }
 
 export type TextureApprovalStatus = 'pending' | 'approved' | 'rejected';
@@ -456,6 +477,195 @@ export const DEFAULT_SUPPLIES: SupplyItem[] = [
     supplier: 'SYSPROTEC (Qstone)',
     stockRef: 15,
     notes: 'Margen Robfu 20% ($55.214 /m²)'
+  },
+
+  // --- INSUMOS DE DECORACIÓN Y REMODELACIÓN ---
+  // Pisos (Cajas)
+  {
+    id: 'piso-porcelanato-60x60',
+    category: 'pisos',
+    name: 'Porcelanato Rectificado 60x60 cm Gris Cementicio',
+    code: 'PISO-PORC-60',
+    spec: 'Formato 60x60 cm, espesor 9 mm, caja contiene 1.44 m²',
+    unit: 'Caja (1.44 m²)',
+    unitFormat: 'caja',
+    coveragePerUnitM2: 1.44,
+    priceClp: 24990,
+    providerNetPriceClp: 19992,
+    commissionPercentage: 20,
+    supplier: 'MK / Ambientes',
+    stockRef: 150,
+    notes: 'Tráfico alto ideal para cocinas y áreas comunes'
+  },
+  {
+    id: 'piso-flotante-8mm',
+    category: 'pisos',
+    name: 'Piso Fotolaminado Flotante 8mm Roble Natural AC4',
+    code: 'PISO-FLOT-8M',
+    spec: 'Biselado 4V, caja contiene 2.13 m²',
+    unit: 'Caja (2.13 m²)',
+    unitFormat: 'caja',
+    coveragePerUnitM2: 2.13,
+    priceClp: 21990,
+    providerNetPriceClp: 17592,
+    commissionPercentage: 20,
+    supplier: 'Krono / MK',
+    stockRef: 200,
+    notes: 'Resistente a humedad ligera'
+  },
+
+  // Muros (Pinturas, Papel Mural, Revestimientos)
+  {
+    id: 'muro-pintura-tinaja',
+    category: 'muros',
+    name: 'Pintura Esmalte al Agua Blanco Neutro / Lino (Tinaja 5 Galones)',
+    code: 'PIN-TINAJA-5G',
+    spec: 'Tinaja de 5 galones (~18.9 L). Rinde aprox. 80 m² a 2 manos',
+    unit: 'Tinaja (80 m²)',
+    unitFormat: 'tinaja',
+    coveragePerUnitM2: 80,
+    priceClp: 78900,
+    providerNetPriceClp: 63120,
+    commissionPercentage: 20,
+    supplier: 'Sherwin Williams / Tricolor',
+    stockRef: 40,
+    notes: 'Lavable mate para muros interiores'
+  },
+  {
+    id: 'muro-papel-mural-botanico',
+    category: 'muros',
+    name: 'Papel Mural Vinílico Texturizado Diseño Botánico',
+    code: 'PAPEL-MUR-BOT',
+    spec: 'Rollo de 0.53 x 10 m (Cubre 5.3 m² netos). Lavable e ignífugo',
+    unit: 'Rollo (5.3 m²)',
+    unitFormat: 'rollo',
+    coveragePerUnitM2: 5.3,
+    priceClp: 39900,
+    providerNetPriceClp: 31920,
+    commissionPercentage: 20,
+    supplier: 'CasaMural / DecoStyle',
+    stockRef: 60,
+    notes: 'Apto para muro acentuado o ambiente completo'
+  },
+  {
+    id: 'muro-papel-mural-geometrico',
+    category: 'muros',
+    name: 'Papel Mural Textura Lino / Geométrico Neutro',
+    code: 'PAPEL-MUR-GEO',
+    spec: 'Rollo de 0.53 x 10 m (Cubre 5.3 m²). Acabado mate de lujo',
+    unit: 'Rollo (5.3 m²)',
+    unitFormat: 'rollo',
+    coveragePerUnitM2: 5.3,
+    priceClp: 42900,
+    providerNetPriceClp: 34320,
+    commissionPercentage: 20,
+    supplier: 'CasaMural / DecoStyle',
+    stockRef: 45,
+    notes: 'Fácil instalación con adhesivo celulósico'
+  },
+
+  // Cortinas
+  {
+    id: 'cortina-roller-duo',
+    category: 'cortinas',
+    name: 'Cortina Roller Duo Día y Noche a Medida',
+    code: 'CORT-ROLLER-DUO',
+    spec: 'Mecanismo de aluminio reforzado, tela poliéster blackout/screen',
+    unit: 'Unidad',
+    unitFormat: 'unidad',
+    priceClp: 65000,
+    providerNetPriceClp: 52000,
+    commissionPercentage: 20,
+    supplier: 'Hunter Douglas / Luxaflex',
+    stockRef: 30,
+    notes: 'Ajuste milimétrico a vanos'
+  },
+
+  // Ventanas
+  {
+    id: 'ventana-pvc-termopanel',
+    category: 'ventanas',
+    name: 'Ventana PVC Termopanel Doble Vidrio Laminated 120x120 cm',
+    code: 'VENT-PVC-120',
+    spec: 'Aislamiento térmico y acústico, perfilería europea blanca',
+    unit: 'Unidad',
+    unitFormat: 'unidad',
+    priceClp: 185000,
+    providerNetPriceClp: 148000,
+    commissionPercentage: 20,
+    supplier: 'Kömmerling / Deceuninck',
+    stockRef: 15,
+    notes: 'Hermética de corredera o abatible'
+  },
+
+  // Puertas
+  {
+    id: 'puerta-interior-madera',
+    category: 'puertas',
+    name: 'Puerta Interior Terciado HDF Enchapada Roble (80x200 cm) + Marco',
+    code: 'PUERTA-ROBLE-80',
+    spec: 'Hoja precolgada con marco de MDF hidrófugo y bisagras',
+    unit: 'Unidad',
+    unitFormat: 'unidad',
+    priceClp: 129000,
+    providerNetPriceClp: 103200,
+    commissionPercentage: 20,
+    supplier: 'Masonite / San Francisco',
+    stockRef: 25,
+    notes: 'No incluye cerradura'
+  },
+
+  // Focos
+  {
+    id: 'foco-led-embutido-9w',
+    category: 'focos',
+    name: 'Spot LED Embutir 9W Cálido/Neutro Regulable (Pack x 4)',
+    code: 'FOCO-LED-9W',
+    spec: 'Marco de aluminio blanco mate, 3000K/4000K, IP44',
+    unit: 'Unidad (Pack 4 focos)',
+    unitFormat: 'unidad',
+    priceClp: 19900,
+    providerNetPriceClp: 15920,
+    commissionPercentage: 20,
+    supplier: 'Philips / Eglo',
+    stockRef: 100,
+    notes: 'Luz empotrada de cielo para iluminación ambiente'
+  },
+
+  // Rodones / Burletes
+  {
+    id: 'rodon-pvc-blanco',
+    category: 'rodones_burletes',
+    name: 'Guardapolvo / Rodón PVC Flexible e Impermeable (Tira 2.4 m)',
+    code: 'RODON-PVC-24M',
+    spec: 'Tira de 2.4 metros lineales, alto 70 mm, lavable',
+    unit: 'Metro lineal',
+    unitFormat: 'metro_lineal',
+    coveragePerUnitM2: 2.4,
+    priceClp: 3500,
+    providerNetPriceClp: 2800,
+    commissionPercentage: 20,
+    supplier: 'MK / Dural',
+    stockRef: 300,
+    notes: 'Terminación inferior contra piso'
+  },
+
+  // Marquetería
+  {
+    id: 'marqueteria-cielo-mdf',
+    category: 'marqueteria',
+    name: 'Moldura / Cornisa de Cielo MDF Peinada 50x50 mm (Tira 2.4 m)',
+    code: 'MARQ-CIELO-50',
+    spec: 'Tira de 2.4 m, lista para pintar',
+    unit: 'Metro lineal',
+    unitFormat: 'metro_lineal',
+    coveragePerUnitM2: 2.4,
+    priceClp: 4200,
+    providerNetPriceClp: 3360,
+    commissionPercentage: 20,
+    supplier: 'Nomastyl / Molduras Chile',
+    stockRef: 200,
+    notes: 'Remate superior en encuentro pared-cielo'
   },
   {
     id: 'qs-canto-pulido',

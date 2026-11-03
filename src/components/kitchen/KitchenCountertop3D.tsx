@@ -597,11 +597,13 @@ export function KitchenCountertop3D() {
         const cabTopY = run.heightMm / 10;
         const slabCenterY = cabTopY + stoneThicknessCm / 2;
 
-        const regruesoCm = override?.regruesoCm !== undefined
+        const isHpl8mm = selectedProduct.thicknessMm === 8 || selectedProduct.materialType === 'hpl_abet';
+        const rawRegruesoCm = override?.regruesoCm !== undefined
           ? override.regruesoCm
           : (isIsland
               ? (countertopConfig.islandRegruesoCm ?? countertopConfig.regruesoCm)
               : (countertopConfig.baseRegruesoCm ?? countertopConfig.regruesoCm));
+        const regruesoCm = isHpl8mm ? 0 : rawRegruesoCm;
 
         const backsplashMode = override?.backsplashMode !== undefined
           ? override.backsplashMode

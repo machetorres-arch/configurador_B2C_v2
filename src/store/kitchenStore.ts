@@ -94,6 +94,7 @@ export interface WallType {
   thickness: number;
   height: number;
   isInterior?: boolean;
+  index?: number;
 }
 
 export interface ArchitecturalElement {
@@ -235,6 +236,44 @@ export function getCabinetLabel(cab: Partial<CabinetType>, index: number): strin
   return `Módulo ${index + 1}`;
 }
 
+export interface FloorZoneDecoration {
+  id: string;
+  name: string;
+  areaPercentage: number;
+  supplyId?: string;
+  supplyName?: string;
+  priceClp?: number;
+  unitFormat?: string;
+  coveragePerUnitM2?: number;
+}
+
+export interface WallDecorationItem {
+  wallId: string;
+  finishType?: 'pintura' | 'papel_mural' | 'revestimiento';
+  supplyId?: string;
+  supplyName?: string;
+  priceClp?: number;
+  unitFormat?: string;
+  coveragePerUnitM2?: number;
+  notes?: string;
+  imageUrl?: string;
+}
+
+export interface SpaceDecorationConfig {
+  floorZones: FloorZoneDecoration[];
+  wallDecorations: Record<string, WallDecorationItem>;
+  cortinasSupplyId?: string;
+  cortinasCount?: number;
+  ventanasSupplyId?: string;
+  ventanasCount?: number;
+  puertasSupplyId?: string;
+  puertasCount?: number;
+  focosSupplyId?: string;
+  focosCount?: number;
+  rodonesSupplyId?: string;
+  marqueteriaSupplyId?: string;
+}
+
 interface KitchenState {
   viewMode: ViewMode;
   toolMode: ToolMode;
@@ -251,6 +290,7 @@ interface KitchenState {
   roomConfig: RoomConfig;
   wallColor: string;
   floorType: string;
+  spaceDecoration: SpaceDecorationConfig;
   activeWallId: string | null;
   architecturalElements: ArchitecturalElement[];
   activeArchElementId: string | null;
@@ -261,6 +301,17 @@ interface KitchenState {
   islandBackConfig: IslandBackConfig;
   qstoneCatalog: QstoneProductItem[];
   handleConfig: KitchenHandleConfig;
+  activeDecoWallId: string | null;
+  isWallDecoTabOpen: boolean;
+
+  setActiveDecoWallId: (id: string | null) => void;
+  setIsWallDecoTabOpen: (isOpen: boolean) => void;
+
+  setSpaceDecoration: (updates: Partial<SpaceDecorationConfig>) => void;
+  setWallDecoration: (wallId: string, item: WallDecorationItem) => void;
+  setFloorZoneDecoration: (zoneId: string, item: Partial<FloorZoneDecoration>) => void;
+  addFloorZone: (zoneName?: string) => void;
+  removeFloorZone: (zoneId: string) => void;
 
   setViewMode: (mode: ViewMode) => void;
   setToolMode: (mode: ToolMode) => void;
@@ -663,7 +714,12 @@ export const useKitchenStore = create<KitchenState>((set, get) => {
   isRoomPlannerOpen: false,
   roomConfig: initialRoomConfig,
   wallColor: '#E2E8F0',
-  floorType: 'ceramic_white_60x60',
+  spaceDecoration: {
+    floorZones: [
+      { id: 'floor_zone_1', name: 'Zona Principal / Completa', areaPercentage: 100 }
+    ],
+    wallDecorations: {},
+  },
   activeWallId: null,
   architecturalElements: [],
   activeArchElementId: null,
@@ -674,6 +730,10 @@ export const useKitchenStore = create<KitchenState>((set, get) => {
   islandBackConfig: DEFAULT_ISLAND_BACK_CONFIG,
   qstoneCatalog: DEFAULT_QSTONE_CATALOG,
   handleConfig: DEFAULT_HANDLE_CONFIG,
+  activeDecoWallId: null,
+  isWallDecoTabOpen: false,
+  setActiveDecoWallId: (id) => set({ activeDecoWallId: id }),
+  setIsWallDecoTabOpen: (isOpen) => set({ isWallDecoTabOpen: isOpen }),
   golaIncompatibilityAlert: null,
   mepPoints: [],
   activeMepId: null,
@@ -682,6 +742,64 @@ export const useKitchenStore = create<KitchenState>((set, get) => {
   showMepDimensions: true,
   history: [],
   future: [],
+
+  setSpaceDecoration: (updates: Partial<SpaceDecorationConfig>) => {
+    set((state) => ({
+      spaceDecoration: { ...state.spaceDecoration, ...updates }
+    }));
+  },
+
+  setWallDecoration: (wallId: string, item: WallDecorationItem) => {
+    set((state) => ({
+      spaceDecoration: {
+        ...state.spaceDecoration,
+        wallDecorations: {
+          ...state.spaceDecoration.wallDecorations,
+          [wallId]: item,
+        }
+      }
+    }));
+  },
+
+  setFloorZoneDecoration: (zoneId: string, item: Partial<FloorZoneDecoration>) => {
+    set((state) => ({
+      spaceDecoration: {
+        ...state.spaceDecoration,
+        floorZones: state.spaceDecoration.floorZones.map((z) =>
+          z.id === zoneId ? { ...z, ...item } : z
+        )
+      }
+    }));
+  },
+
+  addFloorZone: (zoneName?: string) => {
+    set((state) => {
+      const count = state.spaceDecoration.floorZones.length + 1;
+      const newZone: FloorZoneDecoration = {
+        id: `floor_zone_${Date.now()}`,
+        name: zoneName || `Zona ${count}`,
+        areaPercentage: Math.max(10, Math.floor(100 / count)),
+      };
+      return {
+        spaceDecoration: {
+          ...state.spaceDecoration,
+          floorZones: [...state.spaceDecoration.floorZones, newZone]
+        }
+      };
+    });
+  },
+
+  removeFloorZone: (zoneId: string) => {
+    set((state) => {
+      if (state.spaceDecoration.floorZones.length <= 1) return state; // Mantener al menos 1 zona
+      return {
+        spaceDecoration: {
+          ...state.spaceDecoration,
+          floorZones: state.spaceDecoration.floorZones.filter((z) => z.id !== zoneId)
+        }
+      };
+    });
+  },
 
   canUndo: () => {
     return (get().history?.length || 0) > 0;

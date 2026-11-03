@@ -53,7 +53,8 @@ export function ExecutiveOverviewSheet({
   isSuperAdmin = true,
   onNavigateToTab
 }: ExecutiveOverviewSheetProps) {
-  const { projects, textures, supplies, providers } = useAdminStore();
+  const { projects, textures, supplies, providers, themeMode } = useAdminStore();
+  const isLight = themeMode === 'light';
   const [periodFilter, setPeriodFilter] = useState<'7D' | '30D' | '3M' | '1A'>('30D');
   const [isExporting, setIsExporting] = useState(false);
   const [alertStockModal, setAlertStockModal] = useState(false);
@@ -441,28 +442,34 @@ export function ExecutiveOverviewSheet({
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
       {/* 1. Context Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-zinc-900/90 border border-zinc-800 p-5 rounded-2xl">
+      <div className={`flex flex-col lg:flex-row lg:items-center justify-between gap-4 border p-5 rounded-2xl transition-colors ${
+        isLight ? 'bg-white border-zinc-200 shadow-sm' : 'bg-zinc-900/90 border-zinc-800'
+      }`}>
         <div className="space-y-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[11px] font-extrabold uppercase tracking-wider text-orange-400 flex items-center gap-1.5">
+            <span className="text-[11px] font-extrabold uppercase tracking-wider text-orange-500 flex items-center gap-1.5">
               <Building size={14} /> Telemetría Comercial de Marca
             </span>
-            <span className="w-1 h-1 rounded-full bg-zinc-600" />
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-orange-950/80 border border-orange-500/30 text-orange-400 text-xs font-semibold">
-              <span className={`w-2 h-2 rounded-full ${totalProjectsWithProducts > 0 ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-500'}`} />
+            <span className={`w-1 h-1 rounded-full ${isLight ? 'bg-zinc-300' : 'bg-zinc-600'}`} />
+            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-xs font-semibold ${
+              isLight ? 'bg-orange-50 border-orange-200 text-orange-600' : 'bg-orange-950/80 border-orange-500/30 text-orange-400'
+            }`}>
+              <span className={`w-2 h-2 rounded-full ${totalProjectsWithProducts > 0 ? 'bg-emerald-500 animate-pulse' : 'bg-zinc-400'}`} />
               {totalProjectsWithProducts > 0
                 ? `${totalProjectsWithProducts} proyecto(s) con mis productos`
                 : 'Catálogo listo para prescripción 3D'}
             </span>
-            <span className="text-[10px] font-bold text-zinc-400 bg-zinc-800 border border-zinc-700 px-2 py-0.5 rounded">
+            <span className={`text-[10px] font-bold border px-2 py-0.5 rounded ${
+              isLight ? 'bg-zinc-100 border-zinc-200 text-zinc-700' : 'bg-zinc-800 border-zinc-700 text-zinc-400'
+            }`}>
               Comisión Plataforma: {commissionPct}%
             </span>
           </div>
-          <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
+          <h2 className={`text-xl sm:text-2xl font-bold tracking-tight ${isLight ? 'text-zinc-900' : 'text-white'}`}>
             Panel de Rendimiento Comercial{' '}
-            <span className="text-orange-400 font-light">— {selectedProviderName}</span>
+            <span className="text-orange-500 font-light">— {selectedProviderName}</span>
           </h2>
-          <p className="text-xs sm:text-sm text-zinc-400 max-w-3xl">
+          <p className={`text-xs sm:text-sm max-w-3xl ${isLight ? 'text-zinc-600' : 'text-zinc-400'}`}>
             Telemetría en tiempo real de mis productos en proyectos diseñados, prescripciones en CAD 3D y ventas confirmadas.
           </p>
         </div>
@@ -470,7 +477,9 @@ export function ExecutiveOverviewSheet({
         <div className="flex items-center gap-2.5 self-start lg:self-center shrink-0">
           <button
             onClick={() => setAlertStockModal(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-amber-300 border border-amber-500/20 text-xs font-bold transition-all shadow-sm cursor-pointer"
+            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer border ${
+              isLight ? 'bg-zinc-100 hover:bg-zinc-200 text-amber-800 border-amber-300' : 'bg-zinc-800 hover:bg-zinc-700 text-amber-300 border-amber-500/20'
+            }`}
           >
             <Sliders size={15} />
             <span>Alertas de Stock</span>
@@ -488,217 +497,233 @@ export function ExecutiveOverviewSheet({
 
       {/* 2. Primary KPI Slabs (Filas de Métricas Clave de Proveedor) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        {/* KPI 1: Cantidad de proyectos diseñados con mis productos */}
-        <div className="bg-zinc-900/80 border border-zinc-800/90 rounded-2xl p-5 flex flex-col justify-between relative overflow-hidden group hover:border-orange-500/40 transition-all">
+        {/* KPI 1 */}
+        <div className={`border rounded-2xl p-5 flex flex-col justify-between relative overflow-hidden group hover:border-orange-500/40 transition-all ${
+          isLight ? 'bg-white border-zinc-200 shadow-sm' : 'bg-zinc-900/80 border-zinc-800/90'
+        }`}>
           <div className="flex items-start justify-between">
             <div>
-              <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">
+              <span className={`text-[11px] font-bold uppercase tracking-wider ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>
                 Proyectos Diseñados con mis Productos
               </span>
-              <div className="text-2xl sm:text-3xl font-extrabold text-white mt-1">
+              <div className={`text-2xl sm:text-3xl font-extrabold mt-1 ${isLight ? 'text-zinc-900' : 'text-white'}`}>
                 {designedProjects.length}{' '}
-                <span className="text-xs font-normal text-zinc-400">diseños</span>
+                <span className={`text-xs font-normal ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>diseños</span>
               </div>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center text-orange-400">
+            <div className="w-10 h-10 rounded-xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center text-orange-500">
               <FolderKanban size={20} />
             </div>
           </div>
-          <div className="pt-4 mt-2 border-t border-zinc-800/80 flex items-center justify-between">
-            <div className="flex items-center gap-1 text-orange-400 text-xs font-bold">
+          <div className={`pt-4 mt-2 border-t flex items-center justify-between ${isLight ? 'border-zinc-200' : 'border-zinc-800/80'}`}>
+            <div className="flex items-center gap-1 text-orange-500 text-xs font-bold">
               <span>⚡ En fase de diseño y cotización</span>
             </div>
-            <span className="text-[11px] font-mono text-zinc-400">
+            <span className={`text-[11px] font-mono ${isLight ? 'text-zinc-600' : 'text-zinc-400'}`}>
               {totalM2Designed.toFixed(1)} m²
             </span>
           </div>
           <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-orange-500 to-transparent opacity-40" />
         </div>
 
-        {/* KPI 2: Cantidad de proyectos vendidos con mis productos */}
-        <div className="bg-zinc-900/80 border border-zinc-800/90 rounded-2xl p-5 flex flex-col justify-between relative overflow-hidden group hover:border-emerald-500/40 transition-all">
+        {/* KPI 2 */}
+        <div className={`border rounded-2xl p-5 flex flex-col justify-between relative overflow-hidden group hover:border-emerald-500/40 transition-all ${
+          isLight ? 'bg-white border-zinc-200 shadow-sm' : 'bg-zinc-900/80 border-zinc-800/90'
+        }`}>
           <div className="flex items-start justify-between">
             <div>
-              <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">
+              <span className={`text-[11px] font-bold uppercase tracking-wider ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>
                 Proyectos Vendidos con mis Productos
               </span>
-              <div className="text-2xl sm:text-3xl font-extrabold text-emerald-400 mt-1">
+              <div className="text-2xl sm:text-3xl font-extrabold text-emerald-600 dark:text-emerald-400 mt-1">
                 {soldProjects.length}{' '}
-                <span className="text-xs font-normal text-zinc-400">pedidos</span>
+                <span className={`text-xs font-normal ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>pedidos</span>
               </div>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-500">
               <CheckCircle2 size={20} />
             </div>
           </div>
-          <div className="pt-4 mt-2 border-t border-zinc-800/80 flex items-center justify-between">
-            <div className="flex items-center gap-1 text-emerald-400 text-xs font-bold">
+          <div className={`pt-4 mt-2 border-t flex items-center justify-between ${isLight ? 'border-zinc-200' : 'border-zinc-800/80'}`}>
+            <div className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 text-xs font-bold">
               <Check size={14} />
               <span>Cerrados en fabricación CNC</span>
             </div>
-            <span className="text-[11px] font-mono font-bold text-emerald-400">
+            <span className="text-[11px] font-mono font-bold text-emerald-600 dark:text-emerald-400">
               {totalM2Sold.toFixed(1)} m²
             </span>
           </div>
           <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-emerald-500 to-transparent opacity-40" />
         </div>
 
-        {/* KPI 3: Cantidad de usuarios / diseñadores únicos que han ocupado mis productos */}
-        <div className="bg-zinc-900/80 border border-zinc-800/90 rounded-2xl p-5 flex flex-col justify-between relative overflow-hidden group hover:border-sky-500/40 transition-all">
+        {/* KPI 3 */}
+        <div className={`border rounded-2xl p-5 flex flex-col justify-between relative overflow-hidden group hover:border-sky-500/40 transition-all ${
+          isLight ? 'bg-white border-zinc-200 shadow-sm' : 'bg-zinc-900/80 border-zinc-800/90'
+        }`}>
           <div className="flex items-start justify-between">
             <div>
-              <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">
+              <span className={`text-[11px] font-bold uppercase tracking-wider ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>
                 Diseñadores / Usuarios Únicos
               </span>
-              <div className="text-2xl sm:text-3xl font-extrabold text-sky-400 mt-1">
+              <div className="text-2xl sm:text-3xl font-extrabold text-sky-600 dark:text-sky-400 mt-1">
                 {uniqueUsers.size}{' '}
-                <span className="text-xs font-normal text-zinc-400">profesionales</span>
+                <span className={`text-xs font-normal ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>profesionales</span>
               </div>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400">
+            <div className="w-10 h-10 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-500">
               <Users size={20} />
             </div>
           </div>
-          <div className="pt-4 mt-2 border-t border-zinc-800/80 flex items-center justify-between">
-            <div className="flex items-center gap-1 text-sky-400 text-xs font-bold">
+          <div className={`pt-4 mt-2 border-t flex items-center justify-between ${isLight ? 'border-zinc-200' : 'border-zinc-800/80'}`}>
+            <div className="flex items-center gap-1 text-sky-600 dark:text-sky-400 text-xs font-bold">
               <span>Arquitectos & Fábricas</span>
             </div>
-            <span className="text-[11px] font-mono text-zinc-400">
+            <span className={`text-[11px] font-mono ${isLight ? 'text-zinc-600' : 'text-zinc-400'}`}>
               {uniqueUsers.size > 0 ? 'Tracción activa' : 'Comunidad CAD'}
             </span>
           </div>
           <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-sky-500 to-transparent opacity-40" />
         </div>
 
-        {/* KPI 4: Tasa de Conversión B2B */}
-        <div className="bg-zinc-900/80 border border-zinc-800/90 rounded-2xl p-5 flex flex-col justify-between relative overflow-hidden group hover:border-purple-500/40 transition-all">
+        {/* KPI 4 */}
+        <div className={`border rounded-2xl p-5 flex flex-col justify-between relative overflow-hidden group hover:border-purple-500/40 transition-all ${
+          isLight ? 'bg-white border-zinc-200 shadow-sm' : 'bg-zinc-900/80 border-zinc-800/90'
+        }`}>
           <div className="flex items-start justify-between">
             <div>
-              <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">
+              <span className={`text-[11px] font-bold uppercase tracking-wider ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>
                 Tasa de Conversión (Diseño a Venta)
               </span>
-              <div className="text-2xl sm:text-3xl font-extrabold text-purple-400 mt-1">
+              <div className="text-2xl sm:text-3xl font-extrabold text-purple-600 dark:text-purple-400 mt-1">
                 {conversionRate}%
               </div>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400">
+            <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-500">
               <TrendingUp size={20} />
             </div>
           </div>
-          <div className="pt-4 mt-2 border-t border-zinc-800/80 flex items-center justify-between">
-            <div className="flex items-center gap-1 text-purple-400 text-xs font-bold">
+          <div className={`pt-4 mt-2 border-t flex items-center justify-between ${isLight ? 'border-zinc-200' : 'border-zinc-800/80'}`}>
+            <div className="flex items-center gap-1 text-purple-600 dark:text-purple-400 text-xs font-bold">
               <ArrowUpRight size={14} />
               <span>Efectividad en cierre</span>
             </div>
-            <span className="text-[11px] font-mono text-zinc-400">
+            <span className={`text-[11px] font-mono ${isLight ? 'text-zinc-600' : 'text-zinc-400'}`}>
               {soldProjects.length}/{totalProjectsWithProducts} cerrados
             </span>
           </div>
           <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-purple-500 to-transparent opacity-40" />
         </div>
 
-        {/* KPI 5: Superficie Total Prescrita */}
-        <div className="bg-zinc-900/80 border border-zinc-800/90 rounded-2xl p-5 flex flex-col justify-between relative overflow-hidden group hover:border-amber-500/40 transition-all">
+        {/* KPI 5 */}
+        <div className={`border rounded-2xl p-5 flex flex-col justify-between relative overflow-hidden group hover:border-amber-500/40 transition-all ${
+          isLight ? 'bg-white border-zinc-200 shadow-sm' : 'bg-zinc-900/80 border-zinc-800/90'
+        }`}>
           <div className="flex items-start justify-between">
             <div>
-              <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">
+              <span className={`text-[11px] font-bold uppercase tracking-wider ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>
                 Superficie Total Demandada
               </span>
-              <div className="text-2xl sm:text-3xl font-extrabold text-white mt-1">
+              <div className={`text-2xl sm:text-3xl font-extrabold mt-1 ${isLight ? 'text-zinc-900' : 'text-white'}`}>
                 {(totalM2Designed + totalM2Sold).toFixed(1)}{' '}
-                <span className="text-xs font-normal text-zinc-400">m²</span>
+                <span className={`text-xs font-normal ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>m²</span>
               </div>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500">
               <Layers size={20} />
             </div>
           </div>
-          <div className="pt-4 mt-2 border-t border-zinc-800/80 flex items-center justify-between">
-            <div className="flex items-center gap-1 text-amber-400 text-xs font-bold">
+          <div className={`pt-4 mt-2 border-t flex items-center justify-between ${isLight ? 'border-zinc-200' : 'border-zinc-800/80'}`}>
+            <div className="flex items-center gap-1 text-amber-600 dark:text-amber-400 text-xs font-bold">
               <span>Equiv. a ~{Math.ceil((totalM2Designed + totalM2Sold) / 3.96)} planchas</span>
             </div>
-            <span className="text-[11px] font-mono text-zinc-400">
+            <span className={`text-[11px] font-mono ${isLight ? 'text-zinc-600' : 'text-zinc-400'}`}>
               {totalM2Sold > 0 ? `${totalM2Sold.toFixed(1)} m² facturados` : 'En cotización'}
             </span>
           </div>
           <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-amber-500 to-transparent opacity-40" />
         </div>
 
-        {/* KPI 6: Facturación Bruta Vendida */}
-        <div className="bg-zinc-900/80 border border-zinc-800/90 rounded-2xl p-5 flex flex-col justify-between relative overflow-hidden group hover:border-emerald-500/40 transition-all">
+        {/* KPI 6 */}
+        <div className={`border rounded-2xl p-5 flex flex-col justify-between relative overflow-hidden group hover:border-emerald-500/40 transition-all ${
+          isLight ? 'bg-white border-zinc-200 shadow-sm' : 'bg-zinc-900/80 border-zinc-800/90'
+        }`}>
           <div className="flex items-start justify-between">
             <div>
-              <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">
+              <span className={`text-[11px] font-bold uppercase tracking-wider ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>
                 Facturación Bruta Vendida
               </span>
-              <div className="text-2xl sm:text-3xl font-extrabold text-emerald-400 mt-1">
+              <div className="text-2xl sm:text-3xl font-extrabold text-emerald-600 dark:text-emerald-400 mt-1">
                 ${totalClpSold.toLocaleString('es-CL')}{' '}
-                <span className="text-xs font-normal text-zinc-400">CLP</span>
+                <span className={`text-xs font-normal ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>CLP</span>
               </div>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-500">
               <DollarSign size={20} />
             </div>
           </div>
-          <div className="pt-4 mt-2 border-t border-zinc-800/80 flex items-center justify-between">
-            <div className="flex items-center gap-1 text-zinc-400 text-xs">
+          <div className={`pt-4 mt-2 border-t flex items-center justify-between ${isLight ? 'border-zinc-200' : 'border-zinc-800/80'}`}>
+            <div className={`flex items-center gap-1 text-xs ${isLight ? 'text-zinc-600' : 'text-zinc-400'}`}>
               <span>En cartera de diseño:</span>
             </div>
-            <span className="text-[11px] font-mono font-bold text-white">
+            <span className={`text-[11px] font-mono font-bold ${isLight ? 'text-zinc-900' : 'text-white'}`}>
               ${totalClpDesigned.toLocaleString('es-CL')} CLP
             </span>
           </div>
           <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-emerald-500 to-transparent opacity-40" />
         </div>
 
-        {/* KPI 7: Liquidación Neta para el Proveedor */}
-        <div className="bg-zinc-900/80 border border-zinc-800/90 rounded-2xl p-5 flex flex-col justify-between relative overflow-hidden group hover:border-green-500/40 transition-all">
+        {/* KPI 7 */}
+        <div className={`border rounded-2xl p-5 flex flex-col justify-between relative overflow-hidden group hover:border-green-500/40 transition-all ${
+          isLight ? 'bg-white border-zinc-200 shadow-sm' : 'bg-zinc-900/80 border-zinc-800/90'
+        }`}>
           <div className="flex items-start justify-between">
             <div>
-              <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">
+              <span className={`text-[11px] font-bold uppercase tracking-wider ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>
                 Liquidación Neta Proveedor
               </span>
-              <div className="text-2xl sm:text-3xl font-extrabold text-emerald-300 mt-1">
+              <div className="text-2xl sm:text-3xl font-extrabold text-emerald-600 dark:text-emerald-300 mt-1">
                 ${netPayoutSold.toLocaleString('es-CL')}{' '}
-                <span className="text-xs font-normal text-zinc-400">CLP</span>
+                <span className={`text-xs font-normal ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>CLP</span>
               </div>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-300">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-500">
               <ArrowUpRight size={20} />
             </div>
           </div>
-          <div className="pt-4 mt-2 border-t border-zinc-800/80 flex items-center justify-between">
-            <div className="flex items-center gap-1 text-emerald-400 text-xs font-bold">
+          <div className={`pt-4 mt-2 border-t flex items-center justify-between ${isLight ? 'border-zinc-200' : 'border-zinc-800/80'}`}>
+            <div className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 text-xs font-bold">
               <span>Deduciendo {commissionPct}% comisión</span>
             </div>
-            <span className="text-[11px] font-mono text-zinc-400">
+            <span className={`text-[11px] font-mono ${isLight ? 'text-zinc-600' : 'text-zinc-400'}`}>
               A transferir a cuenta
             </span>
           </div>
           <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-green-500 to-transparent opacity-40" />
         </div>
 
-        {/* KPI 8: Stock Total en Bodega */}
-        <div className="bg-zinc-900/80 border border-zinc-800/90 rounded-2xl p-5 flex flex-col justify-between relative overflow-hidden group hover:border-sky-500/40 transition-all">
+        {/* KPI 8 */}
+        <div className={`border rounded-2xl p-5 flex flex-col justify-between relative overflow-hidden group hover:border-sky-500/40 transition-all ${
+          isLight ? 'bg-white border-zinc-200 shadow-sm' : 'bg-zinc-900/80 border-zinc-800/90'
+        }`}>
           <div className="flex items-start justify-between">
             <div>
-              <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">
+              <span className={`text-[11px] font-bold uppercase tracking-wider ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>
                 Stock Disponible en Bodega
               </span>
-              <div className="text-2xl sm:text-3xl font-extrabold text-sky-400 mt-1">
+              <div className="text-2xl sm:text-3xl font-extrabold text-sky-600 dark:text-sky-400 mt-1">
                 {providerTotalStock}{' '}
-                <span className="text-xs font-normal text-zinc-400">planchas/unid.</span>
+                <span className={`text-xs font-normal ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>planchas/unid.</span>
               </div>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400">
+            <div className="w-10 h-10 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-500">
               <PackageCheck size={20} />
             </div>
           </div>
-          <div className="pt-4 mt-2 border-t border-zinc-800/80 flex items-center justify-between">
-            <div className="flex items-center gap-1 text-sky-400 text-xs font-bold">
+          <div className={`pt-4 mt-2 border-t flex items-center justify-between ${isLight ? 'border-zinc-200' : 'border-zinc-800/80'}`}>
+            <div className="flex items-center gap-1 text-sky-600 dark:text-sky-400 text-xs font-bold">
               <span>{providerTotalStock > 15 ? '✓ Inventario Saludable' : '⚠️ Alerta de Reposición'}</span>
             </div>
-            <span className="text-[11px] font-mono text-zinc-400">
+            <span className={`text-[11px] font-mono ${isLight ? 'text-zinc-600' : 'text-zinc-400'}`}>
               {providerTextures.length} terminaciones
             </span>
           </div>
@@ -706,32 +731,40 @@ export function ExecutiveOverviewSheet({
         </div>
       </div>
 
-      {/* 3. Sección Interactiva: Proyectos con mis Productos (Diseñados vs Vendidos) */}
-      <div className="bg-zinc-900/80 border border-zinc-800 rounded-2xl p-5 space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-zinc-800">
+      {/* 3. Sección Interactiva: Proyectos con mis Productos */}
+      <div className={`border rounded-2xl p-5 space-y-4 transition-colors ${
+        isLight ? 'bg-white border-zinc-200 shadow-sm' : 'bg-zinc-900/80 border-zinc-800'
+      }`}>
+        <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b ${
+          isLight ? 'border-zinc-200' : 'border-zinc-800'
+        }`}>
           <div>
             <div className="flex items-center gap-2">
-              <FolderKanban className="text-orange-400" size={18} />
-              <h3 className="text-base font-bold text-white">Proyectos en Plataforma con mis Productos</h3>
+              <FolderKanban className="text-orange-500" size={18} />
+              <h3 className={`text-base font-bold ${isLight ? 'text-zinc-900' : 'text-white'}`}>Proyectos en Plataforma con mis Productos</h3>
             </div>
-            <p className="text-xs text-zinc-400 mt-0.5">
+            <p className={`text-xs mt-0.5 ${isLight ? 'text-zinc-600' : 'text-zinc-400'}`}>
               Monitoreo en tiempo real de proyectos 3D donde arquitectos y clientes incorporaron productos de {selectedProviderName}
             </p>
           </div>
 
-          {/* Sub-Tabs: Diseñados vs Vendidos */}
-          <div className="inline-flex bg-zinc-950 border border-zinc-800 p-1 rounded-xl text-xs font-bold shrink-0">
+          {/* Sub-Tabs */}
+          <div className={`inline-flex border p-1 rounded-xl text-xs font-bold shrink-0 ${
+            isLight ? 'bg-zinc-100 border-zinc-200' : 'bg-zinc-950 border-zinc-800'
+          }`}>
             <button
               onClick={() => setActiveProjectView('designed')}
               className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg transition-all cursor-pointer ${
                 activeProjectView === 'designed'
                   ? 'bg-orange-500 text-white shadow-md'
+                  : isLight
+                  ? 'text-zinc-600 hover:text-zinc-900'
                   : 'text-zinc-400 hover:text-white'
               }`}
             >
               <span>Proyectos Diseñados</span>
               <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${
-                activeProjectView === 'designed' ? 'bg-orange-600 text-white' : 'bg-zinc-800 text-zinc-400'
+                activeProjectView === 'designed' ? 'bg-orange-600 text-white' : isLight ? 'bg-zinc-200 text-zinc-700' : 'bg-zinc-800 text-zinc-400'
               }`}>
                 {designedProjects.length}
               </span>
@@ -741,13 +774,15 @@ export function ExecutiveOverviewSheet({
               className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg transition-all cursor-pointer ${
                 activeProjectView === 'sold'
                   ? 'bg-emerald-600 text-white shadow-md'
+                  : isLight
+                  ? 'text-zinc-600 hover:text-zinc-900'
                   : 'text-zinc-400 hover:text-white'
               }`}
             >
               <CheckCircle2 size={13} />
               <span>Proyectos Vendidos</span>
               <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${
-                activeProjectView === 'sold' ? 'bg-emerald-700 text-white' : 'bg-zinc-800 text-zinc-400'
+                activeProjectView === 'sold' ? 'bg-emerald-700 text-white' : isLight ? 'bg-zinc-200 text-zinc-700' : 'bg-zinc-800 text-zinc-400'
               }`}>
                 {soldProjects.length}
               </span>
@@ -755,13 +790,14 @@ export function ExecutiveOverviewSheet({
           </div>
         </div>
 
-        {/* Tabla Dinámica según vista activa */}
+        {/* Tabla Dinámica */}
         <div className="overflow-x-auto">
           {activeProjectView === 'designed' ? (
-            /* TABLA: PROYECTOS DISEÑADOS */
             <table className="w-full text-left text-xs">
               <thead>
-                <tr className="text-zinc-400 uppercase tracking-wider bg-zinc-950/70 text-[10px] font-bold">
+                <tr className={`uppercase tracking-wider text-[10px] font-bold ${
+                  isLight ? 'bg-zinc-100 text-zinc-700' : 'bg-zinc-950/70 text-zinc-400'
+                }`}>
                   <th className="py-2.5 px-3 rounded-l-lg">Código / Folio</th>
                   <th className="py-2.5 px-3">Proyecto & Tipología</th>
                   <th className="py-2.5 px-3">Diseñador / Cliente</th>
@@ -772,36 +808,36 @@ export function ExecutiveOverviewSheet({
                   <th className="py-2.5 px-3 text-center rounded-r-lg">Estado</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-800/60">
+              <tbody className={`divide-y ${isLight ? 'divide-zinc-200' : 'divide-zinc-800/60'}`}>
                 {designedProjects.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="py-8 text-center text-zinc-500">
-                      <FolderKanban size={32} className="mx-auto mb-2 text-zinc-600" />
-                      <p className="font-semibold text-zinc-400">Sin proyectos en diseño activos con tus productos</p>
-                      <p className="text-[11px] text-zinc-600 mt-0.5">
+                      <FolderKanban size={32} className="mx-auto mb-2 text-zinc-400" />
+                      <p className={`font-semibold ${isLight ? 'text-zinc-700' : 'text-zinc-400'}`}>Sin proyectos en diseño activos con tus productos</p>
+                      <p className={`text-[11px] mt-0.5 ${isLight ? 'text-zinc-500' : 'text-zinc-600'}`}>
                         Cuando los usuarios seleccionen tus acabados en el configurador 3D, aparecerán listados aquí.
                       </p>
                     </td>
                   </tr>
                 ) : (
                   designedProjects.map((p) => (
-                    <tr key={p.id} className="hover:bg-zinc-800/40 transition-colors">
-                      <td className="py-3 px-3 font-mono font-bold text-orange-400">
+                    <tr key={p.id} className={`transition-colors ${isLight ? 'hover:bg-zinc-50' : 'hover:bg-zinc-800/40'}`}>
+                      <td className="py-3 px-3 font-mono font-bold text-orange-500">
                         {p.code}
                       </td>
                       <td className="py-3 px-3">
-                        <div className="font-semibold text-white">{p.name}</div>
-                        <div className="text-[10px] text-zinc-400 capitalize">
+                        <div className={`font-semibold ${isLight ? 'text-zinc-900' : 'text-white'}`}>{p.name}</div>
+                        <div className={`text-[10px] capitalize ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>
                           Tipo: {p.type === 'kitchen' ? 'Cocina' : p.type === 'closet' ? 'Clóset' : p.type === 'hpl-bathroom' ? 'Baño HPL' : p.type}
                         </div>
                       </td>
                       <td className="py-3 px-3">
-                        <div className="flex items-center gap-1.5 text-zinc-200">
-                          <Users size={12} className="text-zinc-400 shrink-0" />
+                        <div className={`flex items-center gap-1.5 ${isLight ? 'text-zinc-800' : 'text-zinc-200'}`}>
+                          <Users size={12} className={`shrink-0 ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`} />
                           <span>{p.client}</span>
                         </div>
                       </td>
-                      <td className="py-3 px-3 font-mono text-zinc-400">
+                      <td className={`py-3 px-3 font-mono ${isLight ? 'text-zinc-600' : 'text-zinc-400'}`}>
                         {p.date}
                       </td>
                       <td className="py-3 px-3">
@@ -809,24 +845,28 @@ export function ExecutiveOverviewSheet({
                           {p.usedProducts.map((u, uIdx) => (
                             <span
                               key={uIdx}
-                              className="px-2 py-0.5 rounded-md bg-orange-500/10 border border-orange-500/20 text-orange-300 text-[10px] font-medium"
+                              className={`px-2 py-0.5 rounded-md border text-[10px] font-medium ${
+                                isLight
+                                  ? 'bg-orange-50 border-orange-200 text-orange-800'
+                                  : 'bg-orange-500/10 border-orange-500/20 text-orange-300'
+                              }`}
                             >
                               {u.name} ({u.areaM2.toFixed(1)} m²)
                             </span>
                           ))}
                         </div>
                       </td>
-                      <td className="py-3 px-3 text-right font-mono font-bold text-white">
+                      <td className={`py-3 px-3 text-right font-mono font-bold ${isLight ? 'text-zinc-900' : 'text-white'}`}>
                         {p.totalAreaM2.toFixed(1)} m²
                       </td>
-                      <td className="py-3 px-3 text-right font-mono font-bold text-zinc-200">
+                      <td className={`py-3 px-3 text-right font-mono font-bold ${isLight ? 'text-zinc-800' : 'text-zinc-200'}`}>
                         ${p.totalAmountClp.toLocaleString('es-CL')} CLP
                       </td>
                       <td className="py-3 px-3 text-center">
                         <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
                           p.status === 'quoted'
-                            ? 'bg-amber-500/10 border border-amber-500/20 text-amber-400'
-                            : 'bg-sky-500/10 border border-sky-500/20 text-sky-400'
+                            ? 'bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400'
+                            : 'bg-sky-500/10 border border-sky-500/20 text-sky-600 dark:text-sky-400'
                         }`}>
                           {p.status === 'quoted' ? 'Cotizado' : 'En Diseño 3D'}
                         </span>
@@ -837,10 +877,11 @@ export function ExecutiveOverviewSheet({
               </tbody>
             </table>
           ) : (
-            /* TABLA: PROYECTOS VENDIDOS / EN FABRICACIÓN */
             <table className="w-full text-left text-xs">
               <thead>
-                <tr className="text-zinc-400 uppercase tracking-wider bg-zinc-950/70 text-[10px] font-bold">
+                <tr className={`uppercase tracking-wider text-[10px] font-bold ${
+                  isLight ? 'bg-zinc-100 text-zinc-700' : 'bg-zinc-950/70 text-zinc-400'
+                }`}>
                   <th className="py-2.5 px-3 rounded-l-lg">N° Orden / Factura</th>
                   <th className="py-2.5 px-3">Proyecto</th>
                   <th className="py-2.5 px-3">Cliente / Taller</th>
@@ -851,13 +892,13 @@ export function ExecutiveOverviewSheet({
                   <th className="py-2.5 px-3 text-center rounded-r-lg">Estado</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-800/60">
+              <tbody className={`divide-y ${isLight ? 'divide-zinc-200' : 'divide-zinc-800/60'}`}>
                 {soldProjects.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="py-8 text-center text-zinc-500">
-                      <CheckCircle2 size={32} className="mx-auto mb-2 text-zinc-600" />
-                      <p className="font-semibold text-zinc-400">Sin proyectos vendidos registrados aún</p>
-                      <p className="text-[11px] text-zinc-600 mt-0.5">
+                      <CheckCircle2 size={32} className="mx-auto mb-2 text-zinc-400" />
+                      <p className={`font-semibold ${isLight ? 'text-zinc-700' : 'text-zinc-400'}`}>Sin proyectos vendidos registrados aún</p>
+                      <p className={`text-[11px] mt-0.5 ${isLight ? 'text-zinc-500' : 'text-zinc-600'}`}>
                         Al marcar un proyecto como vendido en el módulo de proyectos, aparecerá aquí con la liquidación neta.
                       </p>
                     </td>
@@ -866,23 +907,23 @@ export function ExecutiveOverviewSheet({
                   soldProjects.map((p) => {
                     const netPayout = Math.round(p.totalAmountClp * (1 - commissionPct / 100));
                     return (
-                      <tr key={p.id} className="hover:bg-zinc-800/40 transition-colors">
-                        <td className="py-3 px-3 font-mono font-bold text-emerald-400">
+                      <tr key={p.id} className={`transition-colors ${isLight ? 'hover:bg-zinc-50' : 'hover:bg-zinc-800/40'}`}>
+                        <td className="py-3 px-3 font-mono font-bold text-emerald-600 dark:text-emerald-400">
                           {p.code}
                         </td>
                         <td className="py-3 px-3">
-                          <div className="font-semibold text-white">{p.name}</div>
-                          <div className="text-[10px] text-zinc-400 capitalize">
+                          <div className={`font-semibold ${isLight ? 'text-zinc-900' : 'text-white'}`}>{p.name}</div>
+                          <div className={`text-[10px] capitalize ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>
                             Tipo: {p.type === 'kitchen' ? 'Cocina' : p.type === 'closet' ? 'Clóset' : p.type === 'hpl-bathroom' ? 'Baño HPL' : p.type}
                           </div>
                         </td>
                         <td className="py-3 px-3">
-                          <div className="flex items-center gap-1.5 text-zinc-200">
-                            <Factory size={12} className="text-zinc-400 shrink-0" />
+                          <div className={`flex items-center gap-1.5 ${isLight ? 'text-zinc-800' : 'text-zinc-200'}`}>
+                            <Factory size={12} className={`shrink-0 ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`} />
                             <span>{p.client}</span>
                           </div>
                         </td>
-                        <td className="py-3 px-3 font-mono text-zinc-400">
+                        <td className={`py-3 px-3 font-mono ${isLight ? 'text-zinc-600' : 'text-zinc-400'}`}>
                           {p.soldDate || p.date}
                         </td>
                         <td className="py-3 px-3">
@@ -890,24 +931,28 @@ export function ExecutiveOverviewSheet({
                             {p.usedProducts.map((u, uIdx) => (
                               <span
                                 key={uIdx}
-                                className="px-2 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-[10px] font-medium"
+                                className={`px-2 py-0.5 rounded-md border text-[10px] font-medium ${
+                                  isLight
+                                    ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                                    : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'
+                                }`}
                               >
                                 {u.name} ({u.areaM2.toFixed(1)} m²)
                               </span>
                             ))}
                           </div>
                         </td>
-                        <td className="py-3 px-3 text-right font-mono font-bold text-zinc-200">
+                        <td className={`py-3 px-3 text-right font-mono font-bold ${isLight ? 'text-zinc-800' : 'text-zinc-200'}`}>
                           ${p.totalAmountClp.toLocaleString('es-CL')} CLP
                         </td>
-                        <td className="py-3 px-3 text-right font-mono font-extrabold text-emerald-400">
+                        <td className="py-3 px-3 text-right font-mono font-extrabold text-emerald-600 dark:text-emerald-400">
                           ${netPayout.toLocaleString('es-CL')} CLP
                         </td>
                         <td className="py-3 px-3 text-center">
                           <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
                             p.status === 'in_production'
-                              ? 'bg-amber-500/10 border border-amber-500/20 text-amber-400'
-                              : 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400'
+                              ? 'bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400'
+                              : 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400'
                           }`}>
                             {p.status === 'in_production' ? 'En Fabricación CNC' : 'Venta Cerrada'}
                           </span>
@@ -922,20 +967,22 @@ export function ExecutiveOverviewSheet({
         </div>
       </div>
 
-      {/* 4. Ranking Exclusivo de Mis Productos Más Prescritos y Resumen Comercial */}
+      {/* 4. Ranking Exclusivo y Resumen Comercial */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-        {/* Tabla: Ranking Exclusivo de Mis Productos Más Prescritos (8 Cols) */}
-        <div className="lg:col-span-8 bg-zinc-900/80 border border-zinc-800 rounded-2xl p-5 flex flex-col justify-between">
-          <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+        {/* Tabla Ranking */}
+        <div className={`lg:col-span-8 border rounded-2xl p-5 flex flex-col justify-between transition-colors ${
+          isLight ? 'bg-white border-zinc-200 shadow-sm' : 'bg-zinc-900/80 border-zinc-800'
+        }`}>
+          <div className={`flex items-center justify-between pb-3 border-b ${isLight ? 'border-zinc-200' : 'border-zinc-800'}`}>
             <div>
-              <h3 className="text-base font-bold text-white">Ranking Exclusivo de Mis Productos Más Prescritos</h3>
-              <p className="text-xs text-zinc-400">
+              <h3 className={`text-base font-bold ${isLight ? 'text-zinc-900' : 'text-white'}`}>Ranking Exclusivo de Mis Productos Más Prescritos</h3>
+              <p className={`text-xs ${isLight ? 'text-zinc-600' : 'text-zinc-400'}`}>
                 Frecuencia de prescripción en 3D, superficie demandada y disponibilidad en bodega de {selectedProviderName}
               </p>
             </div>
             <button
               onClick={() => onNavigateToTab?.('insumos')}
-              className="flex items-center gap-1 text-orange-400 hover:text-orange-300 text-xs font-bold transition-colors cursor-pointer"
+              className="flex items-center gap-1 text-orange-500 hover:text-orange-600 text-xs font-bold transition-colors cursor-pointer"
             >
               <span>Ver Mis Insumos</span>
               <ArrowUpRight size={14} />
@@ -945,7 +992,9 @@ export function ExecutiveOverviewSheet({
           <div className="overflow-x-auto mt-3">
             <table className="w-full text-left text-xs">
               <thead>
-                <tr className="text-zinc-400 uppercase tracking-wider bg-zinc-950/70 text-[10px] font-bold">
+                <tr className={`uppercase tracking-wider text-[10px] font-bold ${
+                  isLight ? 'bg-zinc-100 text-zinc-700' : 'bg-zinc-950/70 text-zinc-400'
+                }`}>
                   <th className="py-2.5 px-3 rounded-l-lg">Producto / Acabado Propio</th>
                   <th className="py-2.5 px-3">SKU / Código</th>
                   <th className="py-2.5 px-3">Formato / Espesor</th>
@@ -955,13 +1004,13 @@ export function ExecutiveOverviewSheet({
                   <th className="py-2.5 px-3 text-center rounded-r-lg">Stock Bodega</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-800/50">
+              <tbody className={`divide-y ${isLight ? 'divide-zinc-200' : 'divide-zinc-800/50'}`}>
                 {topUsedProducts.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="py-8 text-center text-zinc-500">
-                      <Tag size={28} className="mx-auto mb-2 text-zinc-600" />
-                      <p className="font-semibold text-zinc-400">No hay productos de este proveedor dados de alta</p>
-                      <p className="text-[11px] text-zinc-600 mt-0.5">
+                      <Tag size={28} className="mx-auto mb-2 text-zinc-400" />
+                      <p className={`font-semibold ${isLight ? 'text-zinc-700' : 'text-zinc-400'}`}>No hay productos de este proveedor dados de alta</p>
+                      <p className={`text-[11px] mt-0.5 ${isLight ? 'text-zinc-500' : 'text-zinc-600'}`}>
                         Agrega texturas e insumos desde la pestaña "Mis Insumos y Precios" para ver su telemetría.
                       </p>
                     </td>
@@ -975,36 +1024,38 @@ export function ExecutiveOverviewSheet({
                     const format = isTexture ? (prod as CustomTextureItem).sheetFormat || '1.30 x 3.05 m' : (prod as SupplyItem).unit;
 
                     return (
-                      <tr key={idx} className="hover:bg-zinc-800/40 transition-colors">
+                      <tr key={idx} className={`transition-colors ${isLight ? 'hover:bg-zinc-50' : 'hover:bg-zinc-800/40'}`}>
                         <td className="py-3 px-3">
                           <div className="flex items-center gap-2.5">
-                            <div className="w-8 h-8 rounded-lg bg-orange-950/60 border border-orange-500/30 flex items-center justify-center font-bold text-[10px] text-orange-400 shrink-0">
+                            <div className={`w-8 h-8 rounded-lg border flex items-center justify-center font-bold text-[10px] text-orange-500 shrink-0 ${
+                              isLight ? 'bg-orange-50 border-orange-200' : 'bg-orange-950/60 border-orange-500/30'
+                            }`}>
                               #{idx + 1}
                             </div>
                             <div>
-                              <div className="font-semibold text-white">{prod.name}</div>
-                              <div className="text-[11px] text-zinc-400">{selectedProviderName}</div>
+                              <div className={`font-semibold ${isLight ? 'text-zinc-900' : 'text-white'}`}>{prod.name}</div>
+                              <div className={`text-[11px] ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>{selectedProviderName}</div>
                             </div>
                           </div>
                         </td>
-                        <td className="py-3 px-3 font-mono text-zinc-400">{prod.code || 'N/A'}</td>
-                        <td className="py-3 px-3 text-zinc-300">{format}</td>
+                        <td className={`py-3 px-3 font-mono ${isLight ? 'text-zinc-600' : 'text-zinc-400'}`}>{prod.code || 'N/A'}</td>
+                        <td className={`py-3 px-3 ${isLight ? 'text-zinc-800' : 'text-zinc-300'}`}>{format}</td>
                         <td className="py-3 px-3 text-center">
-                          <span className="px-2 py-0.5 rounded-full bg-orange-500/10 text-orange-400 font-mono font-bold">
+                          <span className="px-2 py-0.5 rounded-full bg-orange-500/10 text-orange-500 font-mono font-bold">
                             {item.count} {item.count === 1 ? 'diseño' : 'diseños'}
                           </span>
                         </td>
-                        <td className="py-3 px-3 text-right font-mono font-bold text-white">
+                        <td className={`py-3 px-3 text-right font-mono font-bold ${isLight ? 'text-zinc-900' : 'text-white'}`}>
                           {item.totalArea > 0 ? `${item.totalArea.toFixed(1)} m²` : 'En catálogo'}
                         </td>
-                        <td className="py-3 px-3 text-right font-mono text-zinc-200 font-semibold">
+                        <td className={`py-3 px-3 text-right font-mono font-semibold ${isLight ? 'text-zinc-800' : 'text-zinc-200'}`}>
                           ${price.toLocaleString('es-CL')}
                         </td>
                         <td className="py-3 px-3 text-center">
                           <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                             stock > 10
-                              ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400'
-                              : 'bg-amber-500/10 border border-amber-500/20 text-amber-400'
+                              ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400'
+                              : 'bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400'
                           }`}>
                             {stock} unid.
                           </span>
@@ -1018,73 +1069,77 @@ export function ExecutiveOverviewSheet({
           </div>
         </div>
 
-        {/* Resumen Comercial & Indicadores Propuestos (4 Cols) */}
+        {/* Resumen Comercial (4 Cols) */}
         <div className="lg:col-span-4 flex flex-col gap-4">
-          {/* Tarjeta: Rendimiento del Embudo Comercial */}
-          <div className="bg-zinc-900/80 border border-orange-500/30 rounded-2xl p-4 flex flex-col gap-3 relative overflow-hidden shadow-lg shadow-orange-500/5">
+          <div className={`border rounded-2xl p-4 flex flex-col gap-3 relative overflow-hidden transition-colors ${
+            isLight ? 'bg-white border-orange-300 shadow-sm' : 'bg-zinc-900/80 border-orange-500/30'
+          }`}>
             <div className="flex items-center justify-between">
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-orange-500/20 text-orange-400 text-[10px] font-extrabold uppercase">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-orange-500/20 text-orange-600 dark:text-orange-400 text-[10px] font-extrabold uppercase">
                 <Sparkles size={12} /> Embudo Comercial B2B
               </span>
-              <span className="text-[10px] font-mono text-zinc-500">Exclusivo Marca</span>
+              <span className={`text-[10px] font-mono ${isLight ? 'text-zinc-500' : 'text-zinc-500'}`}>Exclusivo Marca</span>
             </div>
             <div>
-              <h4 className="text-sm font-bold text-white">
+              <h4 className={`text-sm font-bold ${isLight ? 'text-zinc-900' : 'text-white'}`}>
                 Tasa de Conversión: {conversionRate}%
               </h4>
-              <p className="text-xs text-zinc-400 mt-1">
+              <p className={`text-xs mt-1 ${isLight ? 'text-zinc-600' : 'text-zinc-400'}`}>
                 De {totalProjectsWithProducts} proyectos totales donde se prescribieron tus productos, {soldProjects.length} ya fueron vendidos y entraron a fabricación.
               </p>
             </div>
 
-            {/* Barra de progreso de conversión */}
-            <div className="w-full bg-zinc-950 rounded-full h-2.5 overflow-hidden border border-zinc-800">
+            <div className={`w-full rounded-full h-2.5 overflow-hidden border ${
+              isLight ? 'bg-zinc-100 border-zinc-200' : 'bg-zinc-950 border-zinc-800'
+            }`}>
               <div
                 className="bg-gradient-to-r from-orange-500 to-emerald-500 h-full rounded-full transition-all duration-500"
                 style={{ width: `${Math.max(5, conversionRate)}%` }}
               />
             </div>
 
-            {/* Desglose de montos */}
-            <div className="pt-2 border-t border-zinc-800/80 space-y-1.5 text-xs">
+            <div className={`pt-2 border-t space-y-1.5 text-xs ${isLight ? 'border-zinc-200' : 'border-zinc-800/80'}`}>
               <div className="flex items-center justify-between">
-                <span className="text-zinc-400">En cartera de diseño:</span>
-                <span className="font-mono text-white font-semibold">${totalClpDesigned.toLocaleString('es-CL')} CLP</span>
+                <span className={isLight ? 'text-zinc-600' : 'text-zinc-400'}>En cartera de diseño:</span>
+                <span className={`font-mono font-semibold ${isLight ? 'text-zinc-900' : 'text-white'}`}>${totalClpDesigned.toLocaleString('es-CL')} CLP</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-zinc-400">Ventas cerradas:</span>
-                <span className="font-mono text-emerald-400 font-bold">${totalClpSold.toLocaleString('es-CL')} CLP</span>
+                <span className={isLight ? 'text-zinc-600' : 'text-zinc-400'}>Ventas cerradas:</span>
+                <span className="font-mono text-emerald-600 dark:text-emerald-400 font-bold">${totalClpSold.toLocaleString('es-CL')} CLP</span>
               </div>
-              <div className="flex items-center justify-between pt-1 border-t border-zinc-800/50">
-                <span className="text-emerald-300 font-bold">Liquidación neta estimada:</span>
-                <span className="font-mono text-emerald-300 font-extrabold">${netPayoutSold.toLocaleString('es-CL')} CLP</span>
+              <div className={`flex items-center justify-between pt-1 border-t ${isLight ? 'border-zinc-200' : 'border-zinc-800/50'}`}>
+                <span className="text-emerald-600 dark:text-emerald-300 font-bold">Liquidación neta estimada:</span>
+                <span className="font-mono text-emerald-600 dark:text-emerald-300 font-extrabold">${netPayoutSold.toLocaleString('es-CL')} CLP</span>
               </div>
             </div>
           </div>
 
-          {/* Tarjeta: Estado de Prescripción y Diseñadores */}
-          <div className="bg-zinc-900/80 border border-zinc-800 rounded-2xl p-4 flex flex-col gap-3">
+          <div className={`border rounded-2xl p-4 flex flex-col gap-3 transition-colors ${
+            isLight ? 'bg-white border-zinc-200 shadow-sm' : 'bg-zinc-900/80 border-zinc-800'
+          }`}>
             <div className="flex items-center justify-between">
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-zinc-800 text-sky-400 text-[10px] font-extrabold uppercase">
+              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase ${
+                isLight ? 'bg-sky-50 text-sky-700 border border-sky-200' : 'bg-zinc-800 text-sky-400'
+              }`}>
                 <Users size={12} /> Comunidad de Diseñadores
               </span>
-              <span className="text-[10px] font-mono text-zinc-500">MuebleStudio</span>
+              <span className={`text-[10px] font-mono ${isLight ? 'text-zinc-500' : 'text-zinc-500'}`}>MuebleStudio</span>
             </div>
-            <h4 className="text-sm font-bold text-white">
+            <h4 className={`text-sm font-bold ${isLight ? 'text-zinc-900' : 'text-white'}`}>
               {uniqueUsers.size} Diseñador(es) / Talleres Activos
             </h4>
-            <p className="text-xs text-zinc-400 leading-relaxed">
+            <p className={`text-xs leading-relaxed ${isLight ? 'text-zinc-600' : 'text-zinc-400'}`}>
               Profesionales que han seleccionado y especificado tus acabados en sus proyectos. Cada prescripción en 3D alimenta la tracción de tu marca en Chile.
             </p>
-            <div className="pt-2 border-t border-zinc-800 flex items-center justify-between">
+            <div className={`pt-2 border-t flex items-center justify-between ${isLight ? 'border-zinc-200' : 'border-zinc-800'}`}>
               <button
                 onClick={() => setAlertStockModal(true)}
-                className="text-xs text-orange-400 hover:text-orange-300 font-bold flex items-center gap-1 cursor-pointer"
+                className="text-xs text-orange-500 hover:text-orange-600 font-bold flex items-center gap-1 cursor-pointer"
               >
                 <Sliders size={13} />
                 <span>Configurar Alertas de Stock</span>
               </button>
-              <span className="text-xs font-mono text-zinc-400">{providerTotalStock} unid. bodega</span>
+              <span className={`text-xs font-mono ${isLight ? 'text-zinc-600' : 'text-zinc-400'}`}>{providerTotalStock} unid. bodega</span>
             </div>
           </div>
         </div>
@@ -1093,44 +1148,52 @@ export function ExecutiveOverviewSheet({
       {/* Modal Alertas Stock */}
       {alertStockModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-zinc-900 border border-zinc-700 rounded-2xl p-6 max-w-md w-full space-y-4 shadow-2xl">
+          <div className={`border rounded-2xl p-6 max-w-md w-full space-y-4 shadow-2xl ${
+            isLight ? 'bg-white border-zinc-200 text-zinc-900' : 'bg-zinc-900 border-zinc-700 text-white'
+          }`}>
             <div className="flex items-center justify-between">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
+              <h3 className={`text-base font-bold flex items-center gap-2 ${isLight ? 'text-zinc-900' : 'text-white'}`}>
                 <Sliders size={18} className="text-orange-500" />
                 Configurar Umbrales de Stock — {selectedProviderName}
               </h3>
               <button
                 onClick={() => setAlertStockModal(false)}
-                className="text-zinc-400 hover:text-white text-xs font-mono cursor-pointer"
+                className={`text-xs font-mono cursor-pointer ${isLight ? 'text-zinc-500 hover:text-zinc-900' : 'text-zinc-400 hover:text-white'}`}
               >
                 ✕
               </button>
             </div>
-            <p className="text-xs text-zinc-300">
+            <p className={`text-xs ${isLight ? 'text-zinc-600' : 'text-zinc-300'}`}>
               Define los niveles mínimos de inventario para que el sistema te avise automáticamente cuando las prescripciones 3D se acerquen al límite de stock:
             </p>
             <div className="space-y-3 text-xs">
               <div>
-                <label className="block text-zinc-400 mb-1">Umbral Mínimo de Planchas / Tableros en Bodega</label>
+                <label className={`block mb-1 font-medium ${isLight ? 'text-zinc-700' : 'text-zinc-400'}`}>Umbral Mínimo de Planchas / Tableros en Bodega</label>
                 <input
                   type="number"
                   defaultValue={15}
-                  className="w-full bg-zinc-950 border border-zinc-700 rounded-lg p-2 text-white font-mono"
+                  className={`w-full border rounded-lg p-2 font-mono ${
+                    isLight ? 'bg-zinc-50 border-zinc-300 text-zinc-900' : 'bg-zinc-950 border-zinc-700 text-white'
+                  }`}
                 />
               </div>
               <div>
-                <label className="block text-zinc-400 mb-1">Alerta Temprana de Demanda Acumulada (m²)</label>
+                <label className={`block mb-1 font-medium ${isLight ? 'text-zinc-700' : 'text-zinc-400'}`}>Alerta Temprana de Demanda Acumulada (m²)</label>
                 <input
                   type="number"
                   defaultValue={50}
-                  className="w-full bg-zinc-950 border border-zinc-700 rounded-lg p-2 text-white font-mono"
+                  className={`w-full border rounded-lg p-2 font-mono ${
+                    isLight ? 'bg-zinc-50 border-zinc-300 text-zinc-900' : 'bg-zinc-950 border-zinc-700 text-white'
+                  }`}
                 />
               </div>
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <button
                 onClick={() => setAlertStockModal(false)}
-                className="px-3 py-1.5 rounded-lg bg-zinc-800 text-zinc-300 text-xs font-semibold hover:bg-zinc-700 cursor-pointer"
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer ${
+                  isLight ? 'bg-zinc-100 hover:bg-zinc-200 text-zinc-700' : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300'
+                }`}
               >
                 Cancelar
               </button>
