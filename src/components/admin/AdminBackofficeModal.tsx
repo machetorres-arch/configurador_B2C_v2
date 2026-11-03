@@ -20,7 +20,12 @@ import {
   Moon,
   Clock,
   ChevronRight,
-  TrendingUp
+  TrendingUp,
+  Camera,
+  Edit2,
+  Check,
+  User,
+  Wrench,
 } from 'lucide-react';
 import { useAdminStore } from '../../store/adminStore';
 import { useSupabaseAuthStore } from '../../store/supabaseAuthStore';
@@ -32,7 +37,6 @@ import { TexturesManagerTab } from './TexturesManagerTab';
 import { UsersAndProvidersTab } from './UsersAndProvidersTab';
 import { ProviderAnalyticsTab } from './ProviderAnalyticsTab';
 import { ManufacturingRatesTab } from './ManufacturingRatesTab';
-import { Wrench } from 'lucide-react';
 
 interface AdminBackofficeModalProps {
   isOpen: boolean;
@@ -45,7 +49,17 @@ export function AdminBackofficeModal({
   onClose,
   onNavigateToModule,
 }: AdminBackofficeModalProps) {
-  const { adminEmail, currentUser, logout: localLogout, projects, supplies, textures, themeMode, toggleThemeMode } = useAdminStore();
+  const {
+    adminEmail,
+    currentUser,
+    updateCurrentUserProfile,
+    logout: localLogout,
+    projects,
+    supplies,
+    textures,
+    themeMode,
+    toggleThemeMode,
+  } = useAdminStore();
   const { user: supabaseUser, tenant: supabaseTenant, logout: supabaseLogout } = useSupabaseAuthStore();
   const { fetchTenantData, materials, hardware, projects: cloudProjects } = useTenantDataStore();
   const isCloud = isSupabaseConfigured();
@@ -143,6 +157,57 @@ export function AdminBackofficeModal({
     }
   }, [isOpen, isCloud, supabaseUser?.tenant_id]);
 
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [editName, setEditName] = useState(currentUser?.full_name || 'Marcelo Fuentes');
+  const [editEmail, setEditEmail] = useState(supabaseUser?.email || currentUser?.email || adminEmail || 'marcelo@robfu.cl');
+  const [avatarImage, setAvatarImage] = useState<string | null>(
+    currentUser?.avatar_url || (typeof window !== 'undefined' ? localStorage.getItem('arquify_user_avatar') : null)
+  );
+
+  useEffect(() => {
+    if (currentUser?.full_name) {
+      setEditName(currentUser.full_name);
+    }
+    if (currentUser?.email || supabaseUser?.email) {
+      setEditEmail(supabaseUser?.email || currentUser?.email || adminEmail || 'marcelo@robfu.cl');
+    }
+    if (currentUser?.avatar_url) {
+      setAvatarImage(currentUser.avatar_url);
+    }
+  }, [currentUser, supabaseUser, adminEmail]);
+
+  const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64 = reader.result as string;
+        setAvatarImage(base64);
+        try {
+          localStorage.setItem('arquify_user_avatar', base64);
+        } catch (err) {
+          console.warn('Avatar image too large for localStorage', err);
+        }
+        if (updateCurrentUserProfile) {
+          updateCurrentUserProfile({ avatar_url: base64 });
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSaveProfile = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (updateCurrentUserProfile) {
+      updateCurrentUserProfile({
+        full_name: editName,
+        email: editEmail,
+        avatar_url: avatarImage || undefined,
+      });
+    }
+    setIsEditingProfile(false);
+  };
+
   if (!isOpen) return null;
 
   const handleLogout = async () => {
@@ -163,11 +228,16 @@ export function AdminBackofficeModal({
     0
   );
 
-  const emailDisplay = supabaseUser?.email || currentUser?.email || adminEmail || 'marcelo@robfu.cl';
+  const nameDisplay = editName || currentUser?.full_name || 'Marcelo Fuentes';
+  const emailDisplay = editEmail || supabaseUser?.email || currentUser?.email || adminEmail || 'marcelo@robfu.cl';
   const roleDisplay = supabaseUser?.role || currentUser?.role || 'Superadmin';
-  const userInitials = (currentUser?.name || emailDisplay.split('@')[0] || 'AD')
+  const userInitials = (nameDisplay || 'AD')
+    .split(' ')
+    .map((n) => n[0])
+    .filter(Boolean)
+    .join('')
     .substring(0, 2)
-    .toUpperCase();
+    .toUpperCase() || 'AD';
 
   const getTabTitle = () => {
     switch (activeTab) {
@@ -200,67 +270,81 @@ export function AdminBackofficeModal({
           isLight ? 'bg-white border-zinc-200' : 'bg-zinc-900 border-zinc-800'
         }`}
       >
-        {/* Brand Header */}
+        {/* Brand Header: proporcional, sin escudo ni palabra Backoffice */}
         <div
-          className={`p-5 border-b flex items-center gap-3 ${
+          className={`p-6 border-b flex flex-col justify-center transition-colors ${
             isLight ? 'border-zinc-200 bg-zinc-50/50' : 'border-zinc-800/80 bg-zinc-950/40'
           }`}
         >
-          <div className="p-2.5 bg-orange-500/15 border border-orange-500/30 rounded-xl text-orange-500 shrink-0">
-            <ShieldCheck size={26} />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="font-bellota text-2xl font-bold lowercase text-orange-500 tracking-tight select-none">
-                arquify
-              </span>
-              <span
-                className={`text-sm font-extrabold tracking-wider uppercase px-2 py-0.5 rounded ${
-                  isLight ? 'bg-zinc-200 text-zinc-900' : 'bg-zinc-800 text-white'
-                }`}
-              >
-                Backoffice
-              </span>
-            </div>
-            <p className={`text-xs mt-0.5 font-medium ${isLight ? 'text-zinc-500' : 'text-slate-400'}`}>
-              Plataforma B2B & Control de Catálogo
-            </p>
-          </div>
+          <span className="font-bellota text-3xl font-bold lowercase text-orange-500 tracking-tight select-none leading-none">
+            arquify
+          </span>
+          <p className={`text-xs mt-1.5 font-medium ${isLight ? 'text-zinc-500' : 'text-slate-400'}`}>
+            Plataforma B2B & Control de Catálogo
+          </p>
         </div>
 
-        {/* User Account Info Section (Top Left) */}
-        <div
-          className={`p-4 mx-3 my-4 rounded-2xl border transition-all ${
-            isLight
-              ? 'bg-gradient-to-br from-orange-500/5 to-amber-500/5 border-orange-200 text-zinc-800'
-              : 'bg-gradient-to-br from-zinc-800/80 to-zinc-800/40 border-zinc-700/60 text-slate-200'
-          }`}
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-orange-500 to-amber-500 flex items-center justify-center font-extrabold text-white text-base shadow-lg shadow-orange-500/20 shrink-0">
-              {userInitials}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between gap-1">
-                <span className="text-xs font-mono font-bold text-orange-500 uppercase tracking-wide truncate">
-                  {roleDisplay}
-                </span>
-                {isCloud && (
-                  <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-500 bg-emerald-500/10 border border-emerald-500/30 px-1.5 py-0.2 rounded shrink-0">
-                    <Cloud size={10} /> RLS
-                  </span>
+        {/* User Account Info Section (Clean & Transparent with Large Avatar) */}
+        <div className="py-6 px-4 flex flex-col items-center text-center relative border-b border-zinc-200/70 dark:border-zinc-800/80">
+          {/* Avatar Circular Agrandado con Anillo de Estado */}
+          <div className="relative group/avatar cursor-pointer">
+            <div className="w-28 h-28 rounded-full p-1 bg-gradient-to-tr from-cyan-500 via-orange-500 to-amber-500 shadow-xl flex items-center justify-center relative overflow-hidden transition-transform group-hover/avatar:scale-105">
+              <div className="w-full h-full rounded-full bg-zinc-900 flex items-center justify-center overflow-hidden relative">
+                {avatarImage ? (
+                  <img src={avatarImage} alt="Avatar" className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full bg-gradient-to-tr from-orange-500 to-amber-500 flex items-center justify-center font-extrabold text-white text-2xl">
+                    {userInitials}
+                  </div>
                 )}
+                {/* Overlay hover para cambiar foto */}
+                <label className="absolute inset-0 bg-black/65 opacity-0 group-hover/avatar:opacity-100 flex flex-col items-center justify-center text-white text-[11px] font-bold transition-opacity cursor-pointer">
+                  <Camera size={22} className="mb-1 text-orange-400" />
+                  <span>Cambiar foto</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleAvatarUpload}
+                    className="hidden"
+                  />
+                </label>
               </div>
-              <p className="text-sm font-semibold truncate leading-snug" title={emailDisplay}>
-                {emailDisplay}
-              </p>
-              {(supabaseTenant?.name || currentUser?.tenant_name) && (
-                <p className="text-xs text-orange-400 font-medium truncate flex items-center gap-1 mt-0.5">
-                  <Building size={12} className="shrink-0" />
-                  <span className="truncate">{supabaseTenant?.name || currentUser?.tenant_name}</span>
-                </p>
-              )}
             </div>
+            {/* Botón de cámara en la esquina inferior del avatar */}
+            <label
+              className="absolute bottom-0 right-0 p-2 bg-orange-500 hover:bg-orange-600 text-white rounded-full shadow-lg cursor-pointer transition-transform hover:scale-110 border-2 border-white dark:border-zinc-900"
+              title="Cargar foto de perfil"
+            >
+              <Camera size={14} />
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleAvatarUpload}
+                className="hidden"
+              />
+            </label>
+          </div>
+
+          {/* ÚNICAMENTE el Nombre Completo */}
+          <div className="mt-3.5 flex items-center justify-center gap-1.5 w-full">
+            <h3
+              onClick={() => setIsEditingProfile(true)}
+              className={`text-base font-extrabold tracking-tight truncate max-w-[210px] cursor-pointer hover:text-orange-500 transition-colors ${
+                isLight ? 'text-zinc-900' : 'text-white'
+              }`}
+              title="Hacer clic para editar perfil"
+            >
+              {nameDisplay}
+            </h3>
+            <button
+              onClick={() => setIsEditingProfile(true)}
+              className={`p-1 transition-colors cursor-pointer rounded-lg ${
+                isLight ? 'text-zinc-400 hover:text-orange-500 hover:bg-zinc-100' : 'text-zinc-500 hover:text-orange-400 hover:bg-zinc-800'
+              }`}
+              title="Editar nombre"
+            >
+              <Edit2 size={14} />
+            </button>
           </div>
         </div>
 
@@ -571,6 +655,104 @@ export function AdminBackofficeModal({
           {isSuperAdmin && activeTab === 'manufacturing' && <ManufacturingRatesTab />}
         </main>
       </div>
+
+      {/* Modal / Dialog de Edición de Perfil de Usuario */}
+      {isEditingProfile && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-in fade-in duration-150 p-4">
+          <div
+            className={`w-full max-w-sm rounded-2xl border p-5 shadow-2xl ${
+              isLight ? 'bg-white text-zinc-900 border-zinc-200' : 'bg-zinc-900 text-white border-zinc-800'
+            }`}
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-200 dark:border-zinc-800">
+              <h3 className="font-bold text-base flex items-center gap-2">
+                <Edit2 size={16} className="text-orange-500" />
+                <span>Editar Perfil de Usuario</span>
+              </h3>
+              <button
+                onClick={() => setIsEditingProfile(false)}
+                className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveProfile} className="mt-4 space-y-3.5">
+              {/* Previsualización y Carga de Avatar */}
+              <div className="flex items-center gap-3 p-3 rounded-xl bg-zinc-800/50 border border-zinc-700/50">
+                <div className="w-12 h-12 rounded-full overflow-hidden bg-zinc-800 border border-orange-500/50 flex items-center justify-center text-white shrink-0">
+                  {avatarImage ? (
+                    <img src={avatarImage} alt="Avatar" className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="font-bold text-sm">{userInitials}</span>
+                  )}
+                </div>
+                <div className="flex-1">
+                  <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold cursor-pointer transition-colors">
+                    <Camera size={14} />
+                    <span>Cargar Foto</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleAvatarUpload}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold mb-1 text-zinc-400 uppercase tracking-wider">
+                  Nombre Completo
+                </label>
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  required
+                  className={`w-full px-3 py-2 text-sm rounded-xl border font-semibold outline-none focus:ring-2 focus:ring-orange-500 ${
+                    isLight ? 'bg-zinc-50 border-zinc-300 text-zinc-900' : 'bg-zinc-800 border-zinc-700 text-white'
+                  }`}
+                  placeholder="Ej. Marcelo Fuentes"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold mb-1 text-zinc-400 uppercase tracking-wider">
+                  Correo Electrónico
+                </label>
+                <input
+                  type="email"
+                  value={editEmail}
+                  onChange={(e) => setEditEmail(e.target.value)}
+                  required
+                  className={`w-full px-3 py-2 text-sm rounded-xl border font-semibold outline-none focus:ring-2 focus:ring-orange-500 ${
+                    isLight ? 'bg-zinc-50 border-zinc-300 text-zinc-900' : 'bg-zinc-800 border-zinc-700 text-white'
+                  }`}
+                  placeholder="ejemplo@robfu.cl"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsEditingProfile(false)}
+                  className="px-3.5 py-2 rounded-xl text-xs font-bold text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-orange-500/20 transition-all cursor-pointer"
+                >
+                  <Check size={14} />
+                  <span>Guardar Cambios</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

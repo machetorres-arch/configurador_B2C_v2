@@ -201,6 +201,7 @@ export interface AdminState {
   currentUser: AdminSessionUser | null;
   login: (user: string, pass: string) => { success: boolean; error?: string };
   logout: () => void;
+  updateCurrentUserProfile: (updates: Partial<AdminSessionUser>) => void;
 
   // Usuarios Registrados y Registro de Accesos (Auditoría Superadmin)
   registeredUsers: RegisteredFreeUser[];
@@ -1529,6 +1530,25 @@ export const useAdminStore = create<AdminState>((set, get) => {
     isAuthenticated: initial.isAuthenticated,
     adminEmail: initial.adminEmail,
     currentUser: initial.currentUser,
+
+    updateCurrentUserProfile: (updates: Partial<AdminSessionUser>) => {
+      const cur = get().currentUser;
+      if (!cur) return;
+      const updatedUser: AdminSessionUser = { ...cur, ...updates };
+      persist({
+        currentUser: updatedUser,
+        adminEmail: updates.email ? updates.email : get().adminEmail,
+      });
+      useSupabaseAuthStore.setState((s) => ({
+        user: s.user
+          ? {
+              ...s.user,
+              full_name: updates.full_name || s.user.full_name,
+              email: updates.email || s.user.email,
+            }
+          : null,
+      }));
+    },
 
     themeMode: initial.themeMode || 'dark',
     setThemeMode: (mode: 'dark' | 'light') => {
