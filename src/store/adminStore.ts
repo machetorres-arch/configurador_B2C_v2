@@ -159,6 +159,7 @@ export interface AdminSessionUser {
   commune?: string;
   country?: string;
   rubro?: 'Diseñador' | 'Arquitecto' | 'Mueblista' | 'Inmobiliaria / Constructora' | 'Particular' | string;
+  avatar_url?: string;
 }
 
 export interface RegisteredFreeUser {

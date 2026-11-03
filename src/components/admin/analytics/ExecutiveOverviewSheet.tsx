@@ -174,21 +174,29 @@ export function ExecutiveOverviewSheet({
 
       // Evaluar texturas del proveedor
       providerTextures.forEach((tex) => {
-        const texName = tex.name.toLowerCase();
-        const texCode = tex.code.toLowerCase();
+        const texName = (tex.name || '').toLowerCase();
+        const texCode = (tex.code || '').toLowerCase();
+        const texUrl = (tex.url || '').toLowerCase();
+        const texId = (tex.id || '').toLowerCase();
         let occurrences = 0;
 
-        if (dataStr.includes(texCode)) {
+        if (texCode && dataStr.includes(texCode)) {
           occurrences += Math.max(1, dataStr.split(texCode).length - 1);
         }
-        if (dataStr.includes(texName)) {
+        if (texName && dataStr.includes(texName)) {
           occurrences += Math.max(1, dataStr.split(texName).length - 1);
         }
-        if (desc.includes(texCode) || desc.includes(texName) || projName.includes(texName)) {
+        if (texId && dataStr.includes(texId)) {
+          occurrences += Math.max(1, dataStr.split(texId).length - 1);
+        }
+        if (texUrl && texUrl.length > 3 && !texUrl.startsWith('#') && dataStr.includes(texUrl)) {
+          occurrences += Math.max(1, dataStr.split(texUrl).length - 1);
+        }
+        if ((texCode && (desc.includes(texCode) || projName.includes(texCode))) || (texName && (desc.includes(texName) || projName.includes(texName)))) {
           occurrences += 1;
         }
 
-        // Si es proyecto tipo Baño HPL y el proveedor es Abet, asociar automáticamente HPL de autor
+        // Si es proyecto tipo Baño HPL y el proveedor es Abet, asociar HPL de autor si no hubo otro matcheo directo
         if (occurrences === 0 && isAbet && (proj.type === 'hpl-bathroom' || desc.includes('hpl') || projName.includes('hpl'))) {
           occurrences = idx % 2 === 0 ? 3 : 2;
         }
@@ -198,7 +206,7 @@ export function ExecutiveOverviewSheet({
           const price = tex.priceSheetClp || 92000;
           matchedInProj.push({
             name: tex.name,
-            code: tex.code || 'HPL-AUTOR',
+            code: tex.code || tex.id || 'HPL-AUTOR',
             count: occurrences,
             areaM2: area,
             priceClp: price * occurrences
@@ -216,13 +224,19 @@ export function ExecutiveOverviewSheet({
 
       // Evaluar insumos del proveedor
       providerSupplies.forEach((sup) => {
-        const sName = sup.name.toLowerCase();
-        const sCode = sup.code.toLowerCase();
-        if ((dataStr.includes(sCode) || dataStr.includes(sName)) && !matchedInProj.some((m) => m.code === sup.code)) {
+        const sName = (sup.name || '').toLowerCase();
+        const sCode = (sup.code || '').toLowerCase();
+        const sId = (sup.id || '').toLowerCase();
+
+        const matchesCode = sCode && dataStr.includes(sCode);
+        const matchesName = sName && dataStr.includes(sName);
+        const matchesId = sId && dataStr.includes(sId);
+
+        if ((matchesCode || matchesName || matchesId) && !matchedInProj.some((m) => m.code === sup.code)) {
           const area = sup.unit.includes('m²') ? 4.5 : 3.96;
           matchedInProj.push({
             name: sup.name,
-            code: sup.code,
+            code: sup.code || sup.id,
             count: 1,
             areaM2: area,
             priceClp: sup.priceClp

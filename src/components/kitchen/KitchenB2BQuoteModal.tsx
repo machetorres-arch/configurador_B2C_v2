@@ -74,10 +74,56 @@ export function KitchenB2BQuoteModal({ isOpen, onClose }: KitchenB2BQuoteModalPr
     validityDays,
   };
 
+  const recordQuoteInAdminStore = () => {
+    try {
+      const { saveProject, projects, updateProject } = useAdminStore.getState();
+      const kitchenState = useKitchenStore.getState();
+      const pName = projectName.trim() || 'Cocina Integral de Autor';
+      const cName = clientName.trim() || 'Cliente Particular';
+
+      const existing = projects.find((p) => p.name.toLowerCase() === pName.toLowerCase());
+      const projectData = {
+        cabinets: kitchenState.cabinets,
+        countertopConfig: kitchenState.countertopConfig,
+        roomConfig: kitchenState.roomConfig,
+        structureColor: kitchenState.structureColor,
+        doorColor: kitchenState.doorColor,
+        drawerFrontColor: kitchenState.drawerFrontColor,
+        socleHeight: kitchenState.socleHeight,
+        socleFinish: kitchenState.socleFinish,
+        golaSystem: kitchenState.golaSystem,
+        totalFloorM2: quote.netPanelsAreaM2,
+      };
+
+      if (existing) {
+        updateProject(existing.id, {
+          status: 'quoted',
+          soldDate: new Date().toISOString().split('T')[0],
+          finalSalePriceClp: quote.totalPvpBrutoClp,
+          client: cName,
+          data: { ...(existing.data || {}), ...projectData },
+        });
+      } else {
+        saveProject({
+          name: pName,
+          client: cName,
+          type: 'kitchen',
+          description: `Cotización comercial B2B/PVP (${quote.netPanelsAreaM2.toFixed(1)} m² procesados)`,
+          totalCostEstimateClp: quote.totalPvpBrutoClp,
+          data: projectData,
+          status: 'quoted',
+        });
+      }
+    } catch (e) {
+      console.warn('Error registrando cotización en adminStore:', e);
+    }
+  };
+
   const handleExportPdf = () => {
     try {
       exportClientQuotePdf(quote, metadata);
-      showToast('PDF de Cotización Cliente generado.');
+      recordQuoteInAdminStore();
+      showToast('PDF de Cotización Cliente generado y registrado en analíticas.');
     } catch (err) {
       console.error(err);
       alert('Error generando PDF comercial.');
@@ -87,7 +133,8 @@ export function KitchenB2BQuoteModal({ isOpen, onClose }: KitchenB2BQuoteModalPr
   const handleExportExcel = () => {
     try {
       exportB2BQuoteExcel(quote, metadata);
-      showToast('Planilla Excel con vistas B2B y PVP generada.');
+      recordQuoteInAdminStore();
+      showToast('Planilla Excel generada y registrada en analíticas.');
     } catch (err) {
       console.error(err);
       alert('Error exportando Excel.');

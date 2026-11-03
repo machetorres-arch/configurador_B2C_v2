@@ -55,6 +55,20 @@ export function ProjectsManagerTab({ onLoadProjectToModule, isFreeUserMode = fal
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedType, setSelectedType] = useState<'all' | ProjectType>('all');
   const [selectedStatus, setSelectedStatus] = useState<'all' | 'designed' | 'quoted' | 'sold' | 'in_production'>('all');
+
+  // Filtros de Fecha
+  type DatePreset = 'all' | 'today' | '7days' | '30days' | 'this_month' | 'custom';
+  type DateTargetField = 'date' | 'soldDate';
+  const [datePreset, setDatePreset] = useState<DatePreset>('all');
+  const [dateStart, setDateStart] = useState<string>('');
+  const [dateEnd, setDateEnd] = useState<string>('');
+  const [dateTargetField, setDateTargetField] = useState<DateTargetField>('date');
+
+  // Log de Accesos - Filtros de Fecha
+  const [logDatePreset, setLogDatePreset] = useState<DatePreset>('all');
+  const [logDateStart, setLogDateStart] = useState<string>('');
+  const [logDateEnd, setLogDateEnd] = useState<string>('');
+
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editClient, setEditClient] = useState('');
@@ -93,6 +107,58 @@ export function ProjectsManagerTab({ onLoadProjectToModule, isFreeUserMode = fal
 
   const [adminSubTab, setAdminSubTab] = useState<'projects' | 'access_logs'>('projects');
 
+  // Función de validación de filtro por fecha
+  const matchesDateFilter = (
+    dateStr?: string,
+    preset: DatePreset = 'all',
+    startStr: string = '',
+    endStr: string = ''
+  ) => {
+    if (preset === 'all') return true;
+    if (!dateStr) return false;
+
+    const targetDate = new Date(dateStr);
+    if (isNaN(targetDate.getTime())) return true;
+
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    if (preset === 'today') {
+      return targetDate >= todayStart;
+    }
+    if (preset === '7days') {
+      const d = new Date(todayStart);
+      d.setDate(d.getDate() - 7);
+      return targetDate >= d;
+    }
+    if (preset === '30days') {
+      const d = new Date(todayStart);
+      d.setDate(d.getDate() - 30);
+      return targetDate >= d;
+    }
+    if (preset === 'this_month') {
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      return targetDate >= monthStart;
+    }
+    if (preset === 'custom') {
+      let matches = true;
+      if (startStr) {
+        const sDate = new Date(`${startStr}T00:00:00`);
+        if (!isNaN(sDate.getTime())) {
+          matches = matches && targetDate >= sDate;
+        }
+      }
+      if (endStr) {
+        const eDate = new Date(`${endStr}T23:59:59`);
+        if (!isNaN(eDate.getTime())) {
+          matches = matches && targetDate <= eDate;
+        }
+      }
+      return matches;
+    }
+    return true;
+  };
+
   // Filtered projects (para usuario gratuito se filtra estrictamente por su usuario/email)
   const scopedProjects = isFreeUserMode
     ? projects.filter((p) => p.userId === currentUser?.id || p.userEmail === currentUser?.email)
@@ -110,8 +176,16 @@ export function ProjectsManagerTab({ onLoadProjectToModule, isFreeUserMode = fal
       (p.userEmail && p.userEmail.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (p.userRubro && p.userRubro.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (p.orderNumber && p.orderNumber.toLowerCase().includes(searchTerm.toLowerCase()));
-    return matchesType && matchesStatus && matchesSearch;
+
+    const targetDateStr = dateTargetField === 'soldDate' ? (p.soldDate || p.date) : p.date;
+    const matchesDate = matchesDateFilter(targetDateStr, datePreset, dateStart, dateEnd);
+
+    return matchesType && matchesStatus && matchesSearch && matchesDate;
   });
+
+  const filteredAccessLogs = accessLogs.filter((log) =>
+    matchesDateFilter(log.timestamp, logDatePreset, logDateStart, logDateEnd)
+  );
 
   // Métricas rápidas de pipeline
   const totalProjectsCount = scopedProjects.length;
@@ -650,7 +724,65 @@ export function ProjectsManagerTab({ onLoadProjectToModule, isFreeUserMode = fal
             </div>
           </div>
 
-          {accessLogs.length === 0 ? (
+          {/* Bar de Filtros de Fecha para Accesos */}
+          <div
+            className={`p-3 rounded-xl border flex flex-wrap items-center justify-between gap-3 text-xs ${
+              isLight ? 'bg-white border-zinc-200' : 'bg-zinc-900/80 border-zinc-800'
+            }`}
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={`text-[11px] font-bold uppercase tracking-wider flex items-center gap-1 ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                <Calendar size={13} className="text-orange-500" />
+                Fecha de Ingreso:
+              </span>
+              {[
+                { id: 'all', label: 'Todas' },
+                { id: 'today', label: 'Hoy' },
+                { id: '7days', label: 'Últimos 7 días' },
+                { id: '30days', label: 'Últimos 30 días' },
+                { id: 'this_month', label: 'Este mes' },
+                { id: 'custom', label: 'Personalizado' },
+              ].map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => setLogDatePreset(p.id as any)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+                    logDatePreset === p.id
+                      ? 'bg-orange-500 text-white font-bold shadow-sm'
+                      : isLight
+                      ? 'bg-zinc-100 text-zinc-600 hover:text-zinc-900'
+                      : 'bg-zinc-950 text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+
+            {logDatePreset === 'custom' && (
+              <div className="flex items-center gap-2 animate-in fade-in duration-150">
+                <input
+                  type="date"
+                  value={logDateStart}
+                  onChange={(e) => setLogDateStart(e.target.value)}
+                  className={`p-1 px-2 border rounded-lg text-xs font-mono ${
+                    isLight ? 'bg-zinc-50 border-zinc-300 text-zinc-900' : 'bg-zinc-950 border-zinc-700 text-white'
+                  }`}
+                />
+                <span className={isLight ? 'text-zinc-400' : 'text-zinc-600'}>-</span>
+                <input
+                  type="date"
+                  value={logDateEnd}
+                  onChange={(e) => setLogDateEnd(e.target.value)}
+                  className={`p-1 px-2 border rounded-lg text-xs font-mono ${
+                    isLight ? 'bg-zinc-50 border-zinc-300 text-zinc-900' : 'bg-zinc-950 border-zinc-700 text-white'
+                  }`}
+                />
+              </div>
+            )}
+          </div>
+
+          {filteredAccessLogs.length === 0 ? (
             <div
               className={`p-12 text-center border rounded-2xl ${
                 isLight ? 'bg-white border-zinc-200 shadow-sm' : 'bg-zinc-900/40 border-zinc-800'
@@ -658,10 +790,10 @@ export function ProjectsManagerTab({ onLoadProjectToModule, isFreeUserMode = fal
             >
               <Activity size={40} className={`mx-auto mb-3 ${isLight ? 'text-zinc-400' : 'text-zinc-600'}`} />
               <p className={`text-sm font-semibold ${isLight ? 'text-zinc-700' : 'text-slate-400'}`}>
-                No hay registros de ingresos aún.
+                No hay registros de ingresos para el rango de fechas seleccionado.
               </p>
               <p className={`text-xs mt-1 ${isLight ? 'text-zinc-500' : 'text-zinc-600'}`}>
-                Cada vez que un usuario ingrese al configurador quedará trazado con su información de contacto y rubro.
+                Prueba cambiando el rango de fechas o seleccionando "Todas".
               </p>
             </div>
           ) : (
@@ -687,7 +819,7 @@ export function ProjectsManagerTab({ onLoadProjectToModule, isFreeUserMode = fal
                   </tr>
                 </thead>
                 <tbody className={`divide-y ${isLight ? 'divide-zinc-200 bg-white' : 'divide-zinc-800 bg-zinc-900/60'}`}>
-                  {accessLogs.map((log) => (
+                  {filteredAccessLogs.map((log) => (
                     <tr
                       key={log.id}
                       className={`transition-colors ${isLight ? 'hover:bg-zinc-50' : 'hover:bg-zinc-800/40'}`}
@@ -851,6 +983,76 @@ export function ProjectsManagerTab({ onLoadProjectToModule, isFreeUserMode = fal
                 ))}
               </div>
             )}
+
+            {/* Date Filter Bar */}
+            <div className={`flex flex-wrap items-center justify-between gap-2 pt-2 border-t text-xs ${isLight ? 'border-zinc-200' : 'border-zinc-800/80'}`}>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className={`text-[11px] font-bold uppercase tracking-wider shrink-0 flex items-center gap-1 ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                  <Calendar size={12} className="text-orange-500" /> Fecha:
+                </span>
+
+                {/* Target Date Field Toggle */}
+                <select
+                  value={dateTargetField}
+                  onChange={(e) => setDateTargetField(e.target.value as DateTargetField)}
+                  className={`py-1 px-2 border text-[11px] font-semibold rounded-lg focus:outline-none cursor-pointer ${
+                    isLight ? 'bg-zinc-100 border-zinc-300 text-zinc-800' : 'bg-zinc-950 border-zinc-800 text-zinc-300'
+                  }`}
+                  title="Seleccionar criterio de fecha"
+                >
+                  <option value="date">F. Creación</option>
+                  <option value="soldDate">F. Venta (Cierre)</option>
+                </select>
+
+                {/* Date Presets */}
+                {[
+                  { id: 'all', label: 'Todas' },
+                  { id: 'today', label: 'Hoy' },
+                  { id: '7days', label: 'Últimos 7d' },
+                  { id: '30days', label: 'Últimos 30d' },
+                  { id: 'this_month', label: 'Este mes' },
+                  { id: 'custom', label: 'Personalizado' },
+                ].map((dp) => (
+                  <button
+                    key={dp.id}
+                    onClick={() => setDatePreset(dp.id as DatePreset)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                      datePreset === dp.id
+                        ? 'bg-orange-500 text-white font-bold shadow-sm'
+                        : isLight
+                        ? 'bg-zinc-100 text-zinc-600 hover:text-zinc-900 border border-zinc-200'
+                        : 'bg-zinc-950 text-zinc-400 hover:text-white border border-zinc-800'
+                    }`}
+                  >
+                    {dp.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Custom Date Range Selector */}
+              {datePreset === 'custom' && (
+                <div className="flex items-center gap-2 animate-in fade-in duration-150 shrink-0">
+                  <span className={`text-[11px] font-medium ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>Desde:</span>
+                  <input
+                    type="date"
+                    value={dateStart}
+                    onChange={(e) => setDateStart(e.target.value)}
+                    className={`p-1 px-2 border rounded-lg text-xs font-mono focus:border-orange-500 focus:outline-none ${
+                      isLight ? 'bg-zinc-50 border-zinc-300 text-zinc-900' : 'bg-zinc-950 border-zinc-700 text-white'
+                    }`}
+                  />
+                  <span className={`text-[11px] font-medium ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>Hasta:</span>
+                  <input
+                    type="date"
+                    value={dateEnd}
+                    onChange={(e) => setDateEnd(e.target.value)}
+                    className={`p-1 px-2 border rounded-lg text-xs font-mono focus:border-orange-500 focus:outline-none ${
+                      isLight ? 'bg-zinc-50 border-zinc-300 text-zinc-900' : 'bg-zinc-950 border-zinc-700 text-white'
+                    }`}
+                  />
+                </div>
+              )}
+            </div>
           </div>
 
           {/* New Project Form */}

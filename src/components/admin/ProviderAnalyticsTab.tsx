@@ -48,7 +48,9 @@ export function ProviderAnalyticsTab({
   // Quick unit/currency toggle
   const [currency, setCurrency] = useState<'CLP' | 'UF' | 'USD'>('CLP');
   const [unitMetric, setUnitMetric] = useState<'m2' | 'planchas'>('m2');
-  const [timeRange, setTimeRange] = useState<'30d' | 'q3' | 'ytd'>('30d');
+  const [timeRange, setTimeRange] = useState<'7d' | '30d' | '90d' | 'ytd' | 'custom'>('30d');
+  const [startDate, setStartDate] = useState<string>('');
+  const [endDate, setEndDate] = useState<string>('');
 
   const selectedProvider = useMemo(() => {
     if (!isSuperAdmin && currentProviderId) {
@@ -90,8 +92,62 @@ export function ProviderAnalyticsTab({
           </div>
         </div>
 
-        {/* Global Controls: Provider + Currency + Units */}
+        {/* Global Controls: Time Range + Currency + Units + Provider */}
         <div className="flex flex-wrap items-center gap-2.5">
+          {/* Time Range Filter */}
+          <div className="flex items-center gap-1">
+            <div
+              className={`flex items-center p-0.5 rounded-xl text-xs font-semibold border ${
+                isLight ? 'bg-zinc-100 border-zinc-200' : 'bg-zinc-950 border-zinc-800'
+              }`}
+            >
+              <Calendar size={13} className="ml-2 text-orange-500 shrink-0" />
+              {[
+                { id: '7d', label: '7D' },
+                { id: '30d', label: '30D' },
+                { id: '90d', label: '90D' },
+                { id: 'ytd', label: 'Año' },
+                { id: 'custom', label: 'Rango' },
+              ].map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => setTimeRange(t.id as any)}
+                  className={`px-2 py-1 rounded-lg transition-all cursor-pointer ${
+                    timeRange === t.id
+                      ? 'bg-orange-500 text-white font-bold'
+                      : isLight
+                      ? 'text-zinc-600 hover:text-zinc-900'
+                      : 'text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            {timeRange === 'custom' && (
+              <div className="flex items-center gap-1 text-xs animate-in fade-in duration-150">
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className={`p-1 px-1.5 border rounded-lg text-xs font-mono ${
+                    isLight ? 'bg-zinc-50 border-zinc-300 text-zinc-900' : 'bg-zinc-950 border-zinc-700 text-white'
+                  }`}
+                />
+                <span className={isLight ? 'text-zinc-400' : 'text-zinc-600'}>-</span>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className={`p-1 px-1.5 border rounded-lg text-xs font-mono ${
+                    isLight ? 'bg-zinc-50 border-zinc-300 text-zinc-900' : 'bg-zinc-950 border-zinc-700 text-white'
+                  }`}
+                />
+              </div>
+            )}
+          </div>
+
           {/* Currency Toggle */}
           <div
             className={`flex items-center p-0.5 rounded-xl text-xs font-bold font-mono border ${
