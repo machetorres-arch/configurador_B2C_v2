@@ -18,12 +18,14 @@ export async function handleRenderRequest(body: any) {
     throw new Error('Image base64 data is required');
   }
 
-  let apiKey = process.env.GEMINI_API_KEY;
+  let apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
   try {
     if (fs.existsSync('.env.local')) {
       const parsed = dotenv.parse(fs.readFileSync('.env.local'));
       if (parsed.GEMINI_API_KEY && parsed.GEMINI_API_KEY.trim()) {
         apiKey = parsed.GEMINI_API_KEY.trim();
+      } else if (parsed.VITE_GEMINI_API_KEY && parsed.VITE_GEMINI_API_KEY.trim()) {
+        apiKey = parsed.VITE_GEMINI_API_KEY.trim();
       }
     }
   } catch (e) {
@@ -31,7 +33,7 @@ export async function handleRenderRequest(body: any) {
   }
 
   if (!apiKey) {
-    throw new Error('GEMINI_API_KEY is not configured on the server');
+    throw new Error('GEMINI_API_KEY no está configurada en el servidor de Vercel. Por favor, asegúrate de haber añadido GEMINI_API_KEY en Vercel Dashboard -> Project Settings -> Environment Variables y desplegado nuevamente.');
   }
 
   const ai = new GoogleGenAI({
