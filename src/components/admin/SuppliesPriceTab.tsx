@@ -22,9 +22,20 @@ import {
   PackageCheck,
   Upload,
   Palette,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Tag,
+  Flame,
+  Calendar,
+  Percent,
+  Clock
 } from 'lucide-react';
-import { useAdminStore, SupplyItem, SupplyCategory } from '../../store/adminStore';
+import {
+  useAdminStore,
+  SupplyItem,
+  SupplyCategory,
+  isSupplyOfferValid,
+  getEffectiveSupplyPrice
+} from '../../store/adminStore';
 
 interface SuppliesPriceTabProps {
   currentProviderId?: string;
@@ -80,7 +91,16 @@ export function SuppliesPriceTab({
   currentProviderName,
   isSuperAdmin = true
 }: SuppliesPriceTabProps) {
-  const { supplies, updateSupplyPrice, updateSupply, addSupply, deleteSupply, resetSuppliesToDefault, themeMode } = useAdminStore();
+  const {
+    supplies,
+    updateSupplyPrice,
+    updateSupply,
+    updateTexture,
+    addSupply,
+    deleteSupply,
+    resetSuppliesToDefault,
+    themeMode
+  } = useAdminStore();
   const isLight = themeMode === 'light';
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -91,6 +111,14 @@ export function SuppliesPriceTab({
   const [editSupplier, setEditSupplier] = useState<string>('');
   const [editNotes, setEditNotes] = useState<string>('');
   const [feedback, setFeedback] = useState<string | null>(null);
+
+  // Modal para Ofertas / Promociones
+  const [offerItem, setOfferItem] = useState<SupplyItem | null>(null);
+  const [offerActive, setOfferActive] = useState<boolean>(true);
+  const [offerDiscount, setOfferDiscount] = useState<number>(30);
+  const [offerPrice, setOfferPrice] = useState<number>(0);
+  const [offerStockLimit, setOfferStockLimit] = useState<number>(10);
+  const [offerExpirationDate, setOfferExpirationDate] = useState<string>('');
 
   const isProvider = !isSuperAdmin && Boolean(currentProviderId || currentProviderName);
 
@@ -202,14 +230,63 @@ export function SuppliesPriceTab({
   };
 
   const handleSaveEdit = (id: string) => {
-    updateSupply(id, {
+    const updates = {
       priceClp: Number(editPrice),
       stockRef: Math.max(0, Number(editStock) || 0),
       ...(isSuperAdmin ? { supplier: editSupplier.trim() } : {}),
       notes: editNotes.trim(),
-    });
+    };
+    updateSupply(id, updates);
+    if (id.startsWith('sup-')) {
+      updateTexture(id.replace('sup-', ''), {
+        priceSheetClp: Number(editPrice),
+        priceM2Clp: Number(editPrice),
+        stock: Math.max(0, Number(editStock) || 0),
+      });
+    }
     setEditingId(null);
     showToast('Precio, stock y especificación actualizados con éxito.');
+  };
+
+  const handleOpenOfferModal = (item: SupplyItem) => {
+    setOfferItem(item);
+    setOfferActive(item.isOfferActive ?? true);
+    const disc = item.offerDiscountPercent ?? 30;
+    setOfferDiscount(disc);
+    const calculated = item.offerPriceClp ?? Math.round(item.priceClp * (1 - disc / 100));
+    setOfferPrice(calculated);
+    setOfferStockLimit(item.offerStockLimit ?? Math.min(item.stockRef ?? 20, 20));
+    setOfferExpirationDate(item.offerExpirationDate || '');
+  };
+
+  const handleSaveOffer = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!offerItem) return;
+
+    const updates = {
+      isOfferActive: offerActive,
+      offerDiscountPercent: Math.max(1, Math.min(99, Number(offerDiscount) || 30)),
+      offerPriceClp: Math.max(1, Number(offerPrice) || Math.round(offerItem.priceClp * 0.7)),
+      offerStockLimit: Math.max(0, Number(offerStockLimit) || 0),
+      offerExpirationDate: offerExpirationDate.trim(),
+    };
+
+    updateSupply(offerItem.id, updates);
+    if (offerItem.id.startsWith('sup-')) {
+      updateTexture(offerItem.id.replace('sup-', ''), updates);
+    }
+
+    setOfferItem(null);
+    showToast(`Oferta del producto "${offerItem.name}" guardada con éxito.`);
+  };
+
+  const handleQuickRemoveOffer = (item: SupplyItem) => {
+    const updates = { isOfferActive: false };
+    updateSupply(item.id, updates);
+    if (item.id.startsWith('sup-')) {
+      updateTexture(item.id.replace('sup-', ''), updates);
+    }
+    showToast(`Oferta desactivada para "${item.name}".`);
   };
 
   const handleResetDefaults = () => {
@@ -555,11 +632,34 @@ export function SuppliesPriceTab({
                               }`}
                             />
                           </div>
-                        ) : (
-                          <span className={`text-sm font-bold ${isLight ? 'text-zinc-900' : 'text-white'}`}>
-                            ${item.priceClp.toLocaleString('es-CL')} <span className={`text-[10px] ${isLight ? 'text-zinc-500' : 'text-zinc-500'}`}>CLP</span>
-                          </span>
-                        )}
+                        ) : (() => {
+                          const hasOffer = isSupplyOfferValid(item);
+                          const effectivePrice = getEffectiveSupplyPrice(item);
+                          return (
+                            <div className="flex flex-col items-end">
+                              {hasOffer ? (
+                                <>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="line-through text-[11px] text-zinc-500">
+                                      ${item.priceClp.toLocaleString('es-CL')}
+                                    </span>
+                                    <span className="px-1.5 py-0.5 bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded text-[10px] font-extrabold uppercase flex items-center gap-1">
+                                      <Flame size={11} className="fill-rose-400" />
+                                      {item.offerDiscountPercent || 30}% OFF
+                                    </span>
+                                  </div>
+                                  <span className="text-sm font-extrabold text-emerald-400">
+                                    ${effectivePrice.toLocaleString('es-CL')} <span className="text-[10px] text-zinc-500">CLP</span>
+                                  </span>
+                                </>
+                              ) : (
+                                <span className={`text-sm font-bold ${isLight ? 'text-zinc-900' : 'text-white'}`}>
+                                  ${item.priceClp.toLocaleString('es-CL')} <span className={`text-[10px] ${isLight ? 'text-zinc-500' : 'text-zinc-500'}`}>CLP</span>
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </td>
 
                       {/* Actions */}
@@ -584,8 +684,22 @@ export function SuppliesPriceTab({
                         ) : (
                           <div className="flex items-center justify-center gap-1.5">
                             <button
+                              onClick={() => handleOpenOfferModal(item)}
+                              className={`px-2 py-1 rounded-md text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer border ${
+                                isSupplyOfferValid(item)
+                                  ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 hover:bg-rose-500/30'
+                                  : isLight
+                                  ? 'bg-amber-500/10 text-amber-700 border-amber-300 hover:bg-amber-500/20'
+                                  : 'bg-amber-500/20 text-amber-300 border-amber-500/30 hover:bg-amber-500/30'
+                              }`}
+                              title="Poner en Oferta / Modificar Promoción"
+                            >
+                              <Tag size={12} />
+                              {isSupplyOfferValid(item) ? 'Oferta Activa' : 'Poner Oferta'}
+                            </button>
+                            <button
                               onClick={() => handleStartEdit(item)}
-                              className={`px-2.5 py-1 border rounded-md text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer ${
+                              className={`px-2 py-1 border rounded-md text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer ${
                                 isLight
                                   ? 'bg-zinc-100 hover:bg-orange-500/10 text-zinc-800 hover:text-orange-600 border-zinc-300'
                                   : 'bg-zinc-800/80 hover:bg-orange-500/20 text-slate-300 hover:text-orange-400 border-zinc-700/60'
@@ -980,6 +1094,178 @@ export function SuppliesPriceTab({
                 >
                   <Save size={14} /> Guardar en Catálogo
                 </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Configurar Oferta Promocional */}
+      {offerItem && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-rose-500/30 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="p-5 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/80">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400 shrink-0">
+                  <Flame size={18} className="fill-rose-400" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">
+                    Configurar Oferta / Descuento Promocional
+                  </h3>
+                  <p className="text-[11px] text-rose-300/80 font-mono">
+                    {offerItem.code} - {offerItem.name}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setOfferItem(null)}
+                className="p-1.5 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveOffer} className="p-6 space-y-4">
+              {/* Toggle Activar Oferta */}
+              <div className="p-3.5 bg-zinc-950 border border-zinc-800 rounded-xl flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                    <Tag size={14} className="text-rose-400" />
+                    Estado de la Oferta Promocional
+                  </div>
+                  <div className="text-[11px] text-zinc-400 mt-0.5">
+                    Activa la visibilidad con badge de descuento en el menú de diseño
+                  </div>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={offerActive}
+                    onChange={(e) => setOfferActive(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rose-500"></div>
+                </label>
+              </div>
+
+              {/* Precios y % Descuento */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider mb-1">
+                    Precio Lista Normal
+                  </label>
+                  <div className="px-3 py-2 bg-zinc-950/80 border border-zinc-800 rounded-xl text-xs font-mono font-bold text-zinc-400">
+                    ${offerItem.priceClp.toLocaleString('es-CL')} CLP
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-rose-400 uppercase tracking-wider mb-1">
+                    % Descuento Oferta
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      min="1"
+                      max="90"
+                      value={offerDiscount}
+                      onChange={(e) => {
+                        const disc = Number(e.target.value);
+                        setOfferDiscount(disc);
+                        setOfferPrice(Math.round(offerItem.priceClp * (1 - disc / 100)));
+                      }}
+                      className="w-full pl-3 pr-7 py-2 bg-zinc-950 border border-rose-500/40 rounded-xl text-xs text-rose-400 font-extrabold font-mono focus:outline-none focus:border-rose-500"
+                    />
+                    <Percent size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-rose-400" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Precio Promocional Final */}
+              <div>
+                <label className="block text-[11px] font-bold text-emerald-400 uppercase tracking-wider mb-1">
+                  Precio Final en Oferta ($ CLP)
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-500 font-bold">$</span>
+                  <input
+                    type="number"
+                    min="100"
+                    step="50"
+                    value={offerPrice}
+                    onChange={(e) => {
+                      const pr = Number(e.target.value);
+                      setOfferPrice(pr);
+                      if (offerItem.priceClp > 0) {
+                        const pct = Math.round((1 - pr / offerItem.priceClp) * 100);
+                        setOfferDiscount(Math.max(1, pct));
+                      }
+                    }}
+                    className="w-full pl-7 pr-3 py-2 bg-zinc-950 border border-emerald-500/40 rounded-xl text-xs text-emerald-400 font-extrabold font-mono focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+
+              {/* Condicionantes: Plazo y Stock */}
+              <div className="grid grid-cols-2 gap-3 pt-2 border-t border-zinc-800">
+                <div>
+                  <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider mb-1 flex items-center gap-1">
+                    <Calendar size={12} className="text-amber-400" /> Plazo Límite Oferta
+                  </label>
+                  <input
+                    type="date"
+                    value={offerExpirationDate}
+                    onChange={(e) => setOfferExpirationDate(e.target.value)}
+                    className="w-full px-2.5 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
+                  />
+                  <span className="text-[10px] text-zinc-500 mt-0.5 block">
+                    Opcional (Dejar en blanco si dura hasta agotar stock)
+                  </span>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider mb-1 flex items-center gap-1">
+                    <PackageCheck size={12} className="text-sky-400" /> Stock Asignado Oferta
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max={offerItem.stockRef ?? 999}
+                    value={offerStockLimit}
+                    onChange={(e) => setOfferStockLimit(Number(e.target.value))}
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-sky-400 font-bold focus:outline-none focus:border-sky-500 font-mono"
+                  />
+                  <span className="text-[10px] text-zinc-500 mt-0.5 block">
+                    Cant. máx de unidades en promoción
+                  </span>
+                </div>
+              </div>
+
+              {/* Botones */}
+              <div className="pt-3 border-t border-zinc-800 flex items-center justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={() => handleQuickRemoveOffer(offerItem)}
+                  className="px-3 py-2 bg-zinc-800 hover:bg-rose-500/20 text-rose-300 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1"
+                >
+                  <X size={13} /> Desactivar Oferta
+                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setOfferItem(null)}
+                    className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl text-xs font-semibold transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-rose-500 hover:bg-rose-400 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors shadow-md cursor-pointer"
+                  >
+                    <Save size={14} /> Guardar Oferta
+                  </button>
+                </div>
               </div>
             </form>
           </div>

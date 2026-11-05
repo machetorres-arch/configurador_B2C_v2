@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { AlertTriangle, X } from 'lucide-react';
+import { AlertTriangle, X, Flame, Tag } from 'lucide-react';
 import { useStore, PartType } from '../store';
-import { useAdminStore } from '../store/adminStore';
+import { useAdminStore, isSupplyOfferValid } from '../store/adminStore';
 import { useKitchenStore } from '../store/kitchenStore';
 import { isWhiteMelamine, generatePartsList } from '../utils/manufacturing';
 import { generateKitchenPartsList } from '../utils/kitchenManufacturing';
@@ -30,6 +30,13 @@ export const TexturesSection = ({
     textureName: string;
     stock: number;
     required: number;
+  } | null>(null);
+
+  const [offerStockAlert, setOfferStockAlert] = useState<{
+    textureName: string;
+    offerStock: number;
+    required: number;
+    discountPercent: number;
   } | null>(null);
   const hasIslands = useKitchenStore((s) => s.cabinets?.some((c) => c.type === 'island'));
 
@@ -185,7 +192,12 @@ export const TexturesSection = ({
       providerName: t.providerName,
       thicknessMm: t.thicknessMm || (t.category === 'hpl_autor' ? 0.9 : (t.name.includes('15') ? 15 : 18)),
       sheetFormat: t.sheetFormat,
-      stock: t.stock !== undefined ? t.stock : 30
+      stock: t.stock !== undefined ? t.stock : 30,
+      isOfferActive: t.isOfferActive,
+      offerDiscountPercent: t.offerDiscountPercent,
+      offerPriceClp: t.offerPriceClp,
+      offerStockLimit: t.offerStockLimit,
+      offerExpirationDate: t.offerExpirationDate,
     }));
 
   // Solo usar defaults de emergencia si no hay ninguna textura en el gestor
@@ -273,6 +285,17 @@ export const TexturesSection = ({
         return;
       }
 
+      // 2b. Si el producto tiene oferta y las unidades requeridas superan el stock asignado a la oferta
+      const offerLimit = tex.offerStockLimit;
+      if (isSupplyOfferValid(tex) && offerLimit !== undefined && offerLimit > 0 && offerLimit < requiredSheets) {
+        setOfferStockAlert({
+          textureName: tex.name,
+          offerStock: offerLimit,
+          required: requiredSheets,
+          discountPercent: tex.offerDiscountPercent || 30,
+        });
+      }
+
       // 3. Stock suficiente: aplicar normalmente
       const isBack = state.targetPart === 'back';
       const specificMat = isBack ? (tex.category === 'hpl_autor' ? 'hpl' : 'melamina') : undefined;
@@ -308,8 +331,13 @@ export const TexturesSection = ({
               : `${tex.name} ${tex.finish ? `[${tex.finish}]` : ''} ${tex.thicknessMm ? `[${tex.thicknessMm}mm]` : ''} [Stock: ${stockCount} planchas]`
           }
         >
-          {/* Badge de Sin Stock si está agotado */}
-          {isOutOfStock ? (
+          {/* Badge de Oferta Activa */}
+          {isSupplyOfferValid(tex) ? (
+            <span className="absolute top-1 left-1 px-1 py-0.5 rounded text-[7px] font-mono font-black uppercase shadow-md z-20 bg-rose-600 text-white flex items-center gap-0.5 animate-pulse">
+              <Flame size={9} className="fill-white" />
+              {tex.offerDiscountPercent || 30}% OFF
+            </span>
+          ) : isOutOfStock ? (
             <span className="absolute top-1 left-1 px-1 py-0.2 rounded text-[7px] font-mono font-extrabold uppercase shadow-sm z-10 bg-red-600 text-white">
               SIN STOCK
             </span>
@@ -829,6 +857,65 @@ export const TexturesSection = ({
                 type="button"
                 onClick={() => setStockAlert(null)}
                 className="px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 text-black font-extrabold text-xs uppercase tracking-wider rounded-xl cursor-pointer transition-all shadow-md shadow-orange-500/20"
+              >
+                Entendido
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Alerta: Stock de Oferta Promocional Limitado */}
+      {offerStockAlert && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className={`max-w-md w-full p-5 rounded-2xl border shadow-2xl space-y-4 ${
+            isLight ? 'bg-white border-rose-300 text-slate-800' : 'bg-zinc-900 border-rose-500/50 text-white'
+          }`}>
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 bg-rose-500/20 text-rose-400 rounded-xl shrink-0 mt-0.5 border border-rose-500/30">
+                <Flame size={24} className="fill-rose-400" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-bold uppercase tracking-wider text-rose-400 flex items-center gap-1.5">
+                    Stock de Oferta Insuficiente
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setOfferStockAlert(null)}
+                    className="text-zinc-400 hover:text-white p-1 rounded-lg cursor-pointer"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+                <p className="text-xs text-zinc-300 mt-1.5 leading-relaxed">
+                  El proyecto requiere <strong className="text-amber-400">{offerStockAlert.required} planchas/unidades</strong> de <strong className="text-white">"{offerStockAlert.textureName}"</strong>, pero la oferta del <strong className="text-rose-400">{offerStockAlert.discountPercent}% OFF</strong> solo cubre las primeras <strong className="text-rose-300">{offerStockAlert.offerStock} unidades</strong> restantes en stock promocional.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-zinc-950/80 border border-rose-500/20 text-[11px] space-y-2 font-mono">
+              <div className="flex justify-between items-center text-zinc-300">
+                <span>Total requerido por diseño:</span>
+                <strong className="text-amber-400 font-bold text-xs">{offerStockAlert.required} planchas</strong>
+              </div>
+              <div className="flex justify-between items-center text-rose-300">
+                <span>Disponibles con {offerStockAlert.discountPercent}% OFF:</span>
+                <strong className="text-rose-400 font-bold text-xs">{offerStockAlert.offerStock} planchas</strong>
+              </div>
+              <div className="flex justify-between items-center text-zinc-400 pt-1.5 border-t border-zinc-800">
+                <span>Excedente (Precio Lista Normal):</span>
+                <strong className="text-zinc-200 font-bold text-xs">
+                  {Math.max(0, offerStockAlert.required - offerStockAlert.offerStock)} planchas
+                </strong>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setOfferStockAlert(null)}
+                className="px-4 py-2 bg-rose-500 hover:bg-rose-400 text-white font-extrabold text-xs uppercase tracking-wider rounded-xl cursor-pointer transition-all shadow-md shadow-rose-500/20"
               >
                 Entendido
               </button>

@@ -63,6 +63,12 @@ export interface SupplyItem {
   commissionPercentage?: number; // % comisión/margen Arquify (ej: 20%)
   providerNetPriceClp?: number; // Precio neto del proveedor
   imageUrl?: string; // Foto del insumo cargada por el proveedor
+  // Campos de Ofertas Promocionales
+  isOfferActive?: boolean;
+  offerDiscountPercent?: number; // ej: 30 (% de descuento)
+  offerPriceClp?: number; // Precio promocional calculado o personalizado
+  offerStockLimit?: number; // Stock máximo asignado a la oferta
+  offerExpirationDate?: string; // Fecha de término YYYY-MM-DD
 }
 
 export type TextureApprovalStatus = 'pending' | 'approved' | 'rejected';
@@ -110,6 +116,60 @@ export interface CustomTextureItem {
   sheetHeightM?: number;
   // Stock disponible en inventario (planchas / unidades)
   stock?: number;
+  // Campos de Ofertas Promocionales
+  isOfferActive?: boolean;
+  offerDiscountPercent?: number;
+  offerPriceClp?: number;
+  offerStockLimit?: number;
+  offerExpirationDate?: string;
+}
+
+export function isSupplyOfferValid(item: {
+  isOfferActive?: boolean;
+  offerExpirationDate?: string;
+  offerStockLimit?: number;
+  stockRef?: number;
+  stock?: number;
+}): boolean {
+  if (!item.isOfferActive) return false;
+
+  // Verificar fecha límite de oferta
+  if (item.offerExpirationDate && item.offerExpirationDate.trim()) {
+    const today = new Date().toISOString().split('T')[0];
+    if (item.offerExpirationDate < today) return false;
+  }
+
+  // Verificar stock asignado a la oferta
+  if (item.offerStockLimit !== undefined && item.offerStockLimit !== null) {
+    if (item.offerStockLimit <= 0) return false;
+  }
+
+  // Verificar stock general en bodega
+  const generalStock = item.stockRef ?? item.stock ?? 999;
+  if (generalStock <= 0) return false;
+
+  return true;
+}
+
+export function getEffectiveSupplyPrice(item: {
+  priceClp: number;
+  isOfferActive?: boolean;
+  offerDiscountPercent?: number;
+  offerPriceClp?: number;
+  offerStockLimit?: number;
+  offerExpirationDate?: string;
+  stockRef?: number;
+  stock?: number;
+}): number {
+  if (isSupplyOfferValid(item)) {
+    if (item.offerPriceClp && item.offerPriceClp > 0) {
+      return item.offerPriceClp;
+    }
+    if (item.offerDiscountPercent && item.offerDiscountPercent > 0) {
+      return Math.round(item.priceClp * (1 - item.offerDiscountPercent / 100));
+    }
+  }
+  return item.priceClp;
 }
 
 export interface ProviderItem {
@@ -1195,6 +1255,11 @@ export function textureToSupplyItem(tex: CustomTextureItem): SupplyItem {
     stockRef: tex.stock ?? 50,
     providerId: tex.providerId,
     notes: `Decorativo 3D sincronizado automáticamente`,
+    isOfferActive: tex.isOfferActive,
+    offerDiscountPercent: tex.offerDiscountPercent,
+    offerPriceClp: tex.offerPriceClp,
+    offerStockLimit: tex.offerStockLimit,
+    offerExpirationDate: tex.offerExpirationDate,
   };
 }
 
@@ -1215,6 +1280,11 @@ export function mergeTexturesIntoSupplies(baseSupplies: SupplyItem[], textures: 
         spec: generated.spec,
         unit: generated.unit,
         category: generated.category,
+        isOfferActive: generated.isOfferActive ?? existing.isOfferActive,
+        offerDiscountPercent: generated.offerDiscountPercent ?? existing.offerDiscountPercent,
+        offerPriceClp: generated.offerPriceClp ?? existing.offerPriceClp,
+        offerStockLimit: generated.offerStockLimit ?? existing.offerStockLimit,
+        offerExpirationDate: generated.offerExpirationDate ?? existing.offerExpirationDate,
       });
     } else {
       map.set(supId, generated);

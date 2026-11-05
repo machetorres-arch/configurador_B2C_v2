@@ -18,7 +18,7 @@ import {
   SlidersHorizontal
 } from 'lucide-react';
 import { useKitchenStore } from '../../store/kitchenStore';
-import { useAdminStore } from '../../store/adminStore';
+import { useAdminStore, getEffectiveSupplyPrice, isSupplyOfferValid } from '../../store/adminStore';
 import { QSTONE_SINKS, FDV_COOKTOPS, SinkModelId, CooktopModelId, CountertopRunOverride } from '../../types/countertop';
 import { generateCountertopPieces, detectContinuousCabinetRuns } from '../../utils/countertopNesting';
 
@@ -83,13 +83,26 @@ export function CountertopConfigModal({ isOpen, onClose, isLight: isLightProp }:
           t.thicknessMm === 12 ||
           t.name.includes('12'));
       const thickness = t.thicknessMm || (isHpl ? 8 : isSintered ? 12 : t.name.includes('20') ? 20 : 18);
+      const basePriceM2 = t.priceM2Clp || Math.round((t.priceSheetClp || 280000) / (isHpl ? 3.965 : 5.12)) || 185000;
+      const effectivePriceM2 = getEffectiveSupplyPrice({
+        priceClp: basePriceM2,
+        isOfferActive: t.isOfferActive,
+        offerDiscountPercent: t.offerDiscountPercent,
+        offerPriceClp: t.offerPriceClp,
+        offerStockLimit: t.offerStockLimit,
+        offerExpirationDate: t.offerExpirationDate,
+        stock: t.stock
+      });
       return {
         id: t.id,
         code: t.code || (isHpl ? 'ABET-CUSTOM' : 'QS-CUSTOM'),
         name: t.name,
         materialType: isHpl ? ('hpl_abet' as const) : isSintered ? ('sinterizado' as const) : ('quarzo' as const),
         thicknessMm: (thickness === 8 || thickness === 12 || thickness === 18 || thickness === 20 ? thickness : 18) as 8 | 12 | 18 | 20,
-        priceM2Clp: t.priceM2Clp || Math.round((t.priceSheetClp || 280000) / (isHpl ? 3.965 : 5.12)) || 185000,
+        priceM2Clp: effectivePriceM2,
+        originalPriceM2Clp: basePriceM2,
+        isOfferActive: isSupplyOfferValid(t),
+        offerDiscountPercent: t.offerDiscountPercent || 30,
         sheetWidthMm: isHpl ? 3050 : 3200,
         sheetHeightMm: isHpl ? 1300 : 1600,
         colorHex: t.url && t.url.startsWith('#') ? t.url : '#F5F5F7',
@@ -603,9 +616,26 @@ export function CountertopConfigModal({ isOpen, onClose, isLight: isLightProp }:
                             </div>
                           </div>
                           <div className="text-right">
-                            <div className={`text-sm font-bold ${isLight ? 'text-orange-600' : 'text-amber-400'}`}>
-                              ${product.priceM2Clp.toLocaleString('es-CL')}
-                            </div>
+                            {product.isOfferActive ? (
+                              <div className="flex flex-col items-end">
+                                <div className="flex items-center gap-1">
+                                  <span className="line-through text-[10px] text-slate-500">
+                                    ${(product as any).originalPriceM2Clp?.toLocaleString('es-CL')}
+                                  </span>
+                                  <span className="px-1.5 py-0.5 bg-rose-500 text-white font-extrabold text-[9px] rounded uppercase flex items-center gap-0.5 animate-pulse shadow-sm">
+                                    <Flame size={10} className="fill-white" />
+                                    {(product as any).offerDiscountPercent || 30}% OFF
+                                  </span>
+                                </div>
+                                <div className="text-sm font-extrabold text-emerald-400 font-mono">
+                                  ${product.priceM2Clp.toLocaleString('es-CL')}
+                                </div>
+                              </div>
+                            ) : (
+                              <div className={`text-sm font-bold ${isLight ? 'text-orange-600' : 'text-amber-400'}`}>
+                                ${product.priceM2Clp.toLocaleString('es-CL')}
+                              </div>
+                            )}
                             <div className={`text-[10px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>por m² c/IVA</div>
                           </div>
                         </div>
