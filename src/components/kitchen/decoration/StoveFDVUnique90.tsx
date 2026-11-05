@@ -1,17 +1,23 @@
 import React from 'react';
 import { Text } from '@react-three/drei';
+import { CookwareDecoration } from './CookwareDecoration';
+import { useStore } from '../../../store';
 
 interface StoveProps {
   width?: number;  // 90 cm
   height?: number; // 90 cm
   depth?: number;  // 60 cm
+  showCookware?: boolean;
 }
 
 export const StoveFDVUnique90: React.FC<StoveProps> = ({
   width = 90,
   height = 90,
   depth = 60,
+  showCookware = false,
 }) => {
+  const globalShowDecorations = useStore((state) => state.showDecorations);
+  const shouldRenderPot = showCookware && globalShowDecorations;
   // Materiales de alta fidelidad en Acero Inoxidable Silver Gris Claro
   const stainlessSteelMat = (
     <meshStandardMaterial
@@ -136,6 +142,13 @@ export const StoveFDVUnique90: React.FC<StoveProps> = ({
             <torusGeometry args={[5.2, 0.35, 12, 32]} />
             {castIronMat}
           </mesh>
+
+          {/* Olla Gourmet de Acero Inoxidable en el quemador central */}
+          {shouldRenderPot && (
+            <group position={[0, cooktopH / 2 + 1.2, 0]}>
+              <CookwareDecoration type="pot" scale={0.9} />
+            </group>
+          )}
         </group>
 
         {/* Quemadores Periféricos (4 unidades) */}

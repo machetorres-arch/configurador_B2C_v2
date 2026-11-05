@@ -195,6 +195,20 @@ export interface UserAccessLog {
   module: string;
 }
 
+export interface NanoBananaUsageLog {
+  id: string;
+  userId: string;
+  userEmail: string;
+  userName: string;
+  timestamp: string;
+  propertyType?: string;
+  environment: string;
+  lighting: string;
+  hasPeople: boolean;
+  hasProps: boolean;
+  creditsUsed: number;
+}
+
 export interface AdminState {
   // Autenticación
   isAuthenticated: boolean;
@@ -221,6 +235,22 @@ export interface AdminState {
   }) => { success: boolean; user?: AdminSessionUser; error?: string };
   logAccess: (moduleOrData?: string | Partial<UserAccessLog>) => void;
   markProjectAsPurchased: (projectId: string, orderNumber?: string, finalPrice?: number) => void;
+
+  // NanoBanana Renders AI (Créditos y Auditoría)
+  nanoBananaCreditsMap: Record<string, number>;
+  nanoBananaUsageLogs: NanoBananaUsageLog[];
+  getUserNanoBananaCredits: (userEmailOrId?: string, role?: string) => number;
+  deductNanoBananaCredit: (logData: {
+    userId?: string;
+    userEmail?: string;
+    userName?: string;
+    propertyType?: string;
+    environment: string;
+    lighting: string;
+    hasPeople: boolean;
+    hasProps: boolean;
+  }) => { success: boolean; creditsRemaining: number; error?: string };
+  setUserNanoBananaCredits: (userEmailOrId: string, credits: number) => void;
 
   // Modo Claro / Oscuro del Backoffice
   themeMode: 'dark' | 'light';
@@ -1737,6 +1767,124 @@ export const useAdminStore = create<AdminState>((set, get) => {
         return p;
       });
       persist({ projects: currentProjects });
+    },
+
+    // NanoBanana Renders AI (Créditos y Auditoría)
+    nanoBananaCreditsMap: (() => {
+      try {
+        const raw = localStorage.getItem('arquify_nanobanana_credits');
+        return raw ? JSON.parse(raw) : {};
+      } catch {
+        return {};
+      }
+    })(),
+
+    nanoBananaUsageLogs: (() => {
+      try {
+        const raw = localStorage.getItem('arquify_nanobanana_logs');
+        return raw ? JSON.parse(raw) : [];
+      } catch {
+        return [];
+      }
+    })(),
+
+    getUserNanoBananaCredits: (userEmailOrId?: string, role?: string) => {
+      const curUser = get().currentUser;
+      const effectiveRole = role || curUser?.role || 'designer';
+
+      // Superadministrador tiene créditos ilimitados
+      if (effectiveRole === 'superadmin' || curUser?.email?.includes('marcelo@robfu')) {
+        return 999999;
+      }
+
+      // Gratis
+      if (effectiveRole === 'free_user') {
+        const key = userEmailOrId || curUser?.email || curUser?.id || '';
+        if (!key) return 0;
+        const savedCredits = get().nanoBananaCreditsMap[key.toLowerCase()];
+        return typeof savedCredits === 'number' ? savedCredits : 0;
+      }
+
+      // De Pago (diseñador, tenant_admin, operador)
+      const key = userEmailOrId || curUser?.email || curUser?.id || 'default_paid_user';
+      const savedCredits = get().nanoBananaCreditsMap[key.toLowerCase()];
+      return typeof savedCredits === 'number' ? savedCredits : 100;
+    },
+
+    deductNanoBananaCredit: (logData) => {
+      const curUser = get().currentUser;
+      const effectiveRole = curUser?.role || 'designer';
+      const userKey = (logData.userEmail || curUser?.email || curUser?.id || 'default_user').toLowerCase();
+
+      // SuperAdmin no consume saldo
+      if (effectiveRole === 'superadmin' || curUser?.email?.includes('marcelo@robfu')) {
+        const newLog: NanoBananaUsageLog = {
+          id: `render-log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          userId: logData.userId || curUser?.id || 'superadmin-master',
+          userEmail: logData.userEmail || curUser?.email || 'marcelo@robfu.cl',
+          userName: logData.userName || curUser?.full_name || 'SuperAdmin Maestro',
+          timestamp: new Date().toISOString(),
+          propertyType: logData.propertyType || 'Casa Residencial',
+          environment: logData.environment,
+          lighting: logData.lighting,
+          hasPeople: logData.hasPeople,
+          hasProps: logData.hasProps,
+          creditsUsed: 0,
+        };
+        const updatedLogs = [newLog, ...get().nanoBananaUsageLogs];
+        set({ nanoBananaUsageLogs: updatedLogs });
+        try {
+          localStorage.setItem('arquify_nanobanana_logs', JSON.stringify(updatedLogs.slice(0, 500)));
+        } catch (e) {
+          console.warn('Error guardando arquify_nanobanana_logs:', e);
+        }
+        return { success: true, creditsRemaining: 999999 };
+      }
+
+      const currentCredits = get().getUserNanoBananaCredits(userKey, effectiveRole);
+      if (currentCredits <= 0) {
+        return { success: false, creditsRemaining: 0, error: 'Sin créditos suficientes.' };
+      }
+
+      const newCredits = currentCredits - 1;
+      const updatedCreditsMap = { ...get().nanoBananaCreditsMap, [userKey]: newCredits };
+
+      const newLog: NanoBananaUsageLog = {
+        id: `render-log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        userId: logData.userId || curUser?.id || 'user-paid',
+        userEmail: logData.userEmail || curUser?.email || 'cliente@sistema.cl',
+        userName: logData.userName || curUser?.full_name || 'Cliente De Pago',
+        timestamp: new Date().toISOString(),
+        propertyType: logData.propertyType || 'Casa Residencial',
+        environment: logData.environment,
+        lighting: logData.lighting,
+        hasPeople: logData.hasPeople,
+        hasProps: logData.hasProps,
+        creditsUsed: 1,
+      };
+
+      const updatedLogs = [newLog, ...get().nanoBananaUsageLogs];
+      set({ nanoBananaCreditsMap: updatedCreditsMap, nanoBananaUsageLogs: updatedLogs });
+      try {
+        localStorage.setItem('arquify_nanobanana_credits', JSON.stringify(updatedCreditsMap));
+        localStorage.setItem('arquify_nanobanana_logs', JSON.stringify(updatedLogs.slice(0, 500)));
+      } catch (e) {
+        console.warn('Error guardando créditos/logs de NanoBanana:', e);
+      }
+
+      return { success: true, creditsRemaining: newCredits };
+    },
+
+    setUserNanoBananaCredits: (userEmailOrId: string, credits: number) => {
+      const key = userEmailOrId.trim().toLowerCase();
+      if (!key) return;
+      const updatedCreditsMap = { ...get().nanoBananaCreditsMap, [key]: credits };
+      set({ nanoBananaCreditsMap: updatedCreditsMap });
+      try {
+        localStorage.setItem('arquify_nanobanana_credits', JSON.stringify(updatedCreditsMap));
+      } catch (e) {
+        console.warn('Error guardando créditos asignados:', e);
+      }
     },
 
     login: (user: string, pass: string) => {

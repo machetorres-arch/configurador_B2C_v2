@@ -186,7 +186,9 @@ export function UsersAndProvidersTab() {
   const isCloud = isSupabaseConfigured();
   const currentSupabaseUser = useSupabaseAuthStore((state) => state.user);
 
-  const [subTab, setSubTab] = useState<'users' | 'providers'>('users');
+  const [subTab, setSubTab] = useState<'users' | 'providers' | 'nanobanana'>('users');
+  const [creditUserEmail, setCreditUserEmail] = useState('');
+  const [creditAmountValue, setCreditAmountValue] = useState(100);
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('all');
   const [isLoading, setIsLoading] = useState(false);
@@ -699,6 +701,20 @@ export function UsersAndProvidersTab() {
             <Building size={15} />
             Proveedores & Empresas ({tenants.length})
           </button>
+
+          <button
+            onClick={() => setSubTab('nanobanana')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer ${
+              subTab === 'nanobanana'
+                ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20'
+                : isLight
+                ? 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200 hover:text-zinc-900'
+                : 'bg-zinc-800 text-slate-300 hover:bg-zinc-700 hover:text-white'
+            }`}
+          >
+            <Sparkles size={15} />
+            Renders NanoBanana AI & Créditos
+          </button>
         </div>
 
         {/* Actions Button */}
@@ -1015,6 +1031,227 @@ export function UsersAndProvidersTab() {
           )}
         </div>
       )}
+
+      {/* ========================================================================= */}
+      {/* SUBTAB 3: RENDERS NANOBANANA AI & CONTROL DE CRÉDITOS */}
+      {/* ========================================================================= */}
+      {subTab === 'nanobanana' && (() => {
+        const { nanoBananaCreditsMap, nanoBananaUsageLogs, setUserNanoBananaCredits } = useAdminStore.getState();
+        const totalRenders = nanoBananaUsageLogs.length;
+        const totalPeopleRenders = nanoBananaUsageLogs.filter((l) => l.hasPeople).length;
+        const totalPropsRenders = nanoBananaUsageLogs.filter((l) => l.hasProps).length;
+
+        const handleGrantCredits = (e: React.FormEvent) => {
+          e.preventDefault();
+          if (!creditUserEmail.trim()) return;
+          setUserNanoBananaCredits(creditUserEmail.trim(), creditAmountValue);
+          setFeedback({
+            type: 'success',
+            message: `Se han asignado ${creditAmountValue} créditos a "${creditUserEmail.trim()}".`
+          });
+          setCreditUserEmail('');
+        };
+
+        return (
+          <div className="space-y-6">
+            {/* KPI Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className={`p-4 rounded-2xl border ${isLight ? 'bg-white border-zinc-200 shadow-sm' : 'bg-zinc-900 border-zinc-800'}`}>
+                <div className="flex items-center justify-between text-xs font-bold text-orange-400 uppercase tracking-wider mb-1">
+                  <span>Renders Generados</span>
+                  <Sparkles size={16} />
+                </div>
+                <div className="text-2xl font-black">{totalRenders}</div>
+                <p className={`text-[11px] mt-1 ${isLight ? 'text-zinc-500' : 'text-slate-400'}`}>Total de renders con IA en la plataforma</p>
+              </div>
+
+              <div className={`p-4 rounded-2xl border ${isLight ? 'bg-white border-zinc-200 shadow-sm' : 'bg-zinc-900 border-zinc-800'}`}>
+                <div className="flex items-center justify-between text-xs font-bold text-amber-400 uppercase tracking-wider mb-1">
+                  <span>Renders con Personas</span>
+                  <Users size={16} />
+                </div>
+                <div className="text-2xl font-black">{totalPeopleRenders}</div>
+                <p className={`text-[11px] mt-1 ${isLight ? 'text-zinc-500' : 'text-slate-400'}`}>Human staging activo (cocinando, etc.)</p>
+              </div>
+
+              <div className={`p-4 rounded-2xl border ${isLight ? 'bg-white border-zinc-200 shadow-sm' : 'bg-zinc-900 border-zinc-800'}`}>
+                <div className="flex items-center justify-between text-xs font-bold text-emerald-400 uppercase tracking-wider mb-1">
+                  <span>Renders con Utensilios</span>
+                  <Sparkles size={16} />
+                </div>
+                <div className="text-2xl font-black">{totalPropsRenders}</div>
+                <p className={`text-[11px] mt-1 ${isLight ? 'text-zinc-500' : 'text-slate-400'}`}>Ollas, jugueras, plantas y vajilla</p>
+              </div>
+            </div>
+
+            {/* Asignar Créditos a Usuario */}
+            <div className={`p-5 rounded-2xl border ${isLight ? 'bg-white border-zinc-200 shadow-sm' : 'bg-zinc-900 border-zinc-800'}`}>
+              <h3 className="text-xs font-extrabold uppercase tracking-wider text-orange-400 mb-3">
+                Asignación / Recarga Manual de Créditos
+              </h3>
+              <form onSubmit={handleGrantCredits} className="flex flex-col sm:flex-row items-end gap-3 text-xs">
+                <div className="flex-1 w-full">
+                  <label className="block text-zinc-400 font-semibold mb-1">Email del Usuario *</label>
+                  <input
+                    type="email"
+                    required
+                    value={creditUserEmail}
+                    onChange={(e) => setCreditUserEmail(e.target.value)}
+                    placeholder="usuario@cliente.cl"
+                    className={`w-full px-3.5 py-2.5 rounded-xl border focus:outline-none focus:border-orange-500 ${
+                      isLight ? 'bg-zinc-50 border-zinc-300 text-zinc-900' : 'bg-zinc-950 border-zinc-700 text-white'
+                    }`}
+                  />
+                </div>
+
+                <div className="w-full sm:w-36">
+                  <label className="block text-zinc-400 font-semibold mb-1">Créditos</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="10000"
+                    value={creditAmountValue}
+                    onChange={(e) => setCreditAmountValue(Number(e.target.value))}
+                    className={`w-full px-3.5 py-2.5 rounded-xl border focus:outline-none focus:border-orange-500 font-mono ${
+                      isLight ? 'bg-zinc-50 border-zinc-300 text-zinc-900' : 'bg-zinc-950 border-zinc-700 text-white'
+                    }`}
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full sm:w-auto px-5 py-2.5 bg-orange-500 hover:bg-orange-400 text-black font-extrabold text-xs uppercase tracking-wider rounded-xl shadow-md transition-transform active:scale-95 cursor-pointer"
+                >
+                  Asignar Créditos
+                </button>
+              </form>
+            </div>
+
+            {/* Tabla de Usuarios Registrados y sus Créditos */}
+            <div className={`p-5 rounded-2xl border space-y-4 ${isLight ? 'bg-white border-zinc-200 shadow-sm' : 'bg-zinc-900 border-zinc-800'}`}>
+              <h3 className="text-xs font-extrabold uppercase tracking-wider text-orange-400">
+                Estado de Créditos por Usuario
+              </h3>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left">
+                  <thead>
+                    <tr className={`border-b text-[11px] font-extrabold uppercase tracking-wider ${isLight ? 'border-zinc-200 text-zinc-500' : 'border-zinc-800 text-zinc-400'}`}>
+                      <th className="pb-3 px-3">Usuario / Email</th>
+                      <th className="pb-3 px-3">Rol</th>
+                      <th className="pb-3 px-3">Créditos Restantes</th>
+                      <th className="pb-3 px-3 text-right">Acción</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-800/50">
+                    {users.map((u) => {
+                      const emailKey = u.email.toLowerCase();
+                      const currentCredits = u.role === 'superadmin' ? 'Ilimitados' : (nanoBananaCreditsMap[emailKey] ?? (u.role === 'free_user' ? 0 : 100));
+
+                      return (
+                        <tr key={u.id} className="hover:bg-orange-500/5 transition-colors">
+                          <td className="py-3 px-3">
+                            <div className="font-bold">{u.full_name || u.email}</div>
+                            <div className="text-[11px] opacity-70 font-mono">{u.email}</div>
+                          </td>
+                          <td className="py-3 px-3 uppercase text-[10px] font-extrabold">
+                            <span className={`px-2 py-0.5 rounded-full border ${
+                              u.role === 'superadmin'
+                                ? 'bg-purple-500/20 text-purple-400 border-purple-500/30'
+                                : u.role === 'free_user'
+                                ? 'bg-amber-500/20 text-amber-400 border-amber-500/30'
+                                : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                            }`}>
+                              {u.role === 'superadmin' ? 'SuperAdmin' : u.role === 'free_user' ? 'Gratis' : 'De Pago'}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 font-mono font-bold text-orange-400">
+                            {currentCredits}
+                          </td>
+                          <td className="py-3 px-3 text-right">
+                            {u.role !== 'superadmin' && (
+                              <button
+                                onClick={() => {
+                                  setUserNanoBananaCredits(emailKey, (typeof currentCredits === 'number' ? currentCredits : 0) + 100);
+                                  setFeedback({ type: 'success', message: `+100 Créditos añadidos a "${u.email}".` });
+                                }}
+                                className="px-3 py-1 bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 border border-orange-500/40 rounded-lg font-bold text-[11px] cursor-pointer"
+                              >
+                                +100 Créditos
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Historial de Renders con NanoBanana */}
+            <div className={`p-5 rounded-2xl border space-y-4 ${isLight ? 'bg-white border-zinc-200 shadow-sm' : 'bg-zinc-900 border-zinc-800'}`}>
+              <h3 className="text-xs font-extrabold uppercase tracking-wider text-orange-400">
+                Historial de Telemetría Renders NanoBanana ({nanoBananaUsageLogs.length})
+              </h3>
+
+              {nanoBananaUsageLogs.length === 0 ? (
+                <div className={`p-6 text-center text-xs italic ${isLight ? 'text-zinc-500' : 'text-slate-400'}`}>
+                  No hay renders fotográficos registrados aún en la plataforma.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs text-left">
+                    <thead>
+                      <tr className={`border-b text-[11px] font-extrabold uppercase tracking-wider ${isLight ? 'border-zinc-200 text-zinc-500' : 'border-zinc-800 text-zinc-400'}`}>
+                        <th className="pb-3 px-3">Fecha</th>
+                        <th className="pb-3 px-3">Usuario</th>
+                        <th className="pb-3 px-3">Inmueble / Entorno</th>
+                        <th className="pb-3 px-3">Iluminación</th>
+                        <th className="pb-3 px-3">Personas</th>
+                        <th className="pb-3 px-3">Props</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-800/50">
+                      {nanoBananaUsageLogs.map((log) => (
+                        <tr key={log.id} className="hover:bg-orange-500/5 transition-colors">
+                          <td className="py-2.5 px-3 font-mono text-[11px]">
+                            {new Date(log.timestamp).toLocaleString()}
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <div className="font-bold">{log.userName}</div>
+                            <div className="text-[10px] opacity-70 font-mono">{log.userEmail}</div>
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <span className="font-semibold">{log.propertyType || 'Casa'}</span> - {log.environment}
+                          </td>
+                          <td className="py-2.5 px-3 text-slate-300">
+                            {log.lighting}
+                          </td>
+                          <td className="py-2.5 px-3">
+                            {log.hasPeople ? (
+                              <span className="text-emerald-400 font-bold">Sí</span>
+                            ) : (
+                              <span className="text-slate-500">No</span>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-3">
+                            {log.hasProps ? (
+                              <span className="text-emerald-400 font-bold">Sí</span>
+                            ) : (
+                              <span className="text-slate-500">No</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ========================================================================= */}
       {/* MODAL 1: REGISTRAR / EDITAR PROVEEDOR (TENANT) */}

@@ -21,7 +21,7 @@ import { calculatePolygonArea } from '../utils/roomGeometry';
 import { KitchenMepPanel } from '../components/kitchen/KitchenMepPanel';
 import { detectMepClashes } from '../utils/mepClashDetection';
 import { resolvePlacement, getCabinetSpecsFromTool, findSmartWallPlacement } from '../utils/kitchenCollision';
-import { ArrowLeft, Box, Square, Move3D, PenTool, LayoutGrid, Trash2, RotateCw, Undo2, Redo2, Flame, Refrigerator, Flower2, Utensils, Info, Sparkles, Maximize2, Layers, Palette, ListOrdered, Save, Columns, Sliders, Sun, Moon, Wine, Wrench, DollarSign, ChevronDown, ChevronRight, Globe, Ruler, Menu, X, MoreVertical, Download } from 'lucide-react';
+import { ArrowLeft, Box, Square, Move3D, PenTool, LayoutGrid, Trash2, RotateCw, Undo2, Redo2, Flame, Refrigerator, Flower2, Utensils, Info, Sparkles, Maximize2, Layers, Palette, ListOrdered, Save, Columns, Sliders, Sun, Moon, Wine, Wrench, DollarSign, ChevronDown, ChevronRight, Globe, Ruler, Menu, X, MoreVertical, Download, Camera } from 'lucide-react';
 import { HandlesSection } from '../components/kitchen/HandlesSection';
 import { useAdminStore } from '../store/adminStore';
 import { useSupabaseAuthStore } from '../store/supabaseAuthStore';
@@ -29,6 +29,9 @@ import { exportKitchenCommercialPdf } from '../utils/kitchenCommercialPdfGenerat
 import { HANDLE_CATALOG } from '../types/handle';
 
 import { DecorationSection } from '../components/kitchen/DecorationSection';
+import { NanoBananaRenderModal } from '../components/common/NanoBananaRenderModal';
+import { StudioRenderModal } from '../components/common/StudioRenderModal';
+import { StudioRenderProvider } from '../components/common/StudioRenderContext';
 
 const sectionTitle = "text-xs uppercase tracking-wider text-orange-400 font-bold mb-3 mt-4 first:mt-0";
 const labelClass = "text-xs uppercase tracking-wider text-slate-300 font-semibold";
@@ -229,6 +232,8 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
   const [isCountertopModalOpen, setIsCountertopModalOpen] = useState(false);
   const [isB2BQuoteOpen, setIsB2BQuoteOpen] = useState(false);
   const [isBimModalOpen, setIsBimModalOpen] = useState(false);
+  const [isNanoBananaModalOpen, setIsNanoBananaModalOpen] = useState(false);
+  const [isStudioRenderModalOpen, setIsStudioRenderModalOpen] = useState(false);
   const [isExportingLabels, setIsExportingLabels] = useState(false);
   const [leftTab, setLeftTab] = useState<'modules' | 'placed'>('modules');
   const [rightTab, setRightTab] = useState<'module' | 'materials' | 'engineering' | 'mep' | 'decoration'>('module');
@@ -260,6 +265,7 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
   const supabaseUser = useSupabaseAuthStore((state) => state.user);
   const isAuthenticated = Boolean(isLocalAuth || supabaseUser);
   const effectiveRole = currentUser?.role || supabaseUser?.role || 'designer';
+  const isSuperAdmin = Boolean(effectiveRole === 'superadmin');
   const canAccessIndustrialOutputs = Boolean(
     effectiveRole === 'superadmin' || effectiveRole === 'tenant_admin' || effectiveRole === 'operator'
   );
@@ -511,7 +517,8 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
   const activeCabinet = cabinets.find(c => c.id === activeCabinetId);
 
   return (
-    <div className={`flex flex-col h-screen w-screen font-sans overflow-hidden transition-colors ${isLight ? 'bg-[#f8fafc] text-slate-800' : 'bg-[#0A0A0A] text-slate-200'}`}>
+    <StudioRenderProvider>
+      <div className={`flex flex-col h-screen w-screen font-sans overflow-hidden transition-colors ${isLight ? 'bg-[#f8fafc] text-slate-800' : 'bg-[#0A0A0A] text-slate-200'}`}>
       {/* Planos de Fabricación y Despiece CAD/CAM */}
       <KitchenBlueprint />
 
@@ -897,6 +904,49 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
                       </div>
                     </div>
                   </button>
+
+                  <button
+                    onClick={() => {
+                      if (activeCabinetId) setActiveCabinet(null);
+                      if (activeArchElementId) setActiveArchElement(null);
+                      setIsNanoBananaModalOpen(true);
+                    }}
+                    className={`flex items-center gap-3 p-3 rounded-lg text-xs font-extrabold uppercase tracking-wider transition-all border cursor-pointer bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 text-black shadow-md shadow-orange-500/20`}
+                  >
+                    <Camera size={16} className="shrink-0" />
+                    <div className="flex flex-col text-left">
+                      <div className="flex items-center gap-1.5 font-black">
+                        <span>Render NanoBanana</span>
+                        <span className="text-[9px] px-1.5 py-0.2 bg-black/20 text-black rounded font-mono uppercase">AI</span>
+                      </div>
+                      <span className="text-[9px] text-zinc-900 font-semibold">Fotorrealismo & Personas</span>
+                    </div>
+                  </button>
+
+                  {isSuperAdmin && (
+                    <button
+                      onClick={() => {
+                        if (activeCabinetId) setActiveCabinet(null);
+                        if (activeArchElementId) setActiveArchElement(null);
+                        setIsStudioRenderModalOpen(true);
+                      }}
+                      className={`flex items-center gap-3 p-3 rounded-lg text-xs font-extrabold uppercase tracking-wider transition-all border cursor-pointer ${
+                        isLight
+                          ? 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-900 shadow-sm'
+                          : 'bg-zinc-800/90 hover:bg-zinc-800 border-white/10 text-white shadow-md'
+                      }`}
+                      title="Generar render fotográfico nítido en alta resolución (FHD, 2K, 4K) usando Three.js puro sin IA"
+                    >
+                      <Camera size={16} className="text-orange-500 shrink-0" />
+                      <div className="flex flex-col text-left">
+                        <div className="flex items-center gap-1.5 font-black">
+                          <span>Render Estudio 3D</span>
+                          <span className="text-[9px] px-1.5 py-0.2 bg-emerald-500/20 text-emerald-400 rounded font-mono uppercase border border-emerald-500/30">GPU</span>
+                        </div>
+                        <span className={`text-[9px] font-semibold ${isLight ? 'text-slate-600' : 'text-zinc-400'}`}>Three.js HD • Ollas & Escala</span>
+                      </div>
+                    </button>
+                  )}
 
                   <ToolButton isLight={isLight} active={toolMode === 'draw_wall'} onClick={() => { if (activeCabinetId) setActiveCabinet(null); if (activeArchElementId) setActiveArchElement(null); setToolMode('draw_wall'); setViewMode('2d'); }} icon={<PenTool size={16}/>} label="Dibujar Tramo Muro" />
                </div>
@@ -2860,7 +2910,22 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
      onClose={() => setIsBimModalOpen(false)}
      isLight={isLight}
    />
+
+   {/* Modal Renders Fotográficos NanoBanana AI */}
+   <NanoBananaRenderModal
+     isOpen={isNanoBananaModalOpen}
+     onClose={() => setIsNanoBananaModalOpen(false)}
+     isLight={isLight}
+   />
+
+    {/* Modal Renders Fotorrealistas de Estudio Three.js (Sin IA) */}
+   <StudioRenderModal
+     isOpen={isStudioRenderModalOpen}
+     onClose={() => setIsStudioRenderModalOpen(false)}
+     isLight={isLight}
+   />
     </div>
+   </StudioRenderProvider>
   );
 }
 

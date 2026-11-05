@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useStore } from '../store';
 import { exportToPDF } from '../utils/manufacturing';
-import { Download, FileText, Plus, Trash2 } from 'lucide-react';
+import { Download, FileText, Plus, Trash2, Camera } from 'lucide-react';
 import { TexturesSection } from './TexturesSection';
 import { exportToExcel } from '../utils/excelGenerator';
 import { FileSpreadsheet } from 'lucide-react';
+import { NanoBananaRenderModal } from './common/NanoBananaRenderModal';
 
 const sectionTitle = "text-[11px] uppercase tracking-widest text-orange-500 font-bold mb-3 mt-6 first:mt-0";
 const labelClass = "text-[10px] uppercase tracking-widest text-slate-400";
@@ -41,12 +42,24 @@ const SliderControl = ({ label, value, min, max, step = 1, unit = "", onChange }
 export function Configurator() {
   const state = useStore();
   const [designName, setDesignName] = useState('');
+  const [isNanoBananaModalOpen, setIsNanoBananaModalOpen] = useState(false);
 
   const activeMod = state.modules.find(m => m.id === state.activeModuleId);
 
   return (
     <aside className="relative z-20 w-full lg:w-[360px] bg-black/60 backdrop-blur-xl border-t lg:border-t-0 lg:border-l border-white/10 flex-1 lg:flex-none min-h-0 h-auto lg:h-full overflow-y-auto p-4 sm:p-6 flex flex-col custom-scrollbar pointer-events-auto">
       
+      {/* Botón NanoBanana AI Render */}
+      <div className="mb-4">
+        <button
+          onClick={() => setIsNanoBananaModalOpen(true)}
+          className="w-full flex items-center justify-center gap-2.5 p-3 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 text-black font-extrabold text-xs uppercase tracking-wider shadow-lg shadow-orange-500/20 transition-transform active:scale-95 cursor-pointer"
+        >
+          <Camera size={16} />
+          <span>Render Fotográfico NanoBanana AI</span>
+        </button>
+      </div>
+
       <h2 className={sectionTitle}>Composición Modular</h2>
       <div className="flex flex-wrap gap-2 mb-4 items-center">
         {state.modules.map((m, i) => (
@@ -302,6 +315,11 @@ export function Configurator() {
           </button>
         </div>
       </div>
+
+      <NanoBananaRenderModal
+        isOpen={isNanoBananaModalOpen}
+        onClose={() => setIsNanoBananaModalOpen(false)}
+      />
     </aside>
   );
 }

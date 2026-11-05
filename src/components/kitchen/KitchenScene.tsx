@@ -22,6 +22,7 @@ import { ArchitecturalElementsRenderer } from './ArchitecturalElementsRenderer';
 import { KitchenCountertop3D } from './KitchenCountertop3D';
 import { KitchenIslandBackPanel } from './KitchenIslandBackPanel';
 import { KitchenMepScene } from './KitchenMepScene';
+import { StudioCapturePipeline } from '../common/StudioCapturePipeline';
 import { resolvePlacement, getCabinetSpecsFromTool, getWallInwardNormal } from '../../utils/kitchenCollision';
 
 function projectPointOntoWall(px: number, pz: number, walls: any[], maxDist: number = 25) {
@@ -1313,6 +1314,7 @@ function SceneContent({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
             </>
           )}
           <ArchitecturalElementsRenderer />
+          <StudioCapturePipeline />
         </React.Suspense>
 
         {/* Drawing Preview */}

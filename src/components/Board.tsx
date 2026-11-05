@@ -5,6 +5,7 @@ import { useAdminStore } from '../store/adminStore';
 import { DoubleSide } from 'three';
 import { Edges } from '@react-three/drei';
 import * as THREE from 'three';
+import { useStudioRender } from './common/StudioRenderContext';
 
 interface BoardProps {
   textureUrl?: string;
@@ -24,7 +25,8 @@ interface BoardProps {
 export function Board({ position, args, color, textureUrl, materialType, transparent, opacity, isFrontPanel, isShelf, grainDirection, hplBalancerOverride, globalPosition }: BoardProps) {
   const [texture, setTexture] = useState<THREE.Texture | null>(null);
   
-  // Obtenemos módulos para saber el ancho total del mueble y anclar la textura globalmente (World-Space)
+  const { settings } = useStudioRender();
+  const isStudioRendering = settings.isRenderingMode && settings.hideEdges;
   const closetModules = useStore(state => state.modules);
   const kitchenCabinets = useKitchenStore(state => state.cabinets);
   const totalWidth = closetModules.length > 0 
@@ -250,10 +252,12 @@ export function Board({ position, args, color, textureUrl, materialType, transpa
           />
         );
       })}
-      {isTransparentGlobal ? (
-        <Edges scale={1} threshold={15} color="#555555" />
-      ) : (
-        <Edges scale={1} threshold={15} color="#18181b" />
+      {!isStudioRendering && (
+        isTransparentGlobal ? (
+          <Edges scale={1} threshold={15} color="#555555" />
+        ) : (
+          <Edges scale={1} threshold={15} color="#18181b" />
+        )
       )}
     </mesh>
   );
