@@ -40,6 +40,7 @@ import { useKitchenStore } from '../../store/kitchenStore';
 import { useStore as useClosetStore } from '../../store';
 import { useSpecialFurnitureStore } from '../../store/specialFurnitureStore';
 import { useOfficeStore } from '../../store/officeStore';
+import { calculateKitchenDualQuote } from '../../utils/kitchenB2BPricing';
 
 interface ProjectsManagerTabProps {
   onLoadProjectToModule: (route: 'kitchen' | 'closet' | 'special' | 'hpl-bathroom' | 'office' | 'chair') => void;
@@ -443,7 +444,7 @@ export function ProjectsManagerTab({ onLoadProjectToModule, isFreeUserMode = fal
         cabinets: current.cabinets,
         thickness: 18,
       };
-      estimatedCost = 4500000;
+      estimatedCost = calculateKitchenDualQuote().totalB2BBrutoClp || 2200000;
     } else if (newType === 'closet') {
       const current = useClosetStore.getState();
       initialData = {

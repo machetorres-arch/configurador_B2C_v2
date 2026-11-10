@@ -373,7 +373,7 @@ export function SaveProjectModal({
 
                 <div>
                   <label className="block text-xs font-bold text-slate-300 mb-1">
-                    Presupuesto Estimado (CLP)
+                    Costo Proyecto (Aquify B2B CLP)
                   </label>
                   <div className="relative">
                     <DollarSign size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />

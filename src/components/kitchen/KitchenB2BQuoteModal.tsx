@@ -100,6 +100,7 @@ export function KitchenB2BQuoteModal({ isOpen, onClose }: KitchenB2BQuoteModalPr
           status: 'quoted',
           soldDate: new Date().toISOString().split('T')[0],
           finalSalePriceClp: quote.totalPvpBrutoClp,
+          totalCostEstimateClp: quote.totalB2BBrutoClp,
           client: cName,
           data: { ...(existing.data || {}), ...projectData },
         });
@@ -108,8 +109,8 @@ export function KitchenB2BQuoteModal({ isOpen, onClose }: KitchenB2BQuoteModalPr
           name: pName,
           client: cName,
           type: 'kitchen',
-          description: `Cotización comercial B2B/PVP (${quote.netPanelsAreaM2.toFixed(1)} m² procesados)`,
-          totalCostEstimateClp: quote.totalPvpBrutoClp,
+          description: `Cotización B2B Aquify / PVP (${quote.netPanelsAreaM2.toFixed(1)} m² procesados)`,
+          totalCostEstimateClp: quote.totalB2BBrutoClp,
           data: projectData,
           status: 'quoted',
         });

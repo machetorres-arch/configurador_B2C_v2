@@ -26,6 +26,7 @@ import { HandlesSection } from '../components/kitchen/HandlesSection';
 import { useAdminStore } from '../store/adminStore';
 import { useSupabaseAuthStore } from '../store/supabaseAuthStore';
 import { exportKitchenCommercialPdf } from '../utils/kitchenCommercialPdfGenerator';
+import { calculateKitchenDualQuote } from '../utils/kitchenB2BPricing';
 import { HANDLE_CATALOG } from '../types/handle';
 
 import { DecorationSection } from '../components/kitchen/DecorationSection';
@@ -2912,7 +2913,7 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
      onClose={() => setIsSaveModalOpen(false)}
      projectType="kitchen"
      defaultName="Proyecto Cocina Arquify"
-     estimatedCost={3800000}
+     estimatedCost={calculateKitchenDualQuote().totalB2BBrutoClp || 1800000}
      projectData={{
        cabinets,
        roomConfig,
