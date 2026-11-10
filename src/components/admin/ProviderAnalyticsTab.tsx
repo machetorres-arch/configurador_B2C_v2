@@ -291,7 +291,7 @@ export function ProviderAnalyticsTab({
           }`}
         >
           <TrendingUp size={15} />
-          <span>Predicción & Muestras Físicas</span>
+          <span>Previsión de Demanda & Visor PBR</span>
         </button>
       </div>
 

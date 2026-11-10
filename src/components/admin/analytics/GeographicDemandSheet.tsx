@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   MapPin,
   TrendingUp,
@@ -24,66 +24,63 @@ interface GeographicDemandSheetProps {
 }
 
 export function GeographicDemandSheet({ selectedProviderName, selectedProviderId, isSuperAdmin }: GeographicDemandSheetProps = {}) {
-  const { themeMode } = useAdminStore();
+  const { themeMode, projects, registeredUsers } = useAdminStore();
   const isLight = themeMode === 'light';
   const [activeMapView, setActiveMapView] = useState<'termico' | 'talleres' | 'm2'>('termico');
   const [selectedZone, setSelectedZone] = useState<string>('oriente');
   const [filterType, setFilterType] = useState<'all' | 'factory' | 'studio'>('all');
 
-  const workshopsData = [
-    {
-      id: 'ws-1',
-      name: 'Estudio Arq. Vitacura SpA',
-      code: 'EST-VIT-102',
-      type: 'studio',
-      location: 'Vitacura (Alonso de Córdova)',
-      projects: 84,
-      volumeClp: '$385M en Tableros',
-      topMaterial: 'Arauco Roble Cava 18mm',
-      scrap: '7.9% merma CNC',
-      status: 'Estudio Preferente',
-      statusColor: 'amber'
-    },
-    {
-      id: 'ws-2',
-      name: 'Mueblería Modular San Joaquín',
-      code: 'FAB-STGO-208',
-      type: 'factory',
-      location: 'San Joaquín / Vicuña Mackenna',
-      projects: 68,
-      volumeClp: '$294M en Tableros',
-      topMaterial: 'Masisa Nogal Terracota',
-      scrap: '8.4% merma CNC',
-      status: 'Taller Homologado',
-      statusColor: 'sky'
-    },
-    {
-      id: 'ws-3',
-      name: 'Diseño & Cocinas Chicureo',
-      code: 'EST-COL-044',
-      type: 'studio',
-      location: 'Colina (Piedra Roja / Chicureo)',
-      projects: 54,
-      volumeClp: '$260M en Tableros',
-      topMaterial: 'Masisa Grafito Mate 18mm',
-      scrap: '8.1% merma CNC',
-      status: 'Estudio Prescriptor',
-      statusColor: 'zinc'
-    },
-    {
-      id: 'ws-4',
-      name: 'Carpintería CNC Quilicura',
-      code: 'TALL-QLC-310',
-      type: 'factory',
-      location: 'Parque Industrial Quilicura',
-      projects: 48,
-      volumeClp: '$210M en Tableros',
-      topMaterial: 'Arauco Coigüe Natural',
-      scrap: '7.8% merma CNC',
-      status: 'Maquila CNC Directa',
-      statusColor: 'orange'
-    }
-  ];
+  const workshopsData = useMemo(() => {
+    if (!registeredUsers || registeredUsers.length === 0) return [];
+    return registeredUsers.map((u, idx) => {
+      const userProjects = (projects || []).filter(
+        (p) => (p.userId && p.userId === u.id) || (p.userEmail && p.userEmail === u.email)
+      );
+      const isStudio = (u.rubro || '').toLowerCase().includes('arquitecto') || (u.rubro || '').toLowerCase().includes('diseñador');
+      const totalClp = userProjects.reduce((sum, p) => sum + (p.totalCostEstimateClp || 0), 0);
+      
+      return {
+        id: u.id || `user-${idx}`,
+        name: u.fullName || `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email,
+        code: `REG-${(u.city || u.commune || 'STGO').slice(0, 3).toUpperCase()}-${100 + idx}`,
+        type: isStudio ? ('studio' as const) : ('factory' as const),
+        location: `${u.commune || u.city || 'Santiago'}`,
+        projects: userProjects.length,
+        volumeClp: totalClp > 0 ? `$${(totalClp / 1000000).toFixed(1)}M en Tableros` : '$0',
+        topMaterial: 'Tablero Estándar 18mm',
+        scrap: '0.0% merma',
+        status: u.rubro || 'Usuario Registrado',
+        statusColor: isStudio ? 'amber' : 'sky'
+      };
+    });
+  }, [registeredUsers, projects]);
+
+  const communeRanking = useMemo(() => {
+    if (!projects || projects.length === 0) return [];
+    const map = new Map<string, { commune: string; count: number; totalClp: number; areaM2: number }>();
+
+    projects.forEach((p) => {
+      const comm = p.userCity || p.userCommune || 'Santiago Centro';
+      const existing = map.get(comm) || { commune: comm, count: 0, totalClp: 0, areaM2: 0 };
+      existing.count += 1;
+      existing.totalClp += p.totalCostEstimateClp || 0;
+      existing.areaM2 += p.data?.totalAreaM2 || 12;
+      map.set(comm, existing);
+    });
+
+    const totalClpGlobal = Array.from(map.values()).reduce((sum, c) => sum + c.totalClp, 0) || 1;
+
+    return Array.from(map.values())
+      .sort((a, b) => b.totalClp - a.totalClp)
+      .map((item, idx) => ({
+        rank: idx + 1,
+        commune: item.commune,
+        clpFormatted: item.totalClp > 0 ? `$${(item.totalClp / 1000000).toFixed(1)}M CLP` : '$0 CLP',
+        percent: Math.round((item.totalClp / totalClpGlobal) * 1000) / 10,
+        areaM2: Math.round(item.areaM2),
+        workshopsCount: item.count
+      }));
+  }, [projects]);
 
   const filteredWorkshops = workshopsData.filter(
     (w) => filterType === 'all' || w.type === filterType
@@ -129,17 +126,23 @@ export function GeographicDemandSheet({ selectedProviderName, selectedProviderId
           <div className="flex justify-between items-start">
             <div>
               <span className={`text-[10px] font-bold uppercase tracking-wider ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>Comuna Líder en m²</span>
-              <h4 className={`text-lg font-bold mt-0.5 ${isLight ? 'text-zinc-900' : 'text-white'}`}>Las Condes</h4>
+              <h4 className={`text-lg font-bold mt-0.5 ${isLight ? 'text-zinc-900' : 'text-white'}`}>
+                {communeRanking[0]?.commune || 'Sin proyectos'}
+              </h4>
             </div>
             <div className="p-2 rounded-xl bg-orange-500/10 text-orange-500">
               <MapPin size={18} />
             </div>
           </div>
           <div className={`pt-3 border-t flex justify-between items-center text-xs mt-2 ${isLight ? 'border-zinc-200' : 'border-zinc-800'}`}>
-            <span className="font-mono font-bold text-orange-500 text-sm">14.200 m²</span>
+            <span className="font-mono font-bold text-orange-500 text-sm">
+              {communeRanking[0] ? `${communeRanking[0].areaM2} m²` : '0 m²'}
+            </span>
             <span className={`px-2 py-0.5 rounded font-bold text-[10px] ${
               isLight ? 'bg-zinc-100 text-zinc-800 border border-zinc-200' : 'bg-zinc-800 text-zinc-300'
-            }`}>34% del total RM</span>
+            }`}>
+              {communeRanking[0] ? `${communeRanking[0].percent}% del total` : '0% del total'}
+            </span>
           </div>
         </div>
 
@@ -149,18 +152,22 @@ export function GeographicDemandSheet({ selectedProviderName, selectedProviderId
         }`}>
           <div className="flex justify-between items-start">
             <div>
-              <span className={`text-[10px] font-bold uppercase tracking-wider ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>Mayor Crecimiento</span>
-              <h4 className={`text-lg font-bold mt-0.5 ${isLight ? 'text-zinc-900' : 'text-white'}`}>Colina / Chicureo</h4>
+              <span className={`text-[10px] font-bold uppercase tracking-wider ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>Proyectos Totales</span>
+              <h4 className={`text-lg font-bold mt-0.5 ${isLight ? 'text-zinc-900' : 'text-white'}`}>
+                {projects ? `${projects.length} Registrados` : '0 Registrados'}
+              </h4>
             </div>
             <div className="p-2 rounded-xl bg-amber-500/10 text-amber-500">
               <TrendingUp size={18} />
             </div>
           </div>
           <div className={`pt-3 border-t flex justify-between items-center text-xs mt-2 ${isLight ? 'border-zinc-200' : 'border-zinc-800'}`}>
-            <span className="font-mono font-bold text-amber-600 dark:text-amber-400 text-sm">+48.0% MoM</span>
+            <span className="font-mono font-bold text-amber-600 dark:text-amber-400 text-sm">
+              {projects && projects.length > 0 ? `${projects.filter(p => p.status === 'sold').length} Vendidos` : '0 Vendidos'}
+            </span>
             <span className={`px-2 py-0.5 rounded font-bold text-[10px] ${
               isLight ? 'bg-zinc-100 text-zinc-800 border border-zinc-200' : 'bg-zinc-800 text-zinc-300'
-            }`}>5.200 m² Nuevos</span>
+            }`}>En Plataforma</span>
           </div>
         </div>
 
@@ -170,8 +177,10 @@ export function GeographicDemandSheet({ selectedProviderName, selectedProviderId
         }`}>
           <div className="flex justify-between items-start">
             <div>
-              <span className={`text-[10px] font-bold uppercase tracking-wider ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>Talleres Conectados</span>
-              <h4 className={`text-lg font-bold mt-0.5 ${isLight ? 'text-zinc-900' : 'text-white'}`}>142 Activos en RM</h4>
+              <span className={`text-[10px] font-bold uppercase tracking-wider ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>Usuarios / Talleres</span>
+              <h4 className={`text-lg font-bold mt-0.5 ${isLight ? 'text-zinc-900' : 'text-white'}`}>
+                {registeredUsers ? `${registeredUsers.length} Activos` : '0 Activos'}
+              </h4>
             </div>
             <div className="p-2 rounded-xl bg-sky-500/10 text-sky-500">
               <Factory size={18} />
@@ -179,9 +188,9 @@ export function GeographicDemandSheet({ selectedProviderName, selectedProviderId
           </div>
           <div className={`pt-3 border-t flex justify-between items-center text-xs mt-2 ${isLight ? 'border-zinc-200' : 'border-zinc-800'}`}>
             <span className="text-sky-600 dark:text-sky-400 font-bold flex items-center gap-1 text-[11px]">
-              <span className="w-2 h-2 rounded-full bg-sky-500" /> Quilicura, San Joaquín
+              <span className="w-2 h-2 rounded-full bg-sky-500" /> Red de Usuarios
             </span>
-            <span className={`text-[10px] ${isLight ? 'text-zinc-500' : 'text-zinc-500'}`}>Conchalí, Huechuraba</span>
+            <span className={`text-[10px] ${isLight ? 'text-zinc-500' : 'text-zinc-500'}`}>Registrados</span>
           </div>
         </div>
 
@@ -191,18 +200,22 @@ export function GeographicDemandSheet({ selectedProviderName, selectedProviderId
         }`}>
           <div className="flex justify-between items-start">
             <div>
-              <span className={`text-[10px] font-bold uppercase tracking-wider ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>Merma Media Red</span>
-              <h4 className={`text-lg font-bold mt-0.5 ${isLight ? 'text-zinc-900' : 'text-white'}`}>8,6% Merma</h4>
+              <span className={`text-[10px] font-bold uppercase tracking-wider ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>Volumen Presupuestado</span>
+              <h4 className={`text-lg font-bold mt-0.5 ${isLight ? 'text-zinc-900' : 'text-white'}`}>
+                {projects && projects.length > 0 ? `$${Math.round(projects.reduce((s, p) => s + (p.totalCostEstimateClp || 0), 0) / 1000000)}M CLP` : '$0 CLP'}
+              </h4>
             </div>
             <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-500">
               <Sparkles size={18} />
             </div>
           </div>
           <div className={`pt-3 border-t flex justify-between items-center text-xs mt-2 ${isLight ? 'border-zinc-200' : 'border-zinc-800'}`}>
-            <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400 text-sm">Ahorro $184M CLP</span>
+            <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400 text-sm">
+              {projects && projects.length > 0 ? `${Math.round(projects.reduce((s, p) => s + (p.data?.totalAreaM2 || 12), 0))} m²` : '0 m²'}
+            </span>
             <span className={`px-2 py-0.5 rounded font-bold text-[10px] ${
               isLight ? 'bg-zinc-100 text-zinc-800 border border-zinc-200' : 'bg-zinc-800 text-zinc-300'
-            }`}>Tableros 18mm</span>
+            }`}>Total Diseñado</span>
           </div>
         </div>
       </div>
@@ -396,106 +409,40 @@ export function GeographicDemandSheet({ selectedProviderName, selectedProviderId
               <span className="text-xs font-mono text-orange-500 font-bold">Q3 2024</span>
             </div>
 
-            {/* Rank 1 */}
-            <div className={`p-3 rounded-xl border space-y-1.5 ${
-              isLight ? 'bg-zinc-50 border-zinc-200' : 'bg-zinc-950/80 border-zinc-800'
-            }`}>
-              <div className="flex justify-between items-center text-xs">
-                <div className="flex items-center gap-2">
-                  <span className="w-5 h-5 rounded-md bg-orange-500 text-white font-bold text-[10px] flex items-center justify-center">1</span>
-                  <span className={`font-bold ${isLight ? 'text-zinc-900' : 'text-white'}`}>Las Condes</span>
-                  <span className="px-1.5 py-0.2 bg-orange-500/20 text-orange-600 dark:text-orange-400 text-[9px] font-extrabold rounded">Core</span>
+            {communeRanking.length === 0 ? (
+              <div className={`p-6 rounded-xl border text-center text-xs ${isLight ? 'bg-zinc-50 border-zinc-200 text-zinc-500' : 'bg-zinc-950/80 border-zinc-800 text-zinc-400'}`}>
+                No hay proyectos guardados con registros de comuna en la plataforma aún.
+              </div>
+            ) : (
+              communeRanking.slice(0, 5).map((item) => (
+                <div
+                  key={item.commune}
+                  className={`p-3 rounded-xl border space-y-1.5 ${
+                    isLight ? 'bg-zinc-50 border-zinc-200' : 'bg-zinc-950/80 border-zinc-800'
+                  }`}
+                >
+                  <div className="flex justify-between items-center text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="w-5 h-5 rounded-md bg-orange-500 text-white font-bold text-[10px] flex items-center justify-center">
+                        {item.rank}
+                      </span>
+                      <span className={`font-bold ${isLight ? 'text-zinc-900' : 'text-white'}`}>{item.commune}</span>
+                    </div>
+                    <div className="flex items-baseline gap-2 font-mono">
+                      <span className={`font-bold ${isLight ? 'text-zinc-900' : 'text-white'}`}>{item.clpFormatted}</span>
+                      <span className="text-orange-500 font-bold">{item.percent}%</span>
+                    </div>
+                  </div>
+                  <div className={`w-full h-1.5 rounded-full overflow-hidden ${isLight ? 'bg-zinc-200' : 'bg-zinc-800'}`}>
+                    <div className="bg-orange-500 h-full rounded-full" style={{ width: `${Math.min(100, Math.max(5, item.percent))}%` }} />
+                  </div>
+                  <div className={`flex justify-between text-[10px] ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                    <span>{item.areaM2} m² transformados</span>
+                    <span>{item.workshopsCount} proyectos activos</span>
+                  </div>
                 </div>
-                <div className="flex items-baseline gap-2 font-mono">
-                  <span className={`font-bold ${isLight ? 'text-zinc-900' : 'text-white'}`}>$1.420M CLP</span>
-                  <span className="text-orange-500 font-bold">34.2%</span>
-                </div>
-              </div>
-              <div className={`w-full h-1.5 rounded-full overflow-hidden ${isLight ? 'bg-zinc-200' : 'bg-zinc-800'}`}>
-                <div className="bg-orange-500 h-full rounded-full" style={{ width: '34.2%' }} />
-              </div>
-              <div className={`flex justify-between text-[10px] ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                <span>14.200 m² transformados</span>
-                <span>46 talleres activos</span>
-              </div>
-            </div>
-
-            {/* Rank 2 */}
-            <div className={`p-3 rounded-xl border space-y-1.5 ${
-              isLight ? 'bg-zinc-50 border-zinc-200' : 'bg-zinc-950/80 border-zinc-800'
-            }`}>
-              <div className="flex justify-between items-center text-xs">
-                <div className="flex items-center gap-2">
-                  <span className={`w-5 h-5 rounded-md font-bold text-[10px] flex items-center justify-center ${
-                    isLight ? 'bg-zinc-200 text-zinc-800' : 'bg-zinc-800 text-zinc-300'
-                  }`}>2</span>
-                  <span className={`font-bold ${isLight ? 'text-zinc-900' : 'text-white'}`}>Lo Barnechea / La Dehesa</span>
-                  <span className="px-1.5 py-0.2 bg-sky-500/20 text-sky-600 dark:text-sky-400 text-[9px] font-extrabold rounded">Premium</span>
-                </div>
-                <div className="flex items-baseline gap-2 font-mono">
-                  <span className={`font-bold ${isLight ? 'text-zinc-900' : 'text-white'}`}>$980M CLP</span>
-                  <span className="text-sky-600 dark:text-sky-400 font-bold">23.6%</span>
-                </div>
-              </div>
-              <div className={`w-full h-1.5 rounded-full overflow-hidden ${isLight ? 'bg-zinc-200' : 'bg-zinc-800'}`}>
-                <div className="bg-sky-500 h-full rounded-full" style={{ width: '23.6%' }} />
-              </div>
-              <div className={`flex justify-between text-[10px] ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                <span>9.850 m² transformados</span>
-                <span>34 talleres activos</span>
-              </div>
-            </div>
-
-            {/* Rank 3 */}
-            <div className={`p-3 rounded-xl border space-y-1.5 ${
-              isLight ? 'bg-zinc-50 border-zinc-200' : 'bg-zinc-950/80 border-zinc-800'
-            }`}>
-              <div className="flex justify-between items-center text-xs">
-                <div className="flex items-center gap-2">
-                  <span className={`w-5 h-5 rounded-md font-bold text-[10px] flex items-center justify-center ${
-                    isLight ? 'bg-zinc-200 text-zinc-800' : 'bg-zinc-800 text-zinc-300'
-                  }`}>3</span>
-                  <span className={`font-bold ${isLight ? 'text-zinc-900' : 'text-white'}`}>Vitacura</span>
-                  <span className="px-1.5 py-0.2 bg-amber-500/20 text-amber-600 dark:text-amber-400 text-[9px] font-extrabold rounded">Alta Gama</span>
-                </div>
-                <div className="flex items-baseline gap-2 font-mono">
-                  <span className={`font-bold ${isLight ? 'text-zinc-900' : 'text-white'}`}>$740M CLP</span>
-                  <span className="text-amber-600 dark:text-amber-400 font-bold">17.8%</span>
-                </div>
-              </div>
-              <div className={`w-full h-1.5 rounded-full overflow-hidden ${isLight ? 'bg-zinc-200' : 'bg-zinc-800'}`}>
-                <div className="bg-amber-500 h-full rounded-full" style={{ width: '17.8%' }} />
-              </div>
-              <div className={`flex justify-between text-[10px] ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                <span>7.120 m² transformados</span>
-                <span>28 talleres activos</span>
-              </div>
-            </div>
-
-            {/* Rank 4 */}
-            <div className={`p-3 rounded-xl border space-y-1.5 ${
-              isLight ? 'bg-zinc-50 border-zinc-200' : 'bg-zinc-950/80 border-zinc-800'
-            }`}>
-              <div className="flex justify-between items-center text-xs">
-                <div className="flex items-center gap-2">
-                  <span className={`w-5 h-5 rounded-md font-bold text-[10px] flex items-center justify-center ${
-                    isLight ? 'bg-zinc-200 text-zinc-800' : 'bg-zinc-800 text-zinc-300'
-                  }`}>4</span>
-                  <span className={`font-bold ${isLight ? 'text-zinc-900' : 'text-white'}`}>Providencia / Ñuñoa</span>
-                </div>
-                <div className="flex items-baseline gap-2 font-mono">
-                  <span className={`font-bold ${isLight ? 'text-zinc-900' : 'text-white'}`}>$590M CLP</span>
-                  <span className={`font-bold ${isLight ? 'text-zinc-600' : 'text-zinc-400'}`}>14.2%</span>
-                </div>
-              </div>
-              <div className={`w-full h-1.5 rounded-full overflow-hidden ${isLight ? 'bg-zinc-200' : 'bg-zinc-800'}`}>
-                <div className="bg-orange-500/70 h-full rounded-full" style={{ width: '14.2%' }} />
-              </div>
-              <div className={`flex justify-between text-[10px] ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                <span>5.800 m² transformados</span>
-                <span>24 talleres activos</span>
-              </div>
-            </div>
+              ))
+            )}
           </div>
 
           <div className={`mt-4 p-3 border rounded-xl flex items-center justify-between ${
@@ -503,11 +450,13 @@ export function GeographicDemandSheet({ selectedProviderName, selectedProviderId
           }`}>
             <div>
               <div className={`text-xs font-bold ${isLight ? 'text-zinc-900' : 'text-white'}`}>Índice Presupuesto → Fábrica</div>
-              <div className={`text-[11px] ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>Conversión automática a corte CNC</div>
+              <div className={`text-[11px] ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>Conversión a corte CNC real</div>
             </div>
             <div className="text-right">
-              <div className="text-base font-extrabold text-emerald-600 dark:text-emerald-400 font-mono">78.4%</div>
-              <div className="text-[10px] text-orange-500 font-bold">+6.1% YoY</div>
+              <div className="text-base font-extrabold text-emerald-600 dark:text-emerald-400 font-mono">
+                {projects && projects.length > 0 ? `${Math.round((projects.filter(p => p.status === 'sold' || p.status === 'in_production').length / projects.length) * 100)}%` : '0%'}
+              </div>
+              <div className="text-[10px] text-orange-500 font-bold">Proyectos reales</div>
             </div>
           </div>
         </div>

@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   TrendingUp,
   Package,
-  Truck,
   CheckCircle2,
   Clock,
   Sparkles,
@@ -12,12 +11,13 @@ import {
   DollarSign,
   Sun,
   Eye,
-  Camera,
   RotateCw,
-  QrCode,
   Download,
   AlertTriangle,
-  FileSpreadsheet
+  FolderKanban,
+  Box,
+  FileSpreadsheet,
+  Check
 } from 'lucide-react';
 import { useAdminStore } from '../../../store/adminStore';
 
@@ -28,69 +28,91 @@ interface ForecastingSamplesSheetProps {
 }
 
 export function ForecastingSamplesSheet({ selectedProviderName, selectedProviderId, isSuperAdmin }: ForecastingSamplesSheetProps = {}) {
-  const { themeMode } = useAdminStore();
+  const { themeMode, textures, supplies, projects, providers } = useAdminStore();
   const isLight = themeMode === 'light';
 
   const [lightMode, setLightMode] = useState<'3000k' | '5000k' | 'showroom'>('3000k');
   const [rotated, setRotated] = useState(false);
   const [zoomed, setZoomed] = useState(false);
   const [skuPaused, setSkuPaused] = useState(false);
-  const [sampleFilter, setSampleFilter] = useState('all');
+  const [selectedTextureId, setSelectedTextureId] = useState<string>('');
 
-  const sampleOrders = [
-    {
-      id: 'samp-1',
-      name: 'Arq. Marcos Benítez',
-      avatar: 'MB',
-      studio: 'Estudio Las Condes (Santiago)',
-      materials: ['Melamina Roble Cendra 18mm', 'Silestone Blanco Norte'],
-      project: 'Depto San Damián (Isla 3.80m)',
-      date: '18 Sep 2024 • 11:42 CLT',
-      status: 'Entregado Chilexpress',
-      statusColor: 'emerald',
-      probability: '92% Prob.',
-      amount: '$38.500.000 CLP'
-    },
-    {
-      id: 'samp-2',
-      name: 'Lucía Domínguez',
-      avatar: 'LD',
-      studio: 'Interiorismo Providencia',
-      materials: ['Masisa Carvalho 18mm', 'Silestone Blanco Norte'],
-      project: 'Remodelación Pocuro',
-      date: '19 Sep 2024 • 09:15 CLT',
-      status: 'En Tránsito Starken',
-      statusColor: 'sky',
-      probability: '78% Prob.',
-      amount: '$22.400.000 CLP'
-    },
-    {
-      id: 'samp-3',
-      name: 'Carlos Santoro',
-      avatar: 'CS',
-      studio: 'Chicureo, Colina (Santiago)',
-      materials: ['Vesto Roble Cendra 18mm'],
-      project: 'Casa Piedra Roja',
-      date: '20 Sep 2024 • 16:50 CLT',
-      status: 'Envío Express RM (24h)',
-      statusColor: 'amber',
-      probability: '65% Prob.',
-      amount: '$16.200.000 CLP'
-    },
-    {
-      id: 'samp-4',
-      name: 'Estudio Arq9 (David R.)',
-      avatar: 'A9',
-      studio: 'Estudio Vitacura',
-      materials: ['Masisa Carvalho 18mm', 'Silestone Blanco Norte'],
-      project: 'Penthouse Lo Curro',
-      date: '17 Sep 2024 • 18:04 CLT',
-      status: 'Proyecto Aprobado',
-      statusColor: 'emerald',
-      probability: '100% Cerrado',
-      amount: '$44.800.000 CLP'
+  // Identificar texturas asociadas al proveedor seleccionado
+  const providerTextures = useMemo(() => {
+    const pId = (selectedProviderId || '').toLowerCase();
+    const pName = (selectedProviderName || '').toLowerCase();
+
+    const filtered = textures.filter((t) => {
+      const tPId = (t.providerId || '').toLowerCase();
+      const tPName = (t.providerName || t.brand || '').toLowerCase();
+
+      if (pId && tPId === pId) return true;
+      if (pId && (tPName.includes(pId) || pId.includes(tPName))) return true;
+      if (pName && (tPName.includes(pName) || pName.includes(tPName))) return true;
+
+      if (pId.includes('abet') || pName.includes('abet')) {
+        return t.name.toLowerCase().includes('abet') || t.name.toLowerCase().includes('totoy') || (t.brand || '').toLowerCase().includes('abet');
+      }
+      if (pId.includes('arauco') || pName.includes('arauco')) {
+        return t.name.toLowerCase().includes('arauco') || t.name.toLowerCase().includes('vesto');
+      }
+      if (pId.includes('masisa') || pName.includes('masisa')) {
+        return t.name.toLowerCase().includes('masisa');
+      }
+      if (pId.includes('qstone') || pName.includes('qstone')) {
+        return t.name.toLowerCase().includes('qstone') || t.category === 'cubiertas';
+      }
+      return false;
+    });
+
+    return filtered.length > 0 ? filtered : textures;
+  }, [textures, selectedProviderId, selectedProviderName]);
+
+  const activeTexture = useMemo(() => {
+    if (selectedTextureId) {
+      const found = providerTextures.find((t) => t.id === selectedTextureId);
+      if (found) return found;
     }
-  ];
+    return providerTextures[0] || textures[0];
+  }, [providerTextures, selectedTextureId, textures]);
+
+  // Proyectos guardados asociados al proveedor
+  const providerProjects = useMemo(() => {
+    const pId = (selectedProviderId || '').toLowerCase();
+    const pName = (selectedProviderName || '').toLowerCase();
+
+    return projects.filter((proj) => {
+      const dataStr = JSON.stringify(proj.data || {}).toLowerCase();
+      const projName = (proj.name || '').toLowerCase();
+
+      if (pId && dataStr.includes(pId)) return true;
+      if (pName && dataStr.includes(pName)) return true;
+
+      if (pId.includes('abet') || pName.includes('abet')) {
+        return dataStr.includes('abet') || dataStr.includes('totoy') || proj.type === 'special' || proj.type === 'hpl-bathroom';
+      }
+      if (pId.includes('arauco') || pName.includes('arauco')) {
+        return dataStr.includes('arauco') || dataStr.includes('vesto') || proj.type === 'kitchen' || proj.type === 'closet';
+      }
+      if (pId.includes('masisa') || pName.includes('masisa')) {
+        return dataStr.includes('masisa') || dataStr.includes('innova');
+      }
+      if (pId.includes('qstone') || pName.includes('qstone')) {
+        return dataStr.includes('qstone') || dataStr.includes('cuarzo');
+      }
+
+      return true;
+    });
+  }, [projects, selectedProviderId, selectedProviderName]);
+
+  // Totales dinámicos para el proveedor
+  const totalProjectedM2 = useMemo(() => {
+    return providerProjects.reduce((acc, p) => acc + (p.totalAreaM2 || 18.5), 0);
+  }, [providerProjects]);
+
+  const totalPipelineClp = useMemo(() => {
+    return providerProjects.reduce((acc, p) => acc + (p.price || p.data?.budget || 2450000), 0);
+  }, [providerProjects]);
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
@@ -100,25 +122,25 @@ export function ForecastingSamplesSheet({ selectedProviderName, selectedProvider
       }`}>
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-xs">
-            <span className="font-extrabold uppercase tracking-wider text-orange-500">Inteligencia de Materiales & Conversión B2B</span>
+            <span className="font-extrabold uppercase tracking-wider text-orange-500">Inteligencia de Materiales & Catálogo PBR</span>
             <span className={isLight ? 'text-zinc-400' : 'text-zinc-600'}>•</span>
-            <span className="text-amber-500 font-mono font-bold">Ciclo Activo Q3-Q4</span>
+            <span className="text-amber-500 font-mono font-bold">Telemetría B2B {selectedProviderName || 'Proveedor Activo'}</span>
           </div>
           <h2 className={`text-xl sm:text-2xl font-bold tracking-tight ${isLight ? 'text-zinc-900' : 'text-white'}`}>
-            Previsión de Demanda y Pipeline de Muestras Físicas
+            Previsión de Demanda y Visor de Materiales PBR
           </h2>
           <p className={`text-xs sm:text-sm max-w-3xl ${isLight ? 'text-zinc-600' : 'text-zinc-400'}`}>
-            Anticipación de inventario según cocinas guardadas en configurador y gestión de envíos de muestrarios a arquitectos y prescriptores.
+            Anticipación de inventarios y cubicaciones proyectadas según diseños 3D guardados en el configurador, sincronizado con las texturas y fichas técnicas del proveedor.
           </p>
         </div>
 
         <div className="flex items-center gap-2.5 shrink-0">
           <button
-            onClick={() => alert('Lote masivo de 45 kits Signature despachado a Starken Hub Pudahuel.')}
+            onClick={() => alert(`Previsión de inventario para ${selectedProviderName || 'Proveedor'} descargada en formato .CSV`)}
             className="flex items-center gap-1.5 px-4 py-2 bg-orange-600 hover:bg-orange-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-orange-600/20 transition-all cursor-pointer"
           >
-            <Send size={15} />
-            <span>Programar Envío Masivo Q4</span>
+            <Download size={15} />
+            <span>Exportar Previsión (.CSV)</span>
           </button>
         </div>
       </div>
@@ -130,17 +152,19 @@ export function ForecastingSamplesSheet({ selectedProviderName, selectedProvider
           isLight ? 'bg-white border-zinc-200 shadow-sm hover:border-orange-500/40' : 'bg-zinc-900/80 border-zinc-800 hover:border-orange-500/40'
         }`}>
           <div className="flex items-center justify-between">
-            <span className={`text-[10px] font-bold uppercase tracking-wider ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>Eficacia de Muestrarios</span>
+            <span className={`text-[10px] font-bold uppercase tracking-wider ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>Prescripción en Diseños 3D</span>
             <span className="p-1.5 rounded-lg bg-orange-500/10 text-orange-500">
               <CheckCircle2 size={16} />
             </span>
           </div>
           <div className="my-2">
-            <div className={`text-2xl font-black font-mono ${isLight ? 'text-zinc-900' : 'text-white'}`}>73%</div>
-            <p className={`text-xs ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>De peticiones físicas convertidas en orden de compra.</p>
+            <div className={`text-2xl font-black font-mono ${isLight ? 'text-zinc-900' : 'text-white'}`}>
+              {projects.length > 0 ? Math.round((providerProjects.length / Math.max(1, projects.length)) * 100) : 100}%
+            </div>
+            <p className={`text-xs ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>Cuota de preferencia en proyectos guardados.</p>
           </div>
           <div className={`w-full h-1.5 rounded-full overflow-hidden ${isLight ? 'bg-zinc-100' : 'bg-zinc-800'}`}>
-            <div className="bg-orange-500 h-full rounded-full" style={{ width: '73%' }} />
+            <div className="bg-orange-500 h-full rounded-full" style={{ width: `${projects.length > 0 ? Math.round((providerProjects.length / Math.max(1, projects.length)) * 100) : 100}%` }} />
           </div>
         </div>
 
@@ -149,17 +173,19 @@ export function ForecastingSamplesSheet({ selectedProviderName, selectedProvider
           isLight ? 'bg-white border-zinc-200 shadow-sm hover:border-amber-500/40' : 'bg-zinc-900/80 border-zinc-800 hover:border-amber-500/40'
         }`}>
           <div className="flex items-center justify-between">
-            <span className={`text-[10px] font-bold uppercase tracking-wider ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>Retorno / Muestra</span>
+            <span className={`text-[10px] font-bold uppercase tracking-wider ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>Valor Promedio / Proyecto</span>
             <span className="p-1.5 rounded-lg bg-amber-500/10 text-amber-500">
               <DollarSign size={16} />
             </span>
           </div>
           <div className="my-2">
-            <div className="text-2xl font-black text-amber-600 dark:text-amber-400 font-mono">$1.480.000</div>
-            <p className={`text-xs ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>Retorno promedio por kit físico entregado (98x ROI).</p>
+            <div className="text-2xl font-black text-amber-600 dark:text-amber-400 font-mono">
+              ${(providerProjects.length > 0 ? Math.round(totalPipelineClp / providerProjects.length) : 2450000).toLocaleString('es-CL')}
+            </div>
+            <p className={`text-xs ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>Ticket promedio de presupuesto estimado en 3D.</p>
           </div>
           <div className={`w-full h-1.5 rounded-full overflow-hidden ${isLight ? 'bg-zinc-100' : 'bg-zinc-800'}`}>
-            <div className="bg-amber-500 h-full rounded-full" style={{ width: '92%' }} />
+            <div className="bg-amber-500 h-full rounded-full" style={{ width: '85%' }} />
           </div>
         </div>
 
@@ -174,11 +200,13 @@ export function ForecastingSamplesSheet({ selectedProviderName, selectedProvider
             </span>
           </div>
           <div className="my-2">
-            <div className={`text-2xl font-black font-mono ${isLight ? 'text-zinc-900' : 'text-white'}`}>26.500 m²</div>
-            <p className={`text-xs ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>142 proyectos en modelado final esta semana.</p>
+            <div className={`text-2xl font-black font-mono ${isLight ? 'text-zinc-900' : 'text-white'}`}>
+              {Math.round(totalProjectedM2)} m²
+            </div>
+            <p className={`text-xs ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>{providerProjects.length} proyecto(s) activos en esta marca.</p>
           </div>
           <div className={`w-full h-1.5 rounded-full overflow-hidden ${isLight ? 'bg-zinc-100' : 'bg-zinc-800'}`}>
-            <div className="bg-sky-500 h-full rounded-full" style={{ width: '65%' }} />
+            <div className="bg-sky-500 h-full rounded-full" style={{ width: '70%' }} />
           </div>
         </div>
 
@@ -187,14 +215,14 @@ export function ForecastingSamplesSheet({ selectedProviderName, selectedProvider
           isLight ? 'bg-white border-zinc-200 shadow-sm hover:border-emerald-500/40' : 'bg-zinc-900/80 border-zinc-800 hover:border-emerald-500/40'
         }`}>
           <div className="flex items-center justify-between">
-            <span className={`text-[10px] font-bold uppercase tracking-wider ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>Merma Global en Tableros</span>
+            <span className={`text-[10px] font-bold uppercase tracking-wider ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>Aprovechamiento de Material</span>
             <span className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-500">
               <Sparkles size={16} />
             </span>
           </div>
           <div className="my-2">
-            <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400 font-mono">8,2%</div>
-            <p className={`text-xs ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>Aprovechamiento de Plancha 18mm: 91,8%.</p>
+            <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400 font-mono">91,8%</div>
+            <p className={`text-xs ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>Merma estimada en optimizador CNC: 8,2%.</p>
           </div>
           <div className={`w-full h-1.5 rounded-full overflow-hidden ${isLight ? 'bg-zinc-100' : 'bg-zinc-800'}`}>
             <div className="bg-emerald-500 h-full rounded-full" style={{ width: '91.8%' }} />
@@ -210,8 +238,10 @@ export function ForecastingSamplesSheet({ selectedProviderName, selectedProvider
           isLight ? 'border-zinc-200' : 'border-zinc-800'
         }`}>
           <div>
-            <h3 className={`text-base font-bold ${isLight ? 'text-zinc-900' : 'text-white'}`}>Curvas de Demanda: Real vs. Modelo Predictivo AI</h3>
-            <p className={`text-xs ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>Correlación histórica entre configuraciones 3D guardadas y compras consolidadas a 45 días</p>
+            <h3 className={`text-base font-bold ${isLight ? 'text-zinc-900' : 'text-white'}`}>
+              Curvas de Demanda Proyectada ({selectedProviderName || 'Proveedor Activo'})
+            </h3>
+            <p className={`text-xs ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>Correlación histórica entre proyectos 3D guardados y órdenes estimadas a 45 días</p>
           </div>
           <div className="flex items-center gap-4 text-xs">
             <div className="flex items-center gap-1.5">
@@ -247,34 +277,62 @@ export function ForecastingSamplesSheet({ selectedProviderName, selectedProvider
               <circle cx="680" cy="27" r="6" fill="#ef4444" className="animate-ping" opacity="0.7" />
               <circle cx="680" cy="27" r="4" fill="#ef4444" />
               <line x1="450" y1="0" x2="450" y2="160" stroke={isLight ? '#cbd5e1' : '#52525b'} strokeDasharray="2,2" strokeWidth="1" />
-              <text x="455" y="15" fill={isLight ? '#64748b' : '#a1a1aa'} fontSize="10" fontFamily="sans-serif">HOY (SEM 38)</text>
+              <text x="455" y="15" fill={isLight ? '#64748b' : '#a1a1aa'} fontSize="10" fontFamily="sans-serif">HOY</text>
               <text x="685" y="44" fill="#ef4444" fontSize="11" fontWeight="bold" fontFamily="sans-serif">
-                Pico Demanda Roble Cendra (+6.300 m²)
+                Pico Demanda Proyectada ({selectedProviderName || 'Marca'})
               </text>
             </svg>
             <div className={`flex justify-between text-[11px] font-mono pt-1 ${isLight ? 'text-zinc-600' : 'text-zinc-500'}`}>
-              <span>Julio (Sem 27)</span>
-              <span>Agosto (Sem 31)</span>
-              <span>Septiembre (Sem 35)</span>
-              <span className="text-orange-500 font-bold">Octubre (Sem 40)</span>
-              <span>Noviembre (Sem 44)</span>
-              <span>Diciembre (Sem 48)</span>
+              <span>Mes 1</span>
+              <span>Mes 2</span>
+              <span>Mes 3</span>
+              <span className="text-orange-500 font-bold">Mes Actual</span>
+              <span>Próximo Mes</span>
+              <span>Mes +2</span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Interactive Material SKU & 3D Lighting Inspector */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-        {/* Left 7 Cols: Material PBR & Lighting Simulator */}
-        <div className={`lg:col-span-7 border rounded-2xl p-5 space-y-4 transition-colors ${
-          isLight ? 'bg-white border-zinc-200 shadow-sm' : 'bg-zinc-900/80 border-zinc-800'
+      {/* Interactive Material SKU & 3D PBR Inspector (Conectado a la Marca Activa) */}
+      <div className={`border rounded-2xl p-5 space-y-4 transition-colors ${
+        isLight ? 'bg-white border-zinc-200 shadow-sm' : 'bg-zinc-900/80 border-zinc-800'
+      }`}>
+        <div className={`flex flex-col md:flex-row md:items-center justify-between gap-3 pb-2 border-b ${
+          isLight ? 'border-zinc-200' : 'border-zinc-800'
         }`}>
-          <div className={`flex items-center justify-between pb-2 border-b ${isLight ? 'border-zinc-200' : 'border-zinc-800'}`}>
-            <div>
-              <span className={`text-[10px] font-bold uppercase tracking-wider ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>Visor Táctil de SKU & PBR</span>
-              <h3 className={`text-base font-bold ${isLight ? 'text-zinc-900' : 'text-white'}`}>Nogal Canaletto 19mm Barniz Mate</h3>
+          <div>
+            <span className={`text-[10px] font-bold uppercase tracking-wider ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>
+              Visor Táctil de SKU & PBR — Catálogo {selectedProviderName || 'Marca'}
+            </span>
+            <div className="flex items-center gap-3 mt-1">
+              <h3 className={`text-base font-bold ${isLight ? 'text-zinc-900' : 'text-white'}`}>
+                {activeTexture ? activeTexture.name : 'Material PBR de Proveedor'}
+              </h3>
+              <span className="px-2 py-0.5 rounded bg-orange-500/10 text-orange-600 text-xs font-mono font-bold">
+                {activeTexture?.code || 'SKU-PBR'}
+              </span>
             </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Texture selector for this brand */}
+            {providerTextures.length > 0 && (
+              <select
+                value={selectedTextureId || activeTexture?.id || ''}
+                onChange={(e) => setSelectedTextureId(e.target.value)}
+                className={`py-1.5 px-3 border rounded-xl text-xs font-bold outline-none cursor-pointer ${
+                  isLight ? 'bg-zinc-50 border-zinc-300 text-zinc-900' : 'bg-zinc-950 border-zinc-700 text-white'
+                }`}
+              >
+                {providerTextures.map((tex) => (
+                  <option key={tex.id} value={tex.id}>
+                    {tex.name} ({tex.brand || selectedProviderName || 'Marca'})
+                  </option>
+                ))}
+              </select>
+            )}
+
             {/* Lighting Controls */}
             <div className={`flex items-center gap-1 border p-1 rounded-xl text-xs font-bold ${
               isLight ? 'bg-zinc-100 border-zinc-200' : 'bg-zinc-950 border-zinc-800'
@@ -317,137 +375,152 @@ export function ForecastingSamplesSheet({ selectedProviderName, selectedProvider
               </button>
             </div>
           </div>
-
-          {/* Render Preview Frame */}
-          <div className={`relative h-64 rounded-xl overflow-hidden border flex items-center justify-center group ${
-            isLight ? 'bg-zinc-100 border-zinc-200' : 'bg-zinc-950 border-zinc-800'
-          }`}>
-            <div
-              className={`w-full h-full bg-cover bg-center transition-all duration-500 ${
-                lightMode === '3000k'
-                  ? 'brightness-105 sepia-[0.15] contrast-105'
-                  : lightMode === '5000k'
-                  ? 'brightness-110 hue-rotate-[-5deg] contrast-105'
-                  : 'brightness-95 contrast-110'
-              } ${rotated ? 'scale-105 rotate-1' : 'scale-100 rotate-0'} ${zoomed ? 'scale-150' : ''}`}
-              style={{
-                backgroundImage: `url('https://lh3.googleusercontent.com/aida-public/AB6AXuDhle7wu5-Vm0RNxTHV9zcqYomievuP9KQSVcevOBX53NW747-kXkdL2WOdoVRjLylbvfY_0zqIy0e_ntj13-nVgUjETbbJXaKmH18YEj1Nc0IghuU5MFrcbdQo72d2Q5EEo8RKSwSIxiWxtGcTjwFMnl6c5xg-UY9Bikg7OEjXDutVtFrJsN33zyUoD9MGLmuodx_bqrnRThP-VyLVcxzbabDYLmVQ8K6aSLOpmViNtkVklrnLLjKp8w')`
-              }}
-            />
-
-            {/* Hotspot */}
-            <div className="absolute top-1/2 left-1/3 -translate-x-1/2 -translate-y-1/2 z-10">
-              <div className="w-8 h-8 rounded-full bg-orange-500/30 backdrop-blur-md flex items-center justify-center cursor-pointer hover:scale-110 transition-transform">
-                <span className="w-3.5 h-3.5 rounded-full bg-orange-500 shadow-lg shadow-orange-500" />
-              </div>
-            </div>
-
-            {/* Bottom Floating Bar */}
-            <div className={`absolute bottom-3 left-1/2 -translate-x-1/2 backdrop-blur-md border px-3 py-1.5 rounded-xl flex items-center gap-2 text-xs ${
-              isLight ? 'bg-white/90 border-zinc-300 text-zinc-900 shadow-sm' : 'bg-zinc-900/90 border-zinc-700 text-white'
-            }`}>
-              <button
-                onClick={() => setRotated(!rotated)}
-                className="hover:text-orange-500 flex items-center gap-1 cursor-pointer font-semibold"
-              >
-                <RotateCw size={13} /> Rotar 360°
-              </button>
-              <span className={isLight ? 'text-zinc-300' : 'text-zinc-600'}>|</span>
-              <button
-                onClick={() => setZoomed(!zoomed)}
-                className="hover:text-orange-500 flex items-center gap-1 cursor-pointer font-semibold"
-              >
-                <Eye size={13} /> Zoom Veta
-              </button>
-            </div>
-          </div>
-
-          {/* PBR Channel Cards */}
-          <div className="grid grid-cols-4 gap-2 text-xs">
-            <div className={`p-2 rounded-lg border text-center ${
-              isLight ? 'bg-zinc-50 border-zinc-200' : 'bg-zinc-950 border-zinc-800'
-            }`}>
-              <div className={`text-[10px] uppercase font-bold ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>Albedo</div>
-              <div className={`font-bold mt-0.5 ${isLight ? 'text-zinc-900' : 'text-white'}`}>RGB 8-bit</div>
-            </div>
-            <div className={`p-2 rounded-lg border text-center ${
-              isLight ? 'bg-zinc-50 border-zinc-200' : 'bg-zinc-950 border-zinc-800'
-            }`}>
-              <div className={`text-[10px] uppercase font-bold ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>Roughness</div>
-              <div className="font-bold text-amber-600 dark:text-amber-400 mt-0.5">15% GL</div>
-            </div>
-            <div className={`p-2 rounded-lg border text-center ${
-              isLight ? 'bg-zinc-50 border-zinc-200' : 'bg-zinc-950 border-zinc-800'
-            }`}>
-              <div className={`text-[10px] uppercase font-bold ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>Normal Map</div>
-              <div className="font-bold text-sky-600 dark:text-sky-400 mt-0.5">OpenGL 16b</div>
-            </div>
-            <div className={`p-2 rounded-lg border text-center ${
-              isLight ? 'bg-zinc-50 border-zinc-200' : 'bg-zinc-950 border-zinc-800'
-            }`}>
-              <div className={`text-[10px] uppercase font-bold ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>Displacement</div>
-              <div className="font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">0.35 mm</div>
-            </div>
-          </div>
         </div>
 
-        {/* Right 5 Cols: Sample Experience & Actions */}
-        <div className={`lg:col-span-5 border rounded-2xl p-5 flex flex-col justify-between space-y-4 transition-colors ${
-          isLight ? 'bg-white border-zinc-200 shadow-sm' : 'bg-zinc-900/80 border-zinc-800'
-        }`}>
-          <div className="space-y-3">
-            <div className={`flex items-center justify-between pb-2 border-b ${isLight ? 'border-zinc-200' : 'border-zinc-800'}`}>
-              <h3 className={`text-base font-bold ${isLight ? 'text-zinc-900' : 'text-white'}`}>Kit Signature & Experiencia Háptica</h3>
-              <span className="px-2 py-0.5 bg-orange-500/10 text-orange-500 font-bold text-[10px] rounded">
-                QR Directo CAD
-              </span>
-            </div>
-            <p className={`text-xs leading-relaxed ${isLight ? 'text-zinc-700' : 'text-zinc-300'}`}>
-              Las cocinas cuyos clientes reciben el kit físico de muestras en menos de 48 horas tienen una tasa de cierre un{' '}
-              <strong className="text-orange-500">38% superior</strong> respecto al canal tradicional.
-            </p>
-
-            <div className={`p-3 border rounded-xl space-y-2 text-xs ${
-              isLight ? 'bg-zinc-50 border-zinc-200' : 'bg-zinc-950 border-zinc-800'
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+          {/* Left 8 Cols: Render Preview Frame */}
+          <div className="lg:col-span-8 space-y-3">
+            <div className={`relative h-72 rounded-xl overflow-hidden border flex items-center justify-center group ${
+              isLight ? 'bg-zinc-100 border-zinc-200' : 'bg-zinc-950 border-zinc-800'
             }`}>
-              <div className={`flex justify-between items-center ${isLight ? 'text-zinc-600' : 'text-zinc-400'}`}>
-                <span>Stock Físico Inmediato en Almacén:</span>
-                <strong className={`font-mono font-bold ${isLight ? 'text-zinc-900' : 'text-white'}`}>8.200 m²</strong>
+              <div
+                className={`w-full h-full bg-cover bg-center transition-all duration-500 ${
+                  lightMode === '3000k'
+                    ? 'brightness-105 sepia-[0.15] contrast-105'
+                    : lightMode === '5000k'
+                    ? 'brightness-110 hue-rotate-[-5deg] contrast-105'
+                    : 'brightness-95 contrast-110'
+                } ${rotated ? 'scale-105 rotate-1' : 'scale-100 rotate-0'} ${zoomed ? 'scale-150' : ''}`}
+                style={{
+                  backgroundImage: activeTexture?.previewUrl || activeTexture?.url || activeTexture?.textureUrl
+                    ? `url('${activeTexture.previewUrl || activeTexture.url || activeTexture.textureUrl}')`
+                    : 'none',
+                  backgroundColor: activeTexture?.hexColor || '#8B5A2B'
+                }}
+              />
+
+              {/* Hotspot */}
+              <div className="absolute top-1/2 left-1/3 -translate-x-1/2 -translate-y-1/2 z-10">
+                <div className="w-8 h-8 rounded-full bg-orange-500/30 backdrop-blur-md flex items-center justify-center cursor-pointer hover:scale-110 transition-transform">
+                  <span className="w-3.5 h-3.5 rounded-full bg-orange-500 shadow-lg shadow-orange-500" />
+                </div>
               </div>
-              <div className={`w-full h-1.5 rounded-full overflow-hidden ${isLight ? 'bg-zinc-200' : 'bg-zinc-800'}`}>
-                <div className="bg-amber-500 h-full rounded-full" style={{ width: '58%' }} />
+
+              {/* Bottom Floating Bar */}
+              <div className={`absolute bottom-3 left-1/2 -translate-x-1/2 backdrop-blur-md border px-3 py-1.5 rounded-xl flex items-center gap-2 text-xs ${
+                isLight ? 'bg-white/90 border-zinc-300 text-zinc-900 shadow-sm' : 'bg-zinc-900/90 border-zinc-700 text-white'
+              }`}>
+                <button
+                  onClick={() => setRotated(!rotated)}
+                  className="hover:text-orange-500 flex items-center gap-1 cursor-pointer font-semibold"
+                >
+                  <RotateCw size={13} /> Rotar 360°
+                </button>
+                <span className={isLight ? 'text-zinc-300' : 'text-zinc-600'}>|</span>
+                <button
+                  onClick={() => setZoomed(!zoomed)}
+                  className="hover:text-orange-500 flex items-center gap-1 cursor-pointer font-semibold"
+                >
+                  <Eye size={13} /> Zoom Veta
+                </button>
               </div>
-              <div className={`flex justify-between text-[10px] ${isLight ? 'text-zinc-500' : 'text-zinc-500'}`}>
-                <span>Punto de reorden: 4.000 m²</span>
-                <span>Capacidad máxima: 14.000 m²</span>
+            </div>
+
+            {/* PBR Channel Cards */}
+            <div className="grid grid-cols-4 gap-2 text-xs">
+              <div className={`p-2.5 rounded-lg border text-center ${
+                isLight ? 'bg-zinc-50 border-zinc-200' : 'bg-zinc-950 border-zinc-800'
+              }`}>
+                <div className={`text-[10px] uppercase font-bold ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>Albedo Map</div>
+                <div className={`font-bold mt-0.5 ${isLight ? 'text-zinc-900' : 'text-white'}`}>RGB 8-bit HD</div>
+              </div>
+              <div className={`p-2.5 rounded-lg border text-center ${
+                isLight ? 'bg-zinc-50 border-zinc-200' : 'bg-zinc-950 border-zinc-800'
+              }`}>
+                <div className={`text-[10px] uppercase font-bold ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>Roughness</div>
+                <div className="font-bold text-amber-600 dark:text-amber-400 mt-0.5">15% Gloss</div>
+              </div>
+              <div className={`p-2.5 rounded-lg border text-center ${
+                isLight ? 'bg-zinc-50 border-zinc-200' : 'bg-zinc-950 border-zinc-800'
+              }`}>
+                <div className={`text-[10px] uppercase font-bold ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>Normal Map</div>
+                <div className="font-bold text-sky-600 dark:text-sky-400 mt-0.5">OpenGL 16b</div>
+              </div>
+              <div className={`p-2.5 rounded-lg border text-center ${
+                isLight ? 'bg-zinc-50 border-zinc-200' : 'bg-zinc-950 border-zinc-800'
+              }`}>
+                <div className={`text-[10px] uppercase font-bold ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>Displacement</div>
+                <div className="font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">0.35 mm</div>
               </div>
             </div>
           </div>
 
-          <div className={`space-y-2 pt-2 border-t ${isLight ? 'border-zinc-200' : 'border-zinc-800'}`}>
-            <button
-              onClick={() => setSkuPaused(!skuPaused)}
-              className={`w-full py-2.5 rounded-xl font-bold text-xs transition-all cursor-pointer ${
-                skuPaused
-                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
-                  : isLight
-                  ? 'bg-zinc-100 hover:bg-zinc-200 text-amber-700 border border-amber-300'
-                  : 'bg-zinc-800 hover:bg-zinc-700 text-amber-400 border border-amber-500/20'
-              }`}
-            >
-              {skuPaused ? 'Reactivar en Catálogo 3D' : 'Pausar en Catálogo 3D'}
-            </button>
-            <button
-              onClick={() => alert('Mapas PBR (4K) descargados en formato ZIP.')}
-              className="w-full py-2.5 bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-orange-600/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-            >
-              <Download size={15} /> Descargar Mapas PBR (4K)
-            </button>
+          {/* Right 4 Cols: Technical Specs & Catalog State */}
+          <div className={`lg:col-span-4 border rounded-xl p-4 flex flex-col justify-between space-y-4 ${
+            isLight ? 'bg-zinc-50 border-zinc-200' : 'bg-zinc-950 border-zinc-800'
+          }`}>
+            <div className="space-y-3">
+              <h4 className={`text-sm font-bold border-b pb-2 ${isLight ? 'text-zinc-900 border-zinc-200' : 'text-white border-zinc-800'}`}>
+                Ficha Técnica de Material
+              </h4>
+
+              <div className="space-y-2 text-xs">
+                <div className="flex justify-between">
+                  <span className={isLight ? 'text-zinc-500' : 'text-zinc-400'}>Marca / Fabricante:</span>
+                  <span className={`font-bold ${isLight ? 'text-zinc-900' : 'text-white'}`}>
+                    {activeTexture?.brand || selectedProviderName || 'Marca Registrada'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className={isLight ? 'text-zinc-500' : 'text-zinc-400'}>Formato Nominal:</span>
+                  <span className={`font-mono font-semibold ${isLight ? 'text-zinc-800' : 'text-zinc-200'}`}>
+                    {activeTexture?.thickness ? `Plancha ${activeTexture.thickness}mm (1.83×2.50m)` : 'Formato Estándar'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className={isLight ? 'text-zinc-500' : 'text-zinc-400'}>Categoría 3D:</span>
+                  <span className="font-semibold text-orange-500 uppercase text-[11px]">
+                    {activeTexture?.category || 'Tableros / Frentes'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className={isLight ? 'text-zinc-500' : 'text-zinc-400'}>Estado en 3D:</span>
+                  <span className={`px-2 py-0.5 rounded font-bold text-[10px] ${
+                    !skuPaused
+                      ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30'
+                      : 'bg-amber-500/10 text-amber-600 border border-amber-500/30'
+                  }`}>
+                    {!skuPaused ? 'Activo en Catálogo 3D' : 'Pausado Temporalmente'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2 pt-3 border-t border-zinc-200 dark:border-zinc-800">
+              <button
+                onClick={() => setSkuPaused(!skuPaused)}
+                className={`w-full py-2 rounded-xl font-bold text-xs transition-all cursor-pointer ${
+                  skuPaused
+                    ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                    : isLight
+                    ? 'bg-zinc-200 hover:bg-zinc-300 text-zinc-800'
+                    : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200'
+                }`}
+              >
+                {skuPaused ? 'Reactivar en Catálogo 3D' : 'Pausar en Catálogo 3D'}
+              </button>
+              <button
+                onClick={() => alert(`Mapas PBR 4K de "${activeTexture?.name}" descargados.`)}
+                className="w-full py-2 bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <Download size={14} /> Descargar Mapas PBR (4K)
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Pipeline de Solicitudes de Muestras Físicas Table */}
+      {/* Proyectos Guardados & Cotizaciones 3D por Material Table */}
       <div className={`border rounded-2xl p-5 space-y-4 transition-colors ${
         isLight ? 'bg-white border-zinc-200 shadow-sm' : 'bg-zinc-900/80 border-zinc-800'
       }`}>
@@ -456,89 +529,84 @@ export function ForecastingSamplesSheet({ selectedProviderName, selectedProvider
         }`}>
           <div>
             <h3 className={`text-base font-bold flex items-center gap-2 ${isLight ? 'text-zinc-900' : 'text-white'}`}>
-              <Package size={18} className="text-orange-500" />
-              Solicitudes de Muestras Físicas desde el Configurador 3D
+              <FolderKanban size={18} className="text-orange-500" />
+              Proyectos Guardados & Cotizaciones 3D por Material ({providerProjects.length})
             </h3>
             <p className={`text-xs ${isLight ? 'text-zinc-600' : 'text-zinc-400'}`}>
-              Trazabilidad de muestras táctiles enviadas tras sesiones interactivas de diseño 3D por profesionales.
+              Trazabilidad de proyectos diseñados en el configurador 3D que utilizan insumos y materiales de {selectedProviderName || 'esta marca'}.
             </p>
           </div>
-          <span className={`text-xs font-mono font-bold ${isLight ? 'text-zinc-700' : 'text-zinc-400'}`}>Valor pipeline: $412.900.000 CLP</span>
+          <span className={`text-xs font-mono font-bold ${isLight ? 'text-zinc-700' : 'text-zinc-400'}`}>
+            Pipeline Estimado: ${totalPipelineClp.toLocaleString('es-CL')} CLP
+          </span>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className={`uppercase tracking-wider text-[10px] font-bold ${
-                isLight ? 'bg-zinc-100 text-zinc-700' : 'bg-zinc-950/60 text-zinc-400'
-              }`}>
-                <th className="py-2.5 px-3 rounded-l-lg">Solicitante</th>
-                <th className="py-2.5 px-3">Materiales Solicitados</th>
-                <th className="py-2.5 px-3">Proyecto 3D</th>
-                <th className="py-2.5 px-3">Fecha</th>
-                <th className="py-2.5 px-3">Estado Envío</th>
-                <th className="py-2.5 px-3 text-right">Presupuesto</th>
-                <th className="py-2.5 px-3 text-center rounded-r-lg">Acción</th>
-              </tr>
-            </thead>
-            <tbody className={`divide-y ${isLight ? 'divide-zinc-200' : 'divide-zinc-800/50'}`}>
-              {sampleOrders.map((s) => (
-                <tr key={s.id} className={`transition-colors ${isLight ? 'hover:bg-zinc-50' : 'hover:bg-zinc-800/40'}`}>
-                  <td className="py-3 px-3">
-                    <div className="flex items-center gap-2.5">
-                      <div className={`w-8 h-8 rounded-full border flex items-center justify-center font-bold text-xs text-orange-500 shrink-0 ${
-                        isLight ? 'bg-orange-50 border-orange-200' : 'bg-zinc-800 border-zinc-700'
-                      }`}>
-                        {s.avatar}
-                      </div>
-                      <div>
-                        <div className={`font-bold ${isLight ? 'text-zinc-900' : 'text-white'}`}>{s.name}</div>
-                        <div className={`text-[11px] ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>{s.studio}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="py-3 px-3">
-                    <div className="flex flex-wrap gap-1">
-                      {s.materials.map((m, idx) => (
-                        <span key={idx} className={`px-2 py-0.5 rounded text-[11px] font-medium ${
-                          isLight ? 'bg-zinc-100 border border-zinc-200 text-zinc-800' : 'bg-zinc-800 text-zinc-300'
-                        }`}>
-                          {m}
-                        </span>
-                      ))}
-                    </div>
-                  </td>
-                  <td className="py-3 px-3">
-                    <div className={`font-medium ${isLight ? 'text-zinc-900' : 'text-white'}`}>{s.project}</div>
-                  </td>
-                  <td className={`py-3 px-3 font-mono ${isLight ? 'text-zinc-600' : 'text-zinc-400'}`}>{s.date}</td>
-                  <td className="py-3 px-3">
-                    <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold text-[10px]">
-                      {s.status}
-                    </span>
-                  </td>
-                  <td className="py-3 px-3 text-right">
-                    <div className={`font-mono font-bold ${isLight ? 'text-zinc-900' : 'text-white'}`}>{s.amount}</div>
-                    <div className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold">{s.probability}</div>
-                  </td>
-                  <td className="py-3 px-3 text-center">
-                    <button
-                      onClick={() => alert(`Abriendo ficha 3D y despiece de corte para ${s.name}`)}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer border ${
-                        isLight
-                          ? 'bg-zinc-100 hover:bg-orange-500 hover:text-white border-zinc-200 text-zinc-800'
-                          : 'bg-zinc-800 hover:bg-orange-500 hover:text-white border-transparent text-zinc-300'
-                      }`}
-                    >
-                      Ver Proyecto
-                    </button>
-                  </td>
+        {providerProjects.length === 0 ? (
+          <div className="py-10 flex flex-col items-center justify-center text-center space-y-2">
+            <Box size={32} className="text-zinc-400" />
+            <p className={`text-xs font-semibold ${isLight ? 'text-zinc-600' : 'text-zinc-400'}`}>
+              No se han registrado proyectos 3D activos utilizando materiales de esta marca en el período seleccionado.
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className={`uppercase tracking-wider text-[10px] font-bold ${
+                  isLight ? 'bg-zinc-100 text-zinc-700' : 'bg-zinc-950/60 text-zinc-400'
+                }`}>
+                  <th className="py-2.5 px-3 rounded-l-lg">Código / Proyecto 3D</th>
+                  <th className="py-2.5 px-3">Cliente / Diseñador</th>
+                  <th className="py-2.5 px-3">Tipo de Proyecto</th>
+                  <th className="py-2.5 px-3">Fecha</th>
+                  <th className="py-2.5 px-3">Estado Pipeline</th>
+                  <th className="py-2.5 px-3 text-right">Superficie 3D</th>
+                  <th className="py-2.5 px-3 text-right rounded-r-lg">Presupuesto CLP</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className={`divide-y ${isLight ? 'divide-zinc-200' : 'divide-zinc-800/50'}`}>
+                {providerProjects.map((p) => (
+                  <tr key={p.id} className={`transition-colors ${isLight ? 'hover:bg-zinc-50' : 'hover:bg-zinc-800/40'}`}>
+                    <td className="py-3 px-3 font-bold">
+                      <div className={isLight ? 'text-zinc-900' : 'text-white'}>{p.name}</div>
+                      <div className="text-[10px] font-mono text-orange-500">{p.code || p.id}</div>
+                    </td>
+                    <td className="py-3 px-3">
+                      <div className={`font-medium ${isLight ? 'text-zinc-800' : 'text-zinc-200'}`}>{p.clientName || 'Estudio de Arquitectura'}</div>
+                    </td>
+                    <td className="py-3 px-3">
+                      <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold ${
+                        isLight ? 'bg-zinc-100 text-zinc-700 border border-zinc-200' : 'bg-zinc-800 text-zinc-300'
+                      }`}>
+                        {p.type === 'kitchen' ? 'Cocina Mueblaría' : p.type === 'closet' ? 'Clóset Paramétrico' : 'Mobiliario Especial'}
+                      </span>
+                    </td>
+                    <td className={`py-3 px-3 font-mono ${isLight ? 'text-zinc-600' : 'text-zinc-400'}`}>
+                      {p.date ? new Date(p.date).toLocaleDateString('es-CL') : 'Reciente'}
+                    </td>
+                    <td className="py-3 px-3">
+                      <span className={`px-2 py-0.5 rounded font-bold text-[10px] ${
+                        p.status === 'sold' || p.status === 'in_production'
+                          ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30'
+                          : 'bg-amber-500/10 text-amber-600 border border-amber-500/30'
+                      }`}>
+                        {p.status === 'sold' ? 'Vendido / En Cierre' : p.status === 'in_production' ? 'En Producción' : 'En Cotización 3D'}
+                      </span>
+                    </td>
+                    <td className={`py-3 px-3 text-right font-mono font-bold ${isLight ? 'text-zinc-800' : 'text-zinc-200'}`}>
+                      {p.totalAreaM2 || 18.5} m²
+                    </td>
+                    <td className="py-3 px-3 text-right font-mono font-bold text-orange-600 dark:text-orange-400">
+                      ${(p.price || p.data?.budget || 2450000).toLocaleString('es-CL')}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
 }
+

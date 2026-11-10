@@ -93,6 +93,7 @@ export function SuppliesPriceTab({
 }: SuppliesPriceTabProps) {
   const {
     supplies,
+    textures,
     updateSupplyPrice,
     updateSupply,
     updateTexture,
@@ -1101,176 +1102,263 @@ export function SuppliesPriceTab({
       )}
 
       {/* Modal: Configurar Oferta Promocional */}
-      {offerItem && (
-        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-zinc-900 border border-rose-500/30 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
-            <div className="p-5 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/80">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400 shrink-0">
-                  <Flame size={18} className="fill-rose-400" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-white">
-                    Configurar Oferta / Descuento Promocional
-                  </h3>
-                  <p className="text-[11px] text-rose-300/80 font-mono">
-                    {offerItem.code} - {offerItem.name}
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setOfferItem(null)}
-                className="p-1.5 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800"
-              >
-                <X size={16} />
-              </button>
-            </div>
+      {offerItem && (() => {
+        const matchedTex = textures.find(t => t.id === offerItem.id || t.id === offerItem.id.replace('sup-', '') || t.code === offerItem.code);
+        const decorativeImg = offerItem.imageUrl || matchedTex?.imageUrl || '/textures/light-wood-grain.svg';
 
-            <form onSubmit={handleSaveOffer} className="p-6 space-y-4">
-              {/* Toggle Activar Oferta */}
-              <div className="p-3.5 bg-zinc-950 border border-zinc-800 rounded-xl flex items-center justify-between">
-                <div>
-                  <div className="text-xs font-bold text-white flex items-center gap-1.5">
-                    <Tag size={14} className="text-rose-400" />
-                    Estado de la Oferta Promocional
+        return (
+          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className={`rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 border ${
+              isLight 
+                ? 'bg-white border-slate-200 text-slate-800' 
+                : 'bg-zinc-900 border-rose-500/30 text-white'
+            }`}>
+              {/* Header Modal */}
+              <div className={`p-5 border-b flex items-center justify-between ${
+                isLight ? 'bg-slate-50 border-slate-200' : 'bg-zinc-900/80 border-zinc-800'
+              }`}>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-500 shrink-0">
+                    <Flame size={22} className="fill-rose-500" />
                   </div>
-                  <div className="text-[11px] text-zinc-400 mt-0.5">
-                    Activa la visibilidad con badge de descuento en el menú de diseño
+                  <div>
+                    <h3 className={`text-lg font-bold leading-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                      Configurar Oferta / Descuento Promocional
+                    </h3>
+                    <p className={`text-xs font-mono font-semibold ${isLight ? 'text-rose-600' : 'text-rose-300/90'}`}>
+                      {offerItem.code} — {offerItem.name}
+                    </p>
                   </div>
                 </div>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={offerActive}
-                    onChange={(e) => setOfferActive(e.target.checked)}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rose-500"></div>
-                </label>
+                <button
+                  onClick={() => setOfferItem(null)}
+                  className={`p-2 rounded-lg transition-colors ${
+                    isLight 
+                      ? 'text-slate-400 hover:text-slate-700 hover:bg-slate-200' 
+                      : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                  }`}
+                >
+                  <X size={18} />
+                </button>
               </div>
 
-              {/* Precios y % Descuento */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider mb-1">
-                    Precio Lista Normal
+              <form onSubmit={handleSaveOffer} className="p-6 space-y-4">
+                {/* Rectángulo Superior con la Imagen del Decorativo */}
+                <div className={`relative h-28 w-full rounded-xl overflow-hidden border shadow-sm flex items-center justify-between p-3.5 ${
+                  isLight ? 'bg-slate-100 border-slate-200' : 'bg-zinc-950 border-zinc-800'
+                }`}>
+                  <div className="absolute inset-0 z-0 opacity-20 dark:opacity-35">
+                    <img 
+                      src={decorativeImg} 
+                      alt={offerItem.name} 
+                      className="w-full h-full object-cover filter blur-[2px] scale-110" 
+                    />
+                  </div>
+                  <div className="relative z-10 flex items-center gap-3.5 w-full">
+                    <div className="w-20 h-20 rounded-lg overflow-hidden border-2 border-white dark:border-zinc-700 shadow-md bg-white shrink-0">
+                      <img 
+                        src={decorativeImg} 
+                        alt={offerItem.name} 
+                        className="w-full h-full object-cover" 
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold font-mono tracking-wider bg-rose-500 text-white uppercase shadow-sm mb-1">
+                        Muestra de Decorativo
+                      </span>
+                      <h4 className={`text-base font-extrabold truncate ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                        {offerItem.name}
+                      </h4>
+                      <p className={`text-xs font-mono font-medium truncate ${isLight ? 'text-slate-600' : 'text-zinc-400'}`}>
+                        {offerItem.code} {offerItem.spec ? `| ${offerItem.spec}` : ''}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Toggle Activar Oferta */}
+                <div className={`p-4 border rounded-xl flex items-center justify-between ${
+                  isLight ? 'bg-slate-50 border-slate-200' : 'bg-zinc-950 border-zinc-800'
+                }`}>
+                  <div>
+                    <div className={`text-sm font-bold flex items-center gap-2 ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                      <Tag size={16} className="text-rose-500" />
+                      Estado de la Oferta Promocional
+                    </div>
+                    <div className={`text-xs mt-0.5 ${isLight ? 'text-slate-500' : 'text-zinc-400'}`}>
+                      Activa la visibilidad con badge de descuento en el menú de diseño
+                    </div>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={offerActive}
+                      onChange={(e) => setOfferActive(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-slate-300 dark:bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rose-500"></div>
                   </label>
-                  <div className="px-3 py-2 bg-zinc-950/80 border border-zinc-800 rounded-xl text-xs font-mono font-bold text-zinc-400">
-                    ${offerItem.priceClp.toLocaleString('es-CL')} CLP
+                </div>
+
+                {/* Precios y % Descuento */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className={`block text-xs font-bold uppercase tracking-wider mb-1.5 ${
+                      isLight ? 'text-slate-700' : 'text-zinc-300'
+                    }`}>
+                      Precio Lista Normal
+                    </label>
+                    <div className={`px-3 py-2.5 border rounded-xl text-sm font-mono font-bold ${
+                      isLight ? 'bg-slate-100 border-slate-200 text-slate-700' : 'bg-zinc-950/80 border-zinc-800 text-zinc-400'
+                    }`}>
+                      ${offerItem.priceClp.toLocaleString('es-CL')} CLP
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-rose-500 uppercase tracking-wider mb-1.5">
+                      % Descuento Oferta
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        min="1"
+                        max="90"
+                        value={offerDiscount}
+                        onChange={(e) => {
+                          const disc = Number(e.target.value);
+                          setOfferDiscount(disc);
+                          setOfferPrice(Math.round(offerItem.priceClp * (1 - disc / 100)));
+                        }}
+                        className={`w-full pl-3 pr-8 py-2.5 border rounded-xl text-sm font-extrabold font-mono focus:outline-none focus:border-rose-500 ${
+                          isLight 
+                            ? 'bg-white border-rose-300 text-rose-600' 
+                            : 'bg-zinc-950 border-rose-500/40 text-rose-400'
+                        }`}
+                      />
+                      <Percent size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-rose-500" />
+                    </div>
                   </div>
                 </div>
 
+                {/* Precio Promocional Final */}
                 <div>
-                  <label className="block text-[11px] font-bold text-rose-400 uppercase tracking-wider mb-1">
-                    % Descuento Oferta
+                  <label className="block text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider mb-1.5">
+                    Precio Final en Oferta ($ CLP)
                   </label>
                   <div className="relative">
+                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-emerald-600 dark:text-emerald-500 font-bold text-sm">$</span>
+                    <input
+                      type="number"
+                      min="100"
+                      step="50"
+                      value={offerPrice}
+                      onChange={(e) => {
+                        const pr = Number(e.target.value);
+                        setOfferPrice(pr);
+                        if (offerItem.priceClp > 0) {
+                          const pct = Math.round((1 - pr / offerItem.priceClp) * 100);
+                          setOfferDiscount(Math.max(1, pct));
+                        }
+                      }}
+                      className={`w-full pl-8 pr-3 py-2.5 border rounded-xl text-sm font-extrabold font-mono focus:outline-none focus:border-emerald-500 ${
+                        isLight 
+                          ? 'bg-white border-emerald-300 text-emerald-700' 
+                          : 'bg-zinc-950 border-emerald-500/40 text-emerald-400'
+                      }`}
+                    />
+                  </div>
+                </div>
+
+                {/* Condicionantes: Plazo y Stock */}
+                <div className={`grid grid-cols-2 gap-3 pt-3 border-t ${
+                  isLight ? 'border-slate-200' : 'border-zinc-800'
+                }`}>
+                  <div>
+                    <label className={`block text-xs font-bold uppercase tracking-wider mb-1.5 flex items-center gap-1 ${
+                      isLight ? 'text-slate-700' : 'text-zinc-300'
+                    }`}>
+                      <Calendar size={14} className="text-amber-500" /> Plazo Límite Oferta
+                    </label>
+                    <input
+                      type="date"
+                      value={offerExpirationDate}
+                      onChange={(e) => setOfferExpirationDate(e.target.value)}
+                      className={`w-full px-3 py-2.5 border rounded-xl text-xs sm:text-sm font-mono focus:outline-none focus:border-amber-500 ${
+                        isLight 
+                          ? 'bg-white border-slate-300 text-slate-800' 
+                          : 'bg-zinc-950 border-zinc-800 text-white'
+                      }`}
+                    />
+                    <span className={`text-xs mt-1 block ${isLight ? 'text-slate-500' : 'text-zinc-500'}`}>
+                      Opcional (Dejar en blanco si dura hasta agotar stock)
+                    </span>
+                  </div>
+
+                  <div>
+                    <label className={`block text-xs font-bold uppercase tracking-wider mb-1.5 flex items-center gap-1 ${
+                      isLight ? 'text-slate-700' : 'text-zinc-300'
+                    }`}>
+                      <PackageCheck size={14} className="text-sky-500" /> Stock Asignado Oferta
+                    </label>
                     <input
                       type="number"
                       min="1"
-                      max="90"
-                      value={offerDiscount}
-                      onChange={(e) => {
-                        const disc = Number(e.target.value);
-                        setOfferDiscount(disc);
-                        setOfferPrice(Math.round(offerItem.priceClp * (1 - disc / 100)));
-                      }}
-                      className="w-full pl-3 pr-7 py-2 bg-zinc-950 border border-rose-500/40 rounded-xl text-xs text-rose-400 font-extrabold font-mono focus:outline-none focus:border-rose-500"
+                      max={offerItem.stockRef ?? 999}
+                      value={offerStockLimit}
+                      onChange={(e) => setOfferStockLimit(Number(e.target.value))}
+                      className={`w-full px-3 py-2.5 border rounded-xl text-xs sm:text-sm font-bold font-mono focus:outline-none focus:border-sky-500 ${
+                        isLight 
+                          ? 'bg-white border-slate-300 text-sky-700' 
+                          : 'bg-zinc-950 border-zinc-800 text-sky-400'
+                      }`}
                     />
-                    <Percent size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-rose-400" />
+                    <span className={`text-xs mt-1 block ${isLight ? 'text-slate-500' : 'text-zinc-500'}`}>
+                      Cant. máx de unidades en promoción
+                    </span>
                   </div>
                 </div>
-              </div>
 
-              {/* Precio Promocional Final */}
-              <div>
-                <label className="block text-[11px] font-bold text-emerald-400 uppercase tracking-wider mb-1">
-                  Precio Final en Oferta ($ CLP)
-                </label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-500 font-bold">$</span>
-                  <input
-                    type="number"
-                    min="100"
-                    step="50"
-                    value={offerPrice}
-                    onChange={(e) => {
-                      const pr = Number(e.target.value);
-                      setOfferPrice(pr);
-                      if (offerItem.priceClp > 0) {
-                        const pct = Math.round((1 - pr / offerItem.priceClp) * 100);
-                        setOfferDiscount(Math.max(1, pct));
-                      }
-                    }}
-                    className="w-full pl-7 pr-3 py-2 bg-zinc-950 border border-emerald-500/40 rounded-xl text-xs text-emerald-400 font-extrabold font-mono focus:outline-none focus:border-emerald-500"
-                  />
-                </div>
-              </div>
-
-              {/* Condicionantes: Plazo y Stock */}
-              <div className="grid grid-cols-2 gap-3 pt-2 border-t border-zinc-800">
-                <div>
-                  <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider mb-1 flex items-center gap-1">
-                    <Calendar size={12} className="text-amber-400" /> Plazo Límite Oferta
-                  </label>
-                  <input
-                    type="date"
-                    value={offerExpirationDate}
-                    onChange={(e) => setOfferExpirationDate(e.target.value)}
-                    className="w-full px-2.5 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
-                  />
-                  <span className="text-[10px] text-zinc-500 mt-0.5 block">
-                    Opcional (Dejar en blanco si dura hasta agotar stock)
-                  </span>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider mb-1 flex items-center gap-1">
-                    <PackageCheck size={12} className="text-sky-400" /> Stock Asignado Oferta
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    max={offerItem.stockRef ?? 999}
-                    value={offerStockLimit}
-                    onChange={(e) => setOfferStockLimit(Number(e.target.value))}
-                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-sky-400 font-bold focus:outline-none focus:border-sky-500 font-mono"
-                  />
-                  <span className="text-[10px] text-zinc-500 mt-0.5 block">
-                    Cant. máx de unidades en promoción
-                  </span>
-                </div>
-              </div>
-
-              {/* Botones */}
-              <div className="pt-3 border-t border-zinc-800 flex items-center justify-between gap-3">
-                <button
-                  type="button"
-                  onClick={() => handleQuickRemoveOffer(offerItem)}
-                  className="px-3 py-2 bg-zinc-800 hover:bg-rose-500/20 text-rose-300 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1"
-                >
-                  <X size={13} /> Desactivar Oferta
-                </button>
-                <div className="flex items-center gap-2">
+                {/* Botones */}
+                <div className={`pt-4 border-t flex items-center justify-between gap-3 ${
+                  isLight ? 'border-slate-200' : 'border-zinc-800'
+                }`}>
                   <button
                     type="button"
-                    onClick={() => setOfferItem(null)}
-                    className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl text-xs font-semibold transition-colors"
+                    onClick={() => handleQuickRemoveOffer(offerItem)}
+                    className={`px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-colors flex items-center gap-1.5 ${
+                      isLight 
+                        ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200' 
+                        : 'bg-zinc-800 hover:bg-rose-500/20 text-rose-300'
+                    }`}
                   >
-                    Cancelar
+                    <X size={15} /> Desactivar Oferta
                   </button>
-                  <button
-                    type="submit"
-                    className="px-4 py-2 bg-rose-500 hover:bg-rose-400 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors shadow-md cursor-pointer"
-                  >
-                    <Save size={14} /> Guardar Oferta
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setOfferItem(null)}
+                      className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-colors ${
+                        isLight 
+                          ? 'bg-slate-200 hover:bg-slate-300 text-slate-700' 
+                          : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300'
+                      }`}
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-5 py-2.5 bg-rose-500 hover:bg-rose-400 text-white font-bold rounded-xl text-xs sm:text-sm flex items-center gap-1.5 transition-colors shadow-md cursor-pointer"
+                    >
+                      <Save size={16} /> Guardar Oferta
+                    </button>
+                  </div>
                 </div>
-              </div>
-            </form>
+              </form>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

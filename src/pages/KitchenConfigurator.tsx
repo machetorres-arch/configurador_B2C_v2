@@ -297,7 +297,24 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
       try {
         const canvas = document.querySelector('canvas');
         if (canvas) {
-          screenshotUrl = canvas.toDataURL('image/png');
+          const origAspect = canvas.width / canvas.height;
+          if (origAspect > 16 / 9) {
+            const cropW = canvas.height * (16 / 9);
+            const cropH = canvas.height;
+            const cropX = (canvas.width - cropW) / 2;
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = cropW;
+            tempCanvas.height = cropH;
+            const ctx = tempCanvas.getContext('2d');
+            if (ctx) {
+              ctx.drawImage(canvas, cropX, 0, cropW, cropH, 0, 0, cropW, cropH);
+              screenshotUrl = tempCanvas.toDataURL('image/png');
+            } else {
+              screenshotUrl = canvas.toDataURL('image/png');
+            }
+          } else {
+            screenshotUrl = canvas.toDataURL('image/png');
+          }
         }
       } catch (e) {
         console.warn('No se pudo capturar imagen del canvas 3D:', e);

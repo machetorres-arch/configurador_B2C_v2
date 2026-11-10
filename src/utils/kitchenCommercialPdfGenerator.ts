@@ -117,22 +117,46 @@ export function exportKitchenCommercialPdf(options: CommercialPdfOptions) {
   if (screenshotUrl && screenshotUrl.startsWith('data:image')) {
     doc.setFillColor(241, 245, 249);
     doc.setDrawColor(203, 213, 225);
-    const imgWidth = pageWidth - 28;
-    const imgHeight = 65;
-    doc.roundedRect(14, yPos, imgWidth, imgHeight, 2, 2, 'FD');
+    const boxWidth = pageWidth - 28; // 182mm
+    const boxHeight = 70; // mm
+    doc.roundedRect(14, yPos, boxWidth, boxHeight, 2, 2, 'FD');
 
     try {
-      doc.addImage(screenshotUrl, 'PNG', 15, yPos + 1, imgWidth - 2, imgHeight - 2);
+      let imgAspect = 16 / 9;
+      try {
+        const props = doc.getImageProperties(screenshotUrl);
+        if (props && props.width && props.height) {
+          imgAspect = props.width / props.height;
+        }
+      } catch (aspectErr) {
+        console.warn('Aspect ratio calculation fallback:', aspectErr);
+      }
+
+      const maxW = boxWidth - 4;
+      const maxH = boxHeight - 8;
+      let drawW = maxW;
+      let drawH = drawW / imgAspect;
+
+      if (drawH > maxH) {
+        drawH = maxH;
+        drawW = drawH * imgAspect;
+      }
+
+      const drawX = 14 + (boxWidth - drawW) / 2;
+      const drawY = yPos + 2 + (maxH - drawH) / 2;
+
+      doc.addImage(screenshotUrl, 'PNG', drawX, drawY, drawW, drawH);
+
       doc.setFillColor(15, 23, 42);
-      doc.rect(14, yPos + imgHeight - 6, 45, 6, 'F');
+      doc.rect(14, yPos + boxHeight - 6, 45, 6, 'F');
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(7);
       doc.setFont('helvetica', 'bold');
-      doc.text('VISTA ISOMÉTRICA 3D', 18, yPos + imgHeight - 2);
+      doc.text('VISTA ISOMÉTRICA 3D', 18, yPos + boxHeight - 2);
     } catch (e) {
       console.warn('Error insertando snapshot 3D en PDF:', e);
     }
-    yPos += 71;
+    yPos += boxHeight + 6;
   }
 
   // 4. Resumen Cuantitativo General
