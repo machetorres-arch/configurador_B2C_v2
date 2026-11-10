@@ -2419,12 +2419,14 @@ function CabinetBase({ id, type, variant, width, height, depth, position, rotati
          if (effectiveVariant === '1_door_1_drawer') {
             if (isGolaActive) {
                const golaRegruesoDeduct = Math.max(0, rawRegruesoCm - 3.5);
-               const drawerH = Math.max(8, 14.5 - golaRegruesoDeduct);
-               const yTopFront = legsHeight + cabH - 3.5 - gap - golaRegruesoDeduct;
-               const yBoxCenter = yTopFront - drawerH / 2;
-               const yGolaC = yTopFront - drawerH - gap - 2.0;
-               const doorH = Math.max(15, cabH - 3.5 - drawerH - 4.0 - gap * 4 - golaRegruesoDeduct);
-               const yDoorCenter = legsHeight + gap + doorH / 2;
+               const availH = Math.max(20, cabH - 3.5 - 4.0 - gap * 5 - golaRegruesoDeduct);
+               const drawerH = availH / 4;
+               const yBoxCenter = legsHeight + gap + drawerH / 2 + 3 * (drawerH + gap) + 4.0;
+               const yGolaC = legsHeight + gap + (drawerH + gap) * 2 + 2.0;
+               const doorTopY = yGolaC - 2.0 - gap;
+               const doorBottomY = legsHeight + gap;
+               const doorH = Math.max(10, doorTopY - doorBottomY);
+               const yDoorCenter = doorBottomY + doorH / 2;
                return (
                   <>
                      {renderGolaL()}
@@ -2456,10 +2458,15 @@ function CabinetBase({ id, type, variant, width, height, depth, position, rotati
                );
             }
             const deduct = isBaseOrIsland ? regruesoDeduct : 0;
-            const drawerH = Math.max(8, 15 - deduct);
-            const doorH = cabH - 15 - gap*3;
-            const yBoxCenter = legsHeight + gap*2 + doorH + drawerH/2;
-            const yDoorCenter = legsHeight + gap + doorH/2;
+            const baseDrawerH = (cabH - gap * 5) / 4;
+            const topDrawerH = Math.max(8, baseDrawerH - deduct);
+            const drawerH = topDrawerH;
+            const yBoxCenter = legsHeight + gap + 3 * (baseDrawerH + gap) + drawerH / 2;
+            const drawerBottomY = yBoxCenter - drawerH / 2;
+            const doorTopY = drawerBottomY - gap;
+            const doorBottomY = legsHeight + gap;
+            const doorH = Math.max(10, doorTopY - doorBottomY);
+            const yDoorCenter = doorBottomY + doorH / 2;
             return (
                <>
                   <AnimatedDoor
@@ -2475,7 +2482,7 @@ function CabinetBase({ id, type, variant, width, height, depth, position, rotati
                      handleConfig={handleConfig}
                   />
                   {/* Divisor fijo bajo el cajón */}
-                  {renderShelfWithJoints(legsHeight + gap + doorH + gap, '1d1dr_div')}
+                  {renderShelfWithJoints(drawerBottomY - gap / 2, '1d1dr_div')}
                   {(() => {
                      const cabObj: CabinetType = { id, type, variant, width, height, depth, position, rotation, color, shelvesCount };
                      const shelfElevations = getResolvedCabinetShelfElevations(cabObj, thickness);
@@ -3975,7 +3982,14 @@ function CabinetBase({ id, type, variant, width, height, depth, position, rotati
          : (variant?.startsWith('wall_corner_blind')
             ? (width - 5.5 - gap*3)
             : (isCornerBlind ? (width - (resolvedBlindW + 5) - gap*2) : (width - gap*2)));
-      const doorH = variant === '1_door_1_drawer' ? cabH - 15 - gap*3 : cabH - gap*2;
+      const drawerH_1d1dr = isGolaActive
+         ? Math.max(8, (Math.max(20, cabH - 3.5 - 4.0 - gap * 5 - Math.max(0, rawRegruesoCm - 3.5))) / 4)
+         : Math.max(8, ((cabH - gap * 5) / 4) - (isBaseOrIsland ? regruesoDeduct : 0));
+      const doorH = variant === '1_door_1_drawer' 
+         ? (isGolaActive 
+             ? Math.max(15, cabH - 3.5 - drawerH_1d1dr - 4.0 - gap * 4 - Math.max(0, rawRegruesoCm - 3.5)) 
+             : (cabH - drawerH_1d1dr - gap * 3)) 
+         : cabH - gap * 2;
 
       return (
          <group renderOrder={999}>
@@ -4161,15 +4175,16 @@ function CabinetBase({ id, type, variant, width, height, depth, position, rotati
                if (effVar === '1_door_1_drawer') {
                   if (isGolaActive) {
                      const golaRegruesoDeduct = Math.max(0, rawRegruesoCm - 3.5);
-                     const drawerH = Math.max(8, 14.5 - golaRegruesoDeduct);
-                     const yTopFront = legsHeight + cabH - 3.5 - gap - golaRegruesoDeduct;
-                     const yBoxCenter = yTopFront - drawerH / 2;
+                     const availH = Math.max(20, cabH - 3.5 - 4.0 - gap * 5 - golaRegruesoDeduct);
+                     const drawerH = availH / 4;
+                     const yBoxCenter = legsHeight + gap + drawerH / 2 + 3 * (drawerH + gap) + 4.0;
                      drawerFronts.push({ yCenter: -height / 2 + yBoxCenter, frontH: drawerH });
                   } else {
                      const deduct = isBaseOrIsland ? regruesoDeduct : 0;
-                     const drawerH = Math.max(8, 15 - deduct);
-                     const doorH = cabH - 15 - gap * 3;
-                     const yBoxCenter = legsHeight + gap * 2 + doorH + drawerH / 2;
+                     const baseDrawerH = (cabH - gap * 5) / 4;
+                     const topDrawerH = Math.max(8, baseDrawerH - deduct);
+                     const drawerH = topDrawerH;
+                     const yBoxCenter = legsHeight + gap + 3 * (baseDrawerH + gap) + drawerH / 2;
                      drawerFronts.push({ yCenter: -height / 2 + yBoxCenter, frontH: drawerH });
                   }
                } else if (effVar === '4_drawers') {

@@ -2083,7 +2083,12 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
         }
         if (cab.variant === '1_door_1_drawer') {
             drawCount = 1;
-            drawerHeights = [isGola ? 14.5 : 18]; // 35mm top deduction if Gola L
+            if (isGola) {
+                const availH = Math.max(20, cabH - 3.5 - 4.0 - gap * 5);
+                drawerHeights = [availH / 4];
+            } else {
+                drawerHeights = [(cabH - gap * 5) / 4];
+            }
         }
 
         // Modificación de altura de frentes de cajón según el regrueso delantero de cubierta (0 a 5 cm)
@@ -2115,7 +2120,8 @@ export function generateKitchenPartsList(cabinets: CabinetType[]): Part[] {
         });
 
         if (cab.variant === '1_door_1_drawer') {
-            const doorH = isGola ? Math.max(15, cabH - 3.5 - 14.5 - 4.0 - gap * 4 - regruesoDeduction) : (cabH - gap * 3 - 18);
+            const actualDrwH = drawerHeights[0] || (isGola ? 14.5 : 18);
+            const doorH = isGola ? Math.max(15, cabH - 3.5 - actualDrwH - 4.0 - gap * 4 - regruesoDeduction) : (cabH - gap * 3 - actualDrwH);
             parts.push({
                 name: `Puerta Frontal ${cabName}`,
                 moduleId: cab.id,

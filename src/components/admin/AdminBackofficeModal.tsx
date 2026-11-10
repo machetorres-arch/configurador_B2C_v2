@@ -157,12 +157,29 @@ export function AdminBackofficeModal({
     }
   }, [isOpen, isCloud, supabaseUser?.tenant_id]);
 
+  const userAvatarKey = currentUser?.id
+    ? `arquify_avatar_${currentUser.id}`
+    : currentUser?.email
+    ? `arquify_avatar_${currentUser.email.trim().toLowerCase()}`
+    : supabaseUser?.id
+    ? `arquify_avatar_${supabaseUser.id}`
+    : null;
+
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [editName, setEditName] = useState(currentUser?.full_name || 'Marcelo Fuentes');
   const [editEmail, setEditEmail] = useState(supabaseUser?.email || currentUser?.email || adminEmail || 'marcelo@robfu.cl');
-  const [avatarImage, setAvatarImage] = useState<string | null>(
-    currentUser?.avatar_url || (typeof window !== 'undefined' ? localStorage.getItem('arquify_user_avatar') : null)
-  );
+  const [avatarImage, setAvatarImage] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    // Remover clave global antigua compartida si existía
+    try {
+      localStorage.removeItem('arquify_user_avatar');
+    } catch (_) {}
+    if (currentUser?.avatar_url) return currentUser.avatar_url;
+    if (userAvatarKey) {
+      return localStorage.getItem(userAvatarKey);
+    }
+    return null;
+  });
 
   useEffect(() => {
     if (currentUser?.full_name) {
@@ -171,10 +188,17 @@ export function AdminBackofficeModal({
     if (currentUser?.email || supabaseUser?.email) {
       setEditEmail(supabaseUser?.email || currentUser?.email || adminEmail || 'marcelo@robfu.cl');
     }
+    
+    // Cargar avatar específico del usuario o null si no se ha cargado una foto propia
     if (currentUser?.avatar_url) {
       setAvatarImage(currentUser.avatar_url);
+    } else if (userAvatarKey && typeof window !== 'undefined') {
+      const saved = localStorage.getItem(userAvatarKey);
+      setAvatarImage(saved);
+    } else {
+      setAvatarImage(null);
     }
-  }, [currentUser, supabaseUser, adminEmail]);
+  }, [currentUser, supabaseUser, adminEmail, userAvatarKey]);
 
   const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -184,7 +208,9 @@ export function AdminBackofficeModal({
         const base64 = reader.result as string;
         setAvatarImage(base64);
         try {
-          localStorage.setItem('arquify_user_avatar', base64);
+          if (userAvatarKey) {
+            localStorage.setItem(userAvatarKey, base64);
+          }
         } catch (err) {
           console.warn('Avatar image too large for localStorage', err);
         }

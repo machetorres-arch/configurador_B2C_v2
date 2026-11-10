@@ -15,10 +15,15 @@ import {
   ExternalLink,
   MapPin
 } from 'lucide-react';
-
 import { useAdminStore } from '../../../store/adminStore';
 
-export function GreenMetricsCarbonSheet() {
+interface GreenMetricsCarbonSheetProps {
+  selectedProviderName?: string;
+  selectedProviderId?: string;
+  isSuperAdmin?: boolean;
+}
+
+export function GreenMetricsCarbonSheet({ selectedProviderName, selectedProviderId, isSuperAdmin }: GreenMetricsCarbonSheetProps = {}) {
   const { themeMode } = useAdminStore();
   const isLight = themeMode === 'light';
   const [selectedComuna, setSelectedComuna] = useState<'las_condes' | 'lo_barnechea' | 'vitacura' | 'chicureo' | 'providencia'>('chicureo');

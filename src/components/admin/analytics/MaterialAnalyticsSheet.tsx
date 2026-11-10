@@ -24,6 +24,9 @@ import {
 import { useAdminStore, ProjectItem } from '../../../store/adminStore';
 
 interface MaterialAnalyticsSheetProps {
+  selectedProviderName?: string;
+  selectedProviderId?: string;
+  isSuperAdmin?: boolean;
   onPrescribePackage?: (packageName: string) => void;
   onNavigateToTab?: (tab: string) => void;
 }
@@ -47,7 +50,13 @@ export interface ExtractedMaterialItem {
   conversionPercent: number;
 }
 
-export function MaterialAnalyticsSheet({ onPrescribePackage, onNavigateToTab }: MaterialAnalyticsSheetProps) {
+export function MaterialAnalyticsSheet({
+  selectedProviderName,
+  selectedProviderId,
+  isSuperAdmin = true,
+  onPrescribePackage,
+  onNavigateToTab
+}: MaterialAnalyticsSheetProps) {
   const { projects, textures, supplies, themeMode } = useAdminStore();
   const isLight = themeMode === 'light';
   const [selectedCategory, setSelectedCategory] = useState<'all' | 'tableros' | 'cubiertas' | 'electrodomesticos' | 'herrajes' | 'interiores'>('all');
@@ -361,8 +370,109 @@ export function MaterialAnalyticsSheet({ onPrescribePackage, onNavigateToTab }: 
       }
     });
 
+    const filterByProvider = (item: { name: string; sku: string; category: string }) => {
+      if (isSuperAdmin || !selectedProviderName) return true;
+
+      const pId = (selectedProviderId || '').toLowerCase();
+      const pName = (selectedProviderName || '').toLowerCase();
+      const name = item.name.toLowerCase();
+      const sku = item.sku.toLowerCase();
+
+      // Comprobar coincidencia con insumos o texturas del catálogo
+      const matchedSupply = supplies.find(
+        (s) => s.code === item.sku || s.name.toLowerCase() === name || s.id === item.sku
+      );
+      if (matchedSupply) {
+        if (pId && matchedSupply.providerId === pId) return true;
+        const sSup = (matchedSupply.supplier || '').toLowerCase();
+        if (pId && (sSup.includes(pId) || pId.includes(sSup))) return true;
+        if (pName && (sSup.includes(pName) || pName.includes(sSup))) return true;
+      }
+
+      const matchedTex = textures.find(
+        (t) => t.code === item.sku || t.name.toLowerCase() === name || t.id === item.sku
+      );
+      if (matchedTex) {
+        if (pId && matchedTex.providerId === pId) return true;
+        const tProv = (matchedTex.providerName || matchedTex.brand || '').toLowerCase();
+        if (pId && (tProv.includes(pId) || pId.includes(tProv))) return true;
+        if (pName && (tProv.includes(pName) || pName.includes(tProv))) return true;
+      }
+
+      // Filtro heurístico específico por marca
+      if (pId.includes('arauco') || pName.includes('arauco')) {
+        return (
+          name.includes('arauco') ||
+          name.includes('vesto') ||
+          name.includes('blanco soft') ||
+          name.includes('blanco polo') ||
+          name.includes('polo soft') ||
+          name.includes('grafito') ||
+          sku.includes('arau') ||
+          sku.includes('vest')
+        );
+      }
+
+      if (pId.includes('masisa') || pName.includes('masisa')) {
+        return (
+          name.includes('masisa') ||
+          name.includes('innova') ||
+          name.includes('roble natural') ||
+          name.includes('roble maderado') ||
+          sku.includes('mas')
+        );
+      }
+
+      if (
+        pId.includes('qstone') ||
+        pName.includes('qstone') ||
+        pId.includes('sysprotec') ||
+        pName.includes('sysprotec')
+      ) {
+        return (
+          name.includes('qstone') ||
+          name.includes('sysprotec') ||
+          name.includes('cuarzo') ||
+          name.includes('sinteriz') ||
+          name.includes('pure white') ||
+          name.includes('black mamba') ||
+          name.includes('calacatta') ||
+          name.includes('ana white') ||
+          name.includes('aurota') ||
+          sku.includes('qp_') ||
+          sku.includes('qs')
+        );
+      }
+
+      if (pId.includes('abet') || pName.includes('abet')) {
+        return (
+          name.includes('abet') ||
+          name.includes('broccato') ||
+          name.includes('fiore pop') ||
+          name.includes('totoy') ||
+          sku.includes('hpl') ||
+          sku.includes('abet')
+        );
+      }
+
+      if (pId.includes('rehau') || pName.includes('rehau')) {
+        return (
+          name.includes('rehau') ||
+          name.includes('rauvisio') ||
+          name.includes('canto pvc') ||
+          sku.includes('rehau')
+        );
+      }
+
+      return name.includes(pName) || pName.includes(name);
+    };
+
     const resultList: ExtractedMaterialItem[] = [];
     map.forEach((item, id) => {
+      if (!filterByProvider({ name: item.name, sku: item.sku, category: item.category })) {
+        return;
+      }
+
       const designedM2OrUnits = Math.round(item.designedCount * 10) / 10;
       const soldM2OrUnits = Math.round(item.soldCount * 10) / 10;
       const conversionPercent = designedM2OrUnits > 0 ? Math.round((soldM2OrUnits / designedM2OrUnits) * 100) : 0;
@@ -389,7 +499,7 @@ export function MaterialAnalyticsSheet({ onPrescribePackage, onNavigateToTab }: 
     });
 
     return resultList;
-  }, [projects]);
+  }, [projects, selectedProviderName, selectedProviderId, isSuperAdmin, supplies, textures]);
 
   // Si no hay proyectos o materiales encontrados, devolver array vacío (cero estado limpio)
   const filteredMaterials = useMemo(() => {

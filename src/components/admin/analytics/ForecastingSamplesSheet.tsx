@@ -19,10 +19,15 @@ import {
   AlertTriangle,
   FileSpreadsheet
 } from 'lucide-react';
-
 import { useAdminStore } from '../../../store/adminStore';
 
-export function ForecastingSamplesSheet() {
+interface ForecastingSamplesSheetProps {
+  selectedProviderName?: string;
+  selectedProviderId?: string;
+  isSuperAdmin?: boolean;
+}
+
+export function ForecastingSamplesSheet({ selectedProviderName, selectedProviderId, isSuperAdmin }: ForecastingSamplesSheetProps = {}) {
   const { themeMode } = useAdminStore();
   const isLight = themeMode === 'light';
 

@@ -262,7 +262,7 @@ export const TexturesSection = ({
     if (target === 'drawerInner') return state.drawerInnerColor?.toLowerCase() === url.toLowerCase();
     if (target === 'shelves') return state.shelfColor?.toLowerCase() === url.toLowerCase();
     if (target === 'back') return state.backColor?.toLowerCase() === url.toLowerCase();
-    if (target === 'all') return state.doorColor?.toLowerCase() === url.toLowerCase() || state.structureColor?.toLowerCase() === url.toLowerCase();
+    if (target === 'all') return state.doorColor?.toLowerCase() === url.toLowerCase() && state.structureColor?.toLowerCase() === url.toLowerCase();
     return state.doorColor?.toLowerCase() === url.toLowerCase();
   };
 

@@ -697,7 +697,12 @@ export function KitchenModuleContextMenu({
       category: t.category,
       thicknessMm: t.thicknessMm || (t.category === 'hpl_autor' ? 0.9 : (t.name?.includes('15') ? 15 : 18)),
       sheetFormat: t.sheetFormat,
-      stock: t.stock !== undefined ? t.stock : 30
+      stock: t.stock !== undefined ? t.stock : 30,
+      isOfferActive: t.isOfferActive,
+      offerDiscountPercent: t.offerDiscountPercent,
+      offerPriceClp: t.offerPriceClp,
+      offerStockLimit: t.offerStockLimit,
+      offerExpirationDate: t.offerExpirationDate,
     }));
 
   const allTextures = approvedBackofficeTextures;
@@ -823,14 +828,23 @@ export function KitchenModuleContextMenu({
   const isTextureSelected = (url: string) => {
     if (!url || !activeCabinet) return false;
     const target = targetZone;
-    if (target === 'doors') return activeCabinet.doorColor?.toLowerCase() === url.toLowerCase();
-    if (target === 'structure') return activeCabinet.structureColor?.toLowerCase() === url.toLowerCase();
-    if (target === 'drawerFronts') return activeCabinet.drawerFrontColor?.toLowerCase() === url.toLowerCase();
-    if (target === 'drawerInner') return activeCabinet.drawerInnerColor?.toLowerCase() === url.toLowerCase();
-    if (target === 'shelves') return activeCabinet.shelfColor?.toLowerCase() === url.toLowerCase();
-    if (target === 'back') return activeCabinet.backColor?.toLowerCase() === url.toLowerCase();
-    if (target === 'all') return activeCabinet.doorColor?.toLowerCase() === url.toLowerCase();
-    return activeCabinet.doorColor?.toLowerCase() === url.toLowerCase();
+    const globalState = useStore.getState();
+
+    const doorColor = activeCabinet.doorColor || globalState.doorColor;
+    const structColor = activeCabinet.structureColor || globalState.structureColor;
+    const drawerFrontColor = activeCabinet.drawerFrontColor || globalState.drawerFrontColor || doorColor;
+    const drawerInnerColor = activeCabinet.drawerInnerColor || globalState.drawerInnerColor || structColor;
+    const shelfColor = activeCabinet.shelfColor || globalState.shelfColor || structColor;
+    const backColor = activeCabinet.backColor || globalState.backColor || structColor;
+
+    if (target === 'doors') return doorColor?.toLowerCase() === url.toLowerCase();
+    if (target === 'structure') return structColor?.toLowerCase() === url.toLowerCase();
+    if (target === 'drawerFronts') return drawerFrontColor?.toLowerCase() === url.toLowerCase();
+    if (target === 'drawerInner') return drawerInnerColor?.toLowerCase() === url.toLowerCase();
+    if (target === 'shelves') return shelfColor?.toLowerCase() === url.toLowerCase();
+    if (target === 'back') return backColor?.toLowerCase() === url.toLowerCase();
+    if (target === 'all') return doorColor?.toLowerCase() === url.toLowerCase() && structColor?.toLowerCase() === url.toLowerCase();
+    return doorColor?.toLowerCase() === url.toLowerCase();
   };
 
   const renderCatalogCard = (brandName: string) => (

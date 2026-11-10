@@ -15,10 +15,15 @@ import {
   Search,
   Maximize2
 } from 'lucide-react';
-
 import { useAdminStore } from '../../../store/adminStore';
 
-export function GeographicDemandSheet() {
+interface GeographicDemandSheetProps {
+  selectedProviderName?: string;
+  selectedProviderId?: string;
+  isSuperAdmin?: boolean;
+}
+
+export function GeographicDemandSheet({ selectedProviderName, selectedProviderId, isSuperAdmin }: GeographicDemandSheetProps = {}) {
   const { themeMode } = useAdminStore();
   const isLight = themeMode === 'light';
   const [activeMapView, setActiveMapView] = useState<'termico' | 'talleres' | 'm2'>('termico');

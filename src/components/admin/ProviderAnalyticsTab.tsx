@@ -312,6 +312,9 @@ export function ProviderAnalyticsTab({
 
         {activeSubTab === 'materiales' && (
           <MaterialAnalyticsSheet
+            selectedProviderName={providerName}
+            selectedProviderId={selectedProvider?.id || selectedProviderId}
+            isSuperAdmin={isSuperAdmin}
             onPrescribePackage={(pack) => {
               alert(`Paquete "${pack}" añadido a la cola de prescripción 3D.`);
             }}
@@ -321,11 +324,29 @@ export function ProviderAnalyticsTab({
           />
         )}
 
-        {activeSubTab === 'huella_verde' && <GreenMetricsCarbonSheet />}
+        {activeSubTab === 'huella_verde' && (
+          <GreenMetricsCarbonSheet
+            selectedProviderName={providerName}
+            selectedProviderId={selectedProvider?.id || selectedProviderId}
+            isSuperAdmin={isSuperAdmin}
+          />
+        )}
 
-        {activeSubTab === 'geografica' && <GeographicDemandSheet />}
+        {activeSubTab === 'geografica' && (
+          <GeographicDemandSheet
+            selectedProviderName={providerName}
+            selectedProviderId={selectedProvider?.id || selectedProviderId}
+            isSuperAdmin={isSuperAdmin}
+          />
+        )}
 
-        {activeSubTab === 'prediccion' && <ForecastingSamplesSheet />}
+        {activeSubTab === 'prediccion' && (
+          <ForecastingSamplesSheet
+            selectedProviderName={providerName}
+            selectedProviderId={selectedProvider?.id || selectedProviderId}
+            isSuperAdmin={isSuperAdmin}
+          />
+        )}
       </div>
     </div>
   );
