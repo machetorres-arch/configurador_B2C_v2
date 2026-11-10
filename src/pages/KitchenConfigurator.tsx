@@ -1419,106 +1419,117 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
     <aside className={`${(activeMobileTab !== 'catalog' && activeMobileTab !== 'scene') ? 'flex' : 'hidden lg:flex'} flex-col relative z-20 order-3 lg:order-3 flex-1 lg:flex-none w-full lg:w-96 min-h-0 backdrop-blur-xl border-t lg:border-t-0 lg:border-l h-auto lg:h-full pointer-events-auto transition-colors shadow-2xl ${
       isLight ? 'bg-white/95 border-slate-200 shadow-slate-200 text-slate-800' : 'bg-black/70 border-white/10 text-slate-200'
     }`}>
-      {/* Selector de Pestañas Superior (Desktop >= lg) */}
-      <div className={`hidden lg:grid grid-cols-5 border-b p-1.5 gap-1 shrink-0 transition-colors ${
-        isLight ? 'border-slate-200 bg-slate-50' : 'border-white/10 bg-black/60'
+      {/* Selector de Pestañas Superior (Desktop >= lg - Stitch Style) */}
+      <header className={`hidden lg:block border-b shrink-0 transition-colors ${
+        isLight ? 'border-slate-200 bg-white' : 'border-white/10 bg-zinc-900'
       }`}>
-        <button
-          onClick={() => setRightTab('module')}
-          className={`relative flex items-center justify-center gap-1.5 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
-            rightTab === 'module'
-              ? 'bg-orange-500 text-black shadow-[0_0_12px_rgba(249,115,22,0.25)]'
-              : isLight
-                ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
-                : 'text-slate-400 hover:text-white hover:bg-white/5'
-          }`}
-        >
-          <Box size={14} />
-          <span>Módulo</span>
-          {(activeCabinetId || activeArchElementId || activeWallId) && (
-            <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-orange-500 ring-2 ring-white dark:ring-black animate-pulse" />
-          )}
-        </button>
-        <button
-          onClick={() => {
-            if (activeCabinetId) setActiveCabinet(null);
-            if (activeArchElementId) setActiveArchElement(null);
-            if (activeWallId) setActiveWall(null);
-            setRightTab('materials');
-          }}
-          className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
-            rightTab === 'materials'
-              ? 'bg-orange-500 text-black shadow-[0_0_12px_rgba(249,115,22,0.25)]'
-              : isLight
-                ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
-                : 'text-slate-400 hover:text-white hover:bg-white/5'
-          }`}
-        >
-          <Palette size={14} />
-          <span>Acabados</span>
-        </button>
-        <button
-          onClick={() => {
-            if (activeCabinetId) setActiveCabinet(null);
-            if (activeArchElementId) setActiveArchElement(null);
-            if (activeWallId) setActiveWall(null);
-            setRightTab('engineering');
-          }}
-          className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
-            rightTab === 'engineering'
-              ? 'bg-orange-500 text-black shadow-[0_0_12px_rgba(249,115,22,0.25)]'
-              : isLight
-                ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
-                : 'text-slate-400 hover:text-white hover:bg-white/5'
-          }`}
-        >
-          <Sliders size={14} />
-          <span>Herrajes</span>
-        </button>
-        <button
-          onClick={() => {
-            if (activeCabinetId) setActiveCabinet(null);
-            if (activeArchElementId) setActiveArchElement(null);
-            if (activeWallId) setActiveWall(null);
-            setRightTab('mep');
-          }}
-          className={`relative flex items-center justify-center gap-1.5 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
-            rightTab === 'mep'
-              ? 'bg-cyan-600 text-white shadow-[0_0_12px_rgba(6,182,212,0.35)]'
-              : isLight
-                ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
-                : 'text-slate-400 hover:text-white hover:bg-white/5'
-          }`}
-          title="Trazado MEP & Interferencias"
-        >
-          <Wrench size={14} />
-          <span>MEP</span>
-          {mepClashes.length > 0 && (
-            <span className="absolute -top-1 -right-1 w-4 h-4 bg-rose-600 text-white rounded-full text-[9px] font-black flex items-center justify-center border border-white animate-pulse">
-              {mepClashes.length}
-            </span>
-          )}
-        </button>
-        <button
-          onClick={() => {
-            if (activeCabinetId) setActiveCabinet(null);
-            if (activeArchElementId) setActiveArchElement(null);
-            if (activeWallId) setActiveWall(null);
-            setRightTab('decoration');
-          }}
-          className={`flex items-center justify-center gap-1 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
-            rightTab === 'decoration'
-              ? 'bg-orange-500 text-black shadow-[0_0_12px_rgba(249,115,22,0.25)]'
-              : isLight
-                ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
-                : 'text-slate-400 hover:text-white hover:bg-white/5'
-          }`}
-          title="Decoración & Remodelación Espacial"
-        >
-          <Sparkles size={13} />
-          <span>Deco</span>
-        </button>
-      </div>
+        <nav className="p-2 overflow-x-auto no-scrollbar">
+          <div className="grid grid-cols-5 gap-1.5 min-w-max">
+            <button
+              onClick={() => setRightTab('module')}
+              className={`relative flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                rightTab === 'module'
+                  ? 'bg-orange-500 text-white font-bold shadow-sm shadow-orange-500/30'
+                  : isLight
+                    ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                    : 'text-slate-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <Box size={15} />
+              <span>Módulo</span>
+              {(activeCabinetId || activeArchElementId || activeWallId) && (
+                <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse shrink-0" />
+              )}
+            </button>
+
+            <button
+              onClick={() => {
+                if (activeCabinetId) setActiveCabinet(null);
+                if (activeArchElementId) setActiveArchElement(null);
+                if (activeWallId) setActiveWall(null);
+                setRightTab('materials');
+              }}
+              className={`relative flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                rightTab === 'materials'
+                  ? 'bg-orange-500 text-white font-bold shadow-sm shadow-orange-500/30'
+                  : isLight
+                    ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                    : 'text-slate-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <Palette size={15} />
+              <span>Acabados</span>
+              {rightTab === 'materials' && (
+                <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse shrink-0" />
+              )}
+            </button>
+
+            <button
+              onClick={() => {
+                if (activeCabinetId) setActiveCabinet(null);
+                if (activeArchElementId) setActiveArchElement(null);
+                if (activeWallId) setActiveWall(null);
+                setRightTab('engineering');
+              }}
+              className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                rightTab === 'engineering'
+                  ? 'bg-orange-500 text-white font-bold shadow-sm shadow-orange-500/30'
+                  : isLight
+                    ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                    : 'text-slate-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <Sliders size={15} />
+              <span>Herrajes</span>
+            </button>
+
+            <button
+              onClick={() => {
+                if (activeCabinetId) setActiveCabinet(null);
+                if (activeArchElementId) setActiveArchElement(null);
+                if (activeWallId) setActiveWall(null);
+                setRightTab('mep');
+              }}
+              className={`relative flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                rightTab === 'mep'
+                  ? 'bg-cyan-600 text-white font-bold shadow-sm shadow-cyan-600/30'
+                  : isLight
+                    ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                    : 'text-slate-400 hover:text-white hover:bg-white/5'
+              }`}
+              title="Trazado MEP & Interferencias"
+            >
+              <Wrench size={15} />
+              <span>MEP</span>
+              {mepClashes.length > 0 && (
+                <span className="ml-1 px-1.5 py-0.2 bg-rose-600 text-white rounded-full text-[9px] font-black">
+                  {mepClashes.length}
+                </span>
+              )}
+            </button>
+
+            <button
+              onClick={() => {
+                if (activeCabinetId) setActiveCabinet(null);
+                if (activeArchElementId) setActiveArchElement(null);
+                if (activeWallId) setActiveWall(null);
+                setRightTab('decoration');
+              }}
+              className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                rightTab === 'decoration'
+                  ? 'bg-orange-500 text-white font-bold shadow-sm shadow-orange-500/30'
+                  : isLight
+                    ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                    : 'text-slate-400 hover:text-white hover:bg-white/5'
+              }`}
+              title="Decoración & Remodelación Espacial"
+            >
+              <Sparkles size={15} />
+              <span>Deco</span>
+            </button>
+          </div>
+        </nav>
+      </header>
 
       {/* Contenido Scrollable según Pestaña */}
       <div className="flex-1 overflow-y-auto p-5 custom-scrollbar">
@@ -2231,33 +2242,40 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
 
         {rightTab === 'materials' && (
           <div className="flex flex-col gap-4">
-            {/* Banner de Alcance: Proyecto Global */}
-            <div className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 ${
-              isLight
-                ? 'bg-slate-100/90 border-slate-300 text-slate-700 shadow-xs'
-                : 'bg-white/[0.04] border-white/10 text-slate-300'
-            }`}>
-              <div className="flex items-center gap-2 min-w-0">
-                <Globe size={15} className="text-orange-500 shrink-0" />
-                <div className="flex flex-col min-w-0">
-                  <span className="font-extrabold text-[10px] uppercase tracking-wider text-orange-600 dark:text-orange-400">
-                    Alcance: Proyecto Global
-                  </span>
-                  <span className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
-                    Aplica a toda la cocina y a módulos con herencia global
-                  </span>
+            {/* Banner de Alcance: Proyecto Global (Stitch iOS Style) */}
+            <section
+              className={`rounded-2xl border p-3.5 shadow-xs transition-all ${
+                isLight
+                  ? 'border-orange-200/80 bg-gradient-to-r from-orange-50 via-white to-orange-50/50'
+                  : 'border-orange-500/30 bg-gradient-to-r from-orange-950/40 via-zinc-900 to-orange-950/20'
+              }`}
+              data-purpose="scope-indicator"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3 min-w-0">
+                  <div className="p-2 rounded-xl bg-orange-100 dark:bg-orange-950/60 text-orange-600 dark:text-orange-400 mt-0.5 shrink-0 border border-orange-200 dark:border-orange-500/30">
+                    <Globe size={18} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <span className="inline-block text-[11px] font-bold tracking-wider uppercase text-orange-700 dark:text-orange-400">
+                      Alcance: Proyecto Global
+                    </span>
+                    <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5 leading-relaxed">
+                      Aplica cambios a toda la cocina y a módulos con sincronización heredada.
+                    </p>
+                  </div>
                 </div>
+                {activeCabinetId && (
+                  <button
+                    onClick={() => setRightTab('module')}
+                    className="text-xs font-bold px-3 py-1.5 rounded-xl bg-orange-500 text-white shadow-xs hover:bg-orange-600 cursor-pointer shrink-0 transition active:scale-95"
+                    title="Volver a configurar el módulo individual seleccionado"
+                  >
+                    Ir al Módulo
+                  </button>
+                )}
               </div>
-              {activeCabinetId && (
-                <button
-                  onClick={() => setRightTab('module')}
-                  className="text-[10px] font-bold px-2 py-1 rounded bg-orange-500/10 hover:bg-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/30 cursor-pointer shrink-0"
-                  title="Volver a configurar el módulo individual seleccionado"
-                >
-                  Ir al Módulo
-                </button>
-              )}
-            </div>
+            </section>
 
             <IslandBackPanelConfigSection isLight={isLight} />
             <RoomFinishesSection isLight={isLight} />
@@ -2831,39 +2849,42 @@ export function KitchenConfigurator({ onNavigate }: { onNavigate: () => void }) 
         )}
       </div>
 
-      {/* Acceso Unificado a Planos y Documentación Técnica de Fabricación */}
-      <div className={`p-2.5 sm:p-3.5 border-t shrink-0 backdrop-blur-md transition-colors ${
-        isLight ? 'border-slate-200 bg-slate-50/95 shadow-lg' : 'border-white/10 bg-black/90'
-      }`}>
+      {/* Fixed Bottom Footer CTA for Technical Export (Stitch iOS Style) */}
+      <footer
+        className={`p-3.5 border-t shrink-0 backdrop-blur-md transition-colors ${
+          isLight ? 'border-slate-200 bg-white/95 shadow-lg' : 'border-white/10 bg-zinc-900/95 shadow-2xl'
+        }`}
+        data-purpose="footer-action-bar"
+      >
         <div className="flex items-center gap-2">
           {canAccessIndustrialOutputs ? (
             <button 
               onClick={() => globalState.setIsPrinting(true)} 
-              className="flex-1 flex items-center justify-center gap-2 py-2.5 sm:py-3 px-3 sm:px-4 bg-gradient-to-r from-orange-600 via-amber-600 to-orange-500 hover:from-orange-500 hover:to-amber-500 text-white rounded-xl transition-all text-xs uppercase tracking-wider font-bold shadow-lg shadow-orange-600/25 active:scale-[0.98] cursor-pointer"
+              className="flex-1 flex items-center justify-center gap-2.5 py-3.5 px-4 bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600 text-white text-sm font-bold rounded-2xl shadow-lg shadow-orange-500/30 active:scale-[0.99] transition duration-150 cursor-pointer tracking-wide"
               title="Abrir planos interactivos 2D/A3, despiece de corte, cotizaciones, etiquetas QR y archivos DXF para CNC"
             >
-              <FileText size={15} />
-              <span>Planos y Despiece</span>
+              <FileText size={18} className="text-white" />
+              <span>PLANOS Y DESPIECE</span>
             </button>
           ) : (
             <button 
               onClick={handleDirectCommercialPdfDownload} 
-              className="flex-1 flex items-center justify-center gap-2 py-2.5 sm:py-3 px-3 sm:px-4 bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-400 hover:to-amber-500 text-white rounded-xl transition-all text-xs uppercase tracking-wider font-bold shadow-lg shadow-orange-500/25 active:scale-[0.98] cursor-pointer"
+              className="flex-1 flex items-center justify-center gap-2.5 py-3.5 px-4 bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600 text-white text-sm font-bold rounded-2xl shadow-lg shadow-orange-500/30 active:scale-[0.99] transition duration-150 cursor-pointer tracking-wide"
               title="Descargar Cotización y Ficha Comercial en PDF con Renders 3D y Precios"
             >
-              <Download size={15} />
-              <span>Descargar Cotización PDF</span>
+              <Download size={18} className="text-white" />
+              <span>DESCARGAR COTIZACIÓN PDF</span>
             </button>
           )}
           <button
             onClick={() => setRoomPlannerOpen(true)}
-            className="lg:hidden p-2.5 bg-yellow-400 hover:bg-yellow-500 text-black font-extrabold text-xs uppercase tracking-wider rounded-xl flex items-center justify-center cursor-pointer shrink-0 shadow-sm"
+            className="lg:hidden p-3.5 bg-amber-500 hover:bg-amber-600 text-white font-extrabold text-xs uppercase tracking-wider rounded-2xl flex items-center justify-center cursor-pointer shrink-0 shadow-sm"
             title="Área de Cocina y Muros"
           >
-            <Layers size={16} />
+            <Layers size={18} />
           </button>
         </div>
-      </div>
+      </footer>
 
     </aside>
    </main>

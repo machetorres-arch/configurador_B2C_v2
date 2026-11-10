@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AlertTriangle, X, Flame, Tag } from 'lucide-react';
+import { AlertTriangle, X, Flame, Tag, PlusCircle, Check } from 'lucide-react';
 import { useStore, PartType } from '../store';
 import { useAdminStore, isSupplyOfferValid } from '../store/adminStore';
 import { useKitchenStore } from '../store/kitchenStore';
@@ -253,6 +253,35 @@ export const TexturesSection = ({
   const abetTextures = allTextures.filter(t => !isMasisaItem(t) && !isAraucoItem(t) && !isRehauItem(t) && isAbetItem(t));
   const otherTextures = allTextures.filter(t => !isMasisaItem(t) && !isAraucoItem(t) && !isRehauItem(t) && !isAbetItem(t) && matchesThickness(t));
 
+  const isTextureSelected = (url: string) => {
+    if (!url) return false;
+    const target = state.targetPart;
+    if (target === 'doors') return state.doorColor?.toLowerCase() === url.toLowerCase();
+    if (target === 'structure') return state.structureColor?.toLowerCase() === url.toLowerCase();
+    if (target === 'drawerFronts') return state.drawerFrontColor?.toLowerCase() === url.toLowerCase();
+    if (target === 'drawerInner') return state.drawerInnerColor?.toLowerCase() === url.toLowerCase();
+    if (target === 'shelves') return state.shelfColor?.toLowerCase() === url.toLowerCase();
+    if (target === 'back') return state.backColor?.toLowerCase() === url.toLowerCase();
+    if (target === 'all') return state.doorColor?.toLowerCase() === url.toLowerCase() || state.structureColor?.toLowerCase() === url.toLowerCase();
+    return state.doorColor?.toLowerCase() === url.toLowerCase();
+  };
+
+  const renderCatalogCard = (brandName: string) => (
+    <div 
+      key={`catalog_${brandName}`}
+      className={`flex flex-col items-center justify-center p-3 rounded-2xl border-2 border-dashed transition-all cursor-pointer text-center gap-1.5 min-h-[145px] ${
+        isLight
+          ? 'border-slate-300/80 hover:border-slate-400 bg-slate-50/50 hover:bg-slate-100/50 text-slate-400 hover:text-slate-600'
+          : 'border-white/20 hover:border-white/40 bg-white/5 text-zinc-400 hover:text-zinc-200'
+      }`}
+    >
+      <div className="w-8 h-8 rounded-full border border-current flex items-center justify-center">
+        <PlusCircle size={18} />
+      </div>
+      <span className="text-[11px] font-medium leading-tight">Ver catálogo {brandName}</span>
+    </div>
+  );
+
   const renderTextureButton = (tex: any) => {
     const is15 = tex.thicknessMm === 15;
     const is18 = tex.thicknessMm === 18;
@@ -262,6 +291,18 @@ export const TexturesSection = ({
     const finishLower = (tex.finish || '').toLowerCase();
     const isExtraMate = finishLower.includes('mate') || finishLower.includes('matt');
     const isExtraBrillo = finishLower.includes('brillo') || finishLower.includes('brilliant') || finishLower.includes('gloss');
+    const isSelected = isTextureSelected(tex.url);
+
+    let subtitle = '';
+    if (tex.category === 'hpl_autor' || isAbetItem(tex)) {
+      subtitle = `HPL Premium ${tex.thicknessMm || 0.9}`;
+    } else if (is15) {
+      subtitle = `MDP 15mm ${tex.finish || 'Mate'}`;
+    } else if (is18) {
+      subtitle = `MDF 18mm ${tex.finish || 'Soft'}`;
+    } else {
+      subtitle = `${tex.thicknessMm ? `${tex.thicknessMm}mm ` : ''}${tex.finish || 'Estándar'}`.trim();
+    }
 
     const handleButtonClick = () => {
       // 1. Si está sin stock / agotado, bloquear
@@ -318,12 +359,14 @@ export const TexturesSection = ({
           type="button"
           disabled={isOutOfStock}
           onClick={handleButtonClick}
-          className={`flex flex-col items-center gap-1 p-1 rounded transition-all w-full relative ${
+          className={`flex flex-col p-2.5 rounded-2xl transition-all w-full relative text-left ${
             isOutOfStock
-              ? 'opacity-35 grayscale cursor-not-allowed bg-zinc-900/60 border border-dashed border-red-500/50 hover:border-red-500/50'
-              : isLight 
-                ? 'bg-white border border-slate-300 hover:border-orange-500 shadow-sm cursor-pointer' 
-                : 'bg-white/5 border border-white/10 hover:border-orange-500/50 cursor-pointer'
+              ? 'opacity-35 grayscale cursor-not-allowed bg-zinc-900/60 border border-dashed border-red-500/50'
+              : isSelected
+                ? 'border-2 border-orange-500 bg-orange-500/5 shadow-md ring-2 ring-orange-500/20 cursor-pointer'
+                : isLight 
+                  ? 'bg-white border border-slate-200 hover:border-orange-500 shadow-xs cursor-pointer' 
+                  : 'bg-white/5 border border-white/10 hover:border-orange-500/50 cursor-pointer'
           }`}
           title={
             isOutOfStock
@@ -331,134 +374,179 @@ export const TexturesSection = ({
               : `${tex.name} ${tex.finish ? `[${tex.finish}]` : ''} ${tex.thicknessMm ? `[${tex.thicknessMm}mm]` : ''} [Stock: ${stockCount} planchas]`
           }
         >
-          {/* Badge de Oferta Activa */}
-          {isSupplyOfferValid(tex) ? (
-            <span className="absolute top-1 left-1 px-1 py-0.5 rounded text-[7px] font-mono font-black uppercase shadow-md z-20 bg-rose-600 text-white flex items-center gap-0.5 animate-pulse">
-              <Flame size={9} className="fill-white" />
-              {tex.offerDiscountPercent || 30}% OFF
-            </span>
-          ) : isOutOfStock ? (
-            <span className="absolute top-1 left-1 px-1 py-0.2 rounded text-[7px] font-mono font-extrabold uppercase shadow-sm z-10 bg-red-600 text-white">
-              SIN STOCK
-            </span>
-          ) : stockCount <= 10 ? (
-            <span className="absolute top-1 left-1 px-1 py-0.2 rounded text-[7px] font-mono font-bold uppercase shadow-sm z-10 bg-amber-500/90 text-black">
-              {stockCount} disp.
-            </span>
-          ) : null}
+          {/* Fila Superior de Badges: Por fuera del decorativo, dentro del margen perimetral de la tarjeta */}
+          <div className="flex items-center justify-between w-full min-h-[22px] mb-2 px-0.5 gap-1">
+            {/* Izquierda: Badge de Oferta Activa o Estado de Stock */}
+            <div>
+              {isSupplyOfferValid(tex) ? (
+                <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-black uppercase shadow-xs bg-rose-500 text-white flex items-center gap-1">
+                  <Flame size={11} className="fill-white" />
+                  {tex.offerDiscountPercent || 27}% OFF
+                </span>
+              ) : isOutOfStock ? (
+                <span className="px-1.5 py-0.5 rounded-md text-[9px] font-mono font-extrabold uppercase shadow-xs bg-red-600 text-white">
+                  SIN STOCK
+                </span>
+              ) : stockCount <= 10 ? (
+                <span className="px-1.5 py-0.5 rounded-md text-[9px] font-mono font-bold uppercase shadow-xs bg-amber-500/90 text-black">
+                  {stockCount} Disp.
+                </span>
+              ) : (isExtraMate || isExtraBrillo) ? (
+                <span className={`px-1.5 py-0.5 rounded-md text-[8.5px] font-mono font-extrabold uppercase shadow-xs ${
+                  isExtraBrillo ? 'bg-cyan-400 text-black' : 'bg-purple-600 text-white'
+                }`}>
+                  {isExtraBrillo ? 'EXTRA BRILLO' : 'EXTRA MATE'}
+                </span>
+              ) : (
+                <div />
+              )}
+            </div>
 
-          {/* Badge de Acabado Específico (Extra Mate / Extra Brillo) */}
-          {(isExtraMate || isExtraBrillo) && (
-            <span className={`absolute top-1 left-1 px-1 py-0.2 rounded text-[6.5px] font-mono font-extrabold uppercase shadow-sm z-10 ${
-              isExtraBrillo
-                ? 'bg-cyan-400 text-black'
-                : 'bg-purple-600 text-white'
-            }`}>
-              {isExtraBrillo ? 'EXTRA BRILLO' : 'EXTRA MATE'}
-            </span>
-          )}
+            {/* Derecha: Badge de Espesores prominente */}
+            {tex.thicknessMm && (
+              <span
+                className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-black uppercase shadow-xs ${
+                  isOutOfStock
+                    ? 'bg-zinc-800 text-zinc-500'
+                    : is15
+                    ? 'bg-blue-600 text-white'
+                    : is18
+                    ? 'bg-orange-500 text-white'
+                    : 'bg-slate-800 text-white'
+                }`}
+              >
+                {tex.thicknessMm === 0.9 ? '0.9mm' : `${tex.thicknessMm}mm`}
+              </span>
+            )}
+          </div>
 
-          {/* Badge de Espesor visible en esquina superior derecha */}
-          {tex.thicknessMm && (
-            <span
-              className={`absolute top-1 right-1 px-1 py-0.2 rounded text-[7px] font-mono font-extrabold uppercase shadow-sm z-10 ${
-                isOutOfStock
-                  ? 'bg-zinc-800 text-zinc-500'
-                  : is15
-                  ? 'bg-blue-600 text-white'
-                  : is18
-                  ? 'bg-orange-500 text-black'
-                  : 'bg-zinc-700 text-zinc-200'
-              }`}
-            >
-              {tex.thicknessMm}mm
-            </span>
-          )}
-
+          {/* Imagen / Muestra del Decorativo */}
           <div 
-            className={`w-full aspect-square rounded border bg-cover bg-center ${
+            className={`w-full aspect-[4/3] rounded-xl border bg-cover bg-center relative flex items-center justify-center ${
               isOutOfStock 
                 ? 'border-red-500/20' 
-                : isLight ? 'border-slate-200 group-hover:shadow-[0_0_10px_rgba(249,115,22,0.3)]' : 'border-white/20 group-hover:shadow-[0_0_10px_rgba(249,115,22,0.3)]'
+                : isLight ? 'border-slate-200' : 'border-white/20'
             }`}
             style={tex.url.startsWith('#') ? { backgroundColor: tex.url } : { backgroundImage: `url('${tex.url}')` }}
-          />
+          >
+            {/* Texto centrado para sólidos o blanco */}
+            {tex.url.toUpperCase() === '#FFFFFF' && (
+              <span className="text-[10px] font-extrabold text-slate-300 tracking-wider">BLANCO</span>
+            )}
+
+            {/* Checkmark circular cuando está seleccionado */}
+            {isSelected && (
+              <div className="w-8 h-8 rounded-full bg-orange-600 text-white flex items-center justify-center shadow-lg border-2 border-white animate-in zoom-in-75 duration-150">
+                <Check size={18} strokeWidth={3} />
+              </div>
+            )}
+          </div>
 
           {/* Indicador de Tapacanto 1mm para Rehau Rauvisio */}
           {isRehau && (
-            <div className="w-full flex items-center justify-between px-0.5">
-              <span className="text-[6.5px] font-mono font-bold text-purple-400 uppercase tracking-tighter">
+            <div className="w-full flex items-center justify-between px-0.5 mt-1">
+              <span className="text-[7px] font-mono font-bold text-purple-600 dark:text-purple-400 uppercase tracking-tighter">
                 Canteado 1mm
               </span>
-              <span className="text-[6.5px] font-mono font-bold text-zinc-400 uppercase tracking-tighter">
+              <span className="text-[7px] font-mono font-bold text-slate-400 uppercase tracking-tighter">
                 2800x1220
               </span>
             </div>
           )}
 
-          <span className={`text-[8px] uppercase tracking-wider font-bold truncate w-full text-center ${
-            isOutOfStock ? 'text-red-400/80 line-through' : isLight ? 'text-slate-800' : 'text-slate-400'
-          }`}>
-            {tex.name.length > 17 ? tex.name.substring(0, 17) + '...' : tex.name}
-          </span>
+          {/* Título y Subtítulo */}
+          <div className="flex flex-col items-start w-full px-0.5 min-w-0 mt-2">
+            <span className={`text-xs font-bold truncate w-full text-left leading-tight ${
+              isOutOfStock ? 'text-red-400/80 line-through' : isLight ? 'text-slate-900' : 'text-white'
+            }`}>
+              {tex.name}
+            </span>
+            <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400 truncate w-full text-left mt-0.5">
+              {subtitle}
+            </span>
+          </div>
         </button>
       </div>
     );
   };
 
   return (
-    <div className={`mb-8 p-3 rounded-lg border ${
-      isLight 
-        ? 'bg-orange-50/40 border-orange-300 shadow-sm' 
-        : 'bg-orange-500/5 border-orange-500/30'
-    }`}>
-      <div className="flex justify-between items-center mb-3">
-        <h2 className={`text-[11px] uppercase tracking-widest font-bold ${
-          isLight ? 'text-orange-600' : 'text-orange-500'
-        }`}>{title}</h2>
+    <section
+      className={`rounded-2xl border p-4 space-y-4 shadow-xs ${
+        isLight
+          ? 'bg-white border-orange-200'
+          : 'bg-zinc-900 border-orange-500/30'
+      }`}
+      data-purpose="kitchen-materials-section"
+    >
+      {/* Header of the module group */}
+      <div className={`flex items-center justify-between pb-3 border-b ${
+        isLight ? 'border-slate-100' : 'border-white/10'
+      }`}>
+        <div>
+          <span className="text-[11px] font-bold text-orange-500 uppercase tracking-wider block">Acabados Principales</span>
+          <h2 className={`text-sm font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>{title}</h2>
+        </div>
         {badgeText && (
-          <span className={`text-[8px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${
-            isLight 
-              ? 'bg-orange-100 text-orange-800 border-orange-300' 
-              : 'bg-orange-500/20 text-orange-400 border-orange-500/30'
+          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold transition-colors ${
+            isLight
+              ? 'bg-orange-100/90 text-orange-800 border border-orange-200 shadow-2xs'
+              : 'bg-orange-950/50 text-orange-400 border border-orange-500/30'
           }`}>
+            <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse shrink-0"></span>
             {badgeText}
           </span>
         )}
       </div>
-      
-      <div className="flex flex-col gap-2 mb-4">
-        <label className={`text-[10px] uppercase tracking-widest font-bold ${
-          isLight ? 'text-slate-700' : 'text-slate-400'
-        }`}>1. Selecciona la zona a modificar:</label>
-        <div className="grid grid-cols-2 gap-2 mb-2">
+
+      {/* Step 1: Zone Selection */}
+      <div className="space-y-2.5">
+        <div className="flex items-center justify-between">
+          <label className={`text-xs font-bold flex items-center gap-1.5 ${
+            isLight ? 'text-slate-800' : 'text-slate-200'
+          }`}>
+            <span className="w-5 h-5 rounded-full bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 flex items-center justify-center text-[10px] font-bold">1</span>
+            Selecciona la zona a modificar:
+          </label>
+        </div>
+
+        {/* 2-Column Ergonomic Buttons Grid */}
+        <div className="grid grid-cols-2 gap-2 text-xs font-semibold">
           {[
-            { id: 'all' as PartType, label: 'Todo el Mueble' },
+            { id: 'all' as PartType, label: 'Todo el mueble' },
             { id: 'doors' as PartType, label: 'Puertas' },
-            { id: 'drawerFronts' as PartType, label: 'Frentes Cajón' },
+            { id: 'drawerFronts' as PartType, label: 'Frentes cajón' },
             { id: 'structure' as PartType, label: 'Paredes / Casco' },
-            { id: 'coverPanels' as PartType, label: 'Tapas Laterales' },
-            { id: 'drawerInner' as PartType, label: 'Cajas Cajón' },
+            { id: 'coverPanels' as PartType, label: 'Tapas laterales' },
+            { id: 'drawerInner' as PartType, label: 'Cajas cajón' },
             { id: 'shelves' as PartType, label: 'Repisas' },
             { id: 'back' as PartType, label: 'Trasera / Fondo' },
-          ].map(part => (
-            <button 
-              key={part.id}
-              onClick={() => state.setTargetPart(part.id)}
-              className={`p-1.5 rounded-md text-[9px] uppercase tracking-widest font-bold transition-all cursor-pointer ${
-                (part as any).highlight ? 'col-span-2 py-2 border-orange-500/60 shadow-sm' : ''
-              } ${
-                state.targetPart === part.id 
-                  ? 'bg-orange-500 text-black shadow-[0_0_10px_rgba(249,115,22,0.3)] border border-orange-500 font-extrabold' 
-                  : isLight 
-                    ? 'bg-white text-slate-800 border border-slate-300 hover:border-orange-500 hover:text-black shadow-sm' 
-                    : 'bg-white/10 text-slate-300 border border-transparent hover:bg-white/20'
-              }`}
-            >
-              {part.label}
-            </button>
-          ))}
+          ].map((part) => {
+            const isSelected = state.targetPart === part.id;
+            return (
+              <button
+                key={part.id}
+                type="button"
+                onClick={() => state.setTargetPart(part.id)}
+                className={`py-2.5 px-3 rounded-xl border transition active:scale-[0.98] cursor-pointer text-left flex items-center justify-between ${
+                  isSelected
+                    ? 'border-2 border-orange-500 bg-orange-500 text-white shadow-md shadow-orange-500/20 font-bold'
+                    : isLight
+                      ? 'border-slate-200 bg-slate-50/70 hover:bg-slate-100 text-slate-700'
+                      : 'border-white/10 bg-white/5 hover:bg-white/10 text-slate-300'
+                }`}
+              >
+                <span>{part.label}</span>
+                {isSelected && (
+                  <span className="w-4 h-4 rounded-full bg-white/20 text-white flex items-center justify-center shrink-0">
+                    ✓
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
+      </div>
 
         {/* Opciones Especiales de Trasera / Fondo (Durolac Blanco 3mm vs Melamina 15/18mm) */}
         {state.targetPart === 'back' && (
@@ -654,16 +742,15 @@ export const TexturesSection = ({
             </div>
           );
         })()}
-      </div>
 
       {/* Filtro de Espesor de Melamina: Todos / 15 mm / 18 mm */}
-      <div className={`flex items-center justify-between p-1.5 rounded-lg border mb-3.5 ${
-        isLight ? 'bg-slate-100 border-slate-300' : 'bg-black/30 border-white/10'
+      <div className={`flex items-center justify-between p-2 rounded-xl border mb-4 ${
+        isLight ? 'bg-slate-50 border-slate-200/90' : 'bg-black/30 border-white/10'
       }`}>
-        <span className={`text-[9px] uppercase font-bold tracking-wider pl-1 ${isLight ? 'text-slate-600' : 'text-zinc-400'}`}>
+        <span className={`text-xs font-bold pl-1 ${isLight ? 'text-slate-700' : 'text-zinc-300'}`}>
           Filtro Calibre:
         </span>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1.5">
           {[
             { id: 'all' as const, label: 'Todos' },
             { id: 15 as const, label: '15 mm' },
@@ -673,11 +760,11 @@ export const TexturesSection = ({
               key={String(f.id)}
               type="button"
               onClick={() => setThicknessFilter(f.id)}
-              className={`px-2 py-0.5 rounded text-[9px] font-bold font-mono transition-all cursor-pointer ${
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                 thicknessFilter === f.id
-                  ? 'bg-orange-500 text-black font-extrabold shadow-xs'
+                  ? 'bg-orange-600 text-white shadow-xs font-extrabold'
                   : isLight
-                  ? 'bg-white text-slate-700 hover:bg-slate-200 border border-slate-300'
+                  ? 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
                   : 'bg-white/5 text-zinc-300 hover:bg-white/10'
               }`}
             >
@@ -687,113 +774,146 @@ export const TexturesSection = ({
         </div>
       </div>
 
-      {masisaTextures.length > 0 && (
-        <div className="mb-4">
-          <label className={`text-[10px] uppercase tracking-widest font-bold block mb-2 ${
-            isLight ? 'text-slate-700' : 'text-slate-400'
-          }`}>2. Masisa (Melaminas)</label>
-          <div className="grid grid-cols-3 gap-2">
-            {masisaTextures.map(t => renderTextureButton(t))}
-          </div>
-        </div>
-      )}
-
-      {araucoTextures.length > 0 && (
-        <div className="mb-4">
-          <label className={`text-[10px] uppercase tracking-widest font-bold block mb-2 ${
-            isLight ? 'text-slate-700' : 'text-slate-400'
-          }`}>3. Arauco / Vesto (Melaminas)</label>
-          <div className="grid grid-cols-3 gap-2">
-            {araucoTextures.map(t => renderTextureButton(t))}
-          </div>
-        </div>
-      )}
-
-      {rehauTextures.length > 0 && (
-        <div className="mb-4">
-          <div className="flex items-center justify-between mb-2">
-            <label className={`text-[10px] uppercase tracking-widest font-bold ${
-              isLight ? 'text-slate-700' : 'text-slate-400'
-            }`}>4. Rehau Rauvisio (Superficies Poliméricas 2.80 x 1.22 m)</label>
-            <span className="text-[8.5px] font-mono font-bold px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 border border-purple-500/30">
-              Tapacanto Exclusivo 1 mm
-            </span>
-          </div>
-          <div className="grid grid-cols-3 gap-2">
-            {rehauTextures.map(t => renderTextureButton(t))}
-          </div>
-        </div>
-      )}
-
-      {abetTextures.length > 0 && (
-        <div className="mb-4">
-          <div className="flex items-center justify-between mb-2">
-            <label className={`text-[10px] uppercase tracking-widest font-bold ${
-              isLight ? 'text-slate-700' : 'text-slate-400'
-            }`}>4. Abet Laminati (HPL)</label>
-            <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/30">
-              Laminado de Alta Presión
-            </span>
-          </div>
-          <div className="grid grid-cols-3 gap-2">
-            {abetTextures.map(t => renderTextureButton(t))}
-          </div>
-
-          {/* Trascara HPL Balancer Global 0.9 mm */}
-          <div className={`mt-2.5 p-2.5 rounded-xl border flex flex-col gap-1.5 ${
-            isLight ? 'bg-orange-50/80 border-orange-200' : 'bg-black/30 border-orange-500/25'
-          }`}>
-            <div className="flex items-center justify-between">
-              <span className={`text-[10px] uppercase font-bold tracking-wider ${
-                isLight ? 'text-orange-950' : 'text-orange-400'
+      {masisaTextures.length > 0 && (() => {
+        const selectedCount = masisaTextures.filter(t => isTextureSelected(t.url)).length;
+        return (
+          <div className="mb-5">
+            <div className="flex items-center justify-between mb-2.5">
+              <label className={`text-xs font-bold ${
+                isLight ? 'text-slate-900' : 'text-slate-200'
               }`}>
-                Trascara HPL de Compensación (Global)
-              </span>
-              <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/30">
-                0.9 mm
+                2. Masisa (Melaminas)
+              </label>
+              <span className="text-xs text-slate-400 font-medium">
+                {selectedCount > 0 ? `${selectedCount} seleccionado` : ''}
               </span>
             </div>
-            <p className={`text-[10px] leading-tight ${isLight ? 'text-slate-600' : 'text-zinc-400'}`}>
-              Balanceador blanco normalizado para evitar el alabeo de puertas y frentes laminados a una cara.
-            </p>
-            <div className="grid grid-cols-2 gap-1.5 mt-0.5">
-              <button
-                type="button"
-                onClick={() => state.setHplBalancer(true)}
-                className={`py-1.5 px-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1 ${
-                  state.hplBalancer
-                    ? 'bg-orange-500 text-black shadow-xs font-extrabold'
-                    : isLight
-                      ? 'bg-white text-slate-700 border border-slate-300 hover:border-orange-400'
-                      : 'bg-white/5 text-zinc-300 border border-white/10 hover:border-orange-500/50'
-                }`}
-              >
-                <span>Balancer Blanco 0.9mm</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => state.setHplBalancer(false)}
-                className={`py-1.5 px-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1 ${
-                  !state.hplBalancer
-                    ? 'bg-orange-500 text-black shadow-xs font-extrabold'
-                    : isLight
-                      ? 'bg-white text-slate-700 border border-slate-300 hover:border-orange-400'
-                      : 'bg-white/5 text-zinc-300 border border-white/10 hover:border-orange-500/50'
-                }`}
-              >
-                <span>Mismo HPL 2 Caras</span>
-              </button>
+            <div className="grid grid-cols-2 gap-3">
+              {masisaTextures.map(t => renderTextureButton(t))}
+              {renderCatalogCard('Masisa')}
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
+
+      {araucoTextures.length > 0 && (() => {
+        const selectedCount = araucoTextures.filter(t => isTextureSelected(t.url)).length;
+        return (
+          <div className="mb-5">
+            <div className="flex items-center justify-between mb-2.5">
+              <label className={`text-xs font-bold ${
+                isLight ? 'text-slate-900' : 'text-slate-200'
+              }`}>
+                3. Arauco / Vesto (Melaminas)
+              </label>
+              <span className="text-xs text-slate-400 font-medium">
+                {selectedCount > 0 ? `${selectedCount} seleccionado` : ''}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              {araucoTextures.map(t => renderTextureButton(t))}
+              {araucoTextures.length < 2 && renderCatalogCard('Arauco')}
+            </div>
+          </div>
+        );
+      })()}
+
+      {rehauTextures.length > 0 && (() => {
+        const selectedCount = rehauTextures.filter(t => isTextureSelected(t.url)).length;
+        return (
+          <div className="mb-5">
+            <div className="flex items-center justify-between mb-2.5">
+              <label className={`text-xs font-bold ${
+                isLight ? 'text-slate-900' : 'text-slate-200'
+              }`}>
+                4. Rehau Rauvisio (Superficies Poliméricas)
+              </label>
+              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200">
+                Tapacanto 1 mm
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              {rehauTextures.map(t => renderTextureButton(t))}
+            </div>
+          </div>
+        );
+      })()}
+
+      {abetTextures.length > 0 && (() => {
+        const selectedCount = abetTextures.filter(t => isTextureSelected(t.url)).length;
+        return (
+          <div className="mb-5">
+            <div className="flex items-center justify-between mb-2.5">
+              <label className={`text-xs font-bold ${
+                isLight ? 'text-slate-900' : 'text-slate-200'
+              }`}>
+                4. Abet Laminati (HPL)
+              </label>
+              <span className="text-[10px] font-medium px-2.5 py-0.5 rounded-full bg-amber-100/90 text-amber-800 border border-amber-200/80">
+                Laminado de Alta Presión
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              {abetTextures.map(t => renderTextureButton(t))}
+              {abetTextures.length < 2 && renderCatalogCard('Abet')}
+            </div>
+
+            {/* Trascara HPL Balancer Global 0.9 mm */}
+            <div className={`mt-3 p-3.5 rounded-2xl border flex flex-col gap-2 shadow-xs ${
+              isLight ? 'bg-amber-50/70 border-amber-200/90' : 'bg-amber-950/20 border-amber-500/30'
+            }`}>
+              <div className="flex items-center justify-between">
+                <span className={`text-[11px] uppercase font-extrabold tracking-tight ${
+                  isLight ? 'text-amber-950' : 'text-amber-400'
+                }`}>
+                  TRASCARA HPL COMPENSACIÓN (GLOBAL)
+                </span>
+                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md bg-amber-200/80 text-amber-900 border border-amber-300/80">
+                  0.9 mm
+                </span>
+              </div>
+              <p className={`text-[11px] leading-snug ${isLight ? 'text-amber-900/80' : 'text-zinc-300'}`}>
+                Balanceador blanco normalizado para evitar el alabeo de puertas y frentes laminados a una cara.
+              </p>
+              <div className="grid grid-cols-2 gap-2 mt-1">
+                <button
+                  type="button"
+                  onClick={() => state.setHplBalancer(true)}
+                  className={`py-2 px-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center text-center ${
+                    state.hplBalancer
+                      ? 'bg-orange-600 text-white shadow-xs font-extrabold border border-orange-700'
+                      : isLight
+                        ? 'bg-white text-slate-700 border border-slate-300 hover:border-slate-400'
+                        : 'bg-white/5 text-zinc-300 border border-white/10 hover:border-orange-500/50'
+                  }`}
+                >
+                  <span>Balancer Blanco 0.9mm</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => state.setHplBalancer(false)}
+                  className={`py-2 px-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center text-center ${
+                    !state.hplBalancer
+                      ? 'bg-orange-600 text-white shadow-xs font-extrabold border border-orange-700'
+                      : isLight
+                        ? 'bg-white text-slate-700 border border-slate-300 hover:border-slate-400'
+                        : 'bg-white/5 text-zinc-300 border border-white/10 hover:border-orange-500/50'
+                  }`}
+                >
+                  <span>Mismo HPL 2 Caras</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {otherTextures.length > 0 && (
-        <div className="mb-4">
-          <label className={`text-[10px] uppercase tracking-widest font-bold block mb-2 ${
-            isLight ? 'text-slate-700' : 'text-slate-400'
+        <div className="mb-5">
+          <label className={`text-xs font-bold block mb-2.5 ${
+            isLight ? 'text-slate-900' : 'text-slate-200'
           }`}>5. Otros Proveedores Homologados</label>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-3">
             {otherTextures.map(t => renderTextureButton(t))}
           </div>
         </div>
@@ -923,6 +1043,6 @@ export const TexturesSection = ({
           </div>
         </div>
       )}
-    </div>
+    </section>
   );
 };

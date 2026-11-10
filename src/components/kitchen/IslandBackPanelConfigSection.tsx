@@ -112,41 +112,42 @@ export function IslandBackPanelConfigSection({ isLight = false }: { isLight?: bo
   };
 
   return (
-    <div
-      className={`p-4 rounded-xl border transition-all ${
+    <section
+      className={`rounded-2xl border p-4 shadow-xs space-y-3 transition-all ${
         isLight
-          ? 'bg-slate-50 border-slate-200 shadow-sm'
-          : 'bg-white/5 border-white/10'
+          ? 'bg-white border-slate-200'
+          : 'bg-zinc-900 border-white/10'
       }`}
+      data-purpose="island-panel-setting"
     >
       {/* Header con Switch Principal */}
       <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-3">
           <div
-            className={`w-7 h-7 rounded-lg flex items-center justify-center ${
+            className={`p-2 rounded-xl shrink-0 ${
               islandBackConfig.enabled
-                ? 'bg-orange-500 text-black shadow-sm'
+                ? 'bg-orange-500 text-white shadow-xs'
                 : isLight
-                  ? 'bg-slate-200 text-slate-600'
+                  ? 'bg-slate-100 text-slate-600'
                   : 'bg-white/10 text-slate-400'
             }`}
           >
-            <Layers size={15} />
+            <Layers size={18} />
           </div>
           <div>
             <h3
-              className={`text-xs uppercase tracking-wider font-bold ${
+              className={`text-sm font-bold leading-snug ${
                 isLight ? 'text-slate-900' : 'text-white'
               }`}
             >
-              Placa Trasera Exterior Isla
+              Placa trasera exterior isla
             </h3>
             <p
-              className={`text-[10px] leading-tight mt-0.5 ${
-                isLight ? 'text-slate-500 font-medium' : 'text-slate-400'
+              className={`text-xs leading-normal ${
+                isLight ? 'text-slate-500' : 'text-slate-400'
               }`}
             >
-              Placa adicional adosada de revestimiento (no afecta el fondo interior)
+              Revestimiento adosado (no afecta fondo)
             </p>
           </div>
         </div>
@@ -168,20 +169,18 @@ export function IslandBackPanelConfigSection({ isLight = false }: { isLight?: bo
         </button>
       </div>
 
-      {!hasIslands && (
-        <div
-          className={`mt-3 p-2.5 rounded-lg border flex items-start gap-2 ${
-            isLight
-              ? 'bg-amber-50 border-amber-300 text-amber-900'
-              : 'bg-amber-500/10 border-amber-500/30 text-amber-300'
-          }`}
-        >
-          <Info size={14} className="shrink-0 mt-0.5" />
-          <span className="text-[11px] leading-relaxed">
-            Esta placa de revestimiento aplica <strong>exclusivamente a módulos tipo Isla</strong> para tapar uniones y patas por detrás. No aplica a muebles pegados a muro ni muebles aéreos.
-          </span>
-        </div>
-      )}
+      <aside
+        className={`flex gap-2.5 p-3 rounded-xl border text-xs leading-relaxed ${
+          isLight
+            ? 'bg-amber-50/70 border-amber-200/60 text-amber-900'
+            : 'bg-amber-950/30 border-amber-500/30 text-amber-300'
+        }`}
+      >
+        <Info size={16} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+        <p>
+          Esta placa de revestimiento aplica <strong className="font-semibold">exclusivamente a módulos tipo Isla</strong> para ocultar uniones y patas por detrás. No afecta a muebles adosados a muro o aéreos.
+        </p>
+      </aside>
 
       {/* Configuración detallada cuando está habilitado */}
       {islandBackConfig.enabled && (
@@ -855,6 +854,6 @@ export function IslandBackPanelConfigSection({ isLight = false }: { isLight?: bo
           )}
         </div>
       )}
-    </div>
+    </section>
   );
 }

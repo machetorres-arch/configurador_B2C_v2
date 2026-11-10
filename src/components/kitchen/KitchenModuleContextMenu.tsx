@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useKitchenStore, CabinetType } from '../../store/kitchenStore';
 import { useStore, PartType } from '../../store';
-import { useAdminStore } from '../../store/adminStore';
+import { useAdminStore, isSupplyOfferValid } from '../../store/adminStore';
 import { isCabinetWithDoors, getDefaultShelvesCount, isCabinetWithSplitDoors, getSplitCabinetShelvesCounts, isWhiteMelamine } from '../../utils/kitchenManufacturing';
-import { SlidersHorizontal, X, RefreshCw, ArrowUpDown, ArrowLeftRight, RotateCw, Move3D, DoorOpen, DoorClosed, Layers, Trash2, Palette, Sparkles, Box, Info, Check, ShieldAlert, Sliders, ChevronDown, ChevronRight, Ruler, Maximize2, AlertTriangle } from 'lucide-react';
+import { SlidersHorizontal, X, RefreshCw, ArrowUpDown, ArrowLeftRight, RotateCw, Move3D, DoorOpen, DoorClosed, Layers, Trash2, Palette, Sparkles, Box, Info, Check, ShieldAlert, Sliders, ChevronDown, ChevronRight, Ruler, Maximize2, AlertTriangle, Flame, PlusCircle } from 'lucide-react';
 import { HANDLE_CATALOG, FINISH_LABELS, FINISH_HEX, HandleModelId, HandleFinish, KitchenHandleConfig } from '../../types/handle';
 import { IslandBackPanelConfigSection } from './IslandBackPanelConfigSection';
 import { DottedDepthSlider } from './DottedDepthSlider';
@@ -820,6 +820,35 @@ export function KitchenModuleContextMenu({
   const hasInteractiveElements = !isDecoration && interactiveElements.length > 0;
   const anyElementOpen = interactiveElements.some(el => isElementOpen(el.id));
 
+  const isTextureSelected = (url: string) => {
+    if (!url || !activeCabinet) return false;
+    const target = targetZone;
+    if (target === 'doors') return activeCabinet.doorColor?.toLowerCase() === url.toLowerCase();
+    if (target === 'structure') return activeCabinet.structureColor?.toLowerCase() === url.toLowerCase();
+    if (target === 'drawerFronts') return activeCabinet.drawerFrontColor?.toLowerCase() === url.toLowerCase();
+    if (target === 'drawerInner') return activeCabinet.drawerInnerColor?.toLowerCase() === url.toLowerCase();
+    if (target === 'shelves') return activeCabinet.shelfColor?.toLowerCase() === url.toLowerCase();
+    if (target === 'back') return activeCabinet.backColor?.toLowerCase() === url.toLowerCase();
+    if (target === 'all') return activeCabinet.doorColor?.toLowerCase() === url.toLowerCase();
+    return activeCabinet.doorColor?.toLowerCase() === url.toLowerCase();
+  };
+
+  const renderCatalogCard = (brandName: string) => (
+    <div 
+      key={`catalog_${brandName}`}
+      className={`flex flex-col items-center justify-center p-3 rounded-2xl border-2 border-dashed transition-all cursor-pointer text-center gap-1.5 min-h-[145px] ${
+        isLight
+          ? 'border-slate-300/80 hover:border-slate-400 bg-slate-50/50 hover:bg-slate-100/50 text-slate-400 hover:text-slate-600'
+          : 'border-white/20 hover:border-white/40 bg-white/5 text-zinc-400 hover:text-zinc-200'
+      }`}
+    >
+      <div className="w-8 h-8 rounded-full border border-current flex items-center justify-center">
+        <PlusCircle size={18} />
+      </div>
+      <span className="text-[11px] font-medium leading-tight">Ver catálogo {brandName}</span>
+    </div>
+  );
+
   const renderTextureButton = (tex: any) => {
     const is15 = tex.thicknessMm === 15;
     const is18 = tex.thicknessMm === 18;
@@ -829,6 +858,18 @@ export function KitchenModuleContextMenu({
     const finishLower = (tex.finish || '').toLowerCase();
     const isExtraMate = finishLower.includes('mate') || finishLower.includes('matt');
     const isExtraBrillo = finishLower.includes('brillo') || finishLower.includes('brilliant') || finishLower.includes('gloss');
+    const isSelected = isTextureSelected(tex.url);
+
+    let subtitle = '';
+    if (tex.category === 'hpl_autor' || isAbetItem(tex)) {
+      subtitle = `HPL Premium ${tex.thicknessMm || 0.9}`;
+    } else if (is15) {
+      subtitle = `MDP 15mm ${tex.finish || 'Mate'}`;
+    } else if (is18) {
+      subtitle = `MDF 18mm ${tex.finish || 'Soft'}`;
+    } else {
+      subtitle = `${tex.thicknessMm ? `${tex.thicknessMm}mm ` : ''}${tex.finish || 'Estándar'}`.trim();
+    }
 
     const handleButtonClick = () => {
       if (isOutOfStock) {
@@ -846,12 +887,14 @@ export function KitchenModuleContextMenu({
           type="button"
           disabled={isOutOfStock}
           onClick={handleButtonClick}
-          className={`flex flex-col items-center gap-1 p-1 rounded-lg transition-all w-full border relative ${
+          className={`flex flex-col p-2.5 rounded-2xl transition-all w-full relative text-left ${
             isOutOfStock
-              ? 'opacity-35 grayscale cursor-not-allowed bg-zinc-900/60 border-dashed border-red-500/50'
-              : isLight
-                ? 'bg-white border-slate-200 hover:border-orange-500 shadow-sm cursor-pointer'
-                : 'bg-white/5 border-white/10 hover:border-orange-500/60 cursor-pointer'
+              ? 'opacity-35 grayscale cursor-not-allowed bg-zinc-900/60 border border-dashed border-red-500/50'
+              : isSelected
+                ? 'border-2 border-orange-500 bg-orange-500/5 shadow-md ring-2 ring-orange-500/20 cursor-pointer'
+                : isLight 
+                  ? 'bg-white border border-slate-200 hover:border-orange-500 shadow-xs cursor-pointer' 
+                  : 'bg-white/5 border border-white/10 hover:border-orange-500/50 cursor-pointer'
           }`}
           title={
             isOutOfStock
@@ -859,68 +902,97 @@ export function KitchenModuleContextMenu({
               : `${tex.name} ${tex.finish ? `[${tex.finish}]` : ''} ${tex.thicknessMm ? `[${tex.thicknessMm}mm]` : ''} [Stock: ${stockCount} planchas]`
           }
         >
-          {isOutOfStock ? (
-            <span className="absolute top-1 left-1 px-1 py-0.2 rounded text-[7px] font-mono font-extrabold uppercase shadow-xs z-10 bg-red-600 text-white">
-              SIN STOCK
-            </span>
-          ) : stockCount <= 10 ? (
-            <span className="absolute top-1 left-1 px-1 py-0.2 rounded text-[7px] font-mono font-bold uppercase shadow-xs z-10 bg-amber-500/90 text-black">
-              {stockCount}
-            </span>
-          ) : null}
+          {/* Fila Superior de Badges: Por fuera del decorativo, dentro del margen perimetral de la tarjeta */}
+          <div className="flex items-center justify-between w-full min-h-[22px] mb-2 px-0.5 gap-1">
+            {/* Izquierda: Badge de Oferta Activa o Estado de Stock */}
+            <div>
+              {isSupplyOfferValid(tex) ? (
+                <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-black uppercase shadow-xs bg-rose-500 text-white flex items-center gap-1">
+                  <Flame size={11} className="fill-white" />
+                  {tex.offerDiscountPercent || 27}% OFF
+                </span>
+              ) : isOutOfStock ? (
+                <span className="px-1.5 py-0.5 rounded-md text-[9px] font-mono font-extrabold uppercase shadow-xs bg-red-600 text-white">
+                  SIN STOCK
+                </span>
+              ) : stockCount <= 10 ? (
+                <span className="px-1.5 py-0.5 rounded-md text-[9px] font-mono font-bold uppercase shadow-xs bg-amber-500/90 text-black">
+                  {stockCount} Disp.
+                </span>
+              ) : (isExtraMate || isExtraBrillo) ? (
+                <span className={`px-1.5 py-0.5 rounded-md text-[8.5px] font-mono font-extrabold uppercase shadow-xs ${
+                  isExtraBrillo ? 'bg-cyan-400 text-black' : 'bg-purple-600 text-white'
+                }`}>
+                  {isExtraBrillo ? 'EXTRA BRILLO' : 'EXTRA MATE'}
+                </span>
+              ) : (
+                <div />
+              )}
+            </div>
 
-          {/* Badge de Acabado Específico (Extra Mate / Extra Brillo) */}
-          {(isExtraMate || isExtraBrillo) && (
-            <span className={`absolute top-1 left-1 px-1 py-0.2 rounded text-[6.5px] font-mono font-extrabold uppercase shadow-xs z-10 ${
-              isExtraBrillo
-                ? 'bg-cyan-400 text-black'
-                : 'bg-purple-600 text-white'
-            }`}>
-              {isExtraBrillo ? 'EXTRA BRILLO' : 'EXTRA MATE'}
-            </span>
-          )}
+            {/* Derecha: Badge de Espesores prominente */}
+            {tex.thicknessMm && (
+              <span
+                className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-black uppercase shadow-xs ${
+                  isOutOfStock
+                    ? 'bg-zinc-800 text-zinc-500'
+                    : is15
+                    ? 'bg-blue-600 text-white'
+                    : is18
+                    ? 'bg-orange-500 text-white'
+                    : 'bg-slate-800 text-white'
+                }`}
+              >
+                {tex.thicknessMm === 0.9 ? '0.9mm' : `${tex.thicknessMm}mm`}
+              </span>
+            )}
+          </div>
 
-          {tex.thicknessMm && (
-            <span
-              className={`absolute top-1 right-1 px-1 py-0.2 rounded text-[7px] font-mono font-extrabold uppercase shadow-xs z-10 ${
-                isOutOfStock
-                  ? 'bg-zinc-800 text-zinc-500'
-                  : is15
-                  ? 'bg-blue-600 text-white'
-                  : is18
-                  ? 'bg-orange-500 text-black'
-                  : 'bg-zinc-700 text-zinc-200'
-              }`}
-            >
-              {tex.thicknessMm}mm
-            </span>
-          )}
+          {/* Imagen / Muestra del Decorativo */}
           <div 
-            className={`w-full aspect-square rounded-md border bg-cover bg-center ${
-              isOutOfStock
-                ? 'border-red-500/20'
-                : isLight ? 'border-slate-300 group-hover:shadow-[0_0_10px_rgba(249,115,22,0.3)]' : 'border-white/20 group-hover:shadow-[0_0_10px_rgba(249,115,22,0.3)]'
+            className={`w-full aspect-[4/3] rounded-xl border bg-cover bg-center relative flex items-center justify-center ${
+              isOutOfStock 
+                ? 'border-red-500/20' 
+                : isLight ? 'border-slate-200' : 'border-white/20'
             }`}
             style={tex.url.startsWith('#') ? { backgroundColor: tex.url } : { backgroundImage: `url('${tex.url}')` }}
-          />
+          >
+            {/* Texto centrado para sólidos o blanco */}
+            {tex.url.toUpperCase() === '#FFFFFF' && (
+              <span className="text-[10px] font-extrabold text-slate-300 tracking-wider">BLANCO</span>
+            )}
+
+            {/* Checkmark circular cuando está seleccionado */}
+            {isSelected && (
+              <div className="w-8 h-8 rounded-full bg-orange-600 text-white flex items-center justify-center shadow-lg border-2 border-white animate-in zoom-in-75 duration-150">
+                <Check size={18} strokeWidth={3} />
+              </div>
+            )}
+          </div>
 
           {/* Indicador de Tapacanto 1mm para Rehau Rauvisio */}
           {isRehau && (
-            <div className="w-full flex items-center justify-between px-0.5">
-              <span className="text-[6.5px] font-mono font-bold text-purple-400 uppercase tracking-tighter">
+            <div className="w-full flex items-center justify-between px-0.5 mt-1">
+              <span className="text-[7px] font-mono font-bold text-purple-600 dark:text-purple-400 uppercase tracking-tighter">
                 Canteado 1mm
               </span>
-              <span className="text-[6.5px] font-mono font-bold text-zinc-400 uppercase tracking-tighter">
+              <span className="text-[7px] font-mono font-bold text-slate-400 uppercase tracking-tighter">
                 2800x1220
               </span>
             </div>
           )}
 
-          <span className={`text-[8px] uppercase tracking-wider truncate w-full text-center ${
-            isOutOfStock ? 'text-red-400/80 line-through' : isLight ? 'text-slate-600 font-bold' : 'text-slate-400'
-          }`}>
-            {tex.name.length > 14 ? tex.name.substring(0, 14) + '...' : tex.name}
-          </span>
+          {/* Título y Subtítulo */}
+          <div className="flex flex-col items-start w-full px-0.5 min-w-0 mt-2">
+            <span className={`text-xs font-bold truncate w-full text-left leading-tight ${
+              isOutOfStock ? 'text-red-400/80 line-through' : isLight ? 'text-slate-900' : 'text-white'
+            }`}>
+              {tex.name}
+            </span>
+            <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400 truncate w-full text-left mt-0.5">
+              {subtitle}
+            </span>
+          </div>
         </button>
       </div>
     );
@@ -2771,32 +2843,54 @@ export function KitchenModuleContextMenu({
             </div>
 
             {/* Masisa */}
-            {masisaTextures.length > 0 && (
-              <div className="flex flex-col gap-2">
-                <div className={`text-[10px] uppercase tracking-wider font-semibold ${
-                  isLight ? 'text-slate-600' : 'text-zinc-400'
-                }`}>
-                  2. Masisa (Melaminas)
+            {masisaTextures.length > 0 && (() => {
+              const selectedCount = masisaTextures.filter(t => isTextureSelected(t.url)).length;
+              return (
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <div className={`text-[10px] uppercase tracking-wider font-semibold ${
+                      isLight ? 'text-slate-600' : 'text-zinc-400'
+                    }`}>
+                      2. Masisa (Melaminas)
+                    </div>
+                    {selectedCount > 0 && (
+                      <span className="text-[10px] text-slate-400 font-medium">
+                        {selectedCount} seleccionado
+                      </span>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    {masisaTextures.map(t => renderTextureButton(t))}
+                    {renderCatalogCard('Masisa')}
+                  </div>
                 </div>
-                <div className="grid grid-cols-3 gap-2">
-                  {masisaTextures.map(t => renderTextureButton(t))}
-                </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* Arauco / Vesto */}
-            {araucoTextures.length > 0 && (
-              <div className="flex flex-col gap-2">
-                <div className={`text-[10px] uppercase tracking-wider font-semibold ${
-                  isLight ? 'text-slate-600' : 'text-zinc-400'
-                }`}>
-                  3. Arauco / Vesto (Melaminas)
+            {araucoTextures.length > 0 && (() => {
+              const selectedCount = araucoTextures.filter(t => isTextureSelected(t.url)).length;
+              return (
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <div className={`text-[10px] uppercase tracking-wider font-semibold ${
+                      isLight ? 'text-slate-600' : 'text-zinc-400'
+                    }`}>
+                      3. Arauco / Vesto (Melaminas)
+                    </div>
+                    {selectedCount > 0 && (
+                      <span className="text-[10px] text-slate-400 font-medium">
+                        {selectedCount} seleccionado
+                      </span>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    {araucoTextures.map(t => renderTextureButton(t))}
+                    {araucoTextures.length < 2 && renderCatalogCard('Arauco')}
+                  </div>
                 </div>
-                <div className="grid grid-cols-3 gap-2">
-                  {araucoTextures.map(t => renderTextureButton(t))}
-                </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* Rehau Rauvisio */}
             {rehauTextures.length > 0 && (
@@ -2805,13 +2899,13 @@ export function KitchenModuleContextMenu({
                   <div className={`text-[10px] uppercase tracking-wider font-semibold ${
                     isLight ? 'text-slate-600' : 'text-zinc-400'
                   }`}>
-                    4. Rehau Rauvisio (Superficies Poliméricas 2.80 x 1.22 m)
+                    4. Rehau Rauvisio (Superficies Poliméricas)
                   </div>
                   <span className="text-[8.5px] font-mono font-bold px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 border border-purple-500/30">
-                    Tapacanto Exclusivo 1 mm
+                    Tapacanto 1 mm
                   </span>
                 </div>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 gap-3">
                   {rehauTextures.map(t => renderTextureButton(t))}
                 </div>
               </div>
@@ -2820,10 +2914,15 @@ export function KitchenModuleContextMenu({
             {/* Abet */}
             {abetTextures.length > 0 && (
               <div className="flex flex-col gap-2">
-                <div className={`text-[10px] uppercase tracking-wider font-semibold ${
-                  isLight ? 'text-slate-600' : 'text-zinc-400'
-                }`}>
-                  5. Abet Laminati (HPL)
+                <div className="flex items-center justify-between">
+                  <div className={`text-[10px] uppercase tracking-wider font-semibold ${
+                    isLight ? 'text-slate-600' : 'text-zinc-400'
+                  }`}>
+                    5. Abet Laminati (HPL)
+                  </div>
+                  <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/30">
+                    Laminado HPL
+                  </span>
                 </div>
 
                 {/* Sub-opción contextual en Abet Laminati: Trascara Balancer Blanco 0,9 mm */}
@@ -2860,8 +2959,9 @@ export function KitchenModuleContextMenu({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 gap-3">
                   {abetTextures.map(t => renderTextureButton(t))}
+                  {abetTextures.length < 2 && renderCatalogCard('Abet')}
                 </div>
               </div>
             )}
@@ -2874,7 +2974,7 @@ export function KitchenModuleContextMenu({
                 }`}>
                   6. Otras Terminaciones de Proveedor
                 </div>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 gap-3">
                   {otherTextures.map(t => renderTextureButton(t))}
                 </div>
               </div>
